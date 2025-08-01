@@ -21,11 +21,6 @@ NavTool is a modern Electronic Chart Display and Information System (ECDIS) desi
 - **Custom SVG icon support**
 - **Version display functionality**
 
-### Navigation Standards Compliance
-- **S-57 Electronic Navigational Charts**
-- **NMEA 0183/2000 GPS Integration**
-- **International Maritime Organization (IMO) Compliance**
-
 ## Platform Support
 
 - ✅ **Linux** (Primary development platform)
