@@ -1,0 +1,26 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- Water waves at bottom -->
+  <path d="M0 48 Q8 44 16 48 T32 48 T48 48 T64 48 V64 H0 Z" fill="#4FC3F7" opacity="0.8"/>
+  <path d="M0 52 Q8 48 16 52 T32 52 T48 52 T64 52 V64 H0 Z" fill="#29B6F6" opacity="0.6"/>
+  
+  <!-- Hull -->
+  <path d="M20 42 Q32 38 44 42 L40 46 Q32 44 24 46 Z" fill="#8D6E63" stroke="#5D4037" stroke-width="1"/>
+  
+  <!-- Mast -->
+  <line x1="32" y1="46" x2="32" y2="8" stroke="#8D6E63" stroke-width="2"/>
+  
+  <!-- Main sail -->
+  <path d="M32 12 Q38 16 40 24 Q38 32 32 36 V12 Z" fill="#E3F2FD" stroke="#1976D2" stroke-width="1"/>
+  
+  <!-- Jib sail -->
+  <path d="M32 18 Q26 20 22 26 Q26 30 32 32 V18 Z" fill="#FFF3E0" stroke="#F57C00" stroke-width="1"/>
+  
+  <!-- Boom -->
+  <line x1="32" y1="36" x2="40" y2="40" stroke="#8D6E63" stroke-width="1.5"/>
+  
+  <!-- Small flag at top -->
+  <path d="M32 8 L38 12 L32 16 Z" fill="#F44336"/>
+  
+  <!-- Compass rose accent -->
+  <circle cx="32" cy="32" r="2" fill="#1976D2" opacity="0.3"/>
+</svg>
