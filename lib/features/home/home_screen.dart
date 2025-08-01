@@ -117,13 +117,6 @@ class HomeScreen extends StatelessWidget {
 
   Widget _buildMenuButton(BuildContext context, String label, List<PopupMenuEntry<String>> items) {
     return PopupMenuButton<String>(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
-        child: Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ),
       itemBuilder: (context) => items,
       onSelected: (value) {
         // Handle menu selections
@@ -144,6 +137,13 @@ class HomeScreen extends StatelessWidget {
         }
       },
       offset: const Offset(0, 30),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ),
     );
   }
 
