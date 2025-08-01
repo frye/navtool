@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../widgets/app_icon.dart';
+import '../../widgets/version_text.dart';
 
 class AboutAppDialog extends StatelessWidget {
   const AboutAppDialog({super.key});
@@ -33,7 +34,7 @@ class AboutAppDialog extends StatelessWidget {
             ),
           ),
           SizedBox(height: 8),
-          Text('Version 1.0.0'),
+          VersionText(),
           SizedBox(height: 16),
           Text(
             'A comprehensive marine navigation solution designed for recreational and professional mariners.',
