@@ -37,6 +37,9 @@ dependencies:
   
   # For rendering SVG icons
   flutter_svg: ^2.0.13
+  
+  # For accessing package information including version
+  package_info_plus: ^8.0.3
 
 dev_dependencies:
   flutter_test:
