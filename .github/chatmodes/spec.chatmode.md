@@ -1,6 +1,6 @@
 ---
 model: Claude Sonnet 4
-tools: ["editFiles", "fetch", "web"]
+tools: ["editFiles", "fetch", "perplexity_ask", "search"]
 ---
 
 We are iterating to a detailed functional [spec](../../spec.md) focusing on the user experience and core functionality. Don't read or edit any other files, except for the [spec](../../spec.md).

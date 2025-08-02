@@ -1,91 +1,106 @@
-# Frontend Vibes - AI Coding Assistant Instructions
+# NavTool - AI Coding Assistant Instructions
 
 ## Stack
 
-Next.js 15 (App Router), React 19, TypeScript, Shadcn UI ("new-york" style), Tailwind 4, OpenRouter/OpenAI integration.
+Flutter 3.8.1+, Dart, Material Design 3, Custom SVG Icons (flutter_svg), Cross-platform Desktop (Windows, macOS, Linux, iOS).
 
-## Development Server
+## Development Environment
 
-- Use **Turbopack** for dev: `npm run dev` (already configured with `--turbopack` flag)
-- Images pre-configured for `images.unsplash.com` domain in `next.config.ts`
+- Use **Flutter run** for development: `flutter run -d windows` (or `-d macos`, `-d linux`)
+- Hot reload enabled for rapid development iteration
+- Assets pre-configured in `pubspec.yaml` for `assets/icons/` directory
+- Package info integration via `package_info_plus` for version management
 
 ## Architecture Patterns
 
-### Component Organization
-- **Layout Components**: `src/components/layout/` (e.g., `header.tsx` with NavigationMenu pattern)
-- **Feature Components**: Organize by feature in `src/components/[feature]/`
-- **UI Components**: Shadcn components in `src/components/ui/` managed via `components.json`
+### Widget Organization
+- **Feature-based Structure**: `lib/features/[feature]/` (e.g., `home/`, `about/`)
+- **Shared Widgets**: `lib/widgets/` for reusable components (e.g., `app_icon.dart`, `main_menu.dart`)
+- **App Configuration**: `lib/app/` for routing and main app setup
 
 ### Responsive Design
-- **Mobile-first approach** with `useIsMobile` hook (`src/hooks/use-mobile.ts`)
-- Breakpoint: 768px (`MOBILE_BREAKPOINT = 768`)
-- Usage: `const isMobile = useIsMobile()` for conditional rendering
+- **Desktop-first approach** with `MediaQuery.of(context).size` for screen adaptation
+- Target platforms: Desktop (Windows, macOS, Linux) with iOS support
+- Use `LayoutBuilder` for responsive widget layouts
+- Consider marine usage scenarios (outdoor visibility, touch vs mouse interaction)
 
-### Color System
-- **OKLCH color space** in `globals.css` for better perceptual uniformity
-- CSS custom properties pattern: `--color-primary: oklch(0.63 0.17 149)`
-- Dark mode via `.dark` class with automatic variable switching
+### Theme System
+- **Material Design 3** with `ColorScheme.fromSeed(seedColor: Colors.blue)`
+- Marine-friendly color palette for nautical applications
+- Dark/light theme support for day/night navigation usage
+- High contrast options for outdoor visibility
 
 # Planning
 
-Use todo lists to break down planning and implementation tasks.
+Use todo lists to break down navigation feature development and chart integration tasks.
 
-## Error Monitoring Integration
+## Error Handling
 
-- Error handling via console logging and custom error classes
-- Use LLM wrapper in `src/lib/llm.ts` for OpenRouter API calls with built-in error handling
-- Custom `OpenRouterError` class for LLM-specific error handling
+- Use Dart's built-in exception handling with try-catch blocks
+- Implement custom exception classes for marine data operations
+- Console logging for development debugging
+- User-friendly error messages for navigation-critical failures
 
 # Code Style and Structure
 
-- Write concise, technical TypeScript code with accurate examples.
-- Use functional and declarative programming patterns; avoid classes.
-- Prefer iteration and modularization over code duplication.
-- Use descriptive variable names with auxiliary verbs (e.g., isLoading, hasError).
-- Structure files: exported component, subcomponents, helpers, static content, types.
+- Write concise, idiomatic Dart code following Flutter conventions.
+- Use StatelessWidget for immutable UI components, StatefulWidget for interactive components.
+- Prefer composition over inheritance; use mixins where appropriate.
+- Use descriptive variable names with clear intent (e.g., `isChartLoaded`, `hasGpsSignal`).
+- Structure Dart files: imports, main widget class, helper methods, private methods.
 
 # Naming Conventions
 
-- Use lowercase with dashes for directories (e.g., components/auth-wizard).
-- Favor named exports for components.
+- Use snake_case for file and directory names (e.g., `home_screen.dart`, `chart_display/`).
+- Use PascalCase for class names (e.g., `HomeScreen`, `ChartDisplayWidget`).
+- Use camelCase for variable and method names (e.g., `chartData`, `loadNavigationData()`).
+- Prefix private members with underscore (e.g., `_privateMethod()`).
 
 # Recommended Tools
 
-- For frontend qna and review, use the `browser_*` tools (by playwright)
-- For research and web search use the `perplexity_ask` tool.
-- To access developer documentation, use the `get-library-docs` tool with these library IDs (don't call resolve-library-id before).
-  - `shadcn-ui/ui` for Shadcn UI components
-  - `lucide-icons/lucide` for Lucide icons
-  - `vercel/next.js` for Next.js documentation
+- For marine data research and navigation standards, use the `perplexity_ask` tool.
+- For Flutter development guidance, reference Flutter documentation
+- Use `semantic_search` for finding existing navigation-related code patterns
 
 # UI and Styling
 
-- Use Shadcn UI components, managing installed components via [components.json](../components.json), [components/ui](../src/components/ui/)
-  - Install using `npx shadcn@latest`, `shadcn-ui` is deprecated.
-- Use Lucide icons.
-- Use `cn` (from [utils](../src/lib/utils.ts)) for conditional class names.
-- Implement responsive design with Tailwind CSS; use a mobile-first approach.
-- Apply beautiful, balanced, and modern UI designs, imbued with best UX and typography practices.
-- For image placeholders use unsplash.com.
+- Use Material Design 3 widgets from Flutter's material library
+- Implement custom SVG icons using `flutter_svg` package for marine symbols
+- Use `MediaQuery` and `LayoutBuilder` for responsive layouts
+- Apply marine navigation UI principles:
+  - High contrast for outdoor visibility
+  - Large touch targets for use with gloves
+  - Clear visual hierarchy for critical navigation data
+  - Consistent with maritime software conventions
 
 # Syntax and Formatting
 
-- Use the "function" keyword for pure functions.
-- Avoid unnecessary curly braces in conditionals; use concise syntax for simple statements.
-- Use declarative JSX.
+- Follow Dart formatting guidelines with `dart format`
+- Use const constructors where possible for performance
+- Prefer named parameters for widget constructors
+- Use trailing commas for better formatting and diffs
 
 # Performance Optimization
 
-- Minimize 'use client', 'useEffect', and 'setState'; favor React Server Components (RSC).
-- Wrap client components in Suspense with fallback.
-- Use dynamic loading for non-critical components.
-- Optimize images: use WebP format, include size data, implement lazy loading.
+- Use `const` widgets to reduce rebuilds
+- Implement proper `Key` usage for widget identity
+- Use `ListView.builder` for large datasets (chart lists, waypoints)
+- Optimize chart rendering with efficient data structures
+- Consider memory management for large nautical chart data
 
 # Key Conventions
 
-- Use OpenAI/OpenRouter for LLM functionality via the helper methods in [lib/llm.ts](/Users/digitarald/Developer/frontend-vibes/src/lib/llm.ts).
-- Limit 'use client':
-  - Favor server components and Next.js SSR.
-  - Use only for Web API access in small components.
-  - Avoid for data fetching or state management.
-- Follow Next.js docs for Data Fetching, Rendering, and Routing.
+- Marine Navigation Focus:
+  - Prioritize accuracy and reliability for safety-critical features
+  - Follow maritime software conventions and standards
+  - Consider offline usage scenarios for marine environments
+  - Implement GPS integration patterns for position tracking
+- Flutter Best Practices:
+  - Use proper widget lifecycle management
+  - Implement clean separation between UI and business logic
+  - Follow Flutter's reactive programming patterns
+  - Use appropriate state management (setState, Provider, etc.)
+- File Organization:
+  - Group related marine features together (charts, navigation, weather)
+  - Separate platform-specific code when needed
+  - Maintain clear boundaries between UI and data layers
