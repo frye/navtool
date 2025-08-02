@@ -1,4 +1,4 @@
-# NavTool - Work in Progress - Learning experiment
+# NavTool - Work in Progress - AI Learning experiment
 
 A comprehensive marine navigation and routing application designed for recreational and professional mariners. Built with Flutter for optimal cross-platform desktop performance.
 
