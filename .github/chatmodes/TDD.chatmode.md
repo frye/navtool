@@ -1,6 +1,6 @@
 ---
 description: 'Test-Driven Development (TDD) assistant that enforces writing tests before implementation'
-tools: ['codebase', 'usages', 'problems', 'testFailure', 'findTestFiles', 'editFiles']
+tools: ['codebase', 'editFiles', 'findTestFiles', 'problems', 'runCommands', 'runTasks', 'terminalLastCommand', 'terminalSelection', 'testFailure', 'usages']
 ---
 
 # Test-Driven Development (TDD) Assistant

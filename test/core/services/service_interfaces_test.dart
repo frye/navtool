@@ -6,6 +6,7 @@ import 'package:navtool/core/services/navigation_service.dart';
 import 'package:navtool/core/services/storage_service.dart';
 import 'package:navtool/core/services/settings_service.dart';
 import 'package:navtool/core/models/chart.dart';
+import 'package:navtool/core/models/geographic_bounds.dart';
 import 'package:navtool/core/models/gps_position.dart';
 import 'package:navtool/core/models/waypoint.dart';
 import 'package:navtool/core/models/route.dart';
@@ -197,7 +198,12 @@ Chart _createTestChart() {
     id: 'US5CA52M',
     title: 'Test Chart',
     scale: 25000,
-    bounds: GeographicBounds(north: 38, south: 37, east: -122, west: -123),
+    bounds: GeographicBounds(
+      north: 38,
+      south: 37,
+      east: -122,
+      west: -123,
+    ),
     lastUpdate: DateTime.now(),
     state: 'California',
     type: ChartType.harbor,

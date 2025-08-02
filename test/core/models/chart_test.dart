@@ -139,6 +139,7 @@ void main() {
       expect(ChartType.coastal.displayName, equals('Coastal'));
       expect(ChartType.approach.displayName, equals('Approach'));
       expect(ChartType.harbor.displayName, equals('Harbor'));
+      expect(ChartType.berthing.displayName, equals('Berthing'));
     });
 
     test('ChartType should have correct scale ranges', () {
@@ -147,6 +148,7 @@ void main() {
       expect(ChartType.coastal.scaleRange.contains(150000), isTrue);
       expect(ChartType.approach.scaleRange.contains(50000), isTrue);
       expect(ChartType.harbor.scaleRange.contains(25000), isTrue);
+      expect(ChartType.berthing.scaleRange.contains(2500), isTrue);
     });
   });
 }
