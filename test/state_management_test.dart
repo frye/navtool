@@ -20,18 +20,23 @@ void main() {
       container.dispose();
     });
 
-    test('App state provider initializes with default state', () {
+    test('App state provider initializes with default state', () async {
       final state = container.read(appStateProvider);
       
-      expect(state.isInitialized, true); // State should be initialized by the notifier
-      expect(state.currentPosition, null);
-      expect(state.availableCharts, isEmpty);
-      expect(state.downloadedCharts, isEmpty);
-      expect(state.waypoints, isEmpty);
-      expect(state.isGpsEnabled, false);
-      expect(state.isLocationPermissionGranted, false);
-      expect(state.themeMode, AppThemeMode.system);
-      expect(state.isDayMode, true);
+      // Wait a bit for async initialization to complete
+      await Future.delayed(const Duration(milliseconds: 100));
+      
+      final updatedState = container.read(appStateProvider);
+      
+      expect(updatedState.isInitialized, true); // State should be initialized by the notifier
+      expect(updatedState.currentPosition, null);
+      expect(updatedState.availableCharts, isEmpty);
+      expect(updatedState.downloadedCharts, isEmpty);
+      expect(updatedState.waypoints, isEmpty);
+      expect(updatedState.isGpsEnabled, false);
+      expect(updatedState.isLocationPermissionGranted, false);
+      expect(updatedState.themeMode, AppThemeMode.system);
+      expect(updatedState.isDayMode, true);
     });
 
     test('App settings provider initializes with default settings', () {

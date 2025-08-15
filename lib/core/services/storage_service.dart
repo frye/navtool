@@ -1,5 +1,7 @@
 import 'dart:io';
 import '../models/chart.dart';
+import '../models/route.dart';
+import '../models/waypoint.dart';
 
 /// Service interface for storage operations
 abstract class StorageService {
@@ -23,4 +25,33 @@ abstract class StorageService {
 
   /// Gets the directory where charts are stored
   Future<Directory> getChartsDirectory();
+
+  // Navigation-related storage methods
+  
+  /// Stores a navigation route
+  Future<void> storeRoute(NavigationRoute route);
+
+  /// Loads a navigation route by ID
+  Future<NavigationRoute?> loadRoute(String routeId);
+
+  /// Deletes a navigation route
+  Future<void> deleteRoute(String routeId);
+
+  /// Gets all stored routes
+  Future<List<NavigationRoute>> getAllRoutes();
+
+  /// Stores a waypoint
+  Future<void> storeWaypoint(Waypoint waypoint);
+
+  /// Loads a waypoint by ID
+  Future<Waypoint?> loadWaypoint(String waypointId);
+
+  /// Updates an existing waypoint
+  Future<void> updateWaypoint(Waypoint waypoint);
+
+  /// Deletes a waypoint
+  Future<void> deleteWaypoint(String waypointId);
+
+  /// Gets all stored waypoints
+  Future<List<Waypoint>> getAllWaypoints();
 }
