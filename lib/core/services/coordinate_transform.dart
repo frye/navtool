@@ -11,6 +11,9 @@ class CoordinateTransform {
   final LatLng _center;
   final Size _screenSize;
   final double _pixelsPerDegree;
+  double _rotation = 0.0;
+  double _magneticDeclination = 0.0;
+  String _projectionType = 'mercator';
 
   CoordinateTransform({
     required double zoom,
@@ -159,6 +162,193 @@ class CoordinateTransform {
   LatLng get center => _center;
   Size get screenSize => _screenSize;
   double get pixelsPerDegree => _pixelsPerDegree;
+
+  // ===== Enhanced Properties and Methods =====
+
+  /// Get the current rotation angle in degrees
+  double get rotation => _rotation;
+
+  /// Set chart rotation
+  void setRotation(double degrees) {
+    _rotation = degrees % 360.0;
+  }
+
+  /// Set magnetic declination for compass correction
+  void setMagneticDeclination(double declination) {
+    _magneticDeclination = declination;
+  }
+
+  /// Convert bearing from magnetic to true
+  double magneticToTrue(double magneticBearing) {
+    return (magneticBearing + _magneticDeclination) % 360.0;
+  }
+
+  /// Convert bearing from true to magnetic
+  double trueToMagnetic(double trueBearing) {
+    return (trueBearing - _magneticDeclination + 360.0) % 360.0;
+  }
+
+  /// Transform coordinates with rotation
+  Offset transformWithRotation(Offset point) {
+    if (_rotation == 0.0) return point;
+    
+    final radians = _rotation * (math.pi / 180.0);
+    final cos = math.cos(radians);
+    final sin = math.sin(radians);
+    
+    final centerX = _screenSize.width / 2;
+    final centerY = _screenSize.height / 2;
+    
+    // Translate to origin
+    final translatedX = point.dx - centerX;
+    final translatedY = point.dy - centerY;
+    
+    // Apply rotation
+    final rotatedX = translatedX * cos - translatedY * sin;
+    final rotatedY = translatedX * sin + translatedY * cos;
+    
+    // Translate back
+    return Offset(rotatedX + centerX, rotatedY + centerY);
+  }
+
+  /// High precision coordinate transformation
+  Offset latLngToScreenPrecise(LatLng latLng) {
+    // Use more precise spherical mercator projection
+    const earthRadius = 6378137.0; // WGS84 Earth radius in meters
+    
+    final lat = latLng.latitude * (math.pi / 180.0);
+    final lng = latLng.longitude * (math.pi / 180.0);
+    
+    final x = earthRadius * lng;
+    final y = earthRadius * math.log(math.tan(math.pi / 4 + lat / 2));
+    
+    // Convert to screen coordinates
+    final centerLat = _center.latitude * (math.pi / 180.0);
+    final centerLng = _center.longitude * (math.pi / 180.0);
+    
+    final centerX = earthRadius * centerLng;
+    final centerY = earthRadius * math.log(math.tan(math.pi / 4 + centerLat / 2));
+    
+    final screenX = _screenSize.width / 2 + (x - centerX) * _zoom / 1000;
+    final screenY = _screenSize.height / 2 - (y - centerY) * _zoom / 1000;
+    
+    final point = Offset(screenX, screenY);
+    return transformWithRotation(point);
+  }
+
+  /// Bulk coordinate transformation for performance
+  List<Offset> bulkLatLngToScreen(List<LatLng> coordinates) {
+    return coordinates.map((coord) => latLngToScreenPrecise(coord)).toList();
+  }
+
+  /// Get projection type
+  String getProjectionType() {
+    return _projectionType;
+  }
+
+  /// Set projection type
+  void setProjectionType(String type) {
+    _projectionType = type;
+  }
+
+  /// Convert to nautical miles
+  double degreesToNauticalMiles(double degrees) {
+    return degrees * 60.0; // 1 degree = 60 nautical miles
+  }
+
+  /// Convert from nautical miles
+  double nauticalMilesToDegrees(double nauticalMiles) {
+    return nauticalMiles / 60.0;
+  }
+
+  /// Calculate great circle distance
+  double calculateDistance(LatLng point1, LatLng point2) {
+    const earthRadius = 3440.065; // Earth radius in nautical miles
+    
+    final lat1 = point1.latitude * (math.pi / 180.0);
+    final lat2 = point2.latitude * (math.pi / 180.0);
+    final deltaLat = (point2.latitude - point1.latitude) * (math.pi / 180.0);
+    final deltaLng = (point2.longitude - point1.longitude) * (math.pi / 180.0);
+    
+    final a = math.sin(deltaLat / 2) * math.sin(deltaLat / 2) +
+        math.cos(lat1) * math.cos(lat2) *
+        math.sin(deltaLng / 2) * math.sin(deltaLng / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    
+    return earthRadius * c;
+  }
+
+  /// Calculate bearing between two points
+  double calculateBearing(LatLng from, LatLng to) {
+    final lat1 = from.latitude * (math.pi / 180.0);
+    final lat2 = to.latitude * (math.pi / 180.0);
+    final deltaLng = (to.longitude - from.longitude) * (math.pi / 180.0);
+    
+    final y = math.sin(deltaLng) * math.cos(lat2);
+    final x = math.cos(lat1) * math.sin(lat2) -
+        math.sin(lat1) * math.cos(lat2) * math.cos(deltaLng);
+    
+    final bearing = math.atan2(y, x) * (180.0 / math.pi);
+    return (bearing + 360.0) % 360.0;
+  }
+
+  /// Calculate rhumb line distance
+  double calculateRhumbDistance(LatLng point1, LatLng point2) {
+    final lat1 = point1.latitude * (math.pi / 180.0);
+    final lat2 = point2.latitude * (math.pi / 180.0);
+    final deltaLat = lat2 - lat1;
+    var deltaLng = (point2.longitude - point1.longitude) * (math.pi / 180.0);
+    
+    final deltaPhi = math.log(math.tan(lat2 / 2 + math.pi / 4) / math.tan(lat1 / 2 + math.pi / 4));
+    final q = deltaLat != 0 ? deltaLat / deltaPhi : math.cos(lat1);
+    
+    if (deltaLng.abs() > math.pi) {
+      final sign = deltaLng > 0 ? -1 : 1;
+      deltaLng = sign * (2 * math.pi - deltaLng.abs());
+    }
+    
+    final distance = math.sqrt(deltaLat * deltaLat + q * q * deltaLng * deltaLng);
+    return distance * 180.0 / math.pi * 60.0; // Convert to nautical miles
+  }
+
+  /// Calculate rhumb line bearing
+  double calculateRhumbBearing(LatLng from, LatLng to) {
+    final lat1 = from.latitude * (math.pi / 180.0);
+    final lat2 = to.latitude * (math.pi / 180.0);
+    var deltaLng = (to.longitude - from.longitude) * (math.pi / 180.0);
+    
+    final deltaPhi = math.log(math.tan(lat2 / 2 + math.pi / 4) / math.tan(lat1 / 2 + math.pi / 4));
+    
+    if (deltaLng.abs() > math.pi) {
+      final sign = deltaLng > 0 ? -1 : 1;
+      deltaLng = sign * (2 * math.pi - deltaLng.abs());
+    }
+    
+    final bearing = math.atan2(deltaLng, deltaPhi) * (180.0 / math.pi);
+    return (bearing + 360.0) % 360.0;
+  }
+
+  /// Check if point is within screen bounds
+  bool isPointInBounds(LatLng point) {
+    final screenPoint = latLngToScreen(point);
+    return screenPoint.dx >= 0 && 
+           screenPoint.dx <= _screenSize.width &&
+           screenPoint.dy >= 0 && 
+           screenPoint.dy <= _screenSize.height;
+  }
+
+  /// Get viewport bounds in lat/lng
+  LatLngBounds getViewportBounds() {
+    final topLeft = screenToLatLng(const Offset(0, 0));
+    final bottomRight = screenToLatLng(Offset(_screenSize.width, _screenSize.height));
+    
+    return LatLngBounds(
+      north: topLeft.latitude,
+      south: bottomRight.latitude,
+      east: bottomRight.longitude,
+      west: topLeft.longitude,
+    );
+  }
 }
 
 /// Utilities for coordinate validation and conversion
