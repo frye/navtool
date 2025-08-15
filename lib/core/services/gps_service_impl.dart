@@ -216,7 +216,6 @@ class GpsServiceImpl implements GpsService {
   /// Checks if position accuracy is suitable for marine navigation
   /// Marine navigation typically requires accuracy better than 10 meters
   bool _isAccurateEnoughForMarine(GpsPosition position) {
-    const double maxAccuracyForMarine = 10.0; // meters
     return position.accuracy == null || position.accuracy! <= maxAccuracyForMarine;
   }
 }
