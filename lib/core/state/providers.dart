@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
 import '../logging/app_logger.dart';
 import '../error/error_handler.dart';
@@ -12,7 +13,9 @@ import '../services/download_service_impl.dart';
 import '../services/storage_service.dart';
 import '../services/database_storage_service.dart';
 import '../services/gps_service.dart';
-import '../services/gps_service_impl.dart';
+// Cross-platform GPS implementations
+import '../services/gps_service_impl.dart';  // Geolocator-based (macOS, Linux, iOS, Android)
+import '../services/gps_service_win32.dart'; // Windows-specific
 import '../services/background_task_service.dart';
 import 'app_state.dart';
 import 'app_state_notifier.dart';
@@ -23,9 +26,17 @@ import 'settings_state.dart';
 final loggerProvider = Provider<AppLogger>((ref) => const ConsoleLogger());
 final errorHandlerProvider = Provider<ErrorHandler>((ref) => ErrorHandler(logger: ref.read(loggerProvider)));
 
-// GPS Service
+// GPS Service - Platform-specific implementation
 final gpsServiceProvider = Provider<GpsService>((ref) {
-  return GpsServiceImpl(logger: ref.read(loggerProvider));
+  final logger = ref.read(loggerProvider);
+  
+  // Use Windows-specific implementation on Windows, geolocator on other platforms
+  if (defaultTargetPlatform == TargetPlatform.windows) {
+    return GpsServiceWin32(logger: logger);
+  } else {
+    // Use geolocator for macOS, Linux, iOS, Android
+    return GpsServiceImpl(logger: logger);
+  }
 });
 
 // Background Task Service
@@ -97,6 +108,11 @@ final isAppInitializedProvider = Provider<bool>((ref) {
 
 final currentPositionProvider = Provider<GpsPosition?>((ref) {
   return ref.watch(appStateProvider).currentPosition;
+});
+
+final gpsPositionProvider = FutureProvider<GpsPosition?>((ref) async {
+  final gpsService = ref.read(gpsServiceProvider);
+  return await gpsService.getCurrentPosition();
 });
 
 final currentChartProvider = Provider<Chart?>((ref) {

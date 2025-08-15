@@ -51,7 +51,11 @@ dependencies:
   dio: ^5.7.0
   
   # GPS and location services for marine navigation
-  geolocator: ^13.0.1
+  # TODO: Re-enable geolocator once Windows CMake issue is resolved
+  # geolocator: ^13.0.1
+  
+  # Windows-specific location services via Win32 API
+  win32: ^5.14.0
   
   # Local database for marine navigation data
   sqflite: ^2.4.1
