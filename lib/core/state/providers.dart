@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
 import '../logging/app_logger.dart';
 import '../error/error_handler.dart';
 import '../models/gps_position.dart';
@@ -11,8 +12,9 @@ import '../services/download_service_impl.dart';
 import '../services/storage_service.dart';
 import '../services/database_storage_service.dart';
 import '../services/gps_service.dart';
-// Re-enabled GPS service with Windows-compatible implementation
-import '../services/gps_service_win32.dart';
+// Cross-platform GPS implementations
+import '../services/gps_service_impl.dart';  // Geolocator-based (macOS, Linux, iOS, Android)
+import '../services/gps_service_win32.dart'; // Windows-specific
 import 'app_state.dart';
 import 'app_state_notifier.dart';
 import 'download_state.dart';
@@ -22,9 +24,17 @@ import 'settings_state.dart';
 final loggerProvider = Provider<AppLogger>((ref) => const ConsoleLogger());
 final errorHandlerProvider = Provider<ErrorHandler>((ref) => ErrorHandler(logger: ref.read(loggerProvider)));
 
-// GPS Service - Windows-compatible implementation
+// GPS Service - Platform-specific implementation
 final gpsServiceProvider = Provider<GpsService>((ref) {
-  return GpsServiceWin32(logger: ref.read(loggerProvider));
+  final logger = ref.read(loggerProvider);
+  
+  // Use Windows-specific implementation on Windows, geolocator on other platforms
+  if (defaultTargetPlatform == TargetPlatform.windows) {
+    return GpsServiceWin32(logger: logger);
+  } else {
+    // Use geolocator for macOS, Linux, iOS, Android
+    return GpsServiceImpl(logger: logger);
+  }
 });
 
 // HTTP and Network Services
