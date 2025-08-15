@@ -4,6 +4,10 @@
 
 Flutter 3.8.1+, Dart, Material Design 3, Custom SVG Icons (flutter_svg), Cross-platform Desktop (Windows, macOS, Linux, iOS).
 
+## General guidance
+- When working with issues always use GitHub MCP server to check the frye/navtool for related issues.
+- Always keep the remote issue up to date with current status using MCP tools.
+
 ## Development Environment
 
 - Use **Flutter run** for development: `flutter run -d windows` (or `-d macos`, `-d linux`)
