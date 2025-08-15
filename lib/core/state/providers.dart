@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:workmanager/workmanager.dart';
 import '../logging/app_logger.dart';
 import '../error/error_handler.dart';
 import '../models/gps_position.dart';
@@ -12,6 +13,7 @@ import '../services/storage_service.dart';
 import '../services/database_storage_service.dart';
 import '../services/gps_service.dart';
 import '../services/gps_service_impl.dart';
+import '../services/background_task_service.dart';
 import 'app_state.dart';
 import 'app_state_notifier.dart';
 import 'download_state.dart';
@@ -24,6 +26,16 @@ final errorHandlerProvider = Provider<ErrorHandler>((ref) => ErrorHandler(logger
 // GPS Service
 final gpsServiceProvider = Provider<GpsService>((ref) {
   return GpsServiceImpl(logger: ref.read(loggerProvider));
+});
+
+// Background Task Service
+final backgroundTaskServiceProvider = Provider<BackgroundTaskService>((ref) {
+  return BackgroundTaskServiceImpl(
+    workmanager: Workmanager(),
+    downloadService: ref.read(downloadServiceProvider),
+    gpsService: ref.read(gpsServiceProvider),
+    logger: ref.read(loggerProvider),
+  );
 });
 
 // HTTP and Network Services

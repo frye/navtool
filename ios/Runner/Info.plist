@@ -1,4 +1,20 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encodi        <!-- Location permissions for marine navigation -->
+        <key>NSLocationWhenInUseUsageDescription</key>
+        <string>NavTool requires location access to provide accurate marine navigation and chart positioning.</string>
+        <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+        <string>NavTool requires location access to provide continuous marine navigation and route tracking.</string>
+        <key>NSLocationAlwaysUsageDescription</key>
+        <string>NavTool requires background location access for route recording and navigation tracking.</string>
+        
+        <!-- Background modes for marine navigation tasks -->
+        <key>UIBackgroundModes</key>
+        <array>
+                <string>location</string>
+                <string>background-processing</string>
+                <string>background-fetch</string>
+        </array>
+        
+        <key>UILaunchStoryboardName</key>8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
