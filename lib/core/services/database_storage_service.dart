@@ -511,32 +511,6 @@ class DatabaseStorageService implements StorageService {
     }
   }
 
-  /// Update a waypoint
-  Future<void> updateWaypoint(Waypoint waypoint) async {
-    final db = _database!;
-    
-    try {
-      await db.update(
-        'waypoints',
-        {
-          'name': waypoint.name,
-          'latitude': waypoint.latitude,
-          'longitude': waypoint.longitude,
-          'type': waypoint.type.name,
-          'description': waypoint.description,
-          'updated_at': DateTime.now().millisecondsSinceEpoch,
-        },
-        where: 'id = ?',
-        whereArgs: [waypoint.id],
-      );
-      
-      _logger.info('Updated waypoint: ${waypoint.id}');
-    } catch (e) {
-      _logger.error('Failed to update waypoint ${waypoint.id}: $e');
-      rethrow;
-    }
-  }
-
   /// Delete a waypoint
   Future<void> deleteWaypoint(String waypointId) async {
     final db = _database!;
@@ -548,6 +522,98 @@ class DatabaseStorageService implements StorageService {
       }
     } catch (e) {
       _logger.error('Failed to delete waypoint $waypointId: $e');
+    }
+  }
+
+  /// Load a navigation route by ID (interface requirement)
+  @override
+  Future<NavigationRoute?> loadRoute(String routeId) async {
+    final db = _database!;
+    
+    try {
+      final routeResult = await db.query('routes', where: 'id = ?', whereArgs: [routeId]);
+      if (routeResult.isEmpty) {
+        return null;
+      }
+
+      final routeMap = routeResult.first;
+      final waypointIds = (routeMap['waypoint_ids'] as String?)?.split(',') ?? [];
+      
+      final waypoints = <Waypoint>[];
+      for (final waypointId in waypointIds) {
+        final waypoint = await loadWaypoint(waypointId);
+        if (waypoint != null) {
+          waypoints.add(waypoint);
+        }
+      }
+
+      return _routeFromMap(routeMap, waypoints);
+    } catch (e) {
+      _logger.error('Failed to load route $routeId: $e');
+      return null;
+    }
+  }
+
+  /// Load a waypoint by ID (interface requirement)
+  @override
+  Future<Waypoint?> loadWaypoint(String waypointId) async {
+    final db = _database!;
+    
+    try {
+      final result = await db.query('waypoints', where: 'id = ?', whereArgs: [waypointId]);
+      if (result.isEmpty) {
+        return null;
+      }
+      
+      return _waypointFromMap(result.first);
+    } catch (e) {
+      _logger.error('Failed to load waypoint $waypointId: $e');
+      return null;
+    }
+  }
+
+  /// Update an existing waypoint (interface requirement)
+  @override
+  Future<void> updateWaypoint(Waypoint waypoint) async {
+    final db = _database!;
+    
+    try {
+      final updatedWaypoint = waypoint.copyWith(updatedAt: DateTime.now());
+      await db.update(
+        'waypoints',
+        {
+          'id': updatedWaypoint.id,
+          'name': updatedWaypoint.name,
+          'latitude': updatedWaypoint.latitude,
+          'longitude': updatedWaypoint.longitude,
+          'type': updatedWaypoint.type.name,
+          'description': updatedWaypoint.description,
+          'route_id': null,
+          'route_order': null,
+          'created_at': updatedWaypoint.createdAt.millisecondsSinceEpoch,
+          'updated_at': updatedWaypoint.updatedAt?.millisecondsSinceEpoch,
+        },
+        where: 'id = ?',
+        whereArgs: [waypoint.id],
+      );
+      _logger.info('Updated waypoint: ${waypoint.id}');
+    } catch (e) {
+      _logger.error('Failed to update waypoint ${waypoint.id}: $e');
+      rethrow;
+    }
+  }
+
+  /// Get all stored waypoints (interface requirement)
+  @override
+  Future<List<Waypoint>> getAllWaypoints() async {
+    final db = _database!;
+    
+    try {
+      final result = await db.query('waypoints', orderBy: 'created_at DESC');
+      return result.map((map) => _waypointFromMap(map)).toList();
+    } catch (e) {
+      _logger.error('Failed to get all waypoints: $e');
+      return [];
     }
   }
 

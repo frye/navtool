@@ -106,9 +106,19 @@ void main() {
       // Arrange
       final service = MockNavigationService();
       final route = _createTestRoute();
+      final waypoints = [
+        _createTestWaypoint(),
+        Waypoint(
+          id: 'wp002',
+          name: 'End Point',
+          latitude: 37.8000,
+          longitude: -122.4000,
+          type: WaypointType.destination,
+        ),
+      ];
 
       // Act & Assert
-      expect(() => service.createRoute([]), returnsNormally);
+      expect(() => service.createRoute(waypoints), returnsNormally);
       expect(() => service.activateRoute(route), returnsNormally);
       expect(() => service.deactivateRoute(), returnsNormally);
     });
@@ -354,6 +364,33 @@ class MockStorageService implements StorageService {
 
   @override
   Future<Directory> getChartsDirectory() async => Directory.systemTemp;
+
+  @override
+  Future<void> storeRoute(NavigationRoute route) async {}
+
+  @override
+  Future<NavigationRoute?> loadRoute(String routeId) async => null;
+
+  @override
+  Future<void> deleteRoute(String routeId) async {}
+
+  @override
+  Future<List<NavigationRoute>> getAllRoutes() async => [];
+
+  @override
+  Future<void> storeWaypoint(Waypoint waypoint) async {}
+
+  @override
+  Future<Waypoint?> loadWaypoint(String waypointId) async => null;
+
+  @override
+  Future<void> updateWaypoint(Waypoint waypoint) async {}
+
+  @override
+  Future<void> deleteWaypoint(String waypointId) async {}
+
+  @override
+  Future<List<Waypoint>> getAllWaypoints() async => [];
 }
 
 class MockSettingsService implements SettingsService {
