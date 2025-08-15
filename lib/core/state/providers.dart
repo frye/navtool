@@ -9,6 +9,7 @@ import '../services/http_client_service.dart';
 import '../services/download_service.dart';
 import '../services/download_service_impl.dart';
 import '../services/storage_service.dart';
+import '../services/database_storage_service.dart';
 import '../services/gps_service.dart';
 import '../services/gps_service_impl.dart';
 import 'app_state.dart';
@@ -45,7 +46,12 @@ final downloadServiceProvider = Provider<DownloadService>((ref) {
 
 // Storage service (placeholder - should be implemented)
 final storageServiceProvider = Provider<StorageService>((ref) {
-  throw UnimplementedError('StorageService not yet implemented');
+  final service = DatabaseStorageService(logger: ref.read(loggerProvider));
+  // Initialize the database asynchronously
+  service.initialize().catchError((error) {
+    ref.read(loggerProvider).error('Failed to initialize database: $error');
+  });
+  return service;
 });
 
 // Main application state

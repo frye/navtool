@@ -25,21 +25,7 @@ class GpsServiceImpl implements GpsService {
   static const LocationSettings _marineLocationSettings = LocationSettings(
     accuracy: LocationAccuracy.best,
     distanceFilter: 1, // Update every meter for marine navigation
-  /// The minimum distance (in meters) the device must move horizontally before
-  /// an update is generated. Set to 1 meter for marine navigation to ensure
-  /// high-resolution tracking of vessel movement.
-  static const int kMarineDistanceFilterMeters = 1;
-
-  /// The maximum duration (in seconds) to wait for a location update.
-  /// Set to 30 seconds as a suitable timeout for marine conditions, balancing
-  /// responsiveness and battery usage in open water environments.
-  static const int kMarineLocationTimeoutSeconds = 30;
-
-  // Marine navigation requires high accuracy settings
-  static const LocationSettings _marineLocationSettings = LocationSettings(
-    accuracy: LocationAccuracy.best,
-    distanceFilter: kMarineDistanceFilterMeters,
-    timeLimit: Duration(seconds: kMarineLocationTimeoutSeconds),
+    timeLimit: Duration(seconds: 30), // Suitable timeout for marine conditions
   );
 
   GpsServiceImpl({required AppLogger logger}) : _logger = logger;
@@ -216,6 +202,7 @@ class GpsServiceImpl implements GpsService {
   /// Checks if position accuracy is suitable for marine navigation
   /// Marine navigation typically requires accuracy better than 10 meters
   bool _isAccurateEnoughForMarine(GpsPosition position) {
+    const double maxAccuracyForMarine = 10.0; // meters
     return position.accuracy == null || position.accuracy! <= maxAccuracyForMarine;
   }
 }

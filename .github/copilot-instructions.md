@@ -7,6 +7,7 @@ Flutter 3.8.1+, Dart, Material Design 3, Custom SVG Icons (flutter_svg), Cross-p
 ## General guidance
 - When working with issues always use GitHub MCP server to check the frye/navtool for related issues.
 - Always keep the remote issue up to date with current status using MCP tools.
+- When starting to work on an issue, always create a new feature branch for that work. Use descriptive name.
 
 ## Development Environment
 
