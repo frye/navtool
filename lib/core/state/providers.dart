@@ -12,11 +12,14 @@ import '../services/download_service.dart';
 import '../services/download_service_impl.dart';
 import '../services/storage_service.dart';
 import '../services/database_storage_service.dart';
+import '../services/file_system_service.dart';
 import '../services/gps_service.dart';
 // Cross-platform GPS implementations
 import '../services/gps_service_impl.dart';  // Geolocator-based (macOS, Linux, iOS, Android)
 import '../services/gps_service_win32.dart'; // Windows-specific
 import '../services/background_task_service.dart';
+import '../services/compression_service.dart';
+import '../services/compression_service_impl.dart';
 import 'app_state.dart';
 import 'app_state_notifier.dart';
 import 'download_state.dart';
@@ -77,6 +80,18 @@ final storageServiceProvider = Provider<StorageService>((ref) {
     ref.read(loggerProvider).error('Failed to initialize database: $error');
   });
   return service;
+});
+
+// File system service
+final fileSystemServiceProvider = Provider<FileSystemService>((ref) {
+  return FileSystemService(logger: ref.read(loggerProvider));
+});
+
+// Compression service
+final compressionServiceProvider = Provider<CompressionService>((ref) {
+  return CompressionServiceImpl(
+    logger: ref.read(loggerProvider),
+  );
 });
 
 // Main application state

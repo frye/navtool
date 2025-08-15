@@ -71,6 +71,9 @@ dependencies:
   
   # Background task management for marine operations
   workmanager: ^0.5.2
+  
+  # Compression and archive handling for chart files and backups
+  archive: ^3.6.1
 
 dev_dependencies:
   flutter_test:
