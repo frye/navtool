@@ -273,14 +273,24 @@ class _ChartWidgetState extends State<ChartWidget> {
   }
 
   /// Center on current position (placeholder implementation)
-  void _centerOnPosition() {
-    // In a real implementation, this would get GPS position
-    // For now, just show a message
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('GPS positioning will be implemented in a future version'),
-      ),
-    );
+  void _centerOnPosition() async {
+    try {
+      // TODO: Integrate with GPS service to get actual position
+      // For now, just show a message indicating GPS integration is in progress
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('GPS service implemented - integration with chart display coming soon'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error accessing GPS position'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   /// Update chart center programmatically

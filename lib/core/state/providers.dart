@@ -9,6 +9,8 @@ import '../services/http_client_service.dart';
 import '../services/download_service.dart';
 import '../services/download_service_impl.dart';
 import '../services/storage_service.dart';
+import '../services/gps_service.dart';
+import '../services/gps_service_impl.dart';
 import 'app_state.dart';
 import 'app_state_notifier.dart';
 import 'download_state.dart';
@@ -17,6 +19,11 @@ import 'settings_state.dart';
 // Dependencies
 final loggerProvider = Provider<AppLogger>((ref) => const ConsoleLogger());
 final errorHandlerProvider = Provider<ErrorHandler>((ref) => ErrorHandler(logger: ref.read(loggerProvider)));
+
+// GPS Service
+final gpsServiceProvider = Provider<GpsService>((ref) {
+  return GpsServiceImpl(logger: ref.read(loggerProvider));
+});
 
 // HTTP and Network Services
 final httpClientServiceProvider = Provider<HttpClientService>((ref) {
