@@ -63,6 +63,9 @@ dependencies:
   
   # File system access for secure chart storage
   path_provider: ^2.1.4
+  
+  # Background task management for marine operations
+  workmanager: ^0.5.2
 
 dev_dependencies:
   flutter_test:

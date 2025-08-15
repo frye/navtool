@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
+import 'package:workmanager/workmanager.dart';
 import '../logging/app_logger.dart';
 import '../error/error_handler.dart';
 import '../models/gps_position.dart';
@@ -15,6 +16,7 @@ import '../services/gps_service.dart';
 // Cross-platform GPS implementations
 import '../services/gps_service_impl.dart';  // Geolocator-based (macOS, Linux, iOS, Android)
 import '../services/gps_service_win32.dart'; // Windows-specific
+import '../services/background_task_service.dart';
 import 'app_state.dart';
 import 'app_state_notifier.dart';
 import 'download_state.dart';
@@ -35,6 +37,16 @@ final gpsServiceProvider = Provider<GpsService>((ref) {
     // Use geolocator for macOS, Linux, iOS, Android
     return GpsServiceImpl(logger: logger);
   }
+});
+
+// Background Task Service
+final backgroundTaskServiceProvider = Provider<BackgroundTaskService>((ref) {
+  return BackgroundTaskServiceImpl(
+    workmanager: Workmanager(),
+    downloadService: ref.read(downloadServiceProvider),
+    gpsService: ref.read(gpsServiceProvider),
+    logger: ref.read(loggerProvider),
+  );
 });
 
 // HTTP and Network Services
