@@ -24,6 +24,13 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Location permissions for marine navigation -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>NavTool requires location access to provide accurate marine navigation and chart positioning.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>NavTool requires location access to provide continuous marine navigation and route tracking.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>NavTool requires background location access for route recording and navigation tracking.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
