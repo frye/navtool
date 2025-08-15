@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/services/chart_service.dart';
 import 'package:navtool/core/services/download_service.dart';
@@ -350,6 +351,9 @@ class MockStorageService implements StorageService {
 
   @override
   Future<int> getStorageUsage() async => 0;
+
+  @override
+  Future<Directory> getChartsDirectory() async => Directory.systemTemp;
 }
 
 class MockSettingsService implements SettingsService {

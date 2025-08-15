@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import '../logging/app_logger.dart';
 import '../error/app_error.dart';
 

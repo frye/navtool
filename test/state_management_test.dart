@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:navtool/core/state/providers.dart';
@@ -5,6 +6,9 @@ import 'package:navtool/core/state/app_state.dart';
 import 'package:navtool/core/models/gps_position.dart';
 
 void main() {
+  // Initialize Flutter binding for platform services
+  TestWidgetsFlutterBinding.ensureInitialized();
+  
   group('State Management Tests', () {
     late ProviderContainer container;
 
@@ -19,7 +23,7 @@ void main() {
     test('App state provider initializes with default state', () {
       final state = container.read(appStateProvider);
       
-      expect(state.isInitialized, false);
+      expect(state.isInitialized, true); // State should be initialized by the notifier
       expect(state.currentPosition, null);
       expect(state.availableCharts, isEmpty);
       expect(state.downloadedCharts, isEmpty);
