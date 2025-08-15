@@ -5,6 +5,10 @@ import '../models/gps_position.dart';
 import '../models/chart.dart';
 import '../models/route.dart';
 import '../models/waypoint.dart';
+import '../services/http_client_service.dart';
+import '../services/download_service.dart';
+import '../services/download_service_impl.dart';
+import '../services/storage_service.dart';
 import 'app_state.dart';
 import 'app_state_notifier.dart';
 import 'download_state.dart';
@@ -13,6 +17,29 @@ import 'settings_state.dart';
 // Dependencies
 final loggerProvider = Provider<AppLogger>((ref) => const ConsoleLogger());
 final errorHandlerProvider = Provider<ErrorHandler>((ref) => ErrorHandler(logger: ref.read(loggerProvider)));
+
+// HTTP and Network Services
+final httpClientServiceProvider = Provider<HttpClientService>((ref) {
+  final service = HttpClientService(logger: ref.read(loggerProvider));
+  // Configure for NOAA endpoints
+  service.configureNoaaEndpoints();
+  service.configureCertificatePinning();
+  return service;
+});
+
+final downloadServiceProvider = Provider<DownloadService>((ref) {
+  return DownloadServiceImpl(
+    httpClient: ref.read(httpClientServiceProvider),
+    storageService: ref.read(storageServiceProvider),
+    logger: ref.read(loggerProvider),
+    errorHandler: ref.read(errorHandlerProvider),
+  );
+});
+
+// Storage service (placeholder - should be implemented)
+final storageServiceProvider = Provider<StorageService>((ref) {
+  throw UnimplementedError('StorageService not yet implemented');
+});
 
 // Main application state
 final appStateProvider = StateNotifierProvider<AppStateNotifier, AppState>((ref) {

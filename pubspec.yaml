@@ -46,6 +46,9 @@ dependencies:
   
   # For state persistence
   shared_preferences: ^2.3.2
+  
+  # HTTP client for NOAA API integration
+  dio: ^5.7.0
 
 dev_dependencies:
   flutter_test:
