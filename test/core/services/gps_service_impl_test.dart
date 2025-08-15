@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:geolocator_platform_interface/geolocator_platform_interface.dart';
 import 'package:navtool/core/services/gps_service_impl.dart';
 import 'package:navtool/core/models/gps_position.dart';
 import 'package:navtool/core/logging/app_logger.dart';
@@ -24,11 +24,12 @@ class MockGeolocator {
       timestamp: DateTime.fromMillisecondsSinceEpoch(timestamp == 0 ? DateTime.now().millisecondsSinceEpoch : timestamp),
       accuracy: accuracy,
       altitude: altitude,
+      altitudeAccuracy: 1.0,
       heading: heading,
+      headingAccuracy: 1.0,
       speed: speed,
       speedAccuracy: 1.0,
-      altitudeAccuracy: 1.0,
-      headingAccuracy: 1.0,
+      floor: null,
       isMocked: false,
     );
   }

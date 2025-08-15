@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:geolocator/geolocator.dart';
+import 'package:geolocator_platform_interface/geolocator_platform_interface.dart';
 import '../models/gps_position.dart';
 import '../logging/app_logger.dart';
 import 'gps_service.dart';
@@ -35,10 +35,10 @@ class GpsServiceImpl implements GpsService {
     try {
       _logger.debug('Requesting location permission');
       
-      LocationPermission permission = await Geolocator.checkPermission();
+      LocationPermission permission = await GeolocatorPlatform.instance.checkPermission();
       
       if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
+        permission = await GeolocatorPlatform.instance.requestPermission();
       }
       
       final granted = permission == LocationPermission.whileInUse || 
@@ -56,7 +56,7 @@ class GpsServiceImpl implements GpsService {
   @override
   Future<bool> checkLocationPermission() async {
     try {
-      final permission = await Geolocator.checkPermission();
+      final permission = await GeolocatorPlatform.instance.checkPermission();
       final granted = permission == LocationPermission.whileInUse || 
                      permission == LocationPermission.always;
       
@@ -72,7 +72,7 @@ class GpsServiceImpl implements GpsService {
   @override
   Future<bool> isLocationEnabled() async {
     try {
-      final enabled = await Geolocator.isLocationServiceEnabled();
+      final enabled = await GeolocatorPlatform.instance.isLocationServiceEnabled();
       _logger.debug('Location services enabled: $enabled');
       return enabled;
       
@@ -98,7 +98,7 @@ class GpsServiceImpl implements GpsService {
         return null;
       }
       
-      final position = await Geolocator.getCurrentPosition(
+      final position = await GeolocatorPlatform.instance.getCurrentPosition(
         locationSettings: _marineLocationSettings,
       );
       
@@ -135,7 +135,7 @@ class GpsServiceImpl implements GpsService {
       _locationController ??= StreamController<GpsPosition>.broadcast();
       
       // Start position stream with marine settings
-      _positionSubscription = Geolocator.getPositionStream(
+      _positionSubscription = GeolocatorPlatform.instance.getPositionStream(
         locationSettings: _marineLocationSettings,
       ).listen(
         (Position position) {

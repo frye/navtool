@@ -30,11 +30,13 @@ final errorHandlerProvider = Provider<ErrorHandler>((ref) => ErrorHandler(logger
 final gpsServiceProvider = Provider<GpsService>((ref) {
   final logger = ref.read(loggerProvider);
   
-  // Use Windows-specific implementation on Windows, geolocator on other platforms
+  // Always use Windows-specific implementation on Windows to avoid geolocator CMake issues
   if (defaultTargetPlatform == TargetPlatform.windows) {
+    logger.info('Using Windows-specific GPS implementation (Win32)');
     return GpsServiceWin32(logger: logger);
   } else {
     // Use geolocator for macOS, Linux, iOS, Android
+    logger.info('Using geolocator-based GPS implementation');
     return GpsServiceImpl(logger: logger);
   }
 });
