@@ -16,6 +16,7 @@ Flutter 3.8.1+, Dart, Material Design 3, Custom SVG Icons (flutter_svg), Cross-p
 - Hot reload enabled for rapid development iteration
 - Assets pre-configured in `pubspec.yaml` for `assets/icons/` directory
 - Package info integration via `package_info_plus` for version management
+- IMPORTANT Always wait for the test run to complete before attempting to analyze its output. The waitn needs to happen without additional commands and user input to continue.
 
 ## Architecture Patterns
 
