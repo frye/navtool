@@ -40,6 +40,12 @@ dependencies:
   
   # For accessing package information including version
   package_info_plus: ^8.0.3
+  
+  # State management with Riverpod
+  flutter_riverpod: ^2.5.1
+  
+  # For state persistence
+  shared_preferences: ^2.3.2
 
 dev_dependencies:
   flutter_test:
