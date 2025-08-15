@@ -25,7 +25,21 @@ class GpsServiceImpl implements GpsService {
   static const LocationSettings _marineLocationSettings = LocationSettings(
     accuracy: LocationAccuracy.best,
     distanceFilter: 1, // Update every meter for marine navigation
-    timeLimit: Duration(seconds: 30), // Suitable timeout for marine conditions
+  /// The minimum distance (in meters) the device must move horizontally before
+  /// an update is generated. Set to 1 meter for marine navigation to ensure
+  /// high-resolution tracking of vessel movement.
+  static const int kMarineDistanceFilterMeters = 1;
+
+  /// The maximum duration (in seconds) to wait for a location update.
+  /// Set to 30 seconds as a suitable timeout for marine conditions, balancing
+  /// responsiveness and battery usage in open water environments.
+  static const int kMarineLocationTimeoutSeconds = 30;
+
+  // Marine navigation requires high accuracy settings
+  static const LocationSettings _marineLocationSettings = LocationSettings(
+    accuracy: LocationAccuracy.best,
+    distanceFilter: kMarineDistanceFilterMeters,
+    timeLimit: Duration(seconds: kMarineLocationTimeoutSeconds),
   );
 
   GpsServiceImpl({required AppLogger logger}) : _logger = logger;
