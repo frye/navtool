@@ -1,3 +1,4 @@
+import 'dart:io';
 import '../models/chart.dart';
 
 /// Service interface for storage operations
@@ -19,4 +20,7 @@ abstract class StorageService {
 
   /// Gets total storage usage in bytes
   Future<int> getStorageUsage();
+
+  /// Gets the directory where charts are stored
+  Future<Directory> getChartsDirectory();
 }
