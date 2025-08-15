@@ -9,6 +9,8 @@ import 'package:navtool/core/services/settings_service.dart';
 import 'package:navtool/core/models/chart.dart';
 import 'package:navtool/core/models/geographic_bounds.dart';
 import 'package:navtool/core/models/gps_position.dart';
+import 'package:navtool/core/models/gps_signal_quality.dart';
+import 'package:navtool/core/models/position_history.dart';
 import 'package:navtool/core/models/waypoint.dart';
 import 'package:navtool/core/models/route.dart';
 
@@ -315,6 +317,87 @@ class MockGpsService implements GpsService {
 
   @override
   Future<bool> isLocationEnabled() async => true;
+  
+  // Enhanced functionality methods for issue #53
+  @override
+  Future<GpsSignalQuality> assessSignalQuality(GpsPosition? position) async {
+    return GpsSignalQuality.fromAccuracy(position?.accuracy);
+  }
+
+  @override
+  Future<void> logPosition(GpsPosition position) async {}
+
+  @override
+  Future<PositionHistory> getPositionHistory(Duration timeWindow) async {
+    return const PositionHistory(
+      positions: [],
+      totalDistance: 0.0,
+      averageSpeed: 0.0,
+      maxSpeed: 0.0,
+      minSpeed: 0.0,
+      duration: Duration.zero,
+    );
+  }
+
+  @override
+  Future<List<GpsSignalQuality>> getSignalQualityTrend(Duration timeWindow) async => [];
+
+  @override
+  Future<void> clearPositionHistory() async {}
+
+  @override
+  Future<AccuracyStatistics> getAccuracyStatistics(Duration timeWindow) async {
+    return AccuracyStatistics(
+      averageAccuracy: 5.0,
+      bestAccuracy: 2.0,
+      worstAccuracy: 10.0,
+      marineGradePercentage: 80.0,
+      sampleCount: 10,
+      period: timeWindow,
+    );
+  }
+
+  @override
+  Future<MovementState> getMovementState(Duration analysisWindow) async {
+    return const MovementState(
+      isStationary: false,
+      averageSpeed: 2.5,
+      confidence: 0.8,
+      movementRadius: 50.0,
+    );
+  }
+
+  @override
+  Future<PositionFreshness> getPositionFreshness() async {
+    return const PositionFreshness(
+      lastUpdateAge: Duration(seconds: 30),
+      isFresh: true,
+      stalenessLevel: StalenessLevel.fresh,
+    );
+  }
+
+  @override
+  Future<List<GpsPosition>> filterForMarineAccuracy(List<GpsPosition> positions) async => positions;
+
+  @override
+  Future<CourseOverGround?> calculateCourseOverGround(Duration timeWindow) async {
+    return CourseOverGround(
+      bearing: 45.0,
+      confidence: 0.8,
+      sampleCount: 5,
+      period: timeWindow,
+    );
+  }
+
+  @override
+  Future<SpeedOverGround?> calculateSpeedOverGround(Duration timeWindow) async {
+    return SpeedOverGround(
+      speedMetersPerSecond: 2.5,
+      confidence: 0.8,
+      sampleCount: 5,
+      period: timeWindow,
+    );
+  }
 }
 
 class MockNavigationService implements NavigationService {
