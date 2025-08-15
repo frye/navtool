@@ -5,52 +5,10 @@ import 'package:path/path.dart' as path;
 import '../logging/app_logger.dart';
 import '../error/app_error.dart';
 import '../error/error_handler.dart';
+import '../state/download_state.dart';
 import 'download_service.dart';
 import 'http_client_service.dart';
 import 'storage_service.dart';
-
-/// Download progress information
-class DownloadProgress {
-  final String chartId;
-  final int downloaded;
-  final int total;
-  final double percentage;
-  final DownloadStatus status;
-
-  DownloadProgress({
-    required this.chartId,
-    required this.downloaded,
-    required this.total,
-    required this.percentage,
-    required this.status,
-  });
-
-  DownloadProgress copyWith({
-    String? chartId,
-    int? downloaded,
-    int? total,
-    double? percentage,
-    DownloadStatus? status,
-  }) {
-    return DownloadProgress(
-      chartId: chartId ?? this.chartId,
-      downloaded: downloaded ?? this.downloaded,
-      total: total ?? this.total,
-      percentage: percentage ?? this.percentage,
-      status: status ?? this.status,
-    );
-  }
-}
-
-/// Download status enumeration
-enum DownloadStatus {
-  queued,
-  downloading,
-  paused,
-  completed,
-  failed,
-  cancelled,
-}
 
 /// Concrete implementation of DownloadService using HTTP client
 class DownloadServiceImpl implements DownloadService {
@@ -238,7 +196,7 @@ class DownloadServiceImpl implements DownloadService {
     // Return a stream with current progress if available
     final progress = _downloadProgress[chartId];
     if (progress != null) {
-      return Stream.value(progress.percentage);
+      return Stream.value(progress.progress * 100.0); // Convert back to percentage
     }
     
     // Return empty stream
@@ -265,10 +223,11 @@ class DownloadServiceImpl implements DownloadService {
   ) {
     _downloadProgress[chartId] = DownloadProgress(
       chartId: chartId,
-      downloaded: downloaded,
-      total: total,
-      percentage: percentage,
       status: status,
+      progress: percentage / 100.0, // Convert percentage to 0.0-1.0 range
+      totalBytes: total > 0 ? total : null,
+      downloadedBytes: downloaded > 0 ? downloaded : null,
+      lastUpdated: DateTime.now(),
     );
   }
 
