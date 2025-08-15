@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:geolocator_platform_interface/geolocator_platform_interface.dart';
 import '../models/gps_position.dart';
+import '../models/gps_signal_quality.dart';
+import '../models/position_history.dart';
 import '../logging/app_logger.dart';
 import 'gps_service.dart';
 
@@ -16,10 +19,21 @@ import 'gps_service.dart';
 /// - Comprehensive error handling for poor signal conditions
 /// - Real-time position streaming with accuracy filtering
 /// - Proper permission management for location access
+/// - Signal quality monitoring and assessment
+/// - Position history tracking and analytics
+/// - Marine navigation calculations (COG, SOG)
 class GpsServiceImpl implements GpsService {
   final AppLogger _logger;
   StreamSubscription<Position>? _positionSubscription;
   StreamController<GpsPosition>? _locationController;
+  
+  // Position history storage for enhanced features
+  final List<GpsPosition> _positionHistory = [];
+  final List<GpsSignalQuality> _qualityHistory = [];
+  
+  // Constants for marine navigation standards
+  static const int _maxHistorySize = 1000;
+  static const double _marineAccuracyThreshold = 10.0; // meters
 
   // Marine navigation requires high accuracy settings
   static const LocationSettings _marineLocationSettings = LocationSettings(
@@ -184,6 +198,320 @@ class GpsServiceImpl implements GpsService {
     }
     
     return _locationController!.stream;
+  }
+
+  // Enhanced functionality for issue #53
+
+  @override
+  Future<GpsSignalQuality> assessSignalQuality(GpsPosition? position) async {
+    try {
+      _logger.debug('Assessing GPS signal quality');
+      
+      if (position == null) {
+        throw ArgumentError('Position cannot be null');
+      }
+      
+      final quality = GpsSignalQuality.fromAccuracy(position.accuracy);
+      _logger.debug('Signal quality assessed: ${quality.strength}');
+      
+      return quality;
+      
+    } catch (error) {
+      _logger.error('Error assessing signal quality', exception: error);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> logPosition(GpsPosition position) async {
+    try {
+      _logger.debug('Logging GPS position: ${position.toCoordinateString()}');
+      
+      _addPositionToHistory(position);
+      
+      // Also log signal quality for this position
+      final quality = await assessSignalQuality(position);
+      _addQualityToHistory(quality);
+      
+    } catch (error) {
+      _logger.error('Error logging position', exception: error);
+    }
+  }
+
+  @override
+  Future<PositionHistory> getPositionHistory(Duration timeWindow) async {
+    try {
+      _logger.debug('Getting position history for ${timeWindow.inMinutes} minutes');
+      
+      final filteredPositions = _getPositionsInTimeWindow(timeWindow);
+      return PositionHistory.fromPositions(filteredPositions);
+      
+    } catch (error) {
+      _logger.error('Error getting position history', exception: error);
+      return _createEmptyPositionHistory();
+    }
+  }
+
+  @override
+  Future<List<GpsSignalQuality>> getSignalQualityTrend(Duration timeWindow) async {
+    try {
+      _logger.debug('Getting signal quality trend for ${timeWindow.inMinutes} minutes');
+      
+      final cutoffTime = DateTime.now().subtract(timeWindow);
+      return _qualityHistory
+          .where((quality) => quality.assessmentTime.isAfter(cutoffTime))
+          .toList();
+      
+    } catch (error) {
+      _logger.error('Error getting signal quality trend', exception: error);
+      return [];
+    }
+  }
+
+  @override
+  Future<void> clearPositionHistory() async {
+    try {
+      _logger.info('Clearing GPS position history');
+      
+      _positionHistory.clear();
+      _qualityHistory.clear();
+      
+    } catch (error) {
+      _logger.error('Error clearing position history', exception: error);
+    }
+  }
+
+  // Position History Management Helper Methods
+  
+  /// Adds a position to history with size management
+  void _addPositionToHistory(GpsPosition position) {
+    _positionHistory.add(position);
+    
+    // Keep history manageable
+    if (_positionHistory.length > _maxHistorySize) {
+      _positionHistory.removeAt(0);
+    }
+  }
+  
+  /// Adds signal quality to history with size management
+  void _addQualityToHistory(GpsSignalQuality quality) {
+    _qualityHistory.add(quality);
+    
+    // Keep history manageable
+    if (_qualityHistory.length > _maxHistorySize) {
+      _qualityHistory.removeAt(0);
+    }
+  }
+  
+  /// Gets positions within the specified time window
+  List<GpsPosition> _getPositionsInTimeWindow(Duration timeWindow) {
+    final cutoffTime = DateTime.now().subtract(timeWindow);
+    return _positionHistory
+        .where((position) => position.timestamp.isAfter(cutoffTime))
+        .toList();
+  }
+  
+  /// Creates an empty position history for error cases
+  PositionHistory _createEmptyPositionHistory() {
+    return const PositionHistory(
+      positions: [],
+      totalDistance: 0.0,
+      averageSpeed: 0.0,
+      maxSpeed: 0.0,
+      minSpeed: 0.0,
+      duration: Duration.zero,
+    );
+  }
+
+  // Enhanced Analytics and Statistics Methods
+
+  @override
+  Future<AccuracyStatistics> getAccuracyStatistics(Duration timeWindow) async {
+    try {
+      final history = await getPositionHistory(timeWindow);
+      return AccuracyStatistics.fromPositions(history.positions, timeWindow);
+      
+    } catch (error) {
+      _logger.error('Error getting accuracy statistics', exception: error);
+      return _createEmptyAccuracyStatistics(timeWindow);
+    }
+  }
+
+  @override
+  Future<MovementState> getMovementState(Duration analysisWindow) async {
+    try {
+      final history = await getPositionHistory(analysisWindow);
+      return MovementState.fromPositions(history.positions, analysisWindow);
+      
+    } catch (error) {
+      _logger.error('Error getting movement state', exception: error);
+      return _createDefaultMovementState();
+    }
+  }
+
+  @override
+  Future<PositionFreshness> getPositionFreshness() async {
+    try {
+      final lastPosition = _positionHistory.isNotEmpty ? _positionHistory.last : null;
+      return PositionFreshness.fromLastUpdate(lastPosition?.timestamp);
+      
+    } catch (error) {
+      _logger.error('Error getting position freshness', exception: error);
+      return _createStalePositionFreshness();
+    }
+  }
+
+  // Marine Navigation Calculations
+
+  @override
+  Future<List<GpsPosition>> filterForMarineAccuracy(List<GpsPosition> positions) async {
+    try {
+      _logger.debug('Filtering ${positions.length} positions for marine accuracy');
+      
+      final filteredPositions = positions
+          .where((position) => _isMarineGradeAccuracy(position))
+          .toList();
+      
+      _logger.debug('Filtered to ${filteredPositions.length} marine-grade positions');
+      return filteredPositions;
+      
+    } catch (error) {
+      _logger.error('Error filtering positions for marine accuracy', exception: error);
+      return [];
+    }
+  }
+
+  @override
+  Future<CourseOverGround?> calculateCourseOverGround(Duration timeWindow) async {
+    try {
+      final history = await getPositionHistory(timeWindow);
+      
+      if (history.positions.length < 2) {
+        _logger.debug('Insufficient positions for COG calculation');
+        return null;
+      }
+      
+      return _calculateCourseFromHistory(history, timeWindow);
+      
+    } catch (error) {
+      _logger.error('Error calculating course over ground', exception: error);
+      return null;
+    }
+  }
+
+  @override
+  Future<SpeedOverGround?> calculateSpeedOverGround(Duration timeWindow) async {
+    try {
+      final history = await getPositionHistory(timeWindow);
+      
+      if (history.positions.length < 2) {
+        _logger.debug('Insufficient positions for SOG calculation');
+        return null;
+      }
+      
+      return _calculateSpeedFromHistory(history, timeWindow);
+      
+    } catch (error) {
+      _logger.error('Error calculating speed over ground', exception: error);
+      return null;
+    }
+  }
+
+  // Helper Methods for Analytics
+
+  /// Creates empty accuracy statistics for error cases
+  AccuracyStatistics _createEmptyAccuracyStatistics(Duration period) {
+    return AccuracyStatistics(
+      averageAccuracy: 0.0,
+      bestAccuracy: 0.0,
+      worstAccuracy: 0.0,
+      marineGradePercentage: 0.0,
+      sampleCount: 0,
+      period: period,
+    );
+  }
+
+  /// Creates default movement state for error cases
+  MovementState _createDefaultMovementState() {
+    return const MovementState(
+      isStationary: true,
+      averageSpeed: 0.0,
+      confidence: 0.0,
+      movementRadius: 0.0,
+    );
+  }
+
+  /// Creates stale position freshness for error cases
+  PositionFreshness _createStalePositionFreshness() {
+    return const PositionFreshness(
+      lastUpdateAge: Duration(days: 1),
+      isFresh: false,
+      stalenessLevel: StalenessLevel.veryStale,
+    );
+  }
+
+  /// Checks if position meets marine-grade accuracy standards
+  bool _isMarineGradeAccuracy(GpsPosition position) {
+    return position.accuracy != null && 
+           position.accuracy! <= _marineAccuracyThreshold;
+  }
+
+  /// Calculates course over ground from position history
+  CourseOverGround _calculateCourseFromHistory(PositionHistory history, Duration timeWindow) {
+    final firstPos = history.positions.first;
+    final lastPos = history.positions.last;
+    final bearing = firstPos.bearingTo(lastPos);
+    
+    // Calculate confidence based on track consistency
+    double confidence = _calculateCourseConfidence(history);
+    
+    return CourseOverGround(
+      bearing: bearing,
+      confidence: confidence,
+      sampleCount: history.positions.length,
+      period: timeWindow,
+    );
+  }
+
+  /// Calculates speed over ground from position history
+  SpeedOverGround _calculateSpeedFromHistory(PositionHistory history, Duration timeWindow) {
+    double speedMs = history.averageSpeed;
+    double confidence = _calculateSpeedConfidence(history);
+    
+    return SpeedOverGround(
+      speedMetersPerSecond: speedMs,
+      confidence: confidence,
+      sampleCount: history.positions.length,
+      period: timeWindow,
+    );
+  }
+
+  /// Calculates confidence level for course calculations
+  double _calculateCourseConfidence(PositionHistory history) {
+    double confidence = 0.6; // Higher base confidence for consistent tracks
+    
+    // Higher confidence for more positions
+    if (history.positions.length >= 3) confidence += 0.15; // 3 points form a good track
+    if (history.positions.length >= 5) confidence += 0.1;
+    if (history.positions.length >= 10) confidence += 0.1;
+    
+    // Higher confidence for longer tracks
+    if (history.totalDistance > 50) confidence += 0.05;
+    if (history.totalDistance > 100) confidence += 0.05;
+    
+    return math.min(confidence, 1.0);
+  }
+
+  /// Calculates confidence level for speed calculations
+  double _calculateSpeedConfidence(PositionHistory history) {
+    double confidence = 0.5; // Base confidence
+    
+    // Higher confidence for more positions and longer duration
+    if (history.positions.length >= 5) confidence += 0.2;
+    if (history.duration.inMinutes >= 2) confidence += 0.2;
+    if (history.totalDistance > 50) confidence += 0.1;
+    
+    return math.min(confidence, 1.0);
   }
 
   /// Converts geolocator Position to our GpsPosition model
