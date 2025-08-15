@@ -11,7 +11,8 @@ import '../services/download_service_impl.dart';
 import '../services/storage_service.dart';
 import '../services/database_storage_service.dart';
 import '../services/gps_service.dart';
-import '../services/gps_service_impl.dart';
+// Re-enabled GPS service with Windows-compatible implementation
+import '../services/gps_service_win32.dart';
 import 'app_state.dart';
 import 'app_state_notifier.dart';
 import 'download_state.dart';
@@ -21,9 +22,9 @@ import 'settings_state.dart';
 final loggerProvider = Provider<AppLogger>((ref) => const ConsoleLogger());
 final errorHandlerProvider = Provider<ErrorHandler>((ref) => ErrorHandler(logger: ref.read(loggerProvider)));
 
-// GPS Service
+// GPS Service - Windows-compatible implementation
 final gpsServiceProvider = Provider<GpsService>((ref) {
-  return GpsServiceImpl(logger: ref.read(loggerProvider));
+  return GpsServiceWin32(logger: ref.read(loggerProvider));
 });
 
 // HTTP and Network Services
@@ -85,6 +86,11 @@ final isAppInitializedProvider = Provider<bool>((ref) {
 
 final currentPositionProvider = Provider<GpsPosition?>((ref) {
   return ref.watch(appStateProvider).currentPosition;
+});
+
+final gpsPositionProvider = FutureProvider<GpsPosition?>((ref) async {
+  final gpsService = ref.read(gpsServiceProvider);
+  return await gpsService.getCurrentPosition();
 });
 
 final currentChartProvider = Provider<Chart?>((ref) {
