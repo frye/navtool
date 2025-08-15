@@ -82,12 +82,14 @@ void main() {
 
     test('Waypoint equality should work correctly', () {
       // Arrange
+      final timestamp = DateTime(2024, 8, 1, 12, 0, 0);
       final waypoint1 = Waypoint(
         id: 'wp001',
         name: 'Test Point',
         latitude: 37.8199,
         longitude: -122.4783,
         type: WaypointType.destination,
+        createdAt: timestamp,
       );
       
       final waypoint2 = Waypoint(
@@ -96,6 +98,7 @@ void main() {
         latitude: 37.8199,
         longitude: -122.4783,
         type: WaypointType.destination,
+        createdAt: timestamp,
       );
 
       // Act & Assert
