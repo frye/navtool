@@ -87,9 +87,7 @@ class HomeScreen extends StatelessWidget {
                     children: [
                       ElevatedButton.icon(
                         onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('New chart functionality coming soon!')),
-                          );
+                          Navigator.pushNamed(context, '/chart');
                         },
                         icon: const Icon(Icons.add),
                         label: const Text('New Chart'),
@@ -97,9 +95,7 @@ class HomeScreen extends StatelessWidget {
                       const SizedBox(width: 16),
                       OutlinedButton.icon(
                         onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Open chart functionality coming soon!')),
-                          );
+                          Navigator.pushNamed(context, '/chart');
                         },
                         icon: const Icon(Icons.folder_open),
                         label: const Text('Open Chart'),
@@ -125,6 +121,8 @@ class HomeScreen extends StatelessWidget {
             context: context,
             builder: (context) => const AboutAppDialog(),
           );
+        } else if (value == 'New Chart' || value == 'Open Chart') {
+          Navigator.pushNamed(context, '/chart');
         } else if (value == 'Exit') {
           // Exit the application
           ScaffoldMessenger.of(context).showSnackBar(
@@ -200,9 +198,7 @@ class HomeScreen extends StatelessWidget {
               title: const Text('Charts'),
               onTap: () {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Charts functionality coming soon!')),
-                );
+                Navigator.pushNamed(context, '/chart');
               },
             ),
             ListTile(
@@ -258,9 +254,7 @@ class HomeScreen extends StatelessWidget {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('New chart functionality coming soon!')),
-                        );
+                        Navigator.pushNamed(context, '/chart');
                       },
                       icon: const Icon(Icons.add),
                       label: const Text('New Chart'),
@@ -271,9 +265,7 @@ class HomeScreen extends StatelessWidget {
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Open chart functionality coming soon!')),
-                        );
+                        Navigator.pushNamed(context, '/chart');
                       },
                       icon: const Icon(Icons.folder_open),
                       label: const Text('Open Chart'),
