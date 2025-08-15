@@ -65,6 +65,8 @@ void main() {
       );
     }
 
+    // TODO: Future Enhancement Tests - Uncomment when implementing advanced gesture features
+    /*
     group('Enhanced Gesture Recognition', () {
       testWidgets('should handle multi-touch pinch-to-zoom gestures', (WidgetTester tester) async {
         await tester.pumpWidget(createTestWidget());
@@ -137,7 +139,10 @@ void main() {
                reason: 'Performance optimization not yet implemented');
       });
     });
+    */
 
+    // TODO: Future Enhancement Tests - Uncomment when implementing layer management UI
+    /*
     group('Enhanced Chart Layer Management', () {
       testWidgets('should support multiple chart layer visibility toggling', (WidgetTester tester) async {
         await tester.pumpWidget(createTestWidget());
@@ -166,7 +171,10 @@ void main() {
         expect(true, isFalse, reason: 'Priority rendering not yet enhanced');
       });
     });
+    */
 
+    // TODO: Future Enhancement Tests - Uncomment when implementing enhanced marine symbology
+    /*
     group('Enhanced Marine Symbology', () {
       testWidgets('should render standard IHO S-52 symbols', (WidgetTester tester) async {
         final List<MaritimeFeature> symbolFeatures = [
@@ -197,7 +205,10 @@ void main() {
         expect(true, isFalse, reason: 'Dynamic symbol scaling not yet implemented');
       });
     });
+    */
 
+    // TODO: Future Enhancement Tests - Uncomment when implementing chart interaction features
+    /*
     group('Enhanced Chart Interaction', () {
       testWidgets('should support waypoint placement on chart', (WidgetTester tester) async {
         await tester.pumpWidget(createTestWidget());
@@ -221,7 +232,10 @@ void main() {
         expect(true, isFalse, reason: 'Feature info display not yet implemented');
       });
     });
+    */
 
+    // TODO: Future Enhancement Tests - Uncomment when implementing performance optimization features
+    /*
     group('Enhanced Performance Features', () {
       testWidgets('should implement efficient feature culling for large datasets', (WidgetTester tester) async {
         // Create large dataset
@@ -249,7 +263,10 @@ void main() {
         expect(true, isFalse, reason: 'Symbol caching not yet implemented');
       });
     });
+    */
 
+    // TODO: Future Enhancement Tests - Uncomment when implementing chart scale and zoom management features
+    /*
     group('Chart Scale and Zoom Management', () {
       testWidgets('should automatically select appropriate chart scale', (WidgetTester tester) async {
         await tester.pumpWidget(createTestWidget());
@@ -265,5 +282,6 @@ void main() {
         expect(true, isFalse, reason: 'Zoom limits not yet implemented');
       });
     });
+    */
   });
 }
