@@ -13,6 +13,7 @@ import 'package:navtool/core/models/gps_signal_quality.dart';
 import 'package:navtool/core/models/position_history.dart';
 import 'package:navtool/core/models/waypoint.dart';
 import 'package:navtool/core/models/route.dart';
+import 'package:navtool/core/state/settings_state.dart';
 
 void main() {
   group('ChartService Interface Tests', () {
@@ -503,4 +504,22 @@ class MockSettingsService implements SettingsService {
 
   @override
   Future<void> setDouble(String key, double value) async {}
+
+  @override
+  Future<Map<String, dynamic>> exportSettings() async => {};
+
+  @override
+  Future<void> importSettings(Map<String, dynamic> backup) async {}
+
+  @override
+  Future<void> clearAllSettings() async {}
+
+  @override
+  Future<void> resetToDefaults() async {}
+
+  @override
+  Future<AppSettings> toAppSettings() async => const AppSettings();
+
+  @override
+  Future<void> fromAppSettings(AppSettings settings) async {}
 }
