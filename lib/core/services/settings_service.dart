@@ -1,3 +1,5 @@
+import '../state/settings_state.dart';
+
 /// Service interface for application settings
 abstract class SettingsService {
   /// Gets a setting value as string
@@ -26,4 +28,24 @@ abstract class SettingsService {
 
   /// Sets a double setting
   Future<void> setDouble(String key, double value);
+
+  // Enhanced functionality for backup/restore and integration
+
+  /// Exports all settings to a backup format
+  Future<Map<String, dynamic>> exportSettings();
+
+  /// Imports settings from a backup
+  Future<void> importSettings(Map<String, dynamic> backup);
+
+  /// Clears all settings
+  Future<void> clearAllSettings();
+
+  /// Resets settings to marine navigation defaults
+  Future<void> resetToDefaults();
+
+  /// Converts current settings to AppSettings model
+  Future<AppSettings> toAppSettings();
+
+  /// Saves AppSettings model to preferences
+  Future<void> fromAppSettings(AppSettings settings);
 }
