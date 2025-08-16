@@ -3,16 +3,18 @@
 // Do not manually edit this file.
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i3;
+import 'dart:async' as _i5;
 
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:navtool/core/error/app_error.dart' as _i9;
-import 'package:navtool/core/logging/app_logger.dart' as _i8;
-import 'package:navtool/core/models/gps_position.dart' as _i7;
-import 'package:navtool/core/services/download_service.dart' as _i5;
-import 'package:navtool/core/services/gps_service.dart' as _i6;
-import 'package:workmanager/src/options.dart' as _i4;
-import 'package:workmanager/src/workmanager.dart' as _i2;
+import 'package:navtool/core/error/app_error.dart' as _i11;
+import 'package:navtool/core/logging/app_logger.dart' as _i10;
+import 'package:navtool/core/models/gps_position.dart' as _i9;
+import 'package:navtool/core/models/gps_signal_quality.dart' as _i2;
+import 'package:navtool/core/models/position_history.dart' as _i3;
+import 'package:navtool/core/services/download_service.dart' as _i7;
+import 'package:navtool/core/services/gps_service.dart' as _i8;
+import 'package:workmanager/src/options.dart' as _i6;
+import 'package:workmanager/src/workmanager.dart' as _i4;
 
 // ignore_for_file: type=lint
 // ignore_for_file: avoid_redundant_argument_values
@@ -28,23 +30,52 @@ import 'package:workmanager/src/workmanager.dart' as _i2;
 // ignore_for_file: camel_case_types
 // ignore_for_file: subtype_of_sealed_class
 
+class _FakeGpsSignalQuality_0 extends _i1.SmartFake
+    implements _i2.GpsSignalQuality {
+  _FakeGpsSignalQuality_0(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakePositionHistory_1 extends _i1.SmartFake
+    implements _i3.PositionHistory {
+  _FakePositionHistory_1(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeAccuracyStatistics_2 extends _i1.SmartFake
+    implements _i3.AccuracyStatistics {
+  _FakeAccuracyStatistics_2(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeMovementState_3 extends _i1.SmartFake implements _i3.MovementState {
+  _FakeMovementState_3(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakePositionFreshness_4 extends _i1.SmartFake
+    implements _i3.PositionFreshness {
+  _FakePositionFreshness_4(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
 /// A class which mocks [Workmanager].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockWorkmanager extends _i1.Mock implements _i2.Workmanager {
+class MockWorkmanager extends _i1.Mock implements _i4.Workmanager {
   MockWorkmanager() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  void executeTask(_i2.BackgroundTaskHandler? backgroundTask) =>
+  void executeTask(_i4.BackgroundTaskHandler? backgroundTask) =>
       super.noSuchMethod(
         Invocation.method(#executeTask, [backgroundTask]),
         returnValueForMissingStub: null,
       );
 
   @override
-  _i3.Future<void> initialize(
+  _i5.Future<void> initialize(
     Function? callbackDispatcher, {
     bool? isInDebugMode = false,
   }) =>
@@ -54,22 +85,22 @@ class MockWorkmanager extends _i1.Mock implements _i2.Workmanager {
               [callbackDispatcher],
               {#isInDebugMode: isInDebugMode},
             ),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i3.Future<void> registerOneOffTask(
+  _i5.Future<void> registerOneOffTask(
     String? uniqueName,
     String? taskName, {
     String? tag,
-    _i4.ExistingWorkPolicy? existingWorkPolicy,
+    _i6.ExistingWorkPolicy? existingWorkPolicy,
     Duration? initialDelay = Duration.zero,
-    _i4.Constraints? constraints,
-    _i4.BackoffPolicy? backoffPolicy,
+    _i6.Constraints? constraints,
+    _i6.BackoffPolicy? backoffPolicy,
     Duration? backoffPolicyDelay = Duration.zero,
-    _i4.OutOfQuotaPolicy? outOfQuotaPolicy,
+    _i6.OutOfQuotaPolicy? outOfQuotaPolicy,
     Map<String, dynamic>? inputData,
   }) =>
       (super.noSuchMethod(
@@ -87,23 +118,23 @@ class MockWorkmanager extends _i1.Mock implements _i2.Workmanager {
                 #inputData: inputData,
               },
             ),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i3.Future<void> registerPeriodicTask(
+  _i5.Future<void> registerPeriodicTask(
     String? uniqueName,
     String? taskName, {
     Duration? frequency,
     String? tag,
-    _i4.ExistingWorkPolicy? existingWorkPolicy,
+    _i6.ExistingWorkPolicy? existingWorkPolicy,
     Duration? initialDelay = Duration.zero,
-    _i4.Constraints? constraints,
-    _i4.BackoffPolicy? backoffPolicy,
+    _i6.Constraints? constraints,
+    _i6.BackoffPolicy? backoffPolicy,
     Duration? backoffPolicyDelay = Duration.zero,
-    _i4.OutOfQuotaPolicy? outOfQuotaPolicy,
+    _i6.OutOfQuotaPolicy? outOfQuotaPolicy,
     Map<String, dynamic>? inputData,
   }) =>
       (super.noSuchMethod(
@@ -122,171 +153,302 @@ class MockWorkmanager extends _i1.Mock implements _i2.Workmanager {
                 #inputData: inputData,
               },
             ),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i3.Future<void> cancelByUniqueName(String? uniqueName) =>
+  _i5.Future<void> cancelByUniqueName(String? uniqueName) =>
       (super.noSuchMethod(
             Invocation.method(#cancelByUniqueName, [uniqueName]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i3.Future<void> cancelByTag(String? tag) =>
+  _i5.Future<void> cancelByTag(String? tag) =>
       (super.noSuchMethod(
             Invocation.method(#cancelByTag, [tag]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i3.Future<void> cancelAll() =>
+  _i5.Future<void> cancelAll() =>
       (super.noSuchMethod(
             Invocation.method(#cancelAll, []),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i5.Future<void>);
 }
 
 /// A class which mocks [DownloadService].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockDownloadService extends _i1.Mock implements _i5.DownloadService {
+class MockDownloadService extends _i1.Mock implements _i7.DownloadService {
   MockDownloadService() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i3.Future<void> downloadChart(String? chartId, String? url) =>
+  _i5.Future<void> downloadChart(String? chartId, String? url) =>
       (super.noSuchMethod(
             Invocation.method(#downloadChart, [chartId, url]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i3.Future<void> pauseDownload(String? chartId) =>
+  _i5.Future<void> pauseDownload(String? chartId) =>
       (super.noSuchMethod(
             Invocation.method(#pauseDownload, [chartId]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i3.Future<void> resumeDownload(String? chartId) =>
+  _i5.Future<void> resumeDownload(String? chartId) =>
       (super.noSuchMethod(
             Invocation.method(#resumeDownload, [chartId]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i3.Future<void> cancelDownload(String? chartId) =>
+  _i5.Future<void> cancelDownload(String? chartId) =>
       (super.noSuchMethod(
             Invocation.method(#cancelDownload, [chartId]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i3.Future<List<String>> getDownloadQueue() =>
+  _i5.Future<List<String>> getDownloadQueue() =>
       (super.noSuchMethod(
             Invocation.method(#getDownloadQueue, []),
-            returnValue: _i3.Future<List<String>>.value(<String>[]),
+            returnValue: _i5.Future<List<String>>.value(<String>[]),
           )
-          as _i3.Future<List<String>>);
+          as _i5.Future<List<String>>);
 
   @override
-  _i3.Stream<double> getDownloadProgress(String? chartId) =>
+  _i5.Stream<double> getDownloadProgress(String? chartId) =>
       (super.noSuchMethod(
             Invocation.method(#getDownloadProgress, [chartId]),
-            returnValue: _i3.Stream<double>.empty(),
+            returnValue: _i5.Stream<double>.empty(),
           )
-          as _i3.Stream<double>);
+          as _i5.Stream<double>);
 }
 
 /// A class which mocks [GpsService].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockGpsService extends _i1.Mock implements _i6.GpsService {
+class MockGpsService extends _i1.Mock implements _i8.GpsService {
   MockGpsService() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i3.Future<void> startLocationTracking() =>
+  _i5.Future<void> startLocationTracking() =>
       (super.noSuchMethod(
             Invocation.method(#startLocationTracking, []),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i3.Future<void> stopLocationTracking() =>
+  _i5.Future<void> stopLocationTracking() =>
       (super.noSuchMethod(
             Invocation.method(#stopLocationTracking, []),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i3.Future<_i7.GpsPosition?> getCurrentPosition() =>
+  _i5.Future<_i9.GpsPosition?> getCurrentPosition() =>
       (super.noSuchMethod(
             Invocation.method(#getCurrentPosition, []),
-            returnValue: _i3.Future<_i7.GpsPosition?>.value(),
+            returnValue: _i5.Future<_i9.GpsPosition?>.value(),
           )
-          as _i3.Future<_i7.GpsPosition?>);
+          as _i5.Future<_i9.GpsPosition?>);
 
   @override
-  _i3.Stream<_i7.GpsPosition> getLocationStream() =>
+  _i5.Stream<_i9.GpsPosition> getLocationStream() =>
       (super.noSuchMethod(
             Invocation.method(#getLocationStream, []),
-            returnValue: _i3.Stream<_i7.GpsPosition>.empty(),
+            returnValue: _i5.Stream<_i9.GpsPosition>.empty(),
           )
-          as _i3.Stream<_i7.GpsPosition>);
+          as _i5.Stream<_i9.GpsPosition>);
 
   @override
-  _i3.Future<bool> requestLocationPermission() =>
+  _i5.Future<bool> requestLocationPermission() =>
       (super.noSuchMethod(
             Invocation.method(#requestLocationPermission, []),
-            returnValue: _i3.Future<bool>.value(false),
+            returnValue: _i5.Future<bool>.value(false),
           )
-          as _i3.Future<bool>);
+          as _i5.Future<bool>);
 
   @override
-  _i3.Future<bool> checkLocationPermission() =>
+  _i5.Future<bool> checkLocationPermission() =>
       (super.noSuchMethod(
             Invocation.method(#checkLocationPermission, []),
-            returnValue: _i3.Future<bool>.value(false),
+            returnValue: _i5.Future<bool>.value(false),
           )
-          as _i3.Future<bool>);
+          as _i5.Future<bool>);
 
   @override
-  _i3.Future<bool> isLocationEnabled() =>
+  _i5.Future<bool> isLocationEnabled() =>
       (super.noSuchMethod(
             Invocation.method(#isLocationEnabled, []),
-            returnValue: _i3.Future<bool>.value(false),
+            returnValue: _i5.Future<bool>.value(false),
           )
-          as _i3.Future<bool>);
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<_i2.GpsSignalQuality> assessSignalQuality(
+    _i9.GpsPosition? position,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#assessSignalQuality, [position]),
+            returnValue: _i5.Future<_i2.GpsSignalQuality>.value(
+              _FakeGpsSignalQuality_0(
+                this,
+                Invocation.method(#assessSignalQuality, [position]),
+              ),
+            ),
+          )
+          as _i5.Future<_i2.GpsSignalQuality>);
+
+  @override
+  _i5.Future<void> logPosition(_i9.GpsPosition? position) =>
+      (super.noSuchMethod(
+            Invocation.method(#logPosition, [position]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<_i3.PositionHistory> getPositionHistory(Duration? timeWindow) =>
+      (super.noSuchMethod(
+            Invocation.method(#getPositionHistory, [timeWindow]),
+            returnValue: _i5.Future<_i3.PositionHistory>.value(
+              _FakePositionHistory_1(
+                this,
+                Invocation.method(#getPositionHistory, [timeWindow]),
+              ),
+            ),
+          )
+          as _i5.Future<_i3.PositionHistory>);
+
+  @override
+  _i5.Future<List<_i2.GpsSignalQuality>> getSignalQualityTrend(
+    Duration? timeWindow,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getSignalQualityTrend, [timeWindow]),
+            returnValue: _i5.Future<List<_i2.GpsSignalQuality>>.value(
+              <_i2.GpsSignalQuality>[],
+            ),
+          )
+          as _i5.Future<List<_i2.GpsSignalQuality>>);
+
+  @override
+  _i5.Future<void> clearPositionHistory() =>
+      (super.noSuchMethod(
+            Invocation.method(#clearPositionHistory, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<_i3.AccuracyStatistics> getAccuracyStatistics(
+    Duration? timeWindow,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getAccuracyStatistics, [timeWindow]),
+            returnValue: _i5.Future<_i3.AccuracyStatistics>.value(
+              _FakeAccuracyStatistics_2(
+                this,
+                Invocation.method(#getAccuracyStatistics, [timeWindow]),
+              ),
+            ),
+          )
+          as _i5.Future<_i3.AccuracyStatistics>);
+
+  @override
+  _i5.Future<_i3.MovementState> getMovementState(Duration? analysisWindow) =>
+      (super.noSuchMethod(
+            Invocation.method(#getMovementState, [analysisWindow]),
+            returnValue: _i5.Future<_i3.MovementState>.value(
+              _FakeMovementState_3(
+                this,
+                Invocation.method(#getMovementState, [analysisWindow]),
+              ),
+            ),
+          )
+          as _i5.Future<_i3.MovementState>);
+
+  @override
+  _i5.Future<_i3.PositionFreshness> getPositionFreshness() =>
+      (super.noSuchMethod(
+            Invocation.method(#getPositionFreshness, []),
+            returnValue: _i5.Future<_i3.PositionFreshness>.value(
+              _FakePositionFreshness_4(
+                this,
+                Invocation.method(#getPositionFreshness, []),
+              ),
+            ),
+          )
+          as _i5.Future<_i3.PositionFreshness>);
+
+  @override
+  _i5.Future<List<_i9.GpsPosition>> filterForMarineAccuracy(
+    List<_i9.GpsPosition>? positions,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#filterForMarineAccuracy, [positions]),
+            returnValue: _i5.Future<List<_i9.GpsPosition>>.value(
+              <_i9.GpsPosition>[],
+            ),
+          )
+          as _i5.Future<List<_i9.GpsPosition>>);
+
+  @override
+  _i5.Future<_i3.CourseOverGround?> calculateCourseOverGround(
+    Duration? timeWindow,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#calculateCourseOverGround, [timeWindow]),
+            returnValue: _i5.Future<_i3.CourseOverGround?>.value(),
+          )
+          as _i5.Future<_i3.CourseOverGround?>);
+
+  @override
+  _i5.Future<_i3.SpeedOverGround?> calculateSpeedOverGround(
+    Duration? timeWindow,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#calculateSpeedOverGround, [timeWindow]),
+            returnValue: _i5.Future<_i3.SpeedOverGround?>.value(),
+          )
+          as _i5.Future<_i3.SpeedOverGround?>);
 }
 
 /// A class which mocks [AppLogger].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockAppLogger extends _i1.Mock implements _i8.AppLogger {
+class MockAppLogger extends _i1.Mock implements _i10.AppLogger {
   MockAppLogger() {
     _i1.throwOnMissingStub(this);
   }
@@ -336,7 +498,7 @@ class MockAppLogger extends _i1.Mock implements _i8.AppLogger {
       );
 
   @override
-  void logError(_i9.AppError? error) => super.noSuchMethod(
+  void logError(_i11.AppError? error) => super.noSuchMethod(
     Invocation.method(#logError, [error]),
     returnValueForMissingStub: null,
   );
