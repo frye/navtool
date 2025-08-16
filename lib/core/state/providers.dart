@@ -13,6 +13,8 @@ import '../services/download_service_impl.dart';
 import '../services/storage_service.dart';
 import '../services/database_storage_service.dart';
 import '../services/file_system_service.dart';
+import '../services/cache_service.dart';
+import '../services/cache_service_impl.dart';
 import '../services/gps_service.dart';
 // Cross-platform GPS implementations
 import '../services/gps_service_impl.dart';  // Geolocator-based (macOS, Linux, iOS, Android)
@@ -85,6 +87,15 @@ final storageServiceProvider = Provider<StorageService>((ref) {
 // File system service
 final fileSystemServiceProvider = Provider<FileSystemService>((ref) {
   return FileSystemService(logger: ref.read(loggerProvider));
+});
+
+// Cache service
+final cacheServiceProvider = Provider<CacheService>((ref) {
+  return CacheServiceImpl(
+    logger: ref.read(loggerProvider),
+    fileSystemService: ref.read(fileSystemServiceProvider),
+    compressionService: ref.read(compressionServiceProvider),
+  );
 });
 
 // Compression service
