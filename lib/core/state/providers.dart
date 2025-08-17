@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../logging/app_logger.dart';
 import '../error/error_handler.dart';
 import '../models/gps_position.dart';
@@ -22,6 +23,12 @@ import '../services/gps_service_win32.dart'; // Windows-specific
 import '../services/background_task_service.dart';
 import '../services/compression_service.dart';
 import '../services/compression_service_impl.dart';
+import '../services/chart_service.dart';
+import '../services/chart_service_impl.dart';
+import '../services/navigation_service.dart';
+import '../services/navigation_service_impl.dart';
+import '../services/settings_service.dart';
+import '../services/settings_service_impl.dart';
 import 'app_state.dart';
 import 'app_state_notifier.dart';
 import 'download_state.dart';
@@ -101,6 +108,30 @@ final cacheServiceProvider = Provider<CacheService>((ref) {
 // Compression service
 final compressionServiceProvider = Provider<CompressionService>((ref) {
   return CompressionServiceImpl(
+    logger: ref.read(loggerProvider),
+  );
+});
+
+// Chart service
+final chartServiceProvider = Provider<ChartService>((ref) {
+  return ChartServiceImpl(
+    logger: ref.read(loggerProvider),
+    storageService: ref.read(storageServiceProvider),
+  );
+});
+
+// Navigation service
+final navigationServiceProvider = Provider<NavigationService>((ref) {
+  return NavigationServiceImpl(
+    logger: ref.read(loggerProvider),
+  );
+});
+
+// Settings service
+final settingsServiceProvider = Provider<SettingsService>((ref) {
+  // Create with placeholder prefs - will be initialized properly in main.dart
+  return SettingsServiceImpl(
+    prefs: null, // Will be set during app initialization
     logger: ref.read(loggerProvider),
   );
 });
