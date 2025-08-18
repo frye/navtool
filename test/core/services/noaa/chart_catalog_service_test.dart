@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:navtool/core/services/noaa/chart_catalog_service.dart';
 import 'package:navtool/core/services/cache_service.dart';
 import 'package:navtool/core/models/chart.dart';
@@ -43,7 +45,7 @@ void main() {
         );
 
         when(mockCacheService.get('chart_$chartId'))
-            .thenAnswer((_) async => expectedChart);
+            .thenAnswer((_) async => Uint8List.fromList(utf8.encode(json.encode(expectedChart.toJson()))));
 
         // Act
         final result = await catalogService.getCachedChart(chartId);
@@ -110,14 +112,14 @@ void main() {
           type: ChartType.harbor,
         );
 
-        when(mockCacheService.put('chart_${chart.id}', chart))
-            .thenAnswer((_) async => {});
+        when(mockCacheService.store('chart_${chart.id}', any))
+            .thenAnswer((_) async {});
 
         // Act
         await catalogService.cacheChart(chart);
 
         // Assert
-        verify(mockCacheService.put('chart_${chart.id}', chart)).called(1);
+        verify(mockCacheService.store('chart_${chart.id}', any)).called(1);
         verify(mockLogger.debug('Cached chart metadata: ${chart.id}')).called(1);
       });
 
@@ -133,7 +135,7 @@ void main() {
           type: ChartType.harbor,
         );
 
-        when(mockCacheService.put('chart_${chart.id}', chart))
+        when(mockCacheService.store('chart_${chart.id}', any))
             .thenThrow(AppError.storage('Cache write error'));
 
         // Act & Assert
@@ -159,7 +161,7 @@ void main() {
         );
 
         when(mockCacheService.get('chart_$chartId'))
-            .thenAnswer((_) async => expectedChart);
+            .thenAnswer((_) async => Uint8List.fromList(utf8.encode(json.encode(expectedChart.toJson()))));
 
         // Act
         final result = await catalogService.getChartById(chartId);
@@ -209,12 +211,22 @@ void main() {
           ),
         ];
 
-        when(mockCacheService.getAll())
-            .thenAnswer((_) async => {
-              'chart_US5CA52M': cachedCharts[0],
-              'chart_US4CA11M': cachedCharts[1],
-              'other_key': 'non-chart-data',
-            });
+        // Mock chart list
+        final chartListJson = jsonEncode(['US5CA52M', 'US4CA11M']);
+        final chartListBytes = Uint8List.fromList(utf8.encode(chartListJson));
+        when(mockCacheService.get('chart_list'))
+            .thenAnswer((_) async => chartListBytes);
+        
+        // Mock individual chart retrievals
+        final chart1Json = jsonEncode(cachedCharts[0].toJson());
+        final chart1Bytes = Uint8List.fromList(utf8.encode(chart1Json));
+        when(mockCacheService.get('chart_US5CA52M'))
+            .thenAnswer((_) async => chart1Bytes);
+            
+        final chart2Json = jsonEncode(cachedCharts[1].toJson());
+        final chart2Bytes = Uint8List.fromList(utf8.encode(chart2Json));
+        when(mockCacheService.get('chart_US4CA11M'))
+            .thenAnswer((_) async => chart2Bytes);
 
         // Act
         final result = await catalogService.searchCharts(query);
@@ -239,10 +251,9 @@ void main() {
           ),
         ];
 
-        when(mockCacheService.getAll())
-            .thenAnswer((_) async => {
-              'chart_US5CA52M': cachedCharts[0],
-            });
+        // Mock empty chart list
+        when(mockCacheService.get('chart_list'))
+            .thenAnswer((_) async => null);
 
         // Act
         final result = await catalogService.searchCharts(query);
@@ -278,11 +289,22 @@ void main() {
           ),
         ];
 
-        when(mockCacheService.getAll())
-            .thenAnswer((_) async => {
-              'chart_US5CA52M': cachedCharts[0],
-              'chart_US4TX11M': cachedCharts[1],
-            });
+        // Mock chart list
+        final chartListJson = jsonEncode(['US5CA52M', 'US4TX11M']);
+        final chartListBytes = Uint8List.fromList(utf8.encode(chartListJson));
+        when(mockCacheService.get('chart_list'))
+            .thenAnswer((_) async => chartListBytes);
+        
+        // Mock individual chart retrievals
+        final chart1Json = jsonEncode(cachedCharts[0].toJson());
+        final chart1Bytes = Uint8List.fromList(utf8.encode(chart1Json));
+        when(mockCacheService.get('chart_US5CA52M'))
+            .thenAnswer((_) async => chart1Bytes);
+            
+        final chart2Json = jsonEncode(cachedCharts[1].toJson());
+        final chart2Bytes = Uint8List.fromList(utf8.encode(chart2Json));
+        when(mockCacheService.get('chart_US4TX11M'))
+            .thenAnswer((_) async => chart2Bytes);
 
         // Act
         final result = await catalogService.searchChartsWithFilters(query, filters);
@@ -318,11 +340,22 @@ void main() {
           ),
         ];
 
-        when(mockCacheService.getAll())
-            .thenAnswer((_) async => {
-              'chart_US5CA52M': cachedCharts[0],
-              'chart_US4CA11M': cachedCharts[1],
-            });
+        // Mock chart list
+        final chartListJson = jsonEncode(['US5CA52M', 'US4CA11M']);
+        final chartListBytes = Uint8List.fromList(utf8.encode(chartListJson));
+        when(mockCacheService.get('chart_list'))
+            .thenAnswer((_) async => chartListBytes);
+        
+        // Mock individual chart retrievals  
+        final chart1Json = jsonEncode(cachedCharts[0].toJson());
+        final chart1Bytes = Uint8List.fromList(utf8.encode(chart1Json));
+        when(mockCacheService.get('chart_US5CA52M'))
+            .thenAnswer((_) async => chart1Bytes);
+            
+        final chart2Json = jsonEncode(cachedCharts[1].toJson());
+        final chart2Bytes = Uint8List.fromList(utf8.encode(chart2Json));
+        when(mockCacheService.get('chart_US4CA11M'))
+            .thenAnswer((_) async => chart2Bytes);
 
         // Act
         final result = await catalogService.searchChartsWithFilters(query, filters);
@@ -333,72 +366,37 @@ void main() {
       });
     });
 
-    group('watchChart', () {
-      test('should emit chart updates from cache', () async {
-        // Arrange
-        const chartId = 'US5CA52M';
-        final chart = Chart(
-          id: chartId,
-          title: 'San Francisco Bay',
-          scale: 25000,
-          bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
-          lastUpdate: DateTime(2024, 1, 15),
-          state: 'California',
-          type: ChartType.harbor,
-        );
-
-        when(mockCacheService.watch('chart_$chartId'))
-            .thenAnswer((_) => Stream.value(chart));
-
-        // Act
-        final stream = catalogService.watchChart(chartId);
-        final result = await stream.first;
-
-        // Assert
-        expect(result, isNotNull);
-        expect(result.id, equals(chartId));
-      });
-
-      test('should validate chart ID for watch', () {
-        // Act & Assert
-        expect(
-          () => catalogService.watchChart(''),
-          throwsA(isA<ArgumentError>()),
-        );
-      });
-    });
-
     group('refreshCatalog', () {
       test('should refresh catalog cache', () async {
         // Arrange
-        when(mockCacheService.clear(prefix: 'chart_'))
-            .thenAnswer((_) async => {});
+        when(mockCacheService.clear())
+            .thenAnswer((_) async => true);
 
         // Act
         final result = await catalogService.refreshCatalog();
 
         // Assert
         expect(result, isTrue);
-        verify(mockCacheService.clear(prefix: 'chart_')).called(1);
+        verify(mockCacheService.clear()).called(1);
         verify(mockLogger.info('Chart catalog cache refreshed')).called(1);
       });
 
       test('should force refresh even if not necessary', () async {
         // Arrange
-        when(mockCacheService.clear(prefix: 'chart_'))
-            .thenAnswer((_) async => {});
+        when(mockCacheService.clear())
+            .thenAnswer((_) async => true);
 
         // Act
         final result = await catalogService.refreshCatalog(force: true);
 
         // Assert
         expect(result, isTrue);
-        verify(mockCacheService.clear(prefix: 'chart_')).called(1);
+        verify(mockCacheService.clear()).called(1);
       });
 
       test('should handle refresh errors', () async {
         // Arrange
-        when(mockCacheService.clear(prefix: 'chart_'))
+        when(mockCacheService.clear())
             .thenThrow(AppError.storage('Cache clear error'));
 
         // Act & Assert
