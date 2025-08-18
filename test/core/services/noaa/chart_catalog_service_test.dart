@@ -112,15 +112,19 @@ void main() {
           type: ChartType.harbor,
         );
 
-        when(mockCacheService.store('chart_${chart.id}', any))
+        when(mockCacheService.store(any, any, maxAge: anyNamed('maxAge')))
+            .thenAnswer((_) async {});
+        when(mockCacheService.get('chart_list'))
+            .thenAnswer((_) async => null);
+        when(mockCacheService.store('chart_list', any, maxAge: anyNamed('maxAge')))
             .thenAnswer((_) async {});
 
         // Act
         await catalogService.cacheChart(chart);
 
         // Assert
-        verify(mockCacheService.store('chart_${chart.id}', any)).called(1);
-        verify(mockLogger.debug('Cached chart metadata: ${chart.id}')).called(1);
+        verify(mockCacheService.store('chart_${chart.id}', any, maxAge: anyNamed('maxAge'))).called(1);
+        verify(mockLogger.info('Cached chart metadata: ${chart.id}')).called(1);
       });
 
       test('should handle cache errors', () async {
@@ -135,7 +139,7 @@ void main() {
           type: ChartType.harbor,
         );
 
-        when(mockCacheService.store('chart_${chart.id}', any))
+        when(mockCacheService.store(any, any, maxAge: anyNamed('maxAge')))
             .thenThrow(AppError.storage('Cache write error'));
 
         // Act & Assert

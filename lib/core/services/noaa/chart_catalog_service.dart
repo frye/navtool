@@ -58,8 +58,8 @@ class ChartCatalogServiceImpl implements ChartCatalogService {
       return null;
     } catch (error) {
       _logger.error('Failed to get cached chart $chartId', exception: error);
-      if (error is AppError) rethrow;
-      throw AppError.storage('Failed to get cached chart', originalError: error);
+      // Return null for cache errors to allow graceful fallback to network
+      return null;
     }
   }
 

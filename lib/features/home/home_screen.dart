@@ -61,6 +61,26 @@ class HomeScreen extends ConsumerWidget {
                   const PopupMenuItem<String>(value: 'About NavTool', child: Text('About NavTool')),
                 ]),
                 const Spacer(),
+                // GPS status indicator on the right
+                Flexible(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.gps_fixed,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'GPS',
+                        style: Theme.of(context).textTheme.bodySmall,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
               ],
             ),
           ),
@@ -139,10 +159,13 @@ class HomeScreen extends ConsumerWidget {
                                       color: Theme.of(context).colorScheme.primary,
                                     ),
                                     const SizedBox(width: 8),
-                                    Text(
-                                      'Status',
-                                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.bold,
+                                    Expanded(
+                                      child: Text(
+                                        'Status',
+                                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                   ],
@@ -219,7 +242,12 @@ class HomeScreen extends ConsumerWidget {
           children: [
             const AppIcon(size: 24),
             const SizedBox(width: 12),
-            const Text('NavTool'),
+            const Expanded(
+              child: Text(
+                'NavTool',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
@@ -237,17 +265,23 @@ class HomeScreen extends ConsumerWidget {
                 children: [
                   const AppIcon(size: 48, color: Colors.white),
                   const SizedBox(height: 12),
-                  Text(
-                    'NavTool',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                  Flexible(
+                    child: Text(
+                      'NavTool',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  Text(
-                    'Marine Navigation',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white.withAlpha(200),
+                  Flexible(
+                    child: Text(
+                      'Marine Navigation',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withAlpha(200),
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],

@@ -25,6 +25,7 @@ final stateRegionMappingServiceProvider = Provider<StateRegionMappingService>((r
   return StateRegionMappingServiceImpl(
     cacheService: ref.read(cacheServiceProvider),
     logger: ref.read(loggerProvider),
+    httpClient: ref.read(httpClientServiceProvider),
   );
 });
 

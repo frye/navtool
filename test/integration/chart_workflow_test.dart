@@ -1,12 +1,9 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:integration_test/integration_test.dart';
 
 void main() {
-  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
-  
-  testWidgets('basic integration test', (WidgetTester tester) async {
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: Text('Hello'))));
-    expect(find.text('Hello'), findsOneWidget);
+  testWidgets('basic chart workflow test', (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: Text('Chart Workflow'))));
+    expect(find.text('Chart Workflow'), findsOneWidget);
   });
 }

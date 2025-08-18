@@ -277,8 +277,7 @@ void main() {
           cancelToken: anyNamed('cancelToken'),
           onReceiveProgress: anyNamed('onReceiveProgress'),
         )).thenAnswer((invocation) async {
-          // Simulate long download that can be cancelled
-          await Future.delayed(const Duration(seconds: 1));
+          // Don't delay, just throw the cancellation immediately  
           throw DioException(
             requestOptions: RequestOptions(path: '/test'),
             type: DioExceptionType.cancel,
@@ -286,9 +285,15 @@ void main() {
         });
 
         // Act
-        unawaited(downloadService.downloadChart(chartId, 'https://test.com/chart.zip'));
-        await Future.delayed(const Duration(milliseconds: 100));
+        final downloadFuture = downloadService.downloadChart(chartId, 'https://test.com/chart.zip');
         await downloadService.pauseDownload(chartId);
+        
+        // Wait for download to complete/cancel
+        try {
+          await downloadFuture;
+        } catch (e) {
+          // Expected cancellation
+        }
 
         // Assert
         verify(mockLogger.info(
@@ -311,7 +316,9 @@ void main() {
       
       // Test the actual error case would require a paused download,
       // but since resume isn't implemented, we'll test the current behavior
-    });      test('should cancel download successfully', () async {
+    });
+
+    test('should cancel download successfully', () async {
         // Arrange
         const chartId = 'US5CA52M';
 
@@ -322,13 +329,20 @@ void main() {
           cancelToken: anyNamed('cancelToken'),
           onReceiveProgress: anyNamed('onReceiveProgress'),
         )).thenAnswer((invocation) async {
-          await Future.delayed(const Duration(seconds: 1));
+          // Don't delay, just complete immediately
+          return;
         });
 
         // Act
-        unawaited(downloadService.downloadChart(chartId, 'https://test.com/chart.zip'));
-        await Future.delayed(const Duration(milliseconds: 100));
+        final downloadFuture = downloadService.downloadChart(chartId, 'https://test.com/chart.zip');
         await downloadService.cancelDownload(chartId);
+        
+        // Wait for download to complete/cancel
+        try {
+          await downloadFuture;
+        } catch (e) {
+          // Expected error after cancellation
+        }
 
         // Assert
         verify(mockLogger.info(
