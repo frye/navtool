@@ -80,17 +80,57 @@ NOAA provides free Electronic Navigational Charts (ENCs) in the international S-
 - **Touch-Optimized**: Design for marine environment with wet hands and gloves
 - **Sunlight Readable**: High contrast modes for bright outdoor conditions
 
-## Questions for Refinement
+## Implementation Progress
 
-Based on the initial research, I have three key questions to help refine the specification:
+### Completed Research and Architecture (August 2025)
 
-1. **Target User Focus**: Are you primarily targeting recreational boaters, commercial marine users, or GIS/technical users? This will influence the complexity of features and technical terminology used in the interface.
+**Phase 2.1 - NOAA Chart Integration Research and Design**
+- ✅ **Issue #83**: NOAA ENC Data Sources and API Research - Comprehensive analysis of NOAA's distribution methods, API endpoints, and metadata formats
+- ✅ **Issue #84**: NOAA Integration Architecture Design - Complete service architecture design for Flutter integration with Riverpod dependency injection
 
-2. **Platform Scope**: Should this be a mobile-first app for on-boat use, a desktop application for trip planning, or both? The use case affects UI design and offline storage considerations.
+**Key Research Findings:**
+- NOAA provides free Electronic Navigational Charts via GeoJSON catalog API
+- No authentication required for public domain chart data
+- Rate limiting recommended: 5 requests/second to prevent server overload
+- Charts organized by geographic cells with Usage bands (Harbor/Approach/Coastal/General/Overview)
+- State-to-region mapping requires spatial intersection between US state boundaries and chart coverage polygons
 
-3. **Chart Processing**: Do you want the app to simply download raw S-57 files, or should it also provide chart viewing/rendering capabilities? This significantly impacts technical complexity and dependencies.
+### Current Implementation Plan
 
-*Update: Chart display with vessel tracking is now a core requirement, similar to commercial chart plotters.*
+**Phase 2.1.3 - Implementation Sub-Issues (In Progress)**
+- **Issue #85**: NOAA Chart Discovery and Metadata Implementation (Parent Issue)
+  - **Issue #86**: Core NOAA Service Implementation (3-4 days)
+  - **Issue #87**: NOAA API Client and Network Integration (2-3 days) 
+  - **Issue #88**: NOAA Metadata Parsing Pipeline (2-3 days)
+  - **Issue #89**: State-Region Geographic Mapping Service (4-5 days)
+  - **Issue #90**: Database Schema and Storage Implementation (2-3 days)
+  - **Issue #91**: Comprehensive Testing and Validation (3-4 days)
+
+**Estimated Timeline**: 16-22 days (3-4 weeks) for complete NOAA integration
+
+### Technical Architecture Summary
+
+**Service Layer Design:**
+```dart
+NoaaChartDiscoveryService -> ChartCatalogService + StateRegionMappingService
+NoaaApiClient -> HTTP client with rate limiting and retry logic
+NoaaMetadataParser -> GeoJSON to Chart model transformation
+```
+
+**Key Features:**
+- Riverpod dependency injection for service management
+- Multi-level caching for performance optimization
+- Spatial intersection for state-based chart discovery
+- Rate limiting to respect NOAA server constraints
+- Offline-first design for marine environment reliability
+- Comprehensive error handling for network and parsing failures
+
+### Success Metrics
+- Chart coverage for all US coastal states and Great Lakes
+- State-based discovery completes in <2 seconds
+- >99% success rate for chart metadata retrieval
+- >90% test coverage for reliability
+- Seamless integration with existing chart browsing UI
 
 ## Technical Architecture (Preliminary)
 
