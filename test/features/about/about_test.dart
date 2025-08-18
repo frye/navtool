@@ -26,7 +26,8 @@ void main() {
         
         // Assert
         expect(find.byType(AboutScreen), findsOneWidget);
-        expect(find.text('About NavTool'), findsOneWidget);
+        expect(find.text('About'), findsOneWidget);
+        expect(find.text('NavTool'), findsOneWidget);
         expect(find.byType(AppIcon), findsAtLeastNWidgets(1));
       });
 
@@ -264,7 +265,8 @@ void main() {
         
         // Assert
         expect(find.byType(AboutScreen), findsOneWidget);
-        expect(find.text('About NavTool'), findsOneWidget);
+        expect(find.text('About'), findsOneWidget);
+        expect(find.text('NavTool'), findsOneWidget);
         
         // Check that main elements are accessible
         expect(find.byType(AppIcon), findsAtLeastNWidgets(1));

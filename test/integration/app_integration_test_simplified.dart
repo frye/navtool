@@ -19,7 +19,7 @@ import 'package:navtool/core/models/route.dart';
 import 'package:navtool/core/models/waypoint.dart';
 import 'package:navtool/features/home/home_screen.dart';
 
-import 'app_integration_test.mocks.dart';
+import 'app_integration_test_simplified.mocks.dart';
 
 @GenerateMocks([
   GpsService,

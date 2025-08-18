@@ -54,9 +54,12 @@ class GpsStatusWidget extends ConsumerWidget {
           size: 16,
         ),
         const SizedBox(width: 8),
-        Text(
-          gpsStatus.enabled ? 'GPS Service Active' : 'GPS Service Inactive',
-          style: Theme.of(context).textTheme.bodyMedium,
+        Expanded(
+          child: Text(
+            gpsStatus.enabled ? 'GPS Service Active' : 'GPS Service Inactive',
+            style: Theme.of(context).textTheme.bodyMedium,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ],
     );
@@ -81,9 +84,12 @@ class GpsStatusWidget extends ConsumerWidget {
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'No position available',
-                  style: Theme.of(context).textTheme.bodyMedium,
+                Expanded(
+                  child: Text(
+                    'No position available',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
@@ -107,10 +113,13 @@ class GpsStatusWidget extends ConsumerWidget {
                     size: 16,
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    'Current Position',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Text(
+                      'Current Position',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -126,12 +135,13 @@ class GpsStatusWidget extends ConsumerWidget {
                 _buildCoordinateRow(context, 'Speed:', '${(position.speed! * 1.944).toStringAsFixed(1)} knots'),
               if (position.heading != null)
                 _buildCoordinateRow(context, 'Heading:', '${position.heading!.toStringAsFixed(0)}°'),
-              const SizedBox(height: 4),
+              const SizedBox(height: 8),
               Text(
                 'Last updated: ${_formatTime(position.timestamp)}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
@@ -151,9 +161,12 @@ class GpsStatusWidget extends ConsumerWidget {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
             const SizedBox(width: 8),
-            Text(
-              'Getting GPS position...',
-              style: Theme.of(context).textTheme.bodyMedium,
+            Expanded(
+              child: Text(
+                'Getting GPS position...',
+                style: Theme.of(context).textTheme.bodyMedium,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
@@ -177,6 +190,7 @@ class GpsStatusWidget extends ConsumerWidget {
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onErrorContainer,
                 ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
@@ -191,14 +205,23 @@ class GpsStatusWidget extends ConsumerWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall,
+          Expanded(
+            flex: 2,
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w500,
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
