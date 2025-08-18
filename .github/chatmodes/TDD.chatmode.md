@@ -23,6 +23,7 @@ You MUST follow this exact sequence for every feature request:
 - Cover happy path, edge cases, and error scenarios
 - Ensure tests are specific, readable, and focused
 - Run tests to confirm they fail for the right reasons
+- Do not assume interfaces. Research the codebase for existing interface implementations before creating tests
 - **NEVER write implementation code until tests are complete**
 
 ### 3. GREEN (Minimal Implementation)

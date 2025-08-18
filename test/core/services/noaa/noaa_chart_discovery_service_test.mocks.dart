@@ -82,14 +82,6 @@ class MockChartCatalogService extends _i1.Mock
           as _i3.Future<List<_i4.Chart>>);
 
   @override
-  _i3.Stream<_i4.Chart> watchChart(String? chartId) =>
-      (super.noSuchMethod(
-            Invocation.method(#watchChart, [chartId]),
-            returnValue: _i3.Stream<_i4.Chart>.empty(),
-          )
-          as _i3.Stream<_i4.Chart>);
-
-  @override
   _i3.Future<bool> refreshCatalog({bool? force = false}) =>
       (super.noSuchMethod(
             Invocation.method(#refreshCatalog, [], {#force: force}),
@@ -124,50 +116,33 @@ class MockStateRegionMappingService extends _i1.Mock
           as _i3.Future<_i6.GeographicBounds?>);
 
   @override
-  _i3.Future<bool> intersectsStateBounds(
+  _i3.Future<List<String>> getSupportedStates() =>
+      (super.noSuchMethod(
+            Invocation.method(#getSupportedStates, []),
+            returnValue: _i3.Future<List<String>>.value(<String>[]),
+          )
+          as _i3.Future<List<String>>);
+
+  @override
+  _i3.Future<void> updateStateCellMapping(
     String? stateName,
-    _i6.GeographicBounds? chartBounds,
+    List<String>? mapping,
   ) =>
       (super.noSuchMethod(
-            Invocation.method(#intersectsStateBounds, [stateName, chartBounds]),
-            returnValue: _i3.Future<bool>.value(false),
-          )
-          as _i3.Future<bool>);
-
-  @override
-  _i3.Future<List<String>> getAllSupportedStates() =>
-      (super.noSuchMethod(
-            Invocation.method(#getAllSupportedStates, []),
-            returnValue: _i3.Future<List<String>>.value(<String>[]),
-          )
-          as _i3.Future<List<String>>);
-
-  @override
-  _i3.Future<List<String>> loadStateChartMapping(String? stateName) =>
-      (super.noSuchMethod(
-            Invocation.method(#loadStateChartMapping, [stateName]),
-            returnValue: _i3.Future<List<String>>.value(<String>[]),
-          )
-          as _i3.Future<List<String>>);
-
-  @override
-  _i3.Future<void> clearCache() =>
-      (super.noSuchMethod(
-            Invocation.method(#clearCache, []),
+            Invocation.method(#updateStateCellMapping, [stateName, mapping]),
             returnValue: _i3.Future<void>.value(),
             returnValueForMissingStub: _i3.Future<void>.value(),
           )
           as _i3.Future<void>);
 
   @override
-  _i6.GeographicBounds? getBoundsIntersection(
-    _i6.GeographicBounds? bounds1,
-    _i6.GeographicBounds? bounds2,
-  ) =>
+  _i3.Future<void> clearStateMappings() =>
       (super.noSuchMethod(
-            Invocation.method(#getBoundsIntersection, [bounds1, bounds2]),
+            Invocation.method(#clearStateMappings, []),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
           )
-          as _i6.GeographicBounds?);
+          as _i3.Future<void>);
 }
 
 /// A class which mocks [AppLogger].
