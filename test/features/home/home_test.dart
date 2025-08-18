@@ -26,15 +26,15 @@ void main() {
       
       // Setup default mock behaviors
       when(mockGpsService.getCurrentPosition()).thenAnswer((_) async => 
-        const GpsPosition(
+        GpsPosition(
           latitude: 37.7749,
           longitude: -122.4194,
           accuracy: 5.0,
-          timestamp: null,
+          timestamp: DateTime.now(),
         )
       );
-      when(mockGpsService.isLocationServiceEnabled()).thenAnswer((_) async => true);
-      when(mockGpsService.hasLocationPermission()).thenAnswer((_) async => true);
+      when(mockGpsService.isLocationEnabled()).thenAnswer((_) async => true);
+      when(mockGpsService.checkLocationPermission()).thenAnswer((_) async => true);
     });
 
     Widget createTestWidget({List<Override> overrides = const []}) {
@@ -185,8 +185,8 @@ void main() {
     group('Home Screen State Management', () {
       testWidgets('should handle GPS status changes', (WidgetTester tester) async {
         // Arrange - Mock GPS enabled initially
-        when(mockGpsService.isLocationServiceEnabled()).thenAnswer((_) async => true);
-        when(mockGpsService.hasLocationPermission()).thenAnswer((_) async => true);
+        when(mockGpsService.isLocationEnabled()).thenAnswer((_) async => true);
+        when(mockGpsService.checkLocationPermission()).thenAnswer((_) async => true);
         
         await tester.pumpWidget(createTestWidget());
         await tester.pumpAndSettle();
@@ -195,7 +195,7 @@ void main() {
         expect(find.byType(GpsStatusWidget), findsOneWidget);
         
         // Act - Change GPS status
-        when(mockGpsService.isLocationServiceEnabled()).thenAnswer((_) async => false);
+        when(mockGpsService.isLocationEnabled()).thenAnswer((_) async => false);
         await tester.pumpWidget(createTestWidget());
         await tester.pumpAndSettle();
         
