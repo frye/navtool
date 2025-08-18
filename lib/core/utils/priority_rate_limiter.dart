@@ -87,19 +87,22 @@ class PriorityRateLimiter extends RateLimiter {
     _priorityQueues[priority]!.add(request);
     
     try {
-      // Wait for our turn based on priority
+      // Wait for our turn based on priority with better synchronization
       while (!_canProcessRequest(priority, request)) {
-        await Future.delayed(const Duration(milliseconds: 10));
+        await Future.delayed(const Duration(milliseconds: 5)); // Shorter delay
       }
       
       // Remove from queue now that we can process
       _priorityQueues[priority]!.remove(request);
       
-      // Wait for rate limit if needed
+      // Wait for rate limit if needed  
       while (!canMakeRequest(priority: priority)) {
         final waitTime = getWaitTime(priority: priority);
         if (waitTime > Duration.zero) {
           await Future.delayed(waitTime);
+        } else {
+          // Small delay to prevent busy waiting
+          await Future.delayed(const Duration(milliseconds: 1));
         }
       }
       
@@ -196,7 +199,10 @@ class PriorityRateLimiter extends RateLimiter {
     final currentRequests = super.requestTimes.length;
     final totalCapacity = requestsPerSecond;
     
-    // For now, simplified logic - reserved capacity subtracts from total
+    // Calculate how much this priority has reserved
+    final thisReserved = _reservedCapacity[priority] ?? 0;
+    
+    // Calculate reserved capacity by others (not this priority)
     int reservedByOthers = 0;
     for (final entry in _reservedCapacity.entries) {
       if (entry.key != priority) {
@@ -204,8 +210,9 @@ class PriorityRateLimiter extends RateLimiter {
       }
     }
     
-    final availableToThisPriority = totalCapacity - reservedByOthers;
-    final remainingCapacity = availableToThisPriority - currentRequests;
+    // Available to this priority = total - reserved by others
+    final maxAvailableToThisPriority = totalCapacity - reservedByOthers;
+    final remainingCapacity = maxAvailableToThisPriority - currentRequests;
     
     return remainingCapacity > 0 ? remainingCapacity : 0;
   }
