@@ -85,13 +85,17 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
-  
+
   # Mocking library for testing
   mockito: ^5.4.4
   build_runner: ^2.4.12
-  
+
   # SQLite testing support
   sqflite_common_ffi: ^2.3.3
+
+  # Integration testing support
+  integration_test:
+    sdk: flutter
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

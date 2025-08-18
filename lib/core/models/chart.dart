@@ -205,4 +205,46 @@ class Chart {
       fileSize: fileSize ?? this.fileSize,
     );
   }
+
+  /// Creates a Chart from JSON map
+  factory Chart.fromJson(Map<String, dynamic> json) {
+    return Chart(
+      id: json['id'] as String,
+      title: json['title'] as String,
+      scale: json['scale'] as int,
+      bounds: GeographicBounds(
+        north: json['bounds']['north'] as double,
+        south: json['bounds']['south'] as double,
+        east: json['bounds']['east'] as double,
+        west: json['bounds']['west'] as double,
+      ),
+      lastUpdate: DateTime.fromMillisecondsSinceEpoch(json['lastUpdate'] as int),
+      state: json['state'] as String,
+      type: ChartType.values.firstWhere((t) => t.name == json['type']),
+      description: json['description'] as String?,
+      isDownloaded: json['isDownloaded'] as bool? ?? false,
+      fileSize: json['fileSize'] as int?,
+    );
+  }
+
+  /// Converts this Chart to a JSON map
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'scale': scale,
+      'bounds': {
+        'north': bounds.north,
+        'south': bounds.south,
+        'east': bounds.east,
+        'west': bounds.west,
+      },
+      'lastUpdate': lastUpdate.millisecondsSinceEpoch,
+      'state': state,
+      'type': type.name,
+      'description': description,
+      'isDownloaded': isDownloaded,
+      'fileSize': fileSize,
+    };
+  }
 }
