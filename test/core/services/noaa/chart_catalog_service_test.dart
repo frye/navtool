@@ -86,7 +86,7 @@ void main() {
         expect(result, isNull);
         verify(mockLogger.error(
           'Failed to get cached chart $chartId',
-          exception: any,
+          exception: anyNamed('exception'),
         )).called(1);
       });
 

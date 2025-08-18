@@ -322,15 +322,22 @@ void main() {
         // Arrange
         const chartId = 'US5CA52M';
 
-        // Mock download that can be cancelled
+        // Mock download that can be cancelled - simulate file creation like the default setup
         when(mockHttpClient.downloadFile(
           any,
           any,
           cancelToken: anyNamed('cancelToken'),
           onReceiveProgress: anyNamed('onReceiveProgress'),
         )).thenAnswer((invocation) async {
-          // Don't delay, just complete immediately
-          return;
+          // Simulate file creation for successful cancellation test
+          final savePath = invocation.positionalArguments[1] as String;
+          final file = File(savePath);
+          await file.create(recursive: true);
+          await file.writeAsString('test chart data');
+          
+          // Simulate progress callback
+          final onProgress = invocation.namedArguments[#onReceiveProgress] as Function?;
+          onProgress?.call(1024, 1024); // 100% complete
         });
 
         // Act
