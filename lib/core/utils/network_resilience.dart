@@ -465,12 +465,23 @@ class NetworkResilience {
       // Estimate speed (this is a rough approximation)
       final totalBytes = bytes.length;
       final totalSeconds = stopwatch.elapsedMilliseconds / 1000.0;
+      
+      // Prevent division by zero and ensure valid calculation
+      if (totalSeconds <= 0 || totalBytes <= 0) {
+        return 1.0; // Default reasonable speed
+      }
+      
       final bytesPerSecond = totalBytes / totalSeconds;
       final mbps = (bytesPerSecond * 8) / (1024 * 1024); // Convert to Mbps
       
-      return math.max(0.1, mbps); // Minimum 0.1 Mbps
+      // Ensure result is valid and within reasonable bounds
+      if (mbps.isNaN || mbps.isInfinite || mbps <= 0) {
+        return 1.0; // Default reasonable speed
+      }
+      
+      return math.max(0.1, math.min(1000.0, mbps)); // Clamp between 0.1 and 1000 Mbps
     } catch (_) {
-      return 0.1; // Default low speed on error
+      return 1.0; // Default reasonable speed on error
     }
   }
 
