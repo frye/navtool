@@ -4,6 +4,25 @@
 
 This document summarizes the implementation of issue #97: "2.1.3.2.3 Retry Logic and Network Resilience" for the NOAA marine navigation application. The implementation follows strict Test-Driven Development (TDD) principles with comprehensive marine-specific optimizations.
 
+**Update**: As of issue #99, all retry logic and network resilience components are now fully integrated with the Riverpod provider system. See [NOAA API Client Usage Guide](noaa_api_client_usage.md) for provider-based usage examples.
+
+## Provider Integration
+
+The retry logic components are now available through Riverpod providers:
+
+```dart
+// Get preconfigured retry policies
+final chartPolicy = ref.read(chartDownloadRetryPolicyProvider);
+final apiPolicy = ref.read(apiRequestRetryPolicyProvider);
+final criticalPolicy = ref.read(criticalRetryPolicyProvider);
+
+// Get rate limiter and circuit breaker
+final rateLimiter = ref.read(noaaRateLimiterProvider);
+final circuitBreaker = ref.read(noaaCircuitBreakerProvider);
+```
+
+See the [Provider Integration](#provider-integration) section below for complete details.
+
 ## Components Implemented
 
 ### 1. RetryPolicy Model (`lib/core/models/retry_policy.dart`)
@@ -147,6 +166,79 @@ networkResilience.statusStream.listen((status) {
 3. **User Experience**: Seamless operation despite challenging marine conditions
 4. **Safety**: Circuit breaker prevents cascading failures in critical navigation scenarios
 5. **Adaptability**: Real-time adjustment to changing network conditions
+
+## Provider Integration
+
+### Riverpod Providers
+
+All retry logic and network resilience components are now available through Riverpod providers for seamless dependency injection:
+
+```dart
+// Retry policy providers with marine-optimized configurations
+final chartDownloadRetryPolicyProvider = Provider<RetryPolicy>((ref) => RetryPolicy.chartDownload);
+final apiRequestRetryPolicyProvider = Provider<RetryPolicy>((ref) => RetryPolicy.apiRequest);
+final criticalRetryPolicyProvider = Provider<RetryPolicy>((ref) => RetryPolicy.critical);
+
+// Network resilience providers
+final noaaRateLimiterProvider = Provider<RateLimiter>((ref) => RateLimiter(requestsPerSecond: 5));
+final noaaCircuitBreakerProvider = Provider<CircuitBreaker>((ref) => CircuitBreaker(...));
+final networkResilienceProvider = Provider<NetworkResilience>((ref) => NetworkResilience());
+```
+
+### Usage with NOAA API Client
+
+The components integrate seamlessly with the NOAA API client through providers:
+
+```dart
+class MarineChartService {
+  final Ref ref;
+  
+  MarineChartService(this.ref);
+  
+  Future<void> downloadWithResilience(String chartId) async {
+    final apiClient = ref.read(noaaApiClientProvider);
+    final retryPolicy = ref.read(chartDownloadRetryPolicyProvider);
+    final circuitBreaker = ref.read(noaaCircuitBreakerProvider);
+    
+    // Use circuit breaker for automatic failure protection
+    await circuitBreaker.execute(() async {
+      // Use retry policy through RetryableOperation
+      return await RetryableOperation.execute(
+        () => apiClient.downloadChart(chartId, '/charts/$chartId.000'),
+        policy: retryPolicy,
+      );
+    });
+  }
+}
+```
+
+### Testing with Providers
+
+All components can be easily tested using provider overrides:
+
+```dart
+testWidgets('should handle marine connectivity issues', (tester) async {
+  final mockCircuitBreaker = MockCircuitBreaker();
+  
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        noaaCircuitBreakerProvider.overrideWith((ref) => mockCircuitBreaker),
+      ],
+      child: MyMarineApp(),
+    ),
+  );
+  
+  // Test scenarios...
+});
+```
+
+## Documentation References
+
+- **[NOAA API Client Usage Guide](noaa_api_client_usage.md)**: Complete usage examples with providers
+- **[Marine Error Handling](marine_error_handling.md)**: Error handling patterns for marine environments
+- **Provider Tests**: `test/core/providers/noaa_providers_test.dart`
+- **Integration Tests**: `test/integration/noaa_api_integration_test.dart`
 
 ## Testing Coverage
 
