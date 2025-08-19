@@ -5,12 +5,41 @@ import '../../features/about/about_dialog.dart';
 
 /// Integrated menu bar that displays application menus directly in the title bar
 /// following VS Code's pattern. Provides keyboard shortcuts and accessibility.
-class IntegratedMenuBar extends StatelessWidget {
+class IntegratedMenuBar extends StatefulWidget {
+  @override
+  State<IntegratedMenuBar> createState() => _IntegratedMenuBarState();
+}
+
+class _IntegratedMenuBarState extends State<IntegratedMenuBar> {
+  String? _openMenuTitle;
+
+  void _closeAllMenus() {
+    if (_openMenuTitle != null) {
+      setState(() {
+        _openMenuTitle = null;
+      });
+    }
+  }
+
+  void _toggleMenu(String menuTitle) {
+    setState(() {
+      _openMenuTitle = _openMenuTitle == menuTitle ? null : menuTitle;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisSize: MainAxisSize.min, // Prevent overflow
-      children: _getMenus(context).map((menu) => _MenuButton(menu: menu)).toList(),
+      mainAxisSize: MainAxisSize.min,
+      children: _getMenus(context).map((menu) => _MenuButton(
+        menu: menu,
+        isOpen: _openMenuTitle == menu.title,
+        onToggle: () {
+          print('Menu toggle called for: ${menu.title}');
+          _toggleMenu(menu.title);
+        },
+        onClose: _closeAllMenus,
+      )).toList(),
     );
   }
 
@@ -147,8 +176,16 @@ class IntegratedMenuBar extends StatelessWidget {
 
 class _MenuButton extends StatefulWidget {
   final MenuDefinition menu;
+  final bool isOpen;
+  final VoidCallback onToggle;
+  final VoidCallback onClose;
 
-  const _MenuButton({required this.menu});
+  const _MenuButton({
+    required this.menu,
+    required this.isOpen,
+    required this.onToggle,
+    required this.onClose,
+  });
 
   @override
   State<_MenuButton> createState() => _MenuButtonState();
@@ -156,60 +193,141 @@ class _MenuButton extends StatefulWidget {
 
 class _MenuButtonState extends State<_MenuButton> {
   bool _isHovered = false;
+  OverlayEntry? _overlayEntry;
+
+  @override
+  void dispose() {
+    _removeOverlay();
+    super.dispose();
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+
+  void _showDropdown() {
+    if (_overlayEntry != null) return;
+
+    final RenderBox renderBox = context.findRenderObject() as RenderBox;
+    final offset = renderBox.localToGlobal(Offset.zero);
+
+    _overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        left: offset.dx,
+        top: offset.dy + renderBox.size.height,
+        child: GestureDetector(
+          onTap: () {
+            _removeOverlay();
+            widget.onClose();
+          },
+          child: Container(
+            width: MediaQuery.of(context).size.width,
+            height: MediaQuery.of(context).size.height,
+            color: Colors.transparent,
+            child: GestureDetector(
+              onTap: () {}, // Prevent closing when clicking the menu
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: Material(
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    constraints: const BoxConstraints(minWidth: 200),
+                    child: IntrinsicWidth(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: widget.menu.actions.map((action) {
+                          if (action.isSeparator) {
+                            return const Divider(height: 1, thickness: 1);
+                          }
+                          return _buildMenuItem(context, action);
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Overlay.of(context).insert(_overlayEntry!);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<MenuAction>(
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _isHovered = true),
-        onExit: (_) => setState(() => _isHovered = false),
+    // Remove overlay when menu closes
+    if (!widget.isOpen && _overlayEntry != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _removeOverlay();
+      });
+    } else if (widget.isOpen && _overlayEntry == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showDropdown();
+      });
+    }
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: () {
+          print('Menu button clicked: ${widget.menu.title}');
+          widget.onToggle();
+        },
+        onPanStart: (_) {
+          // Consume pan events to prevent window dragging
+          print('Pan start consumed by menu button: ${widget.menu.title}');
+        },
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0), // More compact
+          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
           decoration: BoxDecoration(
-            color: _isHovered ? Colors.grey.withOpacity(0.2) : Colors.transparent,
-            borderRadius: BorderRadius.circular(3.0), // Slightly smaller radius
+            color: (_isHovered || widget.isOpen) ? Colors.grey.withOpacity(0.2) : Colors.transparent,
+            borderRadius: BorderRadius.circular(3.0),
           ),
           child: Text(
             widget.menu.title,
             style: TextStyle(
-              fontSize: 13.0, // Reduced from 14.0
+              fontSize: 13.0,
               color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
         ),
       ),
-      onSelected: (action) => action.onPressed(),
-      itemBuilder: (context) => widget.menu.actions
-          .map((action) => _buildMenuItem(action))
-          .cast<PopupMenuEntry<MenuAction>>()
-          .toList(),
-      offset: const Offset(0, 32), // Match the title bar height
     );
   }
 
-  PopupMenuEntry<MenuAction> _buildMenuItem(MenuAction action) {
-    if (action.isSeparator) {
-      return const PopupMenuDivider();
-    }
-
-    return PopupMenuItem<MenuAction>(
-      value: action,
-      child: Row(
-        children: [
-          Icon(action.icon, size: 16),
-          const SizedBox(width: 8),
-          Expanded(child: Text(action.title)),
-          if (action.shortcut.isNotEmpty) ...[
-            const SizedBox(width: 16),
-            Text(
-              action.shortcut,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
+  Widget _buildMenuItem(BuildContext context, MenuAction action) {
+    return InkWell(
+      onTap: () {
+        print('Menu action selected: ${action.title}');
+        _removeOverlay();
+        widget.onClose();
+        action.onPressed();
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+        child: Row(
+          children: [
+            Icon(action.icon, size: 16),
+            const SizedBox(width: 8),
+            Expanded(child: Text(action.title)),
+            if (action.shortcut.isNotEmpty) ...[
+              const SizedBox(width: 16),
+              Text(
+                action.shortcut,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

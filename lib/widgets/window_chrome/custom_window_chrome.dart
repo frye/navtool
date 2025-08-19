@@ -23,8 +23,9 @@ class CustomWindowChrome extends StatelessWidget {
       return child;
     }
 
-    return Material(
-      child: Column(
+    return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      body: Column(
         children: [
           // Custom title bar with integrated menu
           _CustomTitleBar(),
@@ -43,46 +44,48 @@ class _CustomTitleBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: titleBarHeight,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: Theme.of(context).dividerColor,
-            width: 1.0,
-          ),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          _buildAppIcon(),
-          const SizedBox(width: 4), // Reduced spacing
-          _buildAppTitle(context),
-          const SizedBox(width: 8), // Reduced spacing
-          Expanded(
-            child: Row(
-              children: [
-                IntegratedMenuBar(),
-                Expanded(
-                  child: GestureDetector(
-                    onPanStart: (details) => windowManager.startDragging(),
-                    onDoubleTap: () async {
-                      if (await windowManager.isMaximized()) {
-                        windowManager.unmaximize();
-                      } else {
-                        windowManager.maximize();
-                      }
-                    },
-                    child: Container(), // Draggable area
-                  ),
-                ),
-              ],
+    return GestureDetector(
+      onPanStart: (details) {
+        print('Starting drag from title bar background');
+        windowManager.startDragging();
+      },
+      onDoubleTap: () async {
+        if (await windowManager.isMaximized()) {
+          windowManager.unmaximize();
+        } else {
+          windowManager.maximize();
+        }
+      },
+      child: Container(
+        height: titleBarHeight,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          border: Border(
+            bottom: BorderSide(
+              color: Theme.of(context).dividerColor,
+              width: 1.0,
             ),
           ),
-          _buildWindowControls(context),
-        ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // App icon and title (draggable)
+            Row(
+              children: [
+                _buildAppIcon(),
+                const SizedBox(width: 4),
+                _buildAppTitle(context),
+                const SizedBox(width: 8),
+              ],
+            ),
+            // Menu bar - will have its own gesture detection
+            IntegratedMenuBar(),
+            // Expanded draggable area
+            Expanded(child: Container()),
+            _buildWindowControls(context),
+          ],
+        ),
       ),
     );
   }
@@ -170,24 +173,21 @@ class _WindowControlButtonState extends State<_WindowControlButton> {
         ? Colors.white 
         : Theme.of(context).colorScheme.onSurface;
 
-    return Tooltip(
-      message: widget.tooltip,
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _isHovered = true),
-        onExit: (_) => setState(() => _isHovered = false),
-        child: GestureDetector(
-          onTap: widget.onPressed,
-          child: Container(
-            width: 46,
-            height: 32, // Match the title bar height
-            decoration: BoxDecoration(
-              color: backgroundColor,
-            ),
-            child: Icon(
-              widget.icon,
-              size: 14, // Reduced from 16
-              color: iconColor,
-            ),
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onPressed,
+        child: Container(
+          width: 46,
+          height: 32, // Match the title bar height
+          decoration: BoxDecoration(
+            color: backgroundColor,
+          ),
+          child: Icon(
+            widget.icon,
+            size: 14, // Reduced from 16
+            color: iconColor,
           ),
         ),
       ),
