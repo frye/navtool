@@ -132,6 +132,17 @@ class DatabaseStorageService implements StorageService {
       )
     ''');
 
+    // State-Chart mapping table for spatial intersection results
+    await db.execute('''
+      CREATE TABLE state_chart_mapping (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        state_name TEXT NOT NULL,
+        cell_name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(state_name, cell_name)
+      )
+    ''');
+
     // Chart metadata view (alias for compatibility)
     await db.execute('''
       CREATE VIEW IF NOT EXISTS chart_metadata AS 
@@ -146,6 +157,7 @@ class DatabaseStorageService implements StorageService {
     await db.execute('CREATE INDEX idx_waypoints_route_id ON waypoints (route_id)');
     await db.execute('CREATE INDEX idx_waypoints_location ON waypoints (latitude, longitude)');
     await db.execute('CREATE INDEX idx_download_queue_status ON download_queue (status)');
+    await db.execute('CREATE INDEX idx_state_chart_mapping_state ON state_chart_mapping (state_name)');
   }
 
   /// Get database version
@@ -863,6 +875,71 @@ class DatabaseStorageService implements StorageService {
           ? DateTime.fromMillisecondsSinceEpoch(map['updated_at'] as int)
           : null,
     );
+  }
+
+  // State-Chart Mapping Operations
+  
+  /// Store state-to-chart cell mapping
+  @override
+  Future<void> storeStateCellMapping(String stateName, List<String> chartCells) async {
+    final db = _database!;
+    
+    try {
+      await db.transaction((txn) async {
+        // Clear existing mappings for this state
+        await txn.delete('state_chart_mapping', where: 'state_name = ?', whereArgs: [stateName]);
+        
+        // Insert new mappings
+        for (final cellName in chartCells) {
+          await txn.insert('state_chart_mapping', {
+            'state_name': stateName,
+            'cell_name': cellName,
+            'created_at': DateTime.now().toIso8601String(),
+          });
+        }
+      });
+      
+      _logger.info('Stored state-chart mapping for $stateName: ${chartCells.length} charts');
+    } catch (e) {
+      _logger.error('Failed to store state-chart mapping for $stateName: $e');
+      rethrow;
+    }
+  }
+
+  /// Get cached state-to-chart cell mapping
+  @override
+  Future<List<String>?> getStateCellMapping(String stateName) async {
+    final db = _database!;
+    
+    try {
+      final result = await db.query(
+        'state_chart_mapping',
+        columns: ['cell_name'],
+        where: 'state_name = ?',
+        whereArgs: [stateName],
+      );
+      
+      if (result.isEmpty) return null;
+      
+      return result.map((row) => row['cell_name'] as String).toList();
+    } catch (e) {
+      _logger.error('Failed to get state-chart mapping for $stateName: $e');
+      return null;
+    }
+  }
+
+  /// Clear all state-chart mappings
+  @override
+  Future<void> clearAllStateCellMappings() async {
+    final db = _database!;
+    
+    try {
+      await db.delete('state_chart_mapping');
+      _logger.info('Cleared all state-chart mappings');
+    } catch (e) {
+      _logger.error('Failed to clear state-chart mappings: $e');
+      rethrow;
+    }
   }
 
   /// Close the database connection

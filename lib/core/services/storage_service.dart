@@ -2,6 +2,7 @@ import 'dart:io';
 import '../models/chart.dart';
 import '../models/route.dart';
 import '../models/waypoint.dart';
+import '../models/geographic_bounds.dart';
 
 /// Service interface for storage operations
 abstract class StorageService {
@@ -54,4 +55,18 @@ abstract class StorageService {
 
   /// Gets all stored waypoints
   Future<List<Waypoint>> getAllWaypoints();
+
+  // State-Chart Mapping Operations
+  
+  /// Store state-to-chart cell mapping
+  Future<void> storeStateCellMapping(String stateName, List<String> chartCells);
+
+  /// Get cached state-to-chart cell mapping
+  Future<List<String>?> getStateCellMapping(String stateName);
+
+  /// Clear all state-chart mappings
+  Future<void> clearAllStateCellMappings();
+
+  /// Get charts within geographic bounds (used for spatial intersection)
+  Future<List<Chart>> getChartsInBounds(GeographicBounds bounds);
 }

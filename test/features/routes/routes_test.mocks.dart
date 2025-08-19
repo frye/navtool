@@ -7,9 +7,10 @@ import 'dart:async' as _i5;
 import 'dart:io' as _i3;
 
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:navtool/core/error/app_error.dart' as _i11;
-import 'package:navtool/core/logging/app_logger.dart' as _i10;
+import 'package:navtool/core/error/app_error.dart' as _i12;
+import 'package:navtool/core/logging/app_logger.dart' as _i11;
 import 'package:navtool/core/models/chart.dart' as _i9;
+import 'package:navtool/core/models/geographic_bounds.dart' as _i10;
 import 'package:navtool/core/models/gps_position.dart' as _i7;
 import 'package:navtool/core/models/route.dart' as _i2;
 import 'package:navtool/core/models/waypoint.dart' as _i6;
@@ -276,12 +277,51 @@ class MockStorageService extends _i1.Mock implements _i8.StorageService {
             returnValue: _i5.Future<List<_i6.Waypoint>>.value(<_i6.Waypoint>[]),
           )
           as _i5.Future<List<_i6.Waypoint>>);
+
+  @override
+  _i5.Future<void> storeStateCellMapping(
+    String? stateName,
+    List<String>? chartCells,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#storeStateCellMapping, [stateName, chartCells]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<List<String>?> getStateCellMapping(String? stateName) =>
+      (super.noSuchMethod(
+            Invocation.method(#getStateCellMapping, [stateName]),
+            returnValue: _i5.Future<List<String>?>.value(),
+          )
+          as _i5.Future<List<String>?>);
+
+  @override
+  _i5.Future<void> clearAllStateCellMappings() =>
+      (super.noSuchMethod(
+            Invocation.method(#clearAllStateCellMappings, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<List<_i9.Chart>> getChartsInBounds(
+    _i10.GeographicBounds? bounds,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getChartsInBounds, [bounds]),
+            returnValue: _i5.Future<List<_i9.Chart>>.value(<_i9.Chart>[]),
+          )
+          as _i5.Future<List<_i9.Chart>>);
 }
 
 /// A class which mocks [AppLogger].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockAppLogger extends _i1.Mock implements _i10.AppLogger {
+class MockAppLogger extends _i1.Mock implements _i11.AppLogger {
   MockAppLogger() {
     _i1.throwOnMissingStub(this);
   }
@@ -331,7 +371,7 @@ class MockAppLogger extends _i1.Mock implements _i10.AppLogger {
       );
 
   @override
-  void logError(_i11.AppError? error) => super.noSuchMethod(
+  void logError(_i12.AppError? error) => super.noSuchMethod(
     Invocation.method(#logError, [error]),
     returnValueForMissingStub: null,
   );

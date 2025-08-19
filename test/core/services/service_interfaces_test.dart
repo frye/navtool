@@ -444,6 +444,18 @@ class MockStorageService implements StorageService {
   Future<void> cleanupOldData() async {}
 
   @override
+  Future<void> storeStateCellMapping(String stateName, List<String> chartCells) async {}
+
+  @override
+  Future<List<String>?> getStateCellMapping(String stateName) async => null;
+
+  @override
+  Future<void> clearAllStateCellMappings() async {}
+
+  @override
+  Future<List<Chart>> getChartsInBounds(GeographicBounds bounds) async => [];
+
+  @override
   Future<int> getStorageUsage() async => 0;
 
   @override

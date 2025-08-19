@@ -7,19 +7,20 @@ import 'dart:async' as _i8;
 import 'dart:io' as _i4;
 
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:navtool/core/error/app_error.dart' as _i18;
-import 'package:navtool/core/logging/app_logger.dart' as _i17;
+import 'package:navtool/core/error/app_error.dart' as _i19;
+import 'package:navtool/core/logging/app_logger.dart' as _i18;
 import 'package:navtool/core/models/chart.dart' as _i11;
+import 'package:navtool/core/models/geographic_bounds.dart' as _i13;
 import 'package:navtool/core/models/gps_position.dart' as _i9;
 import 'package:navtool/core/models/gps_signal_quality.dart' as _i2;
 import 'package:navtool/core/models/position_history.dart' as _i3;
 import 'package:navtool/core/models/route.dart' as _i5;
 import 'package:navtool/core/models/waypoint.dart' as _i12;
-import 'package:navtool/core/services/chart_service.dart' as _i15;
-import 'package:navtool/core/services/download_service.dart' as _i13;
+import 'package:navtool/core/services/chart_service.dart' as _i16;
+import 'package:navtool/core/services/download_service.dart' as _i14;
 import 'package:navtool/core/services/gps_service.dart' as _i7;
-import 'package:navtool/core/services/navigation_service.dart' as _i14;
-import 'package:navtool/core/services/settings_service.dart' as _i16;
+import 'package:navtool/core/services/navigation_service.dart' as _i15;
+import 'package:navtool/core/services/settings_service.dart' as _i17;
 import 'package:navtool/core/services/storage_service.dart' as _i10;
 import 'package:navtool/core/state/settings_state.dart' as _i6;
 
@@ -434,12 +435,51 @@ class MockStorageService extends _i1.Mock implements _i10.StorageService {
             ),
           )
           as _i8.Future<List<_i12.Waypoint>>);
+
+  @override
+  _i8.Future<void> storeStateCellMapping(
+    String? stateName,
+    List<String>? chartCells,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#storeStateCellMapping, [stateName, chartCells]),
+            returnValue: _i8.Future<void>.value(),
+            returnValueForMissingStub: _i8.Future<void>.value(),
+          )
+          as _i8.Future<void>);
+
+  @override
+  _i8.Future<List<String>?> getStateCellMapping(String? stateName) =>
+      (super.noSuchMethod(
+            Invocation.method(#getStateCellMapping, [stateName]),
+            returnValue: _i8.Future<List<String>?>.value(),
+          )
+          as _i8.Future<List<String>?>);
+
+  @override
+  _i8.Future<void> clearAllStateCellMappings() =>
+      (super.noSuchMethod(
+            Invocation.method(#clearAllStateCellMappings, []),
+            returnValue: _i8.Future<void>.value(),
+            returnValueForMissingStub: _i8.Future<void>.value(),
+          )
+          as _i8.Future<void>);
+
+  @override
+  _i8.Future<List<_i11.Chart>> getChartsInBounds(
+    _i13.GeographicBounds? bounds,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getChartsInBounds, [bounds]),
+            returnValue: _i8.Future<List<_i11.Chart>>.value(<_i11.Chart>[]),
+          )
+          as _i8.Future<List<_i11.Chart>>);
 }
 
 /// A class which mocks [DownloadService].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockDownloadService extends _i1.Mock implements _i13.DownloadService {
+class MockDownloadService extends _i1.Mock implements _i14.DownloadService {
   MockDownloadService() {
     _i1.throwOnMissingStub(this);
   }
@@ -500,7 +540,7 @@ class MockDownloadService extends _i1.Mock implements _i13.DownloadService {
 /// A class which mocks [NavigationService].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockNavigationService extends _i1.Mock implements _i14.NavigationService {
+class MockNavigationService extends _i1.Mock implements _i15.NavigationService {
   MockNavigationService() {
     _i1.throwOnMissingStub(this);
   }
@@ -583,7 +623,7 @@ class MockNavigationService extends _i1.Mock implements _i14.NavigationService {
 /// A class which mocks [ChartService].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockChartService extends _i1.Mock implements _i15.ChartService {
+class MockChartService extends _i1.Mock implements _i16.ChartService {
   MockChartService() {
     _i1.throwOnMissingStub(this);
   }
@@ -634,7 +674,7 @@ class MockChartService extends _i1.Mock implements _i15.ChartService {
 /// A class which mocks [SettingsService].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockSettingsService extends _i1.Mock implements _i16.SettingsService {
+class MockSettingsService extends _i1.Mock implements _i17.SettingsService {
   MockSettingsService() {
     _i1.throwOnMissingStub(this);
   }
@@ -776,7 +816,7 @@ class MockSettingsService extends _i1.Mock implements _i16.SettingsService {
 /// A class which mocks [AppLogger].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockAppLogger extends _i1.Mock implements _i17.AppLogger {
+class MockAppLogger extends _i1.Mock implements _i18.AppLogger {
   MockAppLogger() {
     _i1.throwOnMissingStub(this);
   }
@@ -826,7 +866,7 @@ class MockAppLogger extends _i1.Mock implements _i17.AppLogger {
       );
 
   @override
-  void logError(_i18.AppError? error) => super.noSuchMethod(
+  void logError(_i19.AppError? error) => super.noSuchMethod(
     Invocation.method(#logError, [error]),
     returnValueForMissingStub: null,
   );

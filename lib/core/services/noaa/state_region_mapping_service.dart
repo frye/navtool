@@ -3,8 +3,21 @@ import 'dart:typed_data';
 import '../../../core/logging/app_logger.dart';
 import '../../../core/error/app_error.dart';
 import '../../../core/models/geographic_bounds.dart';
+import '../../../core/models/chart_models.dart';
+import '../../../core/models/chart.dart';
 import '../../../core/services/cache_service.dart';
 import '../../../core/services/http_client_service.dart';
+import '../../../core/services/storage_service.dart';
+import '../../../core/utils/spatial_operations.dart';
+
+/// Custom exception for unsupported states
+class StateNotSupportedException implements Exception {
+  final String message;
+  StateNotSupportedException(this.message);
+  
+  @override
+  String toString() => 'StateNotSupportedException: $message';
+}
 
 /// Abstract interface for state-to-region mapping service
 abstract class StateRegionMappingService {
@@ -29,14 +42,18 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
   final AppLogger _logger;
   final CacheService _cacheService;
   final HttpClientService _httpClient;
+  final StorageService _storageService;
+  final Map<String, List<LatLng>> _stateBoundariesCache = {};
 
   StateRegionMappingServiceImpl({
     required AppLogger logger,
     required CacheService cacheService,
     required HttpClientService httpClient,
+    required StorageService storageService,
   }) : _logger = logger,
        _cacheService = cacheService,
-       _httpClient = httpClient;
+       _httpClient = httpClient,
+       _storageService = storageService;
 
   /// Predefined state to geographic bounds mapping
   static final Map<String, GeographicBounds> _stateRegions = {
@@ -61,31 +78,106 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
     try {
       _logger.debug('Getting chart cells for state: $stateName');
       
-      // Check cache first
+      // Check database cache first
+      final cachedMapping = await _storageService.getStateCellMapping(stateName);
+      if (cachedMapping != null) {
+        _logger.debug('Found cached mapping for $stateName: ${cachedMapping.length} charts');
+        return cachedMapping;
+      }
+      
+      // Check memory cache
       final cacheKey = 'state_cells_$stateName';
-      final cached = await _cacheService.get(cacheKey);
-      if (cached != null) {
-        // Deserialize cached data
-        final decodedData = jsonDecode(String.fromCharCodes(cached));
-        if (decodedData is List) {
-          return List<String>.from(decodedData);
+      try {
+        final cached = await _cacheService.get(cacheKey);
+        if (cached != null) {
+          final decodedData = jsonDecode(String.fromCharCodes(cached));
+          if (decodedData is List) {
+            final result = List<String>.from(decodedData);
+            // Store in database for persistence
+            await _storageService.storeStateCellMapping(stateName, result);
+            return result;
+          }
         }
+      } catch (e) {
+        _logger.warning('Cache error, proceeding with computation: $e');
+        // Continue with computation if cache fails
       }
 
-      // If not in cache, fetch from predefined mapping or API
-      final cells = await _fetchStateCells(stateName);
+      // Compute mapping using spatial intersection
+      final chartCells = await _computeChartCellsForState(stateName);
       
-      // Cache the result
-      final encodedData = jsonEncode(cells);
+      // Cache the result in memory and database
+      final encodedData = jsonEncode(chartCells);
       final encodedBytes = Uint8List.fromList(utf8.encode(encodedData));
-      await _cacheService.store(cacheKey, encodedBytes, maxAge: Duration(hours: 24));
+      try {
+        await _cacheService.store(cacheKey, encodedBytes, maxAge: Duration(hours: 24));
+      } catch (e) {
+        _logger.warning('Failed to store in cache, continuing: $e');
+        // Continue even if cache storage fails
+      }
+      await _storageService.storeStateCellMapping(stateName, chartCells);
       
-      return cells;
+      return chartCells;
     } catch (e) {
       _logger.error('Failed to get chart cells for state: $stateName', exception: e);
       if (e is AppError) rethrow;
       throw AppError.network('Failed to fetch chart cells for state', originalError: e);
     }
+  }
+
+  /// Compute chart cells for a state using spatial intersection
+  Future<List<String>> _computeChartCellsForState(String stateName) async {
+    // Load state boundary polygon
+    final stateBoundary = await _loadStateBoundary(stateName);
+    if (stateBoundary == null) {
+      throw StateNotSupportedException('State $stateName not supported or not found');
+    }
+    
+    // Get state bounds for efficient chart lookup
+    final stateBounds = _stateRegions[stateName];
+    if (stateBounds == null) {
+      throw StateNotSupportedException('State $stateName not supported');
+    }
+    
+    // Get all charts that might intersect with state (using bounding box)
+    final candidateCharts = await _storageService.getChartsInBounds(stateBounds);
+    
+    final intersectingCells = <String>[];
+    for (final chart in candidateCharts) {
+      if (chart.source == ChartSource.noaa && chart.bounds != null) {
+        final chartPolygon = SpatialOperations.boundsToPolygon(chart.bounds!);
+        
+        if (SpatialOperations.doPolygonsIntersect(stateBoundary, chartPolygon)) {
+          final coverage = SpatialOperations.calculateCoveragePercentage(stateBoundary, chartPolygon);
+          
+          // Include charts with meaningful coverage (>1%)
+          if (coverage > 0.01) {
+            intersectingCells.add(chart.id);
+          }
+        }
+      }
+    }
+    
+    _logger.info('Found ${intersectingCells.length} charts for state: $stateName using spatial intersection');
+    return intersectingCells;
+  }
+
+  /// Load state boundary polygon from cache or generate from bounds
+  Future<List<LatLng>?> _loadStateBoundary(String stateName) async {
+    // Check memory cache first
+    if (_stateBoundariesCache.containsKey(stateName)) {
+      return _stateBoundariesCache[stateName];
+    }
+    
+    // Get from predefined state bounds and convert to polygon
+    final bounds = _stateRegions[stateName];
+    if (bounds != null) {
+      final polygon = SpatialOperations.boundsToPolygon(bounds);
+      _stateBoundariesCache[stateName] = polygon;
+      return polygon;
+    }
+    
+    return null;
   }
 
   @override
@@ -168,6 +260,9 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
     try {
       _logger.debug('Updating state cell mapping for: $stateName');
       
+      // Store in database
+      await _storageService.storeStateCellMapping(stateName, mapping);
+      
       // Cache the updated mapping
       final cacheKey = 'state_cells_$stateName';
       final encodedData = jsonEncode(mapping);
@@ -187,8 +282,14 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
     try {
       _logger.debug('Clearing all state mappings');
       
-      // Clear all state-related cache entries
+      // Clear database mappings
+      await _storageService.clearAllStateCellMappings();
+      
+      // Clear cache entries
       await _cacheService.clear();
+      
+      // Clear memory cache
+      _stateBoundariesCache.clear();
       
       _logger.info('Cleared all state mappings');
     } catch (e) {
@@ -198,18 +299,4 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
     }
   }
 
-  /// Fetches chart cells for a state (simplified implementation)
-  Future<List<String>> _fetchStateCells(String stateName) async {
-    // Simplified: Return mock cells based on state
-    switch (stateName) {
-      case 'California':
-        return ['US4CA52M', 'US4CA51M', 'US5CA52M'];
-      case 'Florida':
-        return ['US4FL48M', 'US4FL49M', 'US5FL48M'];
-      case 'Texas':
-        return ['US4TX32M', 'US4TX33M', 'US5TX32M'];
-      default:
-        return ['US4${stateName.substring(0, 2).toUpperCase()}99M'];
-    }
-  }
 }
