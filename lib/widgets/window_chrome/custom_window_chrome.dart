@@ -8,7 +8,7 @@ import 'status_bar.dart';
 /// Custom window chrome that provides a VS Code-like title bar integration
 /// for Windows and Linux platforms. On macOS, this widget will return the
 /// child directly since macOS uses native menu bars.
-class CustomWindowChrome extends StatelessWidget {
+class CustomWindowChrome extends StatefulWidget {
   final Widget child;
 
   const CustomWindowChrome({
@@ -17,10 +17,15 @@ class CustomWindowChrome extends StatelessWidget {
   });
 
   @override
+  State<CustomWindowChrome> createState() => _CustomWindowChromeState();
+}
+
+class _CustomWindowChromeState extends State<CustomWindowChrome> {
+  @override
   Widget build(BuildContext context) {
     // Only apply custom chrome on Windows and Linux
     if (!Platform.isWindows && !Platform.isLinux) {
-      return child;
+      return widget.child;
     }
 
     return Scaffold(
@@ -28,9 +33,9 @@ class CustomWindowChrome extends StatelessWidget {
       body: Column(
         children: [
           // Custom title bar with integrated menu
-          _CustomTitleBar(),
+          const _CustomTitleBar(),
           // Main content area
-          Expanded(child: child),
+          Expanded(child: widget.child),
           // Status bar at bottom
           const StatusBar(),
         ],
@@ -41,6 +46,8 @@ class CustomWindowChrome extends StatelessWidget {
 
 class _CustomTitleBar extends StatelessWidget {
   static const double titleBarHeight = 32.0; // Reduced from 40.0
+
+  const _CustomTitleBar();
 
   @override
   Widget build(BuildContext context) {
@@ -80,7 +87,7 @@ class _CustomTitleBar extends StatelessWidget {
               ],
             ),
             // Menu bar - will have its own gesture detection
-            IntegratedMenuBar(),
+            const IntegratedMenuBar(),
             // Expanded draggable area
             Expanded(child: Container()),
             _buildWindowControls(context),
