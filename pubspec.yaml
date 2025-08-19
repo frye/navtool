@@ -103,6 +103,7 @@ dev_dependencies:
   # Integration testing support
   integration_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -142,5 +143,20 @@ flutter:
   #       - asset: fonts/TrajanPro_Bold.ttf
   #         weight: 700
   #
-  # For details regarding fonts from package dependencies,
-  # see https://flutter.dev/to/font-from-package
+# For details regarding fonts from package dependencies,
+# see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: false  # Not building for Android
+  ios: false      # Not building for iOS
+  image_path: "assets/icons/app_icon.png"
+  windows:
+    generate: true
+    image_path: "assets/icons/app_icon.png"
+    icon_size: 48  # 48x48 ICO files for Windows
+  macos:
+    generate: true
+    image_path: "assets/icons/app_icon.png"
+  linux:
+    generate: true
+    image_path: "assets/icons/app_icon.png"

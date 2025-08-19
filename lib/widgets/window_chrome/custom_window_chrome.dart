@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:io';
 
@@ -91,14 +90,11 @@ class _CustomTitleBar extends StatelessWidget {
   Widget _buildAppIcon() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 4.0), // Reduced padding
-      child: SvgPicture.asset(
-        'assets/icons/app_icon.svg',
+      child: Image.asset(
+        'assets/icons/app_icon.png',
         width: 20.0, // Reduced from 24.0
         height: 20.0, // Reduced from 24.0
-        colorFilter: ColorFilter.mode(
-          Colors.blue,
-          BlendMode.srcIn,
-        ),
+        fit: BoxFit.contain,
       ),
     );
   }

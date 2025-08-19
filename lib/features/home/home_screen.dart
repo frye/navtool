@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
 import '../../widgets/app_icon.dart';
 import '../../widgets/gps_status_widget.dart';
+import '../../widgets/window_chrome/custom_window_chrome.dart';
 import '../../widgets/macos_native_menu_bar.dart';
 import '../../widgets/macos_status_bar.dart';
 import '../about/about_dialog.dart';

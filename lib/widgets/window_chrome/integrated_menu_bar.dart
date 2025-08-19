@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:window_manager/window_manager.dart';
+import '../../features/about/about_dialog.dart';
 
 /// Integrated menu bar that displays application menus directly in the title bar
 /// following VS Code's pattern. Provides keyboard shortcuts and accessibility.
@@ -8,54 +10,137 @@ class IntegratedMenuBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min, // Prevent overflow
-      children: _menus.map((menu) => _MenuButton(menu: menu)).toList(),
+      children: _getMenus(context).map((menu) => _MenuButton(menu: menu)).toList(),
     );
   }
 
-  static final List<MenuDefinition> _menus = [
+  static List<MenuDefinition> _getMenus(BuildContext context) => [
     MenuDefinition('File', 'F', [
-      MenuAction('New Chart', Icons.add, 'Ctrl+N', () {}),
-      MenuAction('Open', Icons.folder_open, 'Ctrl+O', () {}),
-      MenuAction('Import', Icons.file_upload, '', () {}),
-      MenuAction('Export', Icons.file_download, '', () {}),
+      MenuAction('New Chart', Icons.add, 'Ctrl+N', () {
+        Navigator.pushNamed(context, '/chart');
+      }),
+      MenuAction('Open', Icons.folder_open, 'Ctrl+O', () {
+        Navigator.pushNamed(context, '/chart');
+      }),
+      MenuAction('Import', Icons.file_upload, '', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Import functionality coming soon!')),
+        );
+      }),
+      MenuAction('Export', Icons.file_download, '', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Export functionality coming soon!')),
+        );
+      }),
       MenuAction.separator(),
-      MenuAction('Recent Files', Icons.history, '', () {}),
+      MenuAction('Recent Files', Icons.history, '', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recent files functionality coming soon!')),
+        );
+      }),
       MenuAction.separator(),
       MenuAction('Exit', Icons.exit_to_app, 'Alt+F4', () {
-        // Close the application
-        SystemNavigator.pop();
+        windowManager.close();
       }),
     ]),
     MenuDefinition('Edit', 'E', [
-      MenuAction('Undo', Icons.undo, 'Ctrl+Z', () {}),
-      MenuAction('Redo', Icons.redo, 'Ctrl+Y', () {}),
+      MenuAction('Undo', Icons.undo, 'Ctrl+Z', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Undo functionality coming soon!')),
+        );
+      }),
+      MenuAction('Redo', Icons.redo, 'Ctrl+Y', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Redo functionality coming soon!')),
+        );
+      }),
       MenuAction.separator(),
-      MenuAction('Cut', Icons.cut, 'Ctrl+X', () {}),
-      MenuAction('Copy', Icons.copy, 'Ctrl+C', () {}),
-      MenuAction('Paste', Icons.paste, 'Ctrl+V', () {}),
+      MenuAction('Cut', Icons.cut, 'Ctrl+X', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cut functionality coming soon!')),
+        );
+      }),
+      MenuAction('Copy', Icons.copy, 'Ctrl+C', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Copy functionality coming soon!')),
+        );
+      }),
+      MenuAction('Paste', Icons.paste, 'Ctrl+V', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Paste functionality coming soon!')),
+        );
+      }),
       MenuAction.separator(),
-      MenuAction('Preferences', Icons.settings, 'Ctrl+,', () {}),
+      MenuAction('Preferences', Icons.settings, 'Ctrl+,', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Preferences functionality coming soon!')),
+        );
+      }),
     ]),
     MenuDefinition('View', 'V', [
-      MenuAction('Zoom In', Icons.zoom_in, 'Ctrl++', () {}),
-      MenuAction('Zoom Out', Icons.zoom_out, 'Ctrl+-', () {}),
-      MenuAction('Reset Zoom', Icons.zoom_out_map, 'Ctrl+0', () {}),
+      MenuAction('Zoom In', Icons.zoom_in, 'Ctrl++', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Zoom functionality coming soon!')),
+        );
+      }),
+      MenuAction('Zoom Out', Icons.zoom_out, 'Ctrl+-', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Zoom functionality coming soon!')),
+        );
+      }),
+      MenuAction('Reset Zoom', Icons.zoom_out_map, 'Ctrl+0', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reset zoom functionality coming soon!')),
+        );
+      }),
       MenuAction.separator(),
-      MenuAction('Full Screen', Icons.fullscreen, 'F11', () {}),
-      MenuAction('Toggle Panels', Icons.view_sidebar, '', () {}),
+      MenuAction('Full Screen', Icons.fullscreen, 'F11', () async {
+        if (await windowManager.isFullScreen()) {
+          windowManager.setFullScreen(false);
+        } else {
+          windowManager.setFullScreen(true);
+        }
+      }),
+      MenuAction('Toggle Panels', Icons.view_sidebar, '', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Panel toggle functionality coming soon!')),
+        );
+      }),
     ]),
     MenuDefinition('Tools', 'T', [
-      MenuAction('Chart Library', Icons.map, '', () {}),
-      MenuAction('GPS Settings', Icons.gps_fixed, '', () {}),
-      MenuAction('Navigation Tools', Icons.navigation, '', () {}),
+      MenuAction('Chart Library', Icons.map, '', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Chart library functionality coming soon!')),
+        );
+      }),
+      MenuAction('GPS Settings', Icons.gps_fixed, '', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('GPS settings functionality coming soon!')),
+        );
+      }),
+      MenuAction('Navigation Tools', Icons.navigation, '', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Navigation tools functionality coming soon!')),
+        );
+      }),
     ]),
     MenuDefinition('Help', 'H', [
-      MenuAction('Documentation', Icons.help, 'F1', () {}),
-      MenuAction('About NavTool', Icons.info, '', () {
-        // Show about dialog - implemented inline for now
-        // In a real app, this would show a proper about dialog
+      MenuAction('Documentation', Icons.help, 'F1', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Documentation functionality coming soon!')),
+        );
       }),
-      MenuAction('Check for Updates', Icons.system_update, '', () {}),
+      MenuAction('About NavTool', Icons.info, '', () {
+        showDialog(
+          context: context,
+          builder: (context) => const AboutAppDialog(),
+        );
+      }),
+      MenuAction('Check for Updates', Icons.system_update, '', () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Update check functionality coming soon!')),
+        );
+      }),
     ]),
   ];
 }
