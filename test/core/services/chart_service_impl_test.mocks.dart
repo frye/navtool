@@ -10,6 +10,7 @@ import 'package:mockito/mockito.dart' as _i1;
 import 'package:navtool/core/error/app_error.dart' as _i4;
 import 'package:navtool/core/logging/app_logger.dart' as _i3;
 import 'package:navtool/core/models/chart.dart' as _i7;
+import 'package:navtool/core/models/geographic_bounds.dart' as _i10;
 import 'package:navtool/core/models/route.dart' as _i8;
 import 'package:navtool/core/models/waypoint.dart' as _i9;
 import 'package:navtool/core/services/storage_service.dart' as _i5;
@@ -244,4 +245,43 @@ class MockStorageService extends _i1.Mock implements _i5.StorageService {
             returnValue: _i6.Future<List<_i9.Waypoint>>.value(<_i9.Waypoint>[]),
           )
           as _i6.Future<List<_i9.Waypoint>>);
+
+  @override
+  _i6.Future<void> storeStateCellMapping(
+    String? stateName,
+    List<String>? chartCells,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#storeStateCellMapping, [stateName, chartCells]),
+            returnValue: _i6.Future<void>.value(),
+            returnValueForMissingStub: _i6.Future<void>.value(),
+          )
+          as _i6.Future<void>);
+
+  @override
+  _i6.Future<List<String>?> getStateCellMapping(String? stateName) =>
+      (super.noSuchMethod(
+            Invocation.method(#getStateCellMapping, [stateName]),
+            returnValue: _i6.Future<List<String>?>.value(),
+          )
+          as _i6.Future<List<String>?>);
+
+  @override
+  _i6.Future<void> clearAllStateCellMappings() =>
+      (super.noSuchMethod(
+            Invocation.method(#clearAllStateCellMappings, []),
+            returnValue: _i6.Future<void>.value(),
+            returnValueForMissingStub: _i6.Future<void>.value(),
+          )
+          as _i6.Future<void>);
+
+  @override
+  _i6.Future<List<_i7.Chart>> getChartsInBounds(
+    _i10.GeographicBounds? bounds,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getChartsInBounds, [bounds]),
+            returnValue: _i6.Future<List<_i7.Chart>>.value(<_i7.Chart>[]),
+          )
+          as _i6.Future<List<_i7.Chart>>);
 }
