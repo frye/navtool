@@ -74,8 +74,13 @@ dependencies:
   
   # Compression and archive handling for chart files and backups
   archive: ^3.6.1
+  
+  # macOS-specific UI components and utilities
   macos_ui: ^2.2.0
   macos_window_utils: ^1.8.4
+  
+  # Window management for custom title bar (Windows and Linux only)
+  window_manager: ^0.3.7
 
 dev_dependencies:
   flutter_test:
