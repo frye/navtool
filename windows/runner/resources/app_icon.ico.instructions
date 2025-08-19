@@ -1,0 +1,13 @@
+# Placeholder for Windows app_icon.ico
+# 
+# To create a proper .ico file for Windows:
+# 1. Convert the SVG in assets/icons/app_icon.svg to PNG in multiple sizes:
+#    - 16x16, 32x32, 48x48, 256x256 pixels
+# 2. Use a tool like ImageMagick to combine them into an .ico file:
+#    convert icon16.png icon32.png icon48.png icon256.png app_icon.ico
+# 3. Place the resulting app_icon.ico file in this directory
+# 4. Ensure the Runner.rc file references this icon:
+#    IDI_APP_ICON ICON "resources/app_icon.ico"
+#
+# For development purposes, you can also use online converters
+# to convert the SVG to ICO format.

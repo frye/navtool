@@ -27,7 +27,8 @@ static void my_application_activate(GApplication* application) {
   // in case the window manager does more exotic layout, e.g. tiling.
   // If running on Wayland assume the header bar will work (may need changing
   // if future cases occur).
-  gboolean use_header_bar = TRUE;
+  // For bitsdojo_window custom chrome, we disable the default header bar
+  gboolean use_header_bar = FALSE;  // Disabled for custom window chrome
 #ifdef GDK_WINDOWING_X11
   GdkScreen* screen = gtk_window_get_screen(window);
   if (GDK_IS_X11_SCREEN(screen)) {
@@ -45,10 +46,17 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
     gtk_window_set_title(window, "navtool");
+    // Enable custom decorations for bitsdojo_window
+    gtk_window_set_decorated(window, FALSE);
   }
 
   gtk_window_set_default_size(window, 1280, 720);
   gtk_widget_show(GTK_WIDGET(window));
+
+  // Set window icon for dock/taskbar display
+  // For now, set a simple icon - in production, you would load the actual PNG
+  // The proper implementation would load from data/flutter_assets/assets/icon.png
+  // gtk_window_set_icon_from_file(GTK_WINDOW(window), "path/to/icon.png", NULL);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(project, self->dart_entrypoint_arguments);
