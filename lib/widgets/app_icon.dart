@@ -12,11 +12,29 @@ class AppIcon extends StatelessWidget {
     this.color,
   });
 
+  /// Get the appropriate icon asset path based on the current platform
+  String _getIconAssetPath() {
+    // Use platform-specific icons for better integration
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.macOS:
+        // macOS uses a sailboat icon with rounded rectangle boundary
+        // following Apple's design guidelines
+        return 'assets/icons/app_icon_macos_sailboat.svg';
+      case TargetPlatform.windows:
+      case TargetPlatform.linux:
+      case TargetPlatform.android:
+      case TargetPlatform.iOS:
+      case TargetPlatform.fuchsia:
+      default:
+        // Default sailboat-themed app icon for other platforms
+        return 'assets/icons/app_icon.svg';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Use the sailboat-themed app icon for all platforms
     return SvgPicture.asset(
-      'assets/icons/app_icon.svg',
+      _getIconAssetPath(),
       width: size ?? 24.0,
       height: size ?? 24.0,
       colorFilter: color != null
