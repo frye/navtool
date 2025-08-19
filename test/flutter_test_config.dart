@@ -1,11 +1,19 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Global test configuration for Flutter tests
 /// This file is automatically loaded by the test runner
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   TestWidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize SQLite FFI for desktop platforms (including Raspberry Pi)
+  if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
   
   // Setup method channel mocks for plugins that require platform implementation
   setupMethodChannelMocks();

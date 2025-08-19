@@ -385,13 +385,13 @@ class NetworkResilience {
     bool requireOnline = true,
   }) async {
     final completer = Completer<void>();
-    late StreamSubscription subscription;
+    StreamSubscription? subscription;
     Timer? timer;
 
     if (timeout != null) {
       timer = Timer(timeout, () {
         if (!completer.isCompleted) {
-          subscription.cancel();
+          subscription?.cancel();
           if (requireOnline) {
             completer.completeError(TimeoutException('Connection timeout', timeout));
           } else {
@@ -414,7 +414,7 @@ class NetworkResilience {
       if (status == NetworkStatus.connected || 
           status == NetworkStatus.limited) {
         timer?.cancel();
-        subscription.cancel();
+        subscription?.cancel();
         if (!completer.isCompleted) {
           completer.complete();
         }
@@ -466,15 +466,15 @@ class NetworkResilience {
       final totalBytes = bytes.length;
       final totalSeconds = stopwatch.elapsedMilliseconds / 1000.0;
       
-      // Prevent division by zero and ensure valid calculation
+      // Validate measurements to prevent NaN and division by zero
       if (totalSeconds <= 0 || totalBytes <= 0) {
-        return 1.0; // Default reasonable speed
+        return 1.0; // Default reasonable speed for invalid measurements
       }
       
       final bytesPerSecond = totalBytes / totalSeconds;
       final mbps = (bytesPerSecond * 8) / (1024 * 1024); // Convert to Mbps
       
-      // Ensure result is valid and within reasonable bounds
+      // Ensure we return a valid number with reasonable bounds
       if (mbps.isNaN || mbps.isInfinite || mbps <= 0) {
         return 1.0; // Default reasonable speed
       }

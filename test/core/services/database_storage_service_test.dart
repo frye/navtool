@@ -20,9 +20,7 @@ void main() {
     late Database database;
 
     setUpAll(() {
-      // Initialize FFI for testing
-      sqfliteFfiInit();
-      databaseFactory = databaseFactoryFfi;
+      // SQLite FFI is now initialized globally in flutter_test_config.dart
     });
 
     setUp(() async {
