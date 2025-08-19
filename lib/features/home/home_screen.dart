@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/app_icon.dart';
 import '../../widgets/gps_status_widget.dart';
+import '../../widgets/macos_native_menu_bar.dart';
+import '../../widgets/macos_status_bar.dart';
 import '../about/about_dialog.dart';
 import '../about/about_screen.dart';
 
@@ -28,11 +30,98 @@ class HomeScreen extends ConsumerWidget {
   }
 
   Widget _buildDesktopLayout(BuildContext context) {
+    // Use native macOS menu bar on macOS, custom menu bar on other platforms
+    if (defaultTargetPlatform == TargetPlatform.macOS) {
+      return _buildMacOSLayout(context);
+    } else {
+      return _buildStandardDesktopLayout(context);
+    }
+  }
+
+  Widget _buildMacOSLayout(BuildContext context) {
+    return MacosNativeMenuBar(
+      onNewChart: () => Navigator.pushNamed(context, '/chart'),
+      onOpenChart: () => Navigator.pushNamed(context, '/chart'),
+      onAboutSelected: () => showDialog(
+        context: context,
+        builder: (context) => const AboutAppDialog(),
+      ),
+      child: Scaffold(
+        body: Column(
+          children: [
+            // Main content area
+            Expanded(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(32.0),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 20),
+                      const AppIcon(size: 96),
+                      const SizedBox(height: 24),
+                      Text(
+                        'Welcome to NavTool',
+                        style: Theme.of(context).textTheme.headlineMedium,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Marine Navigation and Routing Application',
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurface.withAlpha(180),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 32),
+                      Column(
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.pushNamed(context, '/chart');
+                              },
+                              icon: const Icon(Icons.add),
+                              label: const Text('New Chart'),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.pushNamed(context, '/chart');
+                              },
+                              icon: const Icon(Icons.folder_open),
+                              label: const Text('Open Chart'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 32),
+                      const GpsStatusWidget(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // macOS status bar at bottom
+            const MacosStatusBar(
+              statusText: 'Ready - Marine Navigation System',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStandardDesktopLayout(BuildContext context) {
     return Scaffold(
       body: Column(
         children: [
           // Custom menu bar similar to VS Code
           Container(
+            key: const Key('custom_menu_bar'),
             height: 30,
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,

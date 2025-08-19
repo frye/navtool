@@ -74,6 +74,8 @@ dependencies:
   
   # Compression and archive handling for chart files and backups
   archive: ^3.6.1
+  macos_ui: ^2.2.0
+  macos_window_utils: ^1.8.4
 
 dev_dependencies:
   flutter_test:
