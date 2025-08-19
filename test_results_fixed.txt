@@ -1,0 +1,46 @@
+Resolving dependencies...
+Downloading packages...
+  _fe_analyzer_shared 85.0.0 (88.0.0 available)
+  analyzer 7.7.1 (8.1.1 available)
+  archive 3.6.1 (4.0.7 available)
+  build 3.0.0 (3.0.2 available)
+  build_config 1.1.2 (1.2.0 available)
+  build_resolvers 3.0.0 (3.0.2 available)
+  build_runner 2.6.0 (2.7.0 available)
+  build_runner_core 9.2.0 (9.3.0 available)
+  characters 1.4.0 (1.4.1 available)
+  dart_style 3.1.1 (3.1.2 available)
+  flutter_lints 5.0.0 (6.0.0 available)
+  geolocator_android 4.6.2 (5.0.2 available)
+  lints 5.1.1 (6.0.0 available)
+  material_color_utilities 0.11.1 (0.13.0 available)
+  meta 1.16.0 (1.17.0 available)
+  path_provider_foundation 2.4.1 (2.4.2 available)
+  petitparser 6.1.0 (7.0.1 available)
+  sqflite_android 2.4.1 (2.4.2+2 available)
+  test_api 0.7.6 (0.7.7 available)
+  vector_graphics_compiler 1.1.17 (1.1.18 available)
+  vm_service 15.0.0 (15.0.2 available)
+  workmanager 0.5.2 (0.9.0+2 available)
+  xml 6.5.0 (6.6.1 available)
+Got dependencies!
+23 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+00:00 +0: loading /home/borealis/Repos/navtool/test/state_management_test.dart                                                                                                                         00:01 +0: loading /home/borealis/Repos/navtool/test/state_management_test.dart                                                                                                                         00:02 +0: loading /home/borealis/Repos/navtool/test/state_management_test.dart                                                                                                                         00:03 +0: loading /home/borealis/Repos/navtool/test/state_management_test.dart                                                                                                                         00:04 +0: loading /home/borealis/Repos/navtool/test/state_management_test.dart                                                                                                                         00:04 +0: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests App state provider initializes with default state                                                       00:04 +0: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests App state provider initializes with default state                                                       
+[22:42:47] [INFO] Initializing application state
+[22:42:47] [INFO] Application state initialized successfully
+00:04 +1: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests App state provider initializes with default state                                                       00:04 +1: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests App settings provider initializes with default settings                                                 00:04 +2: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests App settings provider initializes with default settings                                                 00:04 +2: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests Download queue provider initializes empty                                                               00:04 +3: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests Download queue provider initializes empty                                                               00:04 +3: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests Computed providers work correctly                                                                       00:04 +4: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests Computed providers work correctly                                                                       00:04 +4: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests Settings derived providers work correctly                                                               00:04 +5: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests Settings derived providers work correctly                                                               00:04 +5: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests App state notifier can update GPS position                                                              00:04 +5: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests App state notifier can update GPS position                                                              
+[22:42:47] [DEBUG] Updated current position: 37°46.494'N 122°25.164'W
+00:04 +6: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests App state notifier can update GPS position                                                              00:04 +6: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests Settings notifier can update theme mode                                                                 00:04 +6: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests Settings notifier can update theme mode                                                                 
+[22:42:47] [INFO] Settings initialized from storage
+[22:42:47] [DEBUG] Saved settings to storage
+[22:42:47] [INFO] Theme mode changed: Dark
+00:04 +7: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests Settings notifier can update theme mode                                                                 00:04 +7: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests Settings notifier can update max concurrent downloads                                                   00:04 +7: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests Settings notifier can update max concurrent downloads                                                   
+[22:42:47] [DEBUG] Loaded settings from storage
+[22:42:47] [INFO] Settings initialized from storage
+[22:42:47] [DEBUG] Saved settings to storage
+[22:42:47] [INFO] Max concurrent downloads changed: 5
+00:04 +8: /home/borealis/Repos/navtool/test/state_management_test.dart: State Management Tests Settings notifier can update max concurrent downloads                                                   00:04 +8: loading /home/borealis/Repos/navtool/test/simple_state_test.dart                                                                                                                             00:04 +8: /home/borealis/Repos/navtool/test/simple_state_test.dart: Simple State Tests provider container can be created                                                                               00:04 +9: /home/borealis/Repos/navtool/test/simple_state_test.dart: Simple State Tests provider container can be created                                                                               00:04 +9: /home/borealis/Repos/navtool/test/simple_state_test.dart: Simple State Tests app state provider can be read                                                                                  00:04 +9: /home/borealis/Repos/navtool/test/simple_state_test.dart: Simple State Tests app state provider can be read                                                                                  
+[22:42:47] [INFO] Initializing application state
+[22:42:47] [INFO] Application state initialized successfully
+00:04 +10: /home/borealis/Repos/navtool/test/simple_state_test.dart: Simple State Tests app state provider can be read                                                                                 00:05 +10: /home/borealis/Repos/navtool/test/simple_state_test.dart: Simple State Tests app state provider can be read                                                                                 
