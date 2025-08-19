@@ -5,7 +5,7 @@ import 'package:navtool/core/services/noaa/noaa_metadata_parser.dart';
 import 'package:navtool/core/models/chart.dart';
 import 'package:navtool/core/models/geographic_bounds.dart';
 import 'package:navtool/core/logging/app_logger.dart';
-import 'package:navtool/core/error/app_error.dart';
+import 'package:navtool/core/error/metadata_parsing_exceptions.dart';
 import 'dart:convert';
 
 // Generate mocks for dependencies
@@ -204,7 +204,7 @@ void main() {
         expect(result[0].type, equals(ChartType.overview));
       });
 
-      test('should throw AppError for invalid GeoJSON structure', () async {
+      test('should throw MetadataParsingException for invalid GeoJSON structure', () async {
         // Arrange
         final invalidGeoJson = {
           'type': 'InvalidType',
@@ -214,7 +214,7 @@ void main() {
         // Act & Assert
         expect(
           () async => await parser.parseGeoJsonToCharts(invalidGeoJson),
-          throwsA(isA<AppError>()),
+          throwsA(isA<MetadataParsingException>()),
         );
       });
 
@@ -334,7 +334,7 @@ void main() {
         expect(bounds.west, equals(-123.0));
       });
 
-      test('should throw AppError for unsupported geometry types', () {
+      test('should throw InvalidGeometryException for unsupported geometry types', () {
         // Arrange
         final geometry = {
           'type': 'Point',
@@ -344,11 +344,11 @@ void main() {
         // Act & Assert
         expect(
           () => parser.extractBoundsFromGeometry(geometry),
-          throwsA(isA<AppError>()),
+          throwsA(isA<InvalidGeometryException>()),
         );
       });
 
-      test('should throw AppError for invalid coordinates', () {
+      test('should throw InvalidGeometryException for invalid coordinates', () {
         // Arrange
         final geometry = {
           'type': 'Polygon',
@@ -362,7 +362,7 @@ void main() {
         // Act & Assert
         expect(
           () => parser.extractBoundsFromGeometry(geometry),
-          throwsA(isA<AppError>()),
+          throwsA(isA<InvalidGeometryException>()),
         );
       });
     });

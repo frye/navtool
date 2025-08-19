@@ -1,7 +1,7 @@
 import 'package:navtool/core/models/chart.dart';
 import 'package:navtool/core/models/geographic_bounds.dart';
 import 'package:navtool/core/logging/app_logger.dart';
-import 'package:navtool/core/error/app_error.dart';
+import 'package:navtool/core/error/metadata_parsing_exceptions.dart';
 
 /// Abstract interface for parsing NOAA metadata into Chart objects
 abstract class NoaaMetadataParser {
@@ -27,7 +27,7 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
   @override
   Future<List<Chart>> parseGeoJsonToCharts(Map<String, dynamic> geoJsonData) async {
     if (geoJsonData['type'] != 'FeatureCollection') {
-      throw AppError.parsing('Invalid GeoJSON: Expected FeatureCollection');
+      throw MetadataParsingException('Invalid GeoJSON: Expected FeatureCollection');
     }
 
     final features = geoJsonData['features'] as List<dynamic>? ?? [];
@@ -49,7 +49,46 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
         }
 
         final bounds = extractBoundsFromGeometry(geometry);
-        final lastUpdate = DateTime.parse(properties['LAST_UPDATE'] as String);
+        
+        // Parse date with error handling
+        DateTime lastUpdate;
+        try {
+          lastUpdate = DateTime.parse(properties['LAST_UPDATE'] as String);
+        } catch (e) {
+          throw DateParsingException(
+            properties['LAST_UPDATE'] as String,
+            data: {'chartId': properties['CHART']},
+          );
+        }
+
+        // Parse edition number with fallback
+        int edition = 0;
+        if (properties['EDITION_NUM'] != null) {
+          try {
+            edition = int.parse(properties['EDITION_NUM'].toString());
+          } catch (e) {
+            _logger.warning('Invalid edition number for chart ${properties['CHART']}: ${properties['EDITION_NUM']}');
+          }
+        }
+
+        // Parse update number with fallback
+        int updateNumber = 0;
+        if (properties['UPDATE_NUM'] != null) {
+          try {
+            updateNumber = int.parse(properties['UPDATE_NUM'].toString());
+          } catch (e) {
+            _logger.warning('Invalid update number for chart ${properties['CHART']}: ${properties['UPDATE_NUM']}');
+          }
+        }
+
+        // Parse chart status
+        ChartStatus status = ChartStatus.current;
+        if (properties['STATUS'] != null) {
+          status = _parseChartStatus(properties['STATUS'] as String);
+        }
+
+        // Build metadata map
+        final metadata = _buildMetadataMap(properties);
 
         final chart = Chart(
           id: properties['CHART'] as String,
@@ -59,6 +98,11 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
           lastUpdate: lastUpdate,
           state: properties['STATE'] as String,
           type: parseChartUsageToType(properties['USAGE'] as String),
+          edition: edition,
+          updateNumber: updateNumber,
+          source: ChartSource.noaa,
+          status: status,
+          metadata: metadata,
         );
 
         charts.add(chart);
@@ -128,7 +172,10 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
           }
         }
       } else {
-        throw AppError.parsing('Unsupported geometry type: $type');
+        throw InvalidGeometryException(
+          'Unsupported geometry type: $type',
+          data: {'geometryType': type}
+        );
       }
 
       return GeographicBounds(
@@ -138,7 +185,13 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
         west: minLng,
       );
     } catch (error) {
-      throw AppError.parsing('Failed to extract bounds from geometry', originalError: error);
+      if (error is InvalidGeometryException) {
+        rethrow;
+      }
+      throw InvalidGeometryException(
+        'Failed to extract bounds from geometry: $error',
+        data: {'geometryType': type, 'originalError': error.toString()}
+      );
     }
   }
 
@@ -154,5 +207,58 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
     }
     
     return true;
+  }
+
+  /// Parses NOAA chart status string to ChartStatus enum
+  ChartStatus _parseChartStatus(String status) {
+    switch (status.toLowerCase()) {
+      case 'current':
+        return ChartStatus.current;
+      case 'superseded':
+        return ChartStatus.superseded;
+      case 'cancelled':
+        return ChartStatus.cancelled;
+      case 'preliminary':
+        return ChartStatus.preliminary;
+      default:
+        return ChartStatus.current; // Default fallback
+    }
+  }
+
+  /// Builds metadata map from NOAA properties
+  Map<String, dynamic> _buildMetadataMap(Map<String, dynamic> properties) {
+    final metadata = <String, dynamic>{};
+    
+    // Add all NOAA-specific fields to metadata
+    final metadataFields = [
+      'CELL_NAME',
+      'REGION',
+      'COMPILATION_SCALE',
+      'DT_PUB',
+      'ISSUE_DATE',
+      'SOURCE_DATE_STRING',
+      'EDITION_DATE',
+      'RELEASE_DATE'
+    ];
+    
+    for (final field in metadataFields) {
+      if (properties.containsKey(field) && properties[field] != null) {
+        // Convert field names to camelCase for consistency
+        final camelCaseField = _toCamelCase(field);
+        metadata[camelCaseField] = properties[field];
+      }
+    }
+    
+    return metadata;
+  }
+
+  /// Converts snake_case to camelCase
+  String _toCamelCase(String snakeCase) {
+    final parts = snakeCase.toLowerCase().split('_');
+    if (parts.isEmpty) return snakeCase;
+    
+    return parts[0] + parts.skip(1).map((part) => 
+      part.isEmpty ? '' : part[0].toUpperCase() + part.substring(1)
+    ).join('');
   }
 }

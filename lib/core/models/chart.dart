@@ -1,6 +1,48 @@
 import 'package:flutter/foundation.dart';
 import 'geographic_bounds.dart';
 
+/// Enum for chart data sources
+enum ChartSource {
+  noaa,
+  ukho,
+  ic,
+  other;
+
+  String get displayName {
+    switch (this) {
+      case ChartSource.noaa:
+        return 'NOAA';
+      case ChartSource.ukho:
+        return 'UKHO';
+      case ChartSource.ic:
+        return 'IIC';
+      case ChartSource.other:
+        return 'Other';
+    }
+  }
+}
+
+/// Enum for chart status
+enum ChartStatus {
+  current,
+  superseded,
+  cancelled,
+  preliminary;
+
+  String get displayName {
+    switch (this) {
+      case ChartStatus.current:
+        return 'Current';
+      case ChartStatus.superseded:
+        return 'Superseded';
+      case ChartStatus.cancelled:
+        return 'Cancelled';
+      case ChartStatus.preliminary:
+        return 'Preliminary';
+    }
+  }
+}
+
 /// A range of scale values for nautical charts
 @immutable
 class ScaleRange {
@@ -98,6 +140,13 @@ class Chart {
   final String? description;
   final bool isDownloaded;
   final int? fileSize;
+  
+  // Enhanced NOAA-specific fields
+  final int edition;
+  final int updateNumber;
+  final ChartSource source;
+  final ChartStatus status;
+  final Map<String, dynamic> metadata;
 
   Chart({
     required this.id,
@@ -110,9 +159,20 @@ class Chart {
     this.description,
     this.isDownloaded = false,
     this.fileSize,
+    this.edition = 0,
+    this.updateNumber = 0,
+    this.source = ChartSource.noaa,
+    this.status = ChartStatus.current,
+    this.metadata = const {},
   }) {
     if (scale <= 0) {
       throw ArgumentError('Scale must be positive');
+    }
+    if (edition < 0) {
+      throw ArgumentError('Edition must be non-negative');
+    }
+    if (updateNumber < 0) {
+      throw ArgumentError('Update number must be non-negative');
     }
   }
 
@@ -159,7 +219,12 @@ class Chart {
           type == other.type &&
           description == other.description &&
           isDownloaded == other.isDownloaded &&
-          fileSize == other.fileSize;
+          fileSize == other.fileSize &&
+          edition == other.edition &&
+          updateNumber == other.updateNumber &&
+          source == other.source &&
+          status == other.status &&
+          _mapEquals(metadata, other.metadata);
 
   @override
   int get hashCode =>
@@ -172,11 +237,34 @@ class Chart {
       type.hashCode ^
       description.hashCode ^
       isDownloaded.hashCode ^
-      fileSize.hashCode;
+      fileSize.hashCode ^
+      edition.hashCode ^
+      updateNumber.hashCode ^
+      source.hashCode ^
+      status.hashCode ^
+      _mapHashCode(metadata);
+
+  /// Helper method to compare metadata maps
+  bool _mapEquals(Map<String, dynamic> map1, Map<String, dynamic> map2) {
+    if (map1.length != map2.length) return false;
+    for (final key in map1.keys) {
+      if (!map2.containsKey(key) || map1[key] != map2[key]) return false;
+    }
+    return true;
+  }
+
+  /// Helper method to compute hash code for metadata map
+  int _mapHashCode(Map<String, dynamic> map) {
+    int hash = 0;
+    for (final entry in map.entries) {
+      hash ^= entry.key.hashCode ^ entry.value.hashCode;
+    }
+    return hash;
+  }
 
   @override
   String toString() {
-    return 'Chart(id: $id, title: $title, scale: $scale, state: $state, type: ${type.displayName})';
+    return 'Chart(id: $id, title: $title, scale: $scale, state: $state, type: ${type.displayName}, edition: $edition, source: ${source.displayName})';
   }
 
   /// Creates a copy with optional parameter overrides
@@ -191,6 +279,11 @@ class Chart {
     String? description,
     bool? isDownloaded,
     int? fileSize,
+    int? edition,
+    int? updateNumber,
+    ChartSource? source,
+    ChartStatus? status,
+    Map<String, dynamic>? metadata,
   }) {
     return Chart(
       id: id ?? this.id,
@@ -203,6 +296,11 @@ class Chart {
       description: description ?? this.description,
       isDownloaded: isDownloaded ?? this.isDownloaded,
       fileSize: fileSize ?? this.fileSize,
+      edition: edition ?? this.edition,
+      updateNumber: updateNumber ?? this.updateNumber,
+      source: source ?? this.source,
+      status: status ?? this.status,
+      metadata: metadata ?? this.metadata,
     );
   }
 
@@ -224,6 +322,15 @@ class Chart {
       description: json['description'] as String?,
       isDownloaded: json['isDownloaded'] as bool? ?? false,
       fileSize: json['fileSize'] as int?,
+      edition: json['edition'] as int? ?? 0,
+      updateNumber: json['updateNumber'] as int? ?? 0,
+      source: json['source'] != null 
+        ? ChartSource.values.firstWhere((s) => s.name == json['source'])
+        : ChartSource.noaa,
+      status: json['status'] != null
+        ? ChartStatus.values.firstWhere((s) => s.name == json['status'])
+        : ChartStatus.current,
+      metadata: json['metadata'] as Map<String, dynamic>? ?? {},
     );
   }
 
@@ -245,6 +352,11 @@ class Chart {
       'description': description,
       'isDownloaded': isDownloaded,
       'fileSize': fileSize,
+      'edition': edition,
+      'updateNumber': updateNumber,
+      'source': source.name,
+      'status': status.name,
+      'metadata': metadata,
     };
   }
 }
