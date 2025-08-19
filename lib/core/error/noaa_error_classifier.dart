@@ -176,22 +176,14 @@ class NoaaErrorClassifier {
         final chartCellName = _extractChartCellFromPath(requestPath) ?? 'unknown';
         return ChartNotAvailableException(chartCellName);
 
-        case 429:
-          return RateLimitExceededException();      case 503:
-        return NoaaServiceUnavailableException(message, statusCode);
+      case 429:
+        return RateLimitExceededException();
 
       case 500:
       case 502:
+      case 503:
       case 504:
-        // Server errors are retryable
-        return NoaaApiException(
-          'NOAA server error: $message',
-          errorCode: 'SERVER_ERROR',
-          isRetryable: true,
-          metadata: {'httpStatusCode': statusCode},
-        );
-
-      case 401:
+        return NoaaServiceUnavailableException(message, statusCode);      case 401:
       case 403:
         // Authentication/authorization errors are not retryable
         return NoaaApiException(
