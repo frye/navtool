@@ -13,11 +13,8 @@ import 'package:navtool/core/utils/circuit_breaker.dart';
 import 'package:navtool/core/utils/retryable_operation.dart';
 import 'package:navtool/core/models/retry_policy.dart';
 
-@GenerateMocks([
-  HttpClientService,
-  AppLogger,
-])
-import 'noaa_api_integration_test.mocks.dart';
+// Import mocks from the integration test file
+import '../../integration/noaa_api_integration_test.mocks.dart';
 
 /// Comprehensive tests for NOAA API exception handling and error scenarios
 /// 
@@ -341,13 +338,15 @@ void main() {
         );
 
         // Act & Assert
-        expect(
-          () => RetryableOperation.execute(
+        try {
+          await RetryableOperation.execute(
             persistentlyFailingOperation,
             policy: testPolicy,
-          ),
-          throwsA(isA<NetworkConnectivityException>()),
-        );
+          );
+          fail('Should have thrown NetworkConnectivityException');
+        } catch (e) {
+          expect(e, isA<NetworkConnectivityException>());
+        }
 
         expect(attemptCount, 3); // 1 initial + 2 retries
       });
