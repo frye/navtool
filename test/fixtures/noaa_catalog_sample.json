@@ -1,0 +1,174 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-123.0, 37.0],
+          [-122.0, 37.0],
+          [-122.0, 38.0],
+          [-123.0, 38.0],
+          [-123.0, 37.0]
+        ]]
+      },
+      "properties": {
+        "CELL_NAME": "US5CA52M",
+        "CHART": "US5CA52M",
+        "TITLE": "San Francisco Bay",
+        "SCALE": 25000,
+        "LAST_UPDATE": "2024-01-15T00:00:00Z",
+        "RELEASE_DATE": "2024-01-15T00:00:00Z",
+        "STATE": "California",
+        "USAGE": "Harbor",
+        "REGION": "West Coast",
+        "STATUS": "Current",
+        "EDITION_NUM": "12",
+        "UPDATE_NUM": "3",
+        "COMPILATION_SCALE": "25000",
+        "DT_PUB": "20240115",
+        "ISSUE_DATE": "2024-01-15",
+        "SOURCE_DATE_STRING": "January 2024",
+        "EDITION_DATE": "2024-01-15T00:00:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-119.0, 33.0],
+          [-118.0, 33.0],
+          [-118.0, 34.0],
+          [-119.0, 34.0],
+          [-119.0, 33.0]
+        ]]
+      },
+      "properties": {
+        "CELL_NAME": "US4CA11M",
+        "CHART": "US4CA11M",
+        "TITLE": "Los Angeles Harbor",
+        "SCALE": 50000,
+        "LAST_UPDATE": "2024-01-10T00:00:00Z",
+        "RELEASE_DATE": "2024-01-10T00:00:00Z",
+        "STATE": "California",
+        "USAGE": "Approach",
+        "REGION": "West Coast",
+        "STATUS": "Current",
+        "EDITION_NUM": "8",
+        "UPDATE_NUM": "1",
+        "COMPILATION_SCALE": "50000",
+        "DT_PUB": "20240110",
+        "ISSUE_DATE": "2024-01-10",
+        "SOURCE_DATE_STRING": "January 2024",
+        "EDITION_DATE": "2024-01-10T00:00:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [
+          [[
+            [-74.0, 40.0],
+            [-73.0, 40.0],
+            [-73.0, 41.0],
+            [-74.0, 41.0],
+            [-74.0, 40.0]
+          ]],
+          [[
+            [-73.5, 40.2],
+            [-73.2, 40.2],
+            [-73.2, 40.5],
+            [-73.5, 40.5],
+            [-73.5, 40.2]
+          ]]
+        ]
+      },
+      "properties": {
+        "CELL_NAME": "US5NY1GM",
+        "CHART": "US5NY1GM",
+        "TITLE": "New York Harbor",
+        "SCALE": 40000,
+        "LAST_UPDATE": "2024-02-01T00:00:00Z",
+        "RELEASE_DATE": "2024-02-01T00:00:00Z",
+        "STATE": "New York",
+        "USAGE": "Harbor",
+        "REGION": "East Coast",
+        "STATUS": "Current",
+        "EDITION_NUM": "15",
+        "UPDATE_NUM": "2",
+        "COMPILATION_SCALE": "40000",
+        "DT_PUB": "20240201",
+        "ISSUE_DATE": "2024-02-01",
+        "SOURCE_DATE_STRING": "February 2024",
+        "EDITION_DATE": "2024-02-01T00:00:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-95.0, 29.0],
+          [-94.0, 29.0],
+          [-94.0, 30.0],
+          [-95.0, 30.0],
+          [-95.0, 29.0]
+        ]]
+      },
+      "properties": {
+        "CELL_NAME": "US5TX31M",
+        "CHART": "US5TX31M",
+        "TITLE": "Galveston Bay",
+        "SCALE": 30000,
+        "LAST_UPDATE": "2023-12-15T00:00:00Z",
+        "RELEASE_DATE": "2023-12-15T00:00:00Z",
+        "STATE": "Texas",
+        "USAGE": "Harbor",
+        "REGION": "Gulf Coast",
+        "STATUS": "Superseded",
+        "EDITION_NUM": "9",
+        "UPDATE_NUM": "0",
+        "COMPILATION_SCALE": "30000",
+        "DT_PUB": "20231215",
+        "ISSUE_DATE": "2023-12-15",
+        "SOURCE_DATE_STRING": "December 2023",
+        "EDITION_DATE": "2023-12-15T00:00:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-158.0, 21.0],
+          [-157.0, 21.0],
+          [-157.0, 22.0],
+          [-158.0, 22.0],
+          [-158.0, 21.0]
+        ]]
+      },
+      "properties": {
+        "CELL_NAME": "US5HI01M",
+        "CHART": "US5HI01M",
+        "TITLE": "Honolulu Harbor",
+        "SCALE": 20000,
+        "LAST_UPDATE": "2024-03-01T00:00:00Z",
+        "RELEASE_DATE": "2024-03-01T00:00:00Z",
+        "STATE": "Hawaii",
+        "USAGE": "Harbor",
+        "REGION": "Pacific",
+        "STATUS": "Current",
+        "EDITION_NUM": "5",
+        "UPDATE_NUM": "4",
+        "COMPILATION_SCALE": "20000",
+        "DT_PUB": "20240301",
+        "ISSUE_DATE": "2024-03-01",
+        "SOURCE_DATE_STRING": "March 2024",
+        "EDITION_DATE": "2024-03-01T00:00:00Z"
+      }
+    }
+  ]
+}
