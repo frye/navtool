@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- macOS icon with rounded rectangle background and proper margins -->
+  <defs>
+    <!-- Rounded rectangle mask for macOS style -->
+    <mask id="roundedRect">
+      <rect width="1024" height="1024" fill="black"/>
+      <rect x="64" y="64" width="896" height="896" rx="128" ry="128" fill="white"/>
+    </mask>
+    
+    <!-- Gradient background -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e3a8a;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1e40af;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Navigation icon gradient -->
+    <linearGradient id="iconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e5e7eb;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Apply mask to entire icon -->
+  <g mask="url(#roundedRect)">
+    <!-- Background with rounded corners -->
+    <rect x="64" y="64" width="896" height="896" rx="128" ry="128" fill="url(#bgGradient)"/>
+    
+    <!-- Navigation compass icon centered -->
+    <g transform="translate(512,512)">
+      <!-- Compass circle -->
+      <circle cx="0" cy="0" r="320" fill="none" stroke="url(#iconGradient)" stroke-width="12" opacity="0.8"/>
+      <circle cx="0" cy="0" r="280" fill="none" stroke="url(#iconGradient)" stroke-width="8" opacity="0.6"/>
+      
+      <!-- Compass needle pointing North -->
+      <g>
+        <!-- North pointer (red) -->
+        <path d="M 0,-280 L -20,-240 L 0,-320 L 20,-240 Z" fill="#ef4444" stroke="url(#iconGradient)" stroke-width="2"/>
+        <!-- South pointer (white) -->
+        <path d="M 0,280 L -20,240 L 0,320 L 20,240 Z" fill="url(#iconGradient)" stroke="#1e40af" stroke-width="2"/>
+        <!-- East/West markers -->
+        <path d="M 280,0 L 240,-20 L 320,0 L 240,20 Z" fill="url(#iconGradient)" stroke="#1e40af" stroke-width="2"/>
+        <path d="M -280,0 L -240,-20 L -320,0 L -240,20 Z" fill="url(#iconGradient)" stroke="#1e40af" stroke-width="2"/>
+      </g>
+      
+      <!-- Center dot -->
+      <circle cx="0" cy="0" r="16" fill="url(#iconGradient)"/>
+      
+      <!-- Nautical stars -->
+      <g opacity="0.7">
+        <!-- North star -->
+        <path d="M 0,-200 L -8,-184 L 0,-160 L 8,-184 Z" fill="url(#iconGradient)"/>
+        <!-- South star -->
+        <path d="M 0,200 L -8,184 L 0,160 L 8,184 Z" fill="url(#iconGradient)"/>
+        <!-- East star -->
+        <path d="M 200,0 L 184,-8 L 160,0 L 184,8 Z" fill="url(#iconGradient)"/>
+        <!-- West star -->
+        <path d="M -200,0 L -184,-8 L -160,0 L -184,8 Z" fill="url(#iconGradient)"/>
+      </g>
+    </g>
+    
+    <!-- Subtle highlight on top -->
+    <rect x="64" y="64" width="896" height="448" rx="128" ry="128" fill="url(#iconGradient)" opacity="0.1"/>
+  </g>
+</svg>
