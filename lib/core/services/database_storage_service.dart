@@ -22,7 +22,7 @@ class DatabaseStorageService implements StorageService {
        _testDatabase = testDatabase;
 
   /// Database schema version
-  static const int _databaseVersion = 1;
+  static const int _databaseVersion = 2;
 
   /// Database name
   static const String _databaseName = 'navtool.db';
@@ -59,12 +59,15 @@ class DatabaseStorageService implements StorageService {
   /// Handle database upgrades
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     _logger.info('Database upgrade from $oldVersion to $newVersion');
-    // Future migrations will be handled here
+    
+    if (oldVersion < 2) {
+      await _migrateToVersion2(db);
+    }
   }
 
   /// Create all database tables
   Future<void> _createTables(Database db) async {
-    // Charts table for chart metadata
+    // Charts table for chart metadata (includes NOAA-specific fields for v2+)
     await db.execute('''
       CREATE TABLE charts (
         id TEXT PRIMARY KEY,
@@ -78,7 +81,20 @@ class DatabaseStorageService implements StorageService {
         state TEXT,
         type TEXT NOT NULL,
         created_at INTEGER NOT NULL,
-        file_size INTEGER DEFAULT 0
+        file_size INTEGER DEFAULT 0,
+        cell_name TEXT,
+        usage_band TEXT,
+        edition_number INTEGER DEFAULT 0,
+        update_number INTEGER DEFAULT 0,
+        compilation_scale INTEGER,
+        region TEXT,
+        dt_pub TEXT,
+        issue_date TEXT,
+        source_date_string TEXT,
+        edition_date TEXT,
+        boundary_polygon TEXT,
+        source TEXT DEFAULT 'noaa',
+        status TEXT DEFAULT 'current'
       )
     ''');
 
@@ -138,8 +154,37 @@ class DatabaseStorageService implements StorageService {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         state_name TEXT NOT NULL,
         cell_name TEXT NOT NULL,
+        coverage_percentage REAL DEFAULT 0.0,
         created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
         UNIQUE(state_name, cell_name)
+      )
+    ''');
+
+    // Chart catalog cache table for NOAA metadata caching
+    await db.execute('''
+      CREATE TABLE chart_catalog_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        catalog_type TEXT NOT NULL DEFAULT 'noaa',
+        catalog_data TEXT NOT NULL,
+        catalog_hash TEXT,
+        last_updated TEXT NOT NULL,
+        etag TEXT,
+        is_valid INTEGER DEFAULT 1,
+        expires_at TEXT
+      )
+    ''');
+
+    // Chart update history for tracking changes
+    await db.execute('''
+      CREATE TABLE chart_update_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cell_name TEXT NOT NULL,
+        old_edition INTEGER,
+        new_edition INTEGER,
+        old_update_number INTEGER,
+        new_update_number INTEGER,
+        update_detected_at TEXT NOT NULL
       )
     ''');
 
@@ -152,18 +197,105 @@ class DatabaseStorageService implements StorageService {
 
   /// Create database indexes for performance
   Future<void> _createIndexes(Database db) async {
+    // Original indexes
     await db.execute('CREATE INDEX idx_charts_bounds ON charts (bounds_north, bounds_south, bounds_east, bounds_west)');
     await db.execute('CREATE INDEX idx_charts_scale ON charts (scale)');
     await db.execute('CREATE INDEX idx_waypoints_route_id ON waypoints (route_id)');
     await db.execute('CREATE INDEX idx_waypoints_location ON waypoints (latitude, longitude)');
     await db.execute('CREATE INDEX idx_download_queue_status ON download_queue (status)');
     await db.execute('CREATE INDEX idx_state_chart_mapping_state ON state_chart_mapping (state_name)');
+    
+    // NOAA-specific indexes (safe to create - will only exist if columns exist)
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_charts_cell_name ON charts (cell_name)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_charts_usage_band ON charts (usage_band)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_charts_region ON charts (region)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_charts_source ON charts (source)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_state_chart_mapping_cell ON state_chart_mapping (cell_name)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_state_chart_mapping_coverage ON state_chart_mapping (coverage_percentage)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_catalog_cache_type ON chart_catalog_cache (catalog_type)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_catalog_cache_valid ON chart_catalog_cache (is_valid)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_catalog_cache_expires ON chart_catalog_cache (expires_at)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_chart_history_cell ON chart_update_history (cell_name)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_chart_history_detected ON chart_update_history (update_detected_at)');
+  }
+
+  /// Migrate database from version 1 to version 2 (NOAA extensions)
+  Future<void> _migrateToVersion2(Database db) async {
+    _logger.info('Migrating database to version 2 - adding NOAA extensions');
+    
+    await db.transaction((txn) async {
+      // Add NOAA-specific columns to charts table
+      await txn.execute('ALTER TABLE charts ADD COLUMN cell_name TEXT');
+      await txn.execute('ALTER TABLE charts ADD COLUMN usage_band TEXT');
+      await txn.execute('ALTER TABLE charts ADD COLUMN edition_number INTEGER DEFAULT 0');
+      await txn.execute('ALTER TABLE charts ADD COLUMN update_number INTEGER DEFAULT 0');
+      await txn.execute('ALTER TABLE charts ADD COLUMN compilation_scale INTEGER');
+      await txn.execute('ALTER TABLE charts ADD COLUMN region TEXT');
+      await txn.execute('ALTER TABLE charts ADD COLUMN dt_pub TEXT');
+      await txn.execute('ALTER TABLE charts ADD COLUMN issue_date TEXT');
+      await txn.execute('ALTER TABLE charts ADD COLUMN source_date_string TEXT');
+      await txn.execute('ALTER TABLE charts ADD COLUMN edition_date TEXT');
+      await txn.execute('ALTER TABLE charts ADD COLUMN boundary_polygon TEXT');
+      await txn.execute('ALTER TABLE charts ADD COLUMN source TEXT DEFAULT "noaa"');
+      await txn.execute('ALTER TABLE charts ADD COLUMN status TEXT DEFAULT "current"');
+      
+      // Add coverage_percentage and updated_at to state_chart_mapping
+      await txn.execute('ALTER TABLE state_chart_mapping ADD COLUMN coverage_percentage REAL DEFAULT 0.0');
+      await txn.execute('ALTER TABLE state_chart_mapping ADD COLUMN updated_at TEXT');
+      
+      // Create new tables
+      await txn.execute('''
+        CREATE TABLE chart_catalog_cache (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          catalog_type TEXT NOT NULL DEFAULT 'noaa',
+          catalog_data TEXT NOT NULL,
+          catalog_hash TEXT,
+          last_updated TEXT NOT NULL,
+          etag TEXT,
+          is_valid INTEGER DEFAULT 1,
+          expires_at TEXT
+        )
+      ''');
+      
+      await txn.execute('''
+        CREATE TABLE chart_update_history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          cell_name TEXT NOT NULL,
+          old_edition INTEGER,
+          new_edition INTEGER,
+          old_update_number INTEGER,
+          new_update_number INTEGER,
+          update_detected_at TEXT NOT NULL
+        )
+      ''');
+      
+      // Create NOAA-specific indexes
+      await txn.execute('CREATE INDEX idx_charts_cell_name ON charts (cell_name)');
+      await txn.execute('CREATE INDEX idx_charts_usage_band ON charts (usage_band)');
+      await txn.execute('CREATE INDEX idx_charts_region ON charts (region)');
+      await txn.execute('CREATE INDEX idx_charts_source ON charts (source)');
+      await txn.execute('CREATE INDEX idx_state_chart_mapping_cell ON state_chart_mapping (cell_name)');
+      await txn.execute('CREATE INDEX idx_state_chart_mapping_coverage ON state_chart_mapping (coverage_percentage)');
+      await txn.execute('CREATE INDEX idx_catalog_cache_type ON chart_catalog_cache (catalog_type)');
+      await txn.execute('CREATE INDEX idx_catalog_cache_valid ON chart_catalog_cache (is_valid)');
+      await txn.execute('CREATE INDEX idx_catalog_cache_expires ON chart_catalog_cache (expires_at)');
+      await txn.execute('CREATE INDEX idx_chart_history_cell ON chart_update_history (cell_name)');
+      await txn.execute('CREATE INDEX idx_chart_history_detected ON chart_update_history (update_detected_at)');
+    });
+    
+    _logger.info('Database migration to version 2 completed');
   }
 
   /// Get database version
   Future<int> getDatabaseVersion() async {
     return _database?.getVersion() ?? 0;
   }
+
+  /// Protected access to database for extensions
+  Database? get database => _database;
+  
+  /// Protected access to logger for extensions  
+  AppLogger get logger => _logger;
 
   // Chart Operations
   @override
@@ -176,14 +308,8 @@ class DatabaseStorageService implements StorageService {
     
     try {
       await db.transaction((txn) async {
-        // Check if chart already exists
-        final existing = await txn.query('charts', where: 'id = ?', whereArgs: [chart.id]);
-        if (existing.isNotEmpty) {
-          throw Exception('Chart with ID ${chart.id} already exists');
-        }
-
-        // Insert chart metadata
-        await txn.insert('charts', {
+        // Insert chart metadata with NOAA extensions
+        final chartData = {
           'id': chart.id,
           'title': chart.title,
           'scale': chart.scale,
@@ -196,13 +322,48 @@ class DatabaseStorageService implements StorageService {
           'type': chart.type.name,
           'created_at': DateTime.now().millisecondsSinceEpoch,
           'file_size': data.length,
-        });
+          'edition_number': chart.edition,
+          'update_number': chart.updateNumber,
+          'source': chart.source.name,
+          'status': chart.status.name,
+        };
+
+        // Add NOAA-specific metadata if present
+        if (chart.metadata.containsKey('cell_name')) {
+          chartData['cell_name'] = chart.metadata['cell_name'];
+        }
+        if (chart.metadata.containsKey('usage_band')) {
+          chartData['usage_band'] = chart.metadata['usage_band'];
+        }
+        if (chart.metadata.containsKey('compilation_scale')) {
+          chartData['compilation_scale'] = chart.metadata['compilation_scale'];
+        }
+        if (chart.metadata.containsKey('region')) {
+          chartData['region'] = chart.metadata['region'];
+        }
+        if (chart.metadata.containsKey('dt_pub')) {
+          chartData['dt_pub'] = chart.metadata['dt_pub'];
+        }
+        if (chart.metadata.containsKey('issue_date')) {
+          chartData['issue_date'] = chart.metadata['issue_date'];
+        }
+        if (chart.metadata.containsKey('source_date_string')) {
+          chartData['source_date_string'] = chart.metadata['source_date_string'];
+        }
+        if (chart.metadata.containsKey('edition_date')) {
+          chartData['edition_date'] = chart.metadata['edition_date'];
+        }
+        if (chart.metadata.containsKey('boundary_polygon')) {
+          chartData['boundary_polygon'] = chart.metadata['boundary_polygon'];
+        }
+
+        await txn.insert('charts', chartData, conflictAlgorithm: ConflictAlgorithm.replace);
 
         // Insert chart data
         await txn.insert('chart_data', {
           'chart_id': chart.id,
           'data': Uint8List.fromList(data),
-        });
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
       });
 
       _logger.info('Stored chart: ${chart.id} (${data.length} bytes)');
@@ -895,6 +1056,7 @@ class DatabaseStorageService implements StorageService {
             'state_name': stateName,
             'cell_name': cellName,
             'created_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
           });
         }
       });

@@ -496,16 +496,17 @@ void main() {
         );
       });
 
-      test('should handle duplicate chart IDs', () async {
+      test('should handle duplicate chart IDs by replacing', () async {
         // Arrange
         final chart = _createTestChart();
         await storageService.storeChart(chart, [1, 2, 3]);
 
-        // Act & Assert
-        expect(
-          () async => await storageService.storeChart(chart, [4, 5, 6]),
-          throwsA(isA<Exception>()),
-        );
+        // Act - Should replace the existing chart
+        await storageService.storeChart(chart, [4, 5, 6]);
+
+        // Assert - Should have the new data
+        final loadedData = await storageService.loadChart(chart.id);
+        expect(loadedData, equals([4, 5, 6]));
       });
 
       test('should handle non-existent chart deletion', () async {
