@@ -7,6 +7,7 @@ class CompressionResult {
   final double compressionRatio;
   final Duration compressionTime;
   final Uint8List compressedData;
+  final String? error;
 
   const CompressionResult({
     required this.originalSize,
@@ -14,7 +15,29 @@ class CompressionResult {
     required this.compressionRatio,
     required this.compressionTime,
     required this.compressedData,
+    this.error,
   });
+
+  /// Create a failure result
+  factory CompressionResult.failure({
+    required int originalSize,
+    required String error,
+  }) {
+    return CompressionResult(
+      originalSize: originalSize,
+      compressedSize: 0,
+      compressionRatio: 1.0,
+      compressionTime: Duration.zero,
+      compressedData: Uint8List(0),
+      error: error,
+    );
+  }
+
+  /// Check if compression was successful
+  bool get isSuccess => error == null;
+
+  /// Get the decompressed data (same as compressedData for compatibility)
+  Uint8List? get data => isSuccess ? compressedData : null;
 
   /// Calculate space saved in bytes
   int get spaceSaved => originalSize - compressedSize;

@@ -44,11 +44,16 @@ class ChartCompressionManager {
     try {
       _logger.info('Starting compression for chart: $chartId');
       
-      final result = await _compressionService.compressChart(
-        chartId: chartId,
-        data: data,
-        settings: settings,
-      );
+      final result = settings != null
+          ? await _compressionService.compressChartDataWithSettings(
+              data,
+              chartId: chartId,
+              settings: settings,
+            )
+          : await _compressionService.compressChartData(
+              data,
+              chartId: chartId,
+            );
       
       if (result.isSuccess) {
         _logger.info(
@@ -92,9 +97,17 @@ class ChartCompressionManager {
     try {
       _logger.info('Starting decompression for chart: $chartId');
       
-      final result = await _compressionService.decompressChart(
+      final decompressedData = await _compressionService.decompressChartData(
+        compressedData,
         chartId: chartId,
-        compressedData: compressedData,
+      );
+      
+      final result = CompressionResult(
+        originalSize: decompressedData.length,
+        compressedSize: compressedData.length,
+        compressionRatio: compressedData.length / decompressedData.length,
+        compressionTime: Duration.zero,
+        compressedData: decompressedData,
       );
       
       if (result.isSuccess) {
@@ -127,7 +140,7 @@ class ChartCompressionManager {
   /// ```
   Future<Map<String, dynamic>> getCompressionStatistics() async {
     try {
-      return await _compressionService.getStatistics();
+      return await _compressionService.getCompressionStats();
     } catch (error) {
       _logger.error('Error getting compression statistics', exception: error);
       return <String, dynamic>{};
