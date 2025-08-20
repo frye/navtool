@@ -1,0 +1,334 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-82.0, 24.5],
+          [-81.5, 24.5],
+          [-81.5, 25.0],
+          [-82.0, 25.0],
+          [-82.0, 24.5]
+        ]]
+      },
+      "properties": {
+        "CELL_NAME": "US5FL23M",
+        "CHART": "US5FL23M",
+        "TITLE": "Key West Harbor",
+        "SCALE": 20000,
+        "LAST_UPDATE": "2024-03-15T00:00:00Z",
+        "RELEASE_DATE": "2024-03-15T00:00:00Z",
+        "STATE": "Florida",
+        "USAGE": "Harbor",
+        "REGION": "Southeast Coast",
+        "STATUS": "Current",
+        "EDITION_NUM": "18",
+        "UPDATE_NUM": "2",
+        "COMPILATION_SCALE": "20000",
+        "DT_PUB": "20240315",
+        "ISSUE_DATE": "2024-03-15",
+        "SOURCE_DATE_STRING": "March 2024",
+        "EDITION_DATE": "2024-03-15T00:00:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [
+          [[
+            [-158.2, 21.2],
+            [-157.8, 21.2],
+            [-157.8, 21.6],
+            [-158.2, 21.6],
+            [-158.2, 21.2]
+          ]],
+          [[
+            [-158.0, 21.0],
+            [-157.9, 21.0],
+            [-157.9, 21.1],
+            [-158.0, 21.1],
+            [-158.0, 21.0]
+          ]]
+        ]
+      },
+      "properties": {
+        "CELL_NAME": "US5HI01M",
+        "CHART": "US5HI01M",
+        "TITLE": "Honolulu Harbor",
+        "SCALE": 15000,
+        "LAST_UPDATE": "2024-02-28T00:00:00Z",
+        "RELEASE_DATE": "2024-02-28T00:00:00Z",
+        "STATE": "Hawaii",
+        "USAGE": "Harbor",
+        "REGION": "Pacific",
+        "STATUS": "Current",
+        "EDITION_NUM": "22",
+        "UPDATE_NUM": "5",
+        "COMPILATION_SCALE": "15000",
+        "DT_PUB": "20240228",
+        "ISSUE_DATE": "2024-02-28",
+        "SOURCE_DATE_STRING": "February 2024",
+        "EDITION_DATE": "2024-02-28T00:00:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-122.8, 47.5],
+          [-122.2, 47.5],
+          [-122.2, 48.0],
+          [-122.8, 48.0],
+          [-122.8, 47.5]
+        ]]
+      },
+      "properties": {
+        "CELL_NAME": "US5WA11M",
+        "CHART": "US5WA11M",
+        "TITLE": "Puget Sound - Seattle Harbor",
+        "SCALE": 25000,
+        "LAST_UPDATE": "2024-01-20T00:00:00Z",
+        "RELEASE_DATE": "2024-01-20T00:00:00Z",
+        "STATE": "Washington",
+        "USAGE": "Harbor",
+        "REGION": "West Coast",
+        "STATUS": "Current",
+        "EDITION_NUM": "14",
+        "UPDATE_NUM": "1",
+        "COMPILATION_SCALE": "25000",
+        "DT_PUB": "20240120",
+        "ISSUE_DATE": "2024-01-20",
+        "SOURCE_DATE_STRING": "January 2024",
+        "EDITION_DATE": "2024-01-20T00:00:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-94.8, 29.2],
+          [-94.6, 29.2],
+          [-94.6, 29.4],
+          [-94.8, 29.4],
+          [-94.8, 29.2]
+        ]]
+      },
+      "properties": {
+        "CELL_NAME": "US5TX31M",
+        "CHART": "US5TX31M",
+        "TITLE": "Galveston Bay",
+        "SCALE": 30000,
+        "LAST_UPDATE": "2023-11-15T00:00:00Z",
+        "RELEASE_DATE": "2023-11-15T00:00:00Z",
+        "STATE": "Texas",
+        "USAGE": "Harbor",
+        "REGION": "Gulf Coast",
+        "STATUS": "Superseded",
+        "EDITION_NUM": "9",
+        "UPDATE_NUM": "0",
+        "COMPILATION_SCALE": "30000",
+        "DT_PUB": "20231115",
+        "ISSUE_DATE": "2023-11-15",
+        "SOURCE_DATE_STRING": "November 2023",
+        "EDITION_DATE": "2023-11-15T00:00:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-70.8, 41.2],
+          [-70.6, 41.2],
+          [-70.6, 41.4],
+          [-70.8, 41.4],
+          [-70.8, 41.2]
+        ]]
+      },
+      "properties": {
+        "CELL_NAME": "US5MA13M",
+        "CHART": "US5MA13M",
+        "TITLE": "Cape Cod Bay",
+        "SCALE": 40000,
+        "LAST_UPDATE": "2024-04-10T00:00:00Z",
+        "RELEASE_DATE": "2024-04-10T00:00:00Z",
+        "STATE": "Massachusetts",
+        "USAGE": "Approach",
+        "REGION": "Northeast Coast",
+        "STATUS": "Current",
+        "EDITION_NUM": "16",
+        "UPDATE_NUM": "3",
+        "COMPILATION_SCALE": "40000",
+        "DT_PUB": "20240410",
+        "ISSUE_DATE": "2024-04-10",
+        "SOURCE_DATE_STRING": "April 2024",
+        "EDITION_DATE": "2024-04-10T00:00:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-87.9, 30.3],
+          [-87.5, 30.3],
+          [-87.5, 30.7],
+          [-87.9, 30.7],
+          [-87.9, 30.3]
+        ]]
+      },
+      "properties": {
+        "CELL_NAME": "US5AL02M",
+        "CHART": "US5AL02M",
+        "TITLE": "Mobile Bay",
+        "SCALE": 35000,
+        "LAST_UPDATE": "2024-01-05T00:00:00Z",
+        "RELEASE_DATE": "2024-01-05T00:00:00Z",
+        "STATE": "Alabama",
+        "USAGE": "Harbor",
+        "REGION": "Gulf Coast",
+        "STATUS": "Current",
+        "EDITION_NUM": "11",
+        "UPDATE_NUM": "1",
+        "COMPILATION_SCALE": "35000",
+        "DT_PUB": "20240105",
+        "ISSUE_DATE": "2024-01-05",
+        "SOURCE_DATE_STRING": "January 2024",
+        "EDITION_DATE": "2024-01-05T00:00:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-76.8, 39.1],
+          [-76.4, 39.1],
+          [-76.4, 39.5],
+          [-76.8, 39.5],
+          [-76.8, 39.1]
+        ]]
+      },
+      "properties": {
+        "CELL_NAME": "US5MD11M",
+        "CHART": "US5MD11M",
+        "TITLE": "Baltimore Harbor",
+        "SCALE": 25000,
+        "LAST_UPDATE": "2024-03-01T00:00:00Z",
+        "RELEASE_DATE": "2024-03-01T00:00:00Z",
+        "STATE": "Maryland",
+        "USAGE": "Harbor",
+        "REGION": "Chesapeake Bay",
+        "STATUS": "Current",
+        "EDITION_NUM": "20",
+        "UPDATE_NUM": "4",
+        "COMPILATION_SCALE": "25000",
+        "DT_PUB": "20240301",
+        "ISSUE_DATE": "2024-03-01",
+        "SOURCE_DATE_STRING": "March 2024",
+        "EDITION_DATE": "2024-03-01T00:00:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-84.4, 46.4],
+          [-84.0, 46.4],
+          [-84.0, 46.8],
+          [-84.4, 46.8],
+          [-84.4, 46.4]
+        ]]
+      },
+      "properties": {
+        "CELL_NAME": "US5MI21M",
+        "CHART": "US5MI21M",
+        "TITLE": "Sault Ste. Marie",
+        "SCALE": 20000,
+        "LAST_UPDATE": "2024-02-15T00:00:00Z",
+        "RELEASE_DATE": "2024-02-15T00:00:00Z",
+        "STATE": "Michigan",
+        "USAGE": "Harbor",
+        "REGION": "Great Lakes",
+        "STATUS": "Current",
+        "EDITION_NUM": "8",
+        "UPDATE_NUM": "2",
+        "COMPILATION_SCALE": "20000",
+        "DT_PUB": "20240215",
+        "ISSUE_DATE": "2024-02-15",
+        "SOURCE_DATE_STRING": "February 2024",
+        "EDITION_DATE": "2024-02-15T00:00:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-93.2, 44.8],
+          [-92.8, 44.8],
+          [-92.8, 45.2],
+          [-93.2, 45.2],
+          [-93.2, 44.8]
+        ]]
+      },
+      "properties": {
+        "CELL_NAME": "US5MN01M",
+        "CHART": "US5MN01M",
+        "TITLE": "Twin Cities Harbor",
+        "SCALE": 30000,
+        "LAST_UPDATE": "2024-01-30T00:00:00Z",
+        "RELEASE_DATE": "2024-01-30T00:00:00Z",
+        "STATE": "Minnesota",
+        "USAGE": "River",
+        "REGION": "Great Lakes",
+        "STATUS": "Current",
+        "EDITION_NUM": "5",
+        "UPDATE_NUM": "1",
+        "COMPILATION_SCALE": "30000",
+        "DT_PUB": "20240130",
+        "ISSUE_DATE": "2024-01-30",
+        "SOURCE_DATE_STRING": "January 2024",
+        "EDITION_DATE": "2024-01-30T00:00:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-155.1, 19.6],
+          [-154.8, 19.6],
+          [-154.8, 19.9],
+          [-155.1, 19.9],
+          [-155.1, 19.6]
+        ]]
+      },
+      "properties": {
+        "CELL_NAME": "US5HI15M",
+        "CHART": "US5HI15M",
+        "TITLE": "Hilo Bay",
+        "SCALE": 18000,
+        "LAST_UPDATE": "2023-12-20T00:00:00Z",
+        "RELEASE_DATE": "2023-12-20T00:00:00Z",
+        "STATE": "Hawaii",
+        "USAGE": "Harbor",
+        "REGION": "Pacific",
+        "STATUS": "Preliminary",
+        "EDITION_NUM": "3",
+        "UPDATE_NUM": "0",
+        "COMPILATION_SCALE": "18000",
+        "DT_PUB": "20231220",
+        "ISSUE_DATE": "2023-12-20",
+        "SOURCE_DATE_STRING": "December 2023",
+        "EDITION_DATE": "2023-12-20T00:00:00Z"
+      }
+    }
+  ]
+}
