@@ -3,25 +3,28 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
 import 'package:navtool/core/models/chart.dart';
-import 'package:navtool/core/services/noaa_api_client.dart';
+import 'package:navtool/core/services/noaa/noaa_api_client_impl.dart';
 import 'package:navtool/core/services/http_client_service.dart';
-import 'package:navtool/core/services/app_logger.dart';
+import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/utils/rate_limiter.dart';
 
 /// Test implementation of AppLogger for testing
-class _TestLogger extends AppLogger {
+class _TestLogger implements AppLogger {
   @override
-  void debug(String message) => print('[DEBUG] $message');
+  void debug(String message, {String? context, Object? exception}) => print('[DEBUG] $message');
   
   @override
-  void info(String message) => print('[INFO] $message');
+  void info(String message, {String? context, Object? exception}) => print('[INFO] $message');
   
   @override
-  void warn(String message) => print('[WARN] $message');
+  void warning(String message, {String? context, Object? exception}) => print('[WARN] $message');
   
   @override
-  void error(String message, [Object? error, StackTrace? stackTrace]) => 
-      print('[ERROR] $message${error != null ? ' | $error' : ''}');
+  void error(String message, {String? context, Object? exception}) => 
+      print('[ERROR] $message${exception != null ? ' | $exception' : ''}');
+      
+  @override
+  void logError(dynamic error) => print('[ERROR] $error');
 }
 
 /// Test implementation of HttpClientService
@@ -30,30 +33,60 @@ class _TestHttpClientService implements HttpClientService {
   final AppLogger _logger;
   
   _TestHttpClientService(this._dio, this._logger);
-  
+
   @override
-  Future<Map<String, dynamic>> get(String url, {Map<String, String>? headers}) async {
+  Dio get client => _dio;
+
+  @override
+  Future<Response> get(String url, {
+    Map<String, String>? queryParameters,
+    CancelToken? cancelToken,
+  }) async {
     try {
-      final response = await _dio.get(url, options: Options(headers: headers));
-      return response.data;
+      return await _dio.get(url, queryParameters: queryParameters, cancelToken: cancelToken);
     } catch (e) {
-      _logger.error('HTTP GET failed', e);
+      _logger.error('HTTP GET failed', exception: e);
       rethrow;
     }
   }
-  
+
   @override
-  Future<List<int>> getBytes(String url, {Map<String, String>? headers}) async {
+  Future<Response> post(String url, {
+    dynamic data,
+    Map<String, String>? queryParameters,
+    CancelToken? cancelToken,
+  }) async {
     try {
-      final response = await _dio.get(url, 
-        options: Options(headers: headers, responseType: ResponseType.bytes));
-      return response.data;
+      return await _dio.post(url, data: data, queryParameters: queryParameters, cancelToken: cancelToken);
     } catch (e) {
-      _logger.error('HTTP GET bytes failed', e);
+      _logger.error('HTTP POST failed', exception: e);
       rethrow;
     }
   }
-  
+
+  @override
+  Future<void> downloadFile(String url, String savePath, {
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    try {
+      await _dio.download(url, savePath, cancelToken: cancelToken, onReceiveProgress: onReceiveProgress);
+    } catch (e) {
+      _logger.error('File download failed', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  void configureNoaaEndpoints() {
+    // Test implementation - no-op
+  }
+
+  @override
+  void configureCertificatePinning() {
+    // Test implementation - no-op
+  }
+
   @override
   void dispose() {
     _dio.close();
@@ -67,7 +100,7 @@ class _TestHttpClientService implements HttpClientService {
 @Tags(['integration', 'real-endpoint'])
 void main() {
   group('NOAA Real Endpoint Integration Tests', () {
-    late NoaaApiClient apiClient;
+    late NoaaApiClientImpl apiClient;
     late AppLogger logger;
     late HttpClientService httpClientService;
     
@@ -89,9 +122,9 @@ void main() {
       
       httpClientService = _TestHttpClientService(dio, logger);
       
-      apiClient = NoaaApiClient(
+      apiClient = NoaaApiClientImpl(
         httpClient: httpClientService,
-        rateLimiter: RateLimiter(maxRequests: 10, windowDuration: const Duration(minutes: 1)),
+        rateLimiter: RateLimiter(requestsPerSecond: 0.17), // ~10 requests per minute
         logger: logger,
       );
     });
@@ -332,10 +365,10 @@ void main() {
               .timeout(const Duration(seconds: 45))
               .catchError((e) {
                 if (e is SocketException || e is TimeoutException) {
-                  logger.warn('Request ${i + 1} failed with expected marine connection issue');
+                  logger.warning('Request ${i + 1} failed with expected marine connection issue');
                   return false;
                 }
-                rethrow;
+                throw e; // Use throw instead of rethrow
               })
           );
         }

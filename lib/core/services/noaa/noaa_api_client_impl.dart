@@ -120,6 +120,18 @@ class NoaaApiClientImpl implements NoaaApiClient {
       }
 
       final catalogData = response.data as String;
+      
+      // Validate JSON format
+      try {
+        jsonDecode(catalogData);
+      } on FormatException catch (e) {
+        throw NoaaApiException(
+          'Invalid JSON response from chart catalog endpoint: ${e.message}',
+          errorCode: 'INVALID_JSON_RESPONSE',
+          isRetryable: false,
+        );
+      }
+      
       _logger.info('Successfully fetched chart catalog', 
         context: 'NoaaApiClient');
       
@@ -136,6 +148,11 @@ class NoaaApiClientImpl implements NoaaApiClient {
 
   @override
   Future<Chart?> getChartMetadata(String cellName) async {
+    // Validate input parameters
+    if (cellName.isEmpty) {
+      throw ArgumentError('Chart ID cannot be empty');
+    }
+    
     _logger.info('Fetching chart metadata', context: 'NoaaApiClient');
     
     try {
@@ -163,7 +180,16 @@ class NoaaApiClientImpl implements NoaaApiClient {
       }
 
       // Parse response data
-      final chartData = jsonDecode(response.data as String) as Map<String, dynamic>;
+      Map<String, dynamic> chartData;
+      try {
+        chartData = jsonDecode(response.data as String) as Map<String, dynamic>;
+      } on FormatException catch (e) {
+        throw NoaaApiException(
+          'Invalid JSON response from chart metadata endpoint: ${e.message}',
+          errorCode: 'INVALID_JSON_RESPONSE',
+          isRetryable: false,
+        );
+      }
       
       if (chartData.isEmpty || chartData['properties'] == null) {
         _logger.info('Chart metadata not available', context: 'NoaaApiClient');
@@ -193,6 +219,11 @@ class NoaaApiClientImpl implements NoaaApiClient {
 
   @override
   Future<bool> isChartAvailable(String cellName) async {
+    // Validate input parameters
+    if (cellName.isEmpty) {
+      throw ArgumentError('Chart ID cannot be empty');
+    }
+    
     _logger.debug('Checking chart availability', context: 'NoaaApiClient');
     
     try {
@@ -217,7 +248,11 @@ class NoaaApiClientImpl implements NoaaApiClient {
         _logger.debug('Chart not available (404)', context: 'NoaaApiClient');
         return false;
       }
-      // For availability checking, we treat other errors as "not available"
+      // For availability checking, we treat server errors as exceptions
+      final exception = _convertDioExceptionToNoaaException(e);
+      _logger.error('Error checking chart availability', 
+        context: 'NoaaApiClient', exception: exception);
+      throw exception;
       // to provide graceful degradation
       _logger.debug('Chart availability check failed, treating as unavailable', 
         context: 'NoaaApiClient', exception: e);
@@ -236,6 +271,14 @@ class NoaaApiClientImpl implements NoaaApiClient {
     String savePath, {
     NoaaProgressCallback? onProgress,
   }) async {
+    // Validate input parameters
+    if (cellName.isEmpty) {
+      throw ArgumentError('Chart ID cannot be empty');
+    }
+    if (savePath.isEmpty) {
+      throw ArgumentError('Save path cannot be empty');
+    }
+    
     _logger.info('Starting download for chart: $cellName');
     
     try {
