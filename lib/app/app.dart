@@ -21,15 +21,6 @@ class MyApp extends StatelessWidget {
       routes: AppRoutes.routes,
       initialRoute: AppRoutes.home,
       debugShowCheckedModeBanner: false,
-      builder: (context, child) {
-        // Apply custom window chrome on Windows and Linux only
-        // macOS will use native menu bars (issue #110)
-        if (Platform.isWindows || Platform.isLinux) {
-          return CustomWindowChrome(child: child!);
-        } else {
-          return child!;
-        }
-      },
     );
   }
 }

@@ -237,11 +237,14 @@ class _StatusSegmentState extends State<_StatusSegment> {
                 color: widget.color,
               ),
               const SizedBox(width: 4),
-              Text(
-                widget.text,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).colorScheme.onSurface,
+              Flexible(
+                child: Text(
+                  widget.text,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

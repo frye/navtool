@@ -6,8 +6,31 @@ import '../../app/app.dart';
 
 /// Integrated menu bar that displays application menus directly in the title bar
 /// following VS Code's pattern. Provides keyboard shortcuts and accessibility.
-class IntegratedMenuBar extends StatelessWidget {
+class IntegratedMenuBar extends StatefulWidget {
   const IntegratedMenuBar({super.key});
+
+  @override
+  State<IntegratedMenuBar> createState() => _IntegratedMenuBarState();
+}
+
+class _IntegratedMenuBarState extends State<IntegratedMenuBar> {
+  String? _openMenuTitle;
+
+  void _toggleMenu(String menuTitle, GlobalKey menuKey) {
+    setState(() {
+      if (_openMenuTitle == menuTitle) {
+        _openMenuTitle = null;
+      } else {
+        _openMenuTitle = menuTitle;
+      }
+    });
+  }
+
+  void _closeMenu() {
+    setState(() {
+      _openMenuTitle = null;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,9 +46,9 @@ class IntegratedMenuBar extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: menus.map((menu) => _MenuButton(
         menu: menu,
-        isOpen: false, // Not used with PopupMenuButton
-        onToggle: (_, __) {}, // Not used with PopupMenuButton
-        onClose: () {}, // Not used with PopupMenuButton
+        isOpen: _openMenuTitle == menu.title,
+        onToggle: _toggleMenu,
+        onClose: _closeMenu,
       )).toList(),
     );
   }
@@ -237,9 +260,28 @@ class _MenuButton extends StatefulWidget {
 class _MenuButtonState extends State<_MenuButton> {
   bool _isHovered = false;
   final GlobalKey _menuKey = GlobalKey();
+  OverlayEntry? _overlayEntry;
+
+  @override
+  void dispose() {
+    _removeOverlay();
+    super.dispose();
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
 
   @override
   Widget build(BuildContext context) {
+    // Show/hide overlay based on isOpen state
+    if (widget.isOpen && _overlayEntry == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showDropdown());
+    } else if (!widget.isOpen && _overlayEntry != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _removeOverlay());
+    }
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
@@ -247,8 +289,7 @@ class _MenuButtonState extends State<_MenuButton> {
         key: _menuKey,
         onTap: () {
           print('Menu button clicked: ${widget.menu.title}');
-          // For now, let's handle the actions directly instead of using dropdowns
-          _showMenuActions(context);
+          widget.onToggle(widget.menu.title, _menuKey);
         },
         onPanStart: (_) {
           // Consume pan events to prevent window dragging
@@ -257,7 +298,7 @@ class _MenuButtonState extends State<_MenuButton> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
           decoration: BoxDecoration(
-            color: _isHovered ? Colors.grey.withOpacity(0.2) : Colors.transparent,
+            color: (_isHovered || widget.isOpen) ? Colors.grey.withOpacity(0.2) : Colors.transparent,
             borderRadius: BorderRadius.circular(3.0),
           ),
           child: Text(
@@ -272,27 +313,93 @@ class _MenuButtonState extends State<_MenuButton> {
     );
   }
 
-  void _showMenuActions(BuildContext context) {
-    if (widget.menu.title == 'Help') {
-      // Show About dialog directly
-      final aboutAction = widget.menu.actions.firstWhere(
-        (action) => action.title == 'About NavTool',
-        orElse: () => widget.menu.actions.first,
-      );
-      aboutAction.onPressed(context);
-    } else if (widget.menu.title == 'File') {
-      // Navigate to chart directly
-      final newChartAction = widget.menu.actions.firstWhere(
-        (action) => action.title == 'New Chart',
-        orElse: () => widget.menu.actions.first,
-      );
-      newChartAction.onPressed(context);
-    } else {
-      // For other menus, show a simple snackbar for now
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${widget.menu.title} menu functionality coming soon!')),
-      );
-    }
+  void _showDropdown() {
+    if (_overlayEntry != null) return;
+
+    final RenderBox? renderBox = _menuKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    final offset = renderBox.localToGlobal(Offset.zero);
+
+    _overlayEntry = OverlayEntry(
+      builder: (overlayContext) => Positioned(
+        left: offset.dx,
+        top: offset.dy + renderBox.size.height,
+        child: GestureDetector(
+          onTap: () {
+            widget.onClose();
+          },
+          child: Container(
+            width: MediaQuery.of(overlayContext).size.width,
+            height: MediaQuery.of(overlayContext).size.height,
+            color: Colors.transparent,
+            child: GestureDetector(
+              onTap: () {}, // Prevent closing when clicking the menu
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: Material(
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    constraints: const BoxConstraints(minWidth: 200),
+                    child: IntrinsicWidth(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: widget.menu.actions.map((action) {
+                          if (action.isSeparator) {
+                            return const Divider(height: 1, thickness: 1);
+                          }
+                          return _buildMenuItem(action);
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Use the widget's own context to find the overlay
+    final overlay = Overlay.of(context);
+    overlay.insert(_overlayEntry!);
+  }
+
+  Widget _buildMenuItem(MenuAction action) {
+    return InkWell(
+      onTap: () {
+        print('Menu action selected: ${action.title}');
+        widget.onClose();
+        // Execute the action using the global navigator context
+        final navigatorState = MyApp.navigatorKey.currentState;
+        if (navigatorState != null) {
+          action.onPressed(navigatorState.context);
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+        child: Row(
+          children: [
+            Icon(action.icon, size: 16),
+            const SizedBox(width: 8),
+            Expanded(child: Text(action.title)),
+            if (action.shortcut.isNotEmpty) ...[
+              const SizedBox(width: 16),
+              Text(
+                action.shortcut,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 
