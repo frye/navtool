@@ -45,9 +45,9 @@ class RouteBackupManager {
     try {
       _logger.info('Creating route backup: $backupId');
       
-      final result = await _compressionService.compressRouteBackup(
-        backupId: backupId,
-        routeData: routeData,
+      final result = await _compressionService.compressRouteData(
+        routeData,
+        routeId: backupId,
       );
       
       if (result.isSuccess) {
@@ -94,9 +94,17 @@ class RouteBackupManager {
     try {
       _logger.info('Restoring route backup: $backupId');
       
-      final result = await _compressionService.decompressRouteBackup(
-        backupId: backupId,
-        compressedData: compressedData,
+      final decompressedData = await _compressionService.decompressRouteData(
+        compressedData,
+        routeId: backupId,
+      );
+      
+      final result = CompressionResult(
+        originalSize: decompressedData.length,
+        compressedSize: compressedData.length,
+        compressionRatio: compressedData.length / decompressedData.length,
+        compressionTime: Duration.zero,
+        compressedData: decompressedData,
       );
       
       if (result.isSuccess) {
@@ -141,17 +149,17 @@ class RouteBackupManager {
       _logger.info('Verifying route backup: $backupId');
       
       // Try to decompress without saving the result
-      final result = await _compressionService.decompressRouteBackup(
-        backupId: backupId,
-        compressedData: compressedData,
+      await _compressionService.decompressRouteData(
+        compressedData,
+        routeId: backupId,
       );
       
-      final isValid = result.isSuccess;
+      final isValid = true;
       
       if (isValid) {
         _logger.info('Route backup $backupId verification successful');
       } else {
-        _logger.warning('Route backup $backupId verification failed: ${result.error}');
+        _logger.warning('Route backup $backupId verification failed');
       }
       
       return isValid;
@@ -172,7 +180,7 @@ class RouteBackupManager {
   /// ```
   Future<Map<String, dynamic>> getBackupStatistics() async {
     try {
-      final allStats = await _compressionService.getStatistics();
+      final allStats = await _compressionService.getCompressionStats();
       
       // Filter for backup-related statistics
       return {
