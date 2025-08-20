@@ -9,7 +9,7 @@ import 'package:navtool/core/error/noaa_exceptions.dart';
 import 'package:navtool/core/models/chart.dart';
 import 'package:dio/dio.dart';
 import 'dart:convert';
-import '../../../utils/test_fixtures.dart';
+import '../../../../utils/test_fixtures.dart';
 
 // Generate mocks for dependencies
 @GenerateMocks([

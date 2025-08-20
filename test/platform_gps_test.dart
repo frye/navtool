@@ -6,6 +6,9 @@ import 'package:navtool/core/services/gps_service_impl.dart';
 import 'package:navtool/core/services/gps_service_win32.dart';
 
 void main() {
+  // Initialize Flutter binding for platform services
+  TestWidgetsFlutterBinding.ensureInitialized();
+  
   group('Platform-specific GPS Service Tests', () {
     test('should use correct GPS service implementation based on platform', () {
       final container = ProviderContainer();

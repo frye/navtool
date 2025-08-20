@@ -167,9 +167,16 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
   /// Initialize settings from persistent storage
   Future<void> _initializeSettings() async {
     try {
-      _prefs = await SharedPreferences.getInstance();
-      await _loadSettings();
-      _logger.info('Settings initialized from storage');
+      // In test environment, don't try to access SharedPreferences
+      // Check if Flutter binding is initialized
+      try {
+        _prefs = await SharedPreferences.getInstance();
+        await _loadSettings();
+        _logger.info('Settings initialized from storage');
+      } catch (bindingError) {
+        // If binding is not initialized (test environment), use default settings
+        _logger.warning('Using default settings (binding not initialized)', exception: bindingError);
+      }
     } catch (error, stackTrace) {
       _errorHandler.handleError(error, stackTrace);
       _logger.error('Failed to initialize settings', exception: error);

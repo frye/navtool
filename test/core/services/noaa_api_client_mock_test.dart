@@ -9,7 +9,7 @@ import 'package:navtool/core/services/noaa/noaa_api_client_impl.dart';
 import 'package:navtool/core/services/http_client_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/utils/rate_limiter.dart';
-import '../../utils/test_fixtures.dart';
+import '../../../utils/test_fixtures.dart';
 
 // Generate mocks for dependencies
 @GenerateMocks([HttpClientService, AppLogger])
