@@ -21,25 +21,33 @@ void main() {
     });
 
     test('App state provider initializes with default state', () async {
-      final state = container.read(appStateProvider);
+      // Create a fresh container for this test
+      final testContainer = ProviderContainer();
       
-      // Wait a bit for async initialization to complete
-      await Future.delayed(const Duration(milliseconds: 100));
-      
-      final updatedState = container.read(appStateProvider);
-      
-      expect(updatedState.isInitialized, true); // State should be initialized by the notifier
-      expect(updatedState.currentPosition, null);
-      expect(updatedState.availableCharts, isEmpty);
-      expect(updatedState.downloadedCharts, isEmpty);
-      expect(updatedState.waypoints, isEmpty);
-      expect(updatedState.isGpsEnabled, false);
-      expect(updatedState.isLocationPermissionGranted, false);
-      expect(updatedState.themeMode, AppThemeMode.system);
-      expect(updatedState.isDayMode, true);
+      try {
+        // Access the provider, which will trigger the notifier creation and async initialization
+        final notifier = testContainer.read(appStateProvider.notifier);
+        
+        // Wait for initialization to complete
+        await Future.delayed(const Duration(milliseconds: 200));
+        
+        final state = testContainer.read(appStateProvider);
+        
+        expect(state.isInitialized, true); // State should be initialized after the notifier is created
+        expect(state.currentPosition, null);
+        expect(state.availableCharts, isEmpty);
+        expect(state.downloadedCharts, isEmpty);
+        expect(state.waypoints, isEmpty);
+        expect(state.isGpsEnabled, false);
+        expect(state.isLocationPermissionGranted, false);
+        expect(state.themeMode, AppThemeMode.system);
+        expect(state.isDayMode, true);
+      } finally {
+        testContainer.dispose();
+      }
     });
 
-    test('App settings provider initializes with default settings', () {
+    test('App settings provider initializes with default settings', () async {
       final settings = container.read(appSettingsProvider);
       
       expect(settings.themeMode, AppThemeMode.system);
