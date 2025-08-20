@@ -10,8 +10,8 @@ on:
     - cron: '0 2 * * *'
 
 env:
-  FLUTTER_VERSION: '3.19.0'
-  DART_VERSION: '3.3.0'
+  FLUTTER_VERSION: '3.35.1'
+  DART_VERSION: '3.9.0'
 
 jobs:
   # Unit Tests - Fast feedback
