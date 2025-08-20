@@ -119,208 +119,113 @@ class HomeScreen extends ConsumerWidget {
 
   Widget _buildStandardDesktopLayout(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          // Custom menu bar similar to VS Code
-          Container(
-            key: const Key('custom_menu_bar'),
-            height: 30,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              border: Border(
-                bottom: BorderSide(
-                  color: Theme.of(context).colorScheme.outline.withAlpha(50),
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Left side - Welcome content
+            Expanded(
+              flex: 2,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const AppIcon(size: 128),
+                    const SizedBox(height: 24),
+                    Text(
+                      'Welcome to NavTool',
+                      style: Theme.of(context).textTheme.headlineLarge,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Marine Navigation and Routing Application',
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurface.withAlpha(180),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.pushNamed(context, '/chart');
+                          },
+                          icon: const Icon(Icons.add),
+                          label: const Text('New Chart'),
+                        ),
+                        const SizedBox(width: 16),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.pushNamed(context, '/chart');
+                          },
+                          icon: const Icon(Icons.folder_open),
+                          label: const Text('Open Chart'),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),
-            child: Row(
-              children: [
-                // App icon on the left
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: const AppIcon(size: 16),
-                ),
-                // Menu items
-                _buildMenuButton(context, 'File', [
-                  const PopupMenuItem<String>(value: 'New Chart', child: Text('New Chart')),
-                  const PopupMenuItem<String>(value: 'Open Chart', child: Text('Open Chart')),
-                  const PopupMenuItem<String>(value: 'Import GRIB Data', child: Text('Import GRIB Data')),
-                  const PopupMenuDivider(),
-                  const PopupMenuItem<String>(value: 'Exit', child: Text('Exit')),
-                ]),
-                _buildMenuButton(context, 'Help', [
-                  const PopupMenuItem<String>(value: 'About NavTool', child: Text('About NavTool')),
-                ]),
-                const Spacer(),
-                // GPS status indicator on the right
-                Flexible(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.gps_fixed,
-                        size: 16,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'GPS',
-                        style: Theme.of(context).textTheme.bodySmall,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
-            ),
-          ),
-          // Main content area
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(width: 24),
+            // Right side - GPS Status
+            Expanded(
+              flex: 1,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Left side - Welcome content
-                  Expanded(
-                    flex: 2,
-                    child: Center(
+                  const SizedBox(height: 40),
+                  const GpsStatusWidget(),
+                  const SizedBox(height: 24),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const AppIcon(size: 128),
-                          const SizedBox(height: 24),
-                          Text(
-                            'Welcome to NavTool',
-                            style: Theme.of(context).textTheme.headlineLarge,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Marine Navigation and Routing Application',
-                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurface.withAlpha(180),
-                            ),
-                          ),
-                          const SizedBox(height: 32),
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              ElevatedButton.icon(
-                                onPressed: () {
-                                  Navigator.pushNamed(context, '/chart');
-                                },
-                                icon: const Icon(Icons.add),
-                                label: const Text('New Chart'),
+                              Icon(
+                                Icons.info_outline,
+                                color: Theme.of(context).colorScheme.primary,
                               ),
-                              const SizedBox(width: 16),
-                              OutlinedButton.icon(
-                                onPressed: () {
-                                  Navigator.pushNamed(context, '/chart');
-                                },
-                                icon: const Icon(Icons.folder_open),
-                                label: const Text('Open Chart'),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Status',
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '✅ GPS Service: Active',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '✅ Windows Compatibility: Fixed',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '⚠️ Real GPS Hardware: Not connected',
+                            style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(width: 24),
-                  // Right side - GPS Status
-                  Expanded(
-                    flex: 1,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const SizedBox(height: 40),
-                        const GpsStatusWidget(),
-                        const SizedBox(height: 24),
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.info_outline,
-                                      color: Theme.of(context).colorScheme.primary,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Status',
-                                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  '✅ GPS Service: Active',
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '✅ Windows Compatibility: Fixed',
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '⚠️ Real GPS Hardware: Not connected',
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMenuButton(BuildContext context, String label, List<PopupMenuEntry<String>> items) {
-    return PopupMenuButton<String>(
-      itemBuilder: (context) => items,
-      onSelected: (value) {
-        // Handle menu selections
-        if (value == 'About NavTool') {
-          showDialog(
-            context: context,
-            builder: (context) => const AboutAppDialog(),
-          );
-        } else if (value == 'New Chart' || value == 'Open Chart') {
-          Navigator.pushNamed(context, '/chart');
-        } else if (value == 'Exit') {
-          // Exit the application
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Exit functionality coming soon!')),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$value functionality coming soon!')),
-          );
-        }
-      },
-      offset: const Offset(0, 30),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
-        child: Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall,
+          ],
         ),
       ),
     );
