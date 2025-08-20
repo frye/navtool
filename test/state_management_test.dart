@@ -28,12 +28,16 @@ void main() {
         // Access the provider, which will trigger the notifier creation and async initialization
         final notifier = testContainer.read(appStateProvider.notifier);
         
-        // Wait for initialization to complete
-        await Future.delayed(const Duration(milliseconds: 200));
+        // Wait for initialization to complete with a more robust approach
+        int attempts = 0;
+        while (!testContainer.read(appStateProvider).isInitialized && attempts < 10) {
+          await Future.delayed(const Duration(milliseconds: 50));
+          attempts++;
+        }
         
         final state = testContainer.read(appStateProvider);
         
-        expect(state.isInitialized, true); // State should be initialized after the notifier is created
+        expect(state.isInitialized, true, reason: 'State should be initialized after async init completes');
         expect(state.currentPosition, null);
         expect(state.availableCharts, isEmpty);
         expect(state.downloadedCharts, isEmpty);
@@ -48,20 +52,33 @@ void main() {
     });
 
     test('App settings provider initializes with default settings', () async {
-      final settings = container.read(appSettingsProvider);
+      // Create a fresh container for this test
+      final testContainer = ProviderContainer();
       
-      expect(settings.themeMode, AppThemeMode.system);
-      expect(settings.isDayMode, true);
-      expect(settings.maxConcurrentDownloads, 3);
-      expect(settings.enableGpsLogging, false);
-      expect(settings.showDebugInfo, false);
-      expect(settings.chartRenderingQuality, 1.0);
-      expect(settings.enableBackgroundDownloads, true);
-      expect(settings.autoSelectChart, true);
-      expect(settings.preferredUnits, 'metric');
-      expect(settings.gpsUpdateInterval, 1.0);
-      expect(settings.enableOfflineMode, false);
-      expect(settings.showAdvancedFeatures, false);
+      try {
+        // Access the provider to trigger initialization
+        final notifier = testContainer.read(appSettingsProvider.notifier);
+        
+        // Wait a bit for async initialization to complete
+        await Future.delayed(const Duration(milliseconds: 100));
+        
+        final settings = testContainer.read(appSettingsProvider);
+        
+        expect(settings.themeMode, AppThemeMode.system);
+        expect(settings.isDayMode, true);
+        expect(settings.maxConcurrentDownloads, 3);
+        expect(settings.enableGpsLogging, false);
+        expect(settings.showDebugInfo, false);
+        expect(settings.chartRenderingQuality, 1.0);
+        expect(settings.enableBackgroundDownloads, true);
+        expect(settings.autoSelectChart, true);
+        expect(settings.preferredUnits, 'metric');
+        expect(settings.gpsUpdateInterval, 1.0);
+        expect(settings.enableOfflineMode, false);
+        expect(settings.showAdvancedFeatures, false);
+      } finally {
+        testContainer.dispose();
+      }
     });
 
     test('Download queue provider initializes empty', () {
@@ -83,16 +100,29 @@ void main() {
       expect(waypointCount, 0);
     });
 
-    test('Settings derived providers work correctly', () {
-      final themeMode = container.read(themeProvider);
-      final dayMode = container.read(dayModeProvider);
-      final maxDownloads = container.read(maxDownloadsProvider);
-      final units = container.read(preferredUnitsProvider);
+    test('Settings derived providers work correctly', () async {
+      // Create a fresh container for this test
+      final testContainer = ProviderContainer();
       
-      expect(themeMode, AppThemeMode.system);
-      expect(dayMode, true);
-      expect(maxDownloads, 3);
-      expect(units, 'metric');
+      try {
+        // Access the settings provider to trigger initialization
+        final notifier = testContainer.read(appSettingsProvider.notifier);
+        
+        // Wait for initialization
+        await Future.delayed(const Duration(milliseconds: 100));
+        
+        final themeMode = testContainer.read(themeProvider);
+        final dayMode = testContainer.read(dayModeProvider);
+        final maxDownloads = testContainer.read(maxDownloadsProvider);
+        final units = testContainer.read(preferredUnitsProvider);
+        
+        expect(themeMode, AppThemeMode.system);
+        expect(dayMode, true);
+        expect(maxDownloads, 3);
+        expect(units, 'metric');
+      } finally {
+        testContainer.dispose();
+      }
     });
 
     test('App state notifier can update GPS position', () {
@@ -115,21 +145,41 @@ void main() {
     });
 
     test('Settings notifier can update theme mode', () async {
-      final notifier = container.read(appSettingsProvider.notifier);
+      // Create a fresh container for this test
+      final testContainer = ProviderContainer();
       
-      await notifier.setThemeMode(AppThemeMode.dark);
-      
-      final settings = container.read(appSettingsProvider);
-      expect(settings.themeMode, AppThemeMode.dark);
+      try {
+        final notifier = testContainer.read(appSettingsProvider.notifier);
+        
+        // Wait for initialization
+        await Future.delayed(const Duration(milliseconds: 100));
+        
+        await notifier.setThemeMode(AppThemeMode.dark);
+        
+        final settings = testContainer.read(appSettingsProvider);
+        expect(settings.themeMode, AppThemeMode.dark);
+      } finally {
+        testContainer.dispose();
+      }
     });
 
     test('Settings notifier can update max concurrent downloads', () async {
-      final notifier = container.read(appSettingsProvider.notifier);
+      // Create a fresh container for this test  
+      final testContainer = ProviderContainer();
       
-      await notifier.setMaxConcurrentDownloads(5);
-      
-      final settings = container.read(appSettingsProvider);
-      expect(settings.maxConcurrentDownloads, 5);
+      try {
+        final notifier = testContainer.read(appSettingsProvider.notifier);
+        
+        // Wait for initialization
+        await Future.delayed(const Duration(milliseconds: 100));
+        
+        await notifier.setMaxConcurrentDownloads(5);
+        
+        final settings = testContainer.read(appSettingsProvider);
+        expect(settings.maxConcurrentDownloads, 5);
+      } finally {
+        testContainer.dispose();
+      }
     });
   });
 }
