@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
@@ -39,11 +40,16 @@ class _TestHttpClientService implements HttpClientService {
 
   @override
   Future<Response> get(String url, {
-    Map<String, String>? queryParameters,
+    Map<String, dynamic>? queryParameters,
+    Options? options,
     CancelToken? cancelToken,
   }) async {
     try {
-      return await _dio.get(url, queryParameters: queryParameters, cancelToken: cancelToken);
+      return await _dio.get(url, 
+        queryParameters: queryParameters, 
+        options: options,
+        cancelToken: cancelToken
+      );
     } catch (e) {
       _logger.error('HTTP GET failed', exception: e);
       rethrow;
@@ -53,11 +59,17 @@ class _TestHttpClientService implements HttpClientService {
   @override
   Future<Response> post(String url, {
     dynamic data,
-    Map<String, String>? queryParameters,
+    Map<String, dynamic>? queryParameters,
+    Options? options,
     CancelToken? cancelToken,
   }) async {
     try {
-      return await _dio.post(url, data: data, queryParameters: queryParameters, cancelToken: cancelToken);
+      return await _dio.post(url, 
+        data: data,
+        queryParameters: queryParameters, 
+        options: options,
+        cancelToken: cancelToken
+      );
     } catch (e) {
       _logger.error('HTTP POST failed', exception: e);
       rethrow;
@@ -68,9 +80,14 @@ class _TestHttpClientService implements HttpClientService {
   Future<void> downloadFile(String url, String savePath, {
     CancelToken? cancelToken,
     ProgressCallback? onReceiveProgress,
+    Map<String, dynamic>? queryParameters,
   }) async {
     try {
-      await _dio.download(url, savePath, cancelToken: cancelToken, onReceiveProgress: onReceiveProgress);
+      await _dio.download(url, savePath, 
+        cancelToken: cancelToken, 
+        onReceiveProgress: onReceiveProgress,
+        queryParameters: queryParameters
+      );
     } catch (e) {
       _logger.error('File download failed', exception: e);
       rethrow;
@@ -124,7 +141,7 @@ void main() {
       
       apiClient = NoaaApiClientImpl(
         httpClient: httpClientService,
-        rateLimiter: RateLimiter(requestsPerSecond: 0.17), // ~10 requests per minute
+        rateLimiter: RateLimiter(requestsPerSecond: 1), // 1 request per second for integration tests
         logger: logger,
       );
     });
@@ -143,11 +160,13 @@ void main() {
         }
         
         try {
-          final catalog = await apiClient.fetchChartCatalog()
+          final catalogString = await apiClient.fetchChartCatalog()
             .timeout(const Duration(minutes: 2));
           
-          expect(catalog, isNotNull);
-          expect(catalog, isA<Map<String, dynamic>>());
+          expect(catalogString, isNotNull);
+          expect(catalogString, isA<String>());
+          
+          final catalog = jsonDecode(catalogString) as Map<String, dynamic>;
           expect(catalog.containsKey('type'), isTrue);
           expect(catalog['type'], equals('FeatureCollection'));
           expect(catalog.containsKey('features'), isTrue);
@@ -177,16 +196,14 @@ void main() {
         
         try {
           // Test with geographic filtering for California coast
-          final filteredCatalog = await apiClient.fetchChartCatalog(
-            bounds: {
-              'minLat': 32.0,
-              'maxLat': 42.0,
-              'minLon': -125.0,
-              'maxLon': -117.0,
+          final filteredCatalogString = await apiClient.fetchChartCatalog(
+            filters: {
+              'BBOX': '-125.0,32.0,-117.0,42.0', // minLon,minLat,maxLon,maxLat for California
             }
           ).timeout(const Duration(minutes: 2));
           
-          expect(filteredCatalog, isNotNull);
+          expect(filteredCatalogString, isNotNull);
+          final filteredCatalog = jsonDecode(filteredCatalogString) as Map<String, dynamic>;
           expect(filteredCatalog['features'], isA<List>());
           
           final features = filteredCatalog['features'] as List;
@@ -232,7 +249,7 @@ void main() {
             
             logger.info('Retrieved metadata for chart: ${chartMetadata.title}');
           } else {
-            logger.warn('Chart metadata returned null - chart may not be available');
+            logger.warning('Chart metadata returned null - chart may not be available');
           }
         } on SocketException catch (e) {
           if (e.message.contains('Failed host lookup')) {
@@ -401,8 +418,10 @@ void main() {
         }
         
         try {
-          final catalog = await apiClient.fetchChartCatalog()
+          final catalogString = await apiClient.fetchChartCatalog()
             .timeout(const Duration(minutes: 2));
+          
+          final catalog = jsonDecode(catalogString) as Map<String, dynamic>;
           
           // Validate GeoJSON structure
           expect(catalog['type'], equals('FeatureCollection'));
@@ -449,8 +468,10 @@ void main() {
         }
         
         try {
-          final catalog = await apiClient.fetchChartCatalog()
+          final catalogString = await apiClient.fetchChartCatalog()
             .timeout(const Duration(minutes: 2));
+          
+          final catalog = jsonDecode(catalogString) as Map<String, dynamic>;
           
           // Test expected schema elements that our app depends on
           expect(catalog.containsKey('type'), isTrue);
@@ -466,7 +487,7 @@ void main() {
             
             for (final field in requiredFields) {
               if (!properties.containsKey(field)) {
-                logger.warn('Missing expected field: $field');
+                logger.warning('Missing expected field: $field');
               }
             }
             
