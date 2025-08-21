@@ -35,6 +35,14 @@ migrate_working_dir/
 .pub/
 /build/
 
+# Test coverage
+coverage/
+
+# Generated files
+*.g.dart
+# Keep mock files for now as they're manually created
+# *.mocks.dart
+
 # Symbolication related
 app.*.symbols
 

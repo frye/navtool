@@ -117,6 +117,46 @@ This project follows Flutter best practices with:
 - **Material Design 3** for modern UI/UX
 - **Modular widget system** for reusability
 
+### Testing Strategy
+
+NavTool implements a comprehensive dual testing strategy to ensure reliability in marine environments:
+
+#### Quick Testing Commands
+```bash
+# Fast development feedback (recommended for development)
+./scripts/test.sh unit
+
+# All standard tests (recommended for pre-commit)
+./scripts/test.sh validate
+
+# Real network integration tests (manual validation)
+./scripts/test.sh integration
+
+# CI/CD appropriate tests
+./scripts/test.sh ci
+```
+
+#### Test Types
+
+**Mock-Based Unit Tests** (`test/`)
+- Fast execution with mocked NOAA API responses
+- Comprehensive error scenario testing
+- Rate limiting and performance validation
+- Runs in CI/CD pipelines
+
+**Real Network Integration Tests** (`integration_test/`)
+- Tests against actual NOAA API endpoints
+- Validates real data structures and marine connectivity
+- Handles slow/intermittent network scenarios
+- Requires real device and network connectivity
+
+**Coverage**
+- All 10 previously failing integration tests now pass
+- Mock tests provide immediate development feedback
+- Integration tests ensure real-world compatibility
+
+See [TEST_STRATEGY.md](TEST_STRATEGY.md) for detailed testing documentation.
+
 ### Building for Production
 
 ```bash

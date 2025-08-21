@@ -38,6 +38,9 @@ class MockGeolocator {
 class MockAppLogger extends Mock implements AppLogger {}
 
 void main() {
+  // Initialize Flutter binding for platform services
+  TestWidgetsFlutterBinding.ensureInitialized();
+  
   group('GpsServiceImpl Tests', () {
     late GpsServiceImpl gpsService;
     late MockAppLogger mockLogger;

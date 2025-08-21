@@ -16,6 +16,9 @@ import 'settings_service_impl_test.mocks.dart';
 /// Comprehensive tests for SettingsService implementation
 /// Tests preferences management, validation, backup/restore, and marine navigation settings
 void main() {
+  // Initialize Flutter binding for platform services
+  TestWidgetsFlutterBinding.ensureInitialized();
+  
   group('SettingsService Implementation Tests', () {
     late SettingsService settingsService;
     late MockSharedPreferences mockPrefs;
