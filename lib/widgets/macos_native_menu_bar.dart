@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../features/about/about_dialog.dart';
+import '../app/routes.dart';
 
 /// Native macOS menu bar implementation using PlatformMenuBar
 /// Provides File and Help menus integrated with the macOS menu system
@@ -32,7 +33,7 @@ class MacosNativeMenuBar extends StatelessWidget {
                 if (onNewChart != null) {
                   onNewChart!();
                 } else {
-                  Navigator.pushNamed(context, '/chart');
+                  Navigator.pushNamed(context, AppRoutes.chartBrowser);
                 }
               },
             ),
@@ -43,7 +44,7 @@ class MacosNativeMenuBar extends StatelessWidget {
                 if (onOpenChart != null) {
                   onOpenChart!();
                 } else {
-                  Navigator.pushNamed(context, '/chart');
+                  Navigator.pushNamed(context, AppRoutes.chartBrowser);
                 }
               },
             ),

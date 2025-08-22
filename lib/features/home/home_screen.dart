@@ -9,6 +9,7 @@ import '../../widgets/macos_native_menu_bar.dart';
 import '../../widgets/macos_status_bar.dart';
 import '../about/about_dialog.dart';
 import '../about/about_screen.dart';
+import '../../app/routes.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -42,8 +43,8 @@ class HomeScreen extends ConsumerWidget {
 
   Widget _buildMacOSLayout(BuildContext context) {
     return MacosNativeMenuBar(
-      onNewChart: () => Navigator.pushNamed(context, '/chart'),
-      onOpenChart: () => Navigator.pushNamed(context, '/chart'),
+      onNewChart: () => Navigator.pushNamed(context, AppRoutes.chartBrowser),
+      onOpenChart: () => Navigator.pushNamed(context, AppRoutes.chartBrowser),
       onAboutSelected: () => showDialog(
         context: context,
         builder: (context) => const AboutAppDialog(),
@@ -81,7 +82,7 @@ class HomeScreen extends ConsumerWidget {
                             width: double.infinity,
                             child: ElevatedButton.icon(
                               onPressed: () {
-                                Navigator.pushNamed(context, '/chart');
+                                Navigator.pushNamed(context, AppRoutes.chartBrowser);
                               },
                               icon: const Icon(Icons.add),
                               label: const Text('New Chart'),
@@ -92,7 +93,7 @@ class HomeScreen extends ConsumerWidget {
                             width: double.infinity,
                             child: OutlinedButton.icon(
                               onPressed: () {
-                                Navigator.pushNamed(context, '/chart');
+                                Navigator.pushNamed(context, AppRoutes.chartBrowser);
                               },
                               icon: const Icon(Icons.folder_open),
                               label: const Text('Open Chart'),
@@ -150,7 +151,7 @@ class HomeScreen extends ConsumerWidget {
                       children: [
                         ElevatedButton.icon(
                           onPressed: () {
-                            Navigator.pushNamed(context, '/chart');
+                            Navigator.pushNamed(context, AppRoutes.chartBrowser);
                           },
                           icon: const Icon(Icons.add),
                           label: const Text('New Chart'),
@@ -158,7 +159,7 @@ class HomeScreen extends ConsumerWidget {
                         const SizedBox(width: 16),
                         OutlinedButton.icon(
                           onPressed: () {
-                            Navigator.pushNamed(context, '/chart');
+                            Navigator.pushNamed(context, AppRoutes.chartBrowser);
                           },
                           icon: const Icon(Icons.folder_open),
                           label: const Text('Open Chart'),
@@ -295,7 +296,7 @@ class HomeScreen extends ConsumerWidget {
               title: const Text('Charts'),
               onTap: () {
                 Navigator.pop(context);
-                Navigator.pushNamed(context, '/chart');
+                Navigator.pushNamed(context, AppRoutes.chartBrowser);
               },
             ),
             ListTile(
@@ -351,7 +352,7 @@ class HomeScreen extends ConsumerWidget {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       onPressed: () {
-                        Navigator.pushNamed(context, '/chart');
+                        Navigator.pushNamed(context, AppRoutes.chartBrowser);
                       },
                       icon: const Icon(Icons.add),
                       label: const Text('New Chart'),
@@ -362,7 +363,7 @@ class HomeScreen extends ConsumerWidget {
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: () {
-                        Navigator.pushNamed(context, '/chart');
+                        Navigator.pushNamed(context, AppRoutes.chartBrowser);
                       },
                       icon: const Icon(Icons.folder_open),
                       label: const Text('Open Chart'),
