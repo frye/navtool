@@ -89,7 +89,7 @@ jobs:
         echo "Note: Integration tests are disabled. Only mock-based unit tests are run." >> test-summary.md
         
     - name: Upload test summary
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: test-summary
         path: test-summary.md
