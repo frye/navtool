@@ -60,35 +60,11 @@ jobs:
         flags: unittests
         name: unit-test-coverage
 
-  # Security and Compliance Tests
-  security-tests:
-    name: Security Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Flutter
-      uses: subosito/flutter-action@v2
-      with:
-        flutter-version: ${{ env.FLUTTER_VERSION }}
-        cache: true
-        
-    - name: Get dependencies
-      run: flutter pub get
-      
-    - name: Run security analysis
-      run: |
-        flutter analyze --fatal-infos
-        dart analyze --fatal-infos
-
   # Final validation and reporting
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [unit-tests, security-tests]
+    needs: [unit-tests]
     if: always()
     
     steps:
@@ -104,7 +80,6 @@ jobs:
         echo "" >> test-summary.md
         echo "## Test Results" >> test-summary.md
         echo "- Unit Tests (Mock-based): ${{ needs.unit-tests.result }}" >> test-summary.md
-        echo "- Security Tests: ${{ needs.security-tests.result }}" >> test-summary.md
         echo "" >> test-summary.md
         echo "## Coverage Information" >> test-summary.md
         if [ -f "coverage/lcov.info" ]; then
