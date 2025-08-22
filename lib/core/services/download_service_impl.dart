@@ -134,7 +134,16 @@ class DownloadServiceImpl implements DownloadService {
       _errorHandler.handleError(error, stackTrace);
       _cleanup(chartId);
       
-      rethrow;
+      // Convert to AppError for consistent error handling
+      if (error is DioException) {
+        throw AppError.network('Chart download failed: $chartId - ${error.message}');
+      } else if (error is FileSystemException) {
+        throw AppError.storage('Storage error during download: $chartId - ${error.message}');
+      } else if (error is AppError) {
+        rethrow;
+      } else {
+        throw AppError.unknown('Unexpected error during download: $chartId - ${error.toString()}');
+      }
     } finally {
       _activeDownloads--;
     }
@@ -151,7 +160,15 @@ class DownloadServiceImpl implements DownloadService {
       }
     } catch (error, stackTrace) {
       _errorHandler.handleError(error, stackTrace);
-      rethrow;
+      
+      // Convert to AppError for consistent error handling
+      if (error is DioException) {
+        throw AppError.network('Failed to pause download: $chartId - ${error.message}');
+      } else if (error is AppError) {
+        rethrow;
+      } else {
+        throw AppError.unknown('Unexpected error pausing download: $chartId - ${error.toString()}');
+      }
     }
   }
 
@@ -246,7 +263,17 @@ class DownloadServiceImpl implements DownloadService {
 
     } catch (error, stackTrace) {
       _errorHandler.handleError(error, stackTrace);
-      rethrow;
+      
+      // Convert to AppError for consistent error handling
+      if (error is DioException) {
+        throw AppError.network('Failed to resume download: $chartId - ${error.message}');
+      } else if (error is FileSystemException) {
+        throw AppError.storage('Storage error during resume: $chartId - ${error.message}');
+      } else if (error is AppError) {
+        rethrow;
+      } else {
+        throw AppError.unknown('Unexpected error resuming download: $chartId - ${error.toString()}');
+      }
     }
   }
 
@@ -280,7 +307,17 @@ class DownloadServiceImpl implements DownloadService {
       _cleanup(chartId);
     } catch (error, stackTrace) {
       _errorHandler.handleError(error, stackTrace);
-      rethrow;
+      
+      // Convert to AppError for consistent error handling
+      if (error is DioException) {
+        throw AppError.network('Failed to cancel download: $chartId - ${error.message}');
+      } else if (error is FileSystemException) {
+        throw AppError.storage('Storage error during cancellation: $chartId - ${error.message}');
+      } else if (error is AppError) {
+        rethrow;
+      } else {
+        throw AppError.unknown('Unexpected error cancelling download: $chartId - ${error.toString()}');
+      }
     }
   }
 
