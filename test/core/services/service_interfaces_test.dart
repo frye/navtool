@@ -279,13 +279,13 @@ class MockChartService implements ChartService {
 
 class MockDownloadService implements DownloadService {
   @override
-  Future<void> downloadChart(String chartId, String url) async {}
+  Future<void> downloadChart(String chartId, String url, {String? expectedChecksum}) async {}
 
   @override
   Future<void> pauseDownload(String chartId) async {}
 
   @override
-  Future<void> resumeDownload(String chartId) async {}
+  Future<void> resumeDownload(String chartId, {String? url}) async {}
 
   @override
   Future<void> cancelDownload(String chartId) async {}
@@ -295,6 +295,92 @@ class MockDownloadService implements DownloadService {
 
   @override
   Stream<double> getDownloadProgress(String chartId) => Stream.value(0.0);
+
+  // Enhanced queue management methods
+  @override
+  Future<void> addToQueue(String chartId, String url, {
+    DownloadPriority priority = DownloadPriority.normal,
+    String? expectedChecksum,
+  }) async {}
+
+  @override
+  Future<void> removeFromQueue(String chartId) async {}
+
+  @override
+  Future<void> clearQueue() async {}
+
+  @override
+  Future<List<QueueItem>> getDetailedQueue() async => [];
+
+  // Batch download operations
+  @override
+  Future<String> startBatchDownload(List<String> chartIds, List<String> urls, {
+    DownloadPriority priority = DownloadPriority.normal,
+  }) async => 'batch-id';
+
+  @override
+  Future<BatchDownloadProgress> getBatchProgress(String batchId) async => 
+      BatchDownloadProgress(
+        batchId: batchId, 
+        status: BatchDownloadStatus.pending,
+        totalCharts: 0, 
+        completedCharts: 0, 
+        failedCharts: 0,
+        overallProgress: 0.0,
+        lastUpdated: DateTime.now(),
+        failedChartIds: [],
+      );
+
+  @override
+  Stream<BatchDownloadProgress> getBatchProgressStream(String batchId) => 
+      Stream.value(BatchDownloadProgress(
+        batchId: batchId, 
+        status: BatchDownloadStatus.pending,
+        totalCharts: 0, 
+        completedCharts: 0, 
+        failedCharts: 0,
+        overallProgress: 0.0,
+        lastUpdated: DateTime.now(),
+        failedChartIds: [],
+      ));
+
+  @override
+  Future<void> pauseBatchDownload(String batchId) async {}
+
+  @override
+  Future<void> resumeBatchDownload(String batchId) async {}
+
+  @override
+  Future<void> cancelBatchDownload(String batchId) async {}
+
+  // Background download support - TODO: implement these features
+  // @override
+  // Future<List<DownloadProgress>> getPersistedDownloadState() async => [];
+
+  // @override
+  // Future<void> recoverDownloads(List<DownloadProgress> persistedDownloads) async {}
+
+  @override
+  Future<void> enableBackgroundNotifications() async {}
+
+  @override
+  Future<List<DownloadNotification>> getPendingNotifications() async => [];
+
+  @override
+  Future<int> getMaxConcurrentDownloads() async => 2;
+
+  @override
+  Future<void> setMaxConcurrentDownloads(int maxConcurrent) async {}
+
+  // Resume support
+  @override
+  Future<ResumeData?> getResumeData(String chartId) async => null;
+
+  @override
+  void dispose() {}
+
+  @override
+  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class MockGpsService implements GpsService {
