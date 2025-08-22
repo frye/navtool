@@ -322,10 +322,21 @@ void main() {
         ));
         await tester.pumpAndSettle();
 
-        // Assert
-        expect(find.bySemanticsLabel('San Francisco Bay chart card'), findsOneWidget);
-        expect(find.bySemanticsLabel('Select chart San Francisco Bay'), findsOneWidget);
-        expect(find.bySemanticsLabel('Chart information for San Francisco Bay'), findsOneWidget);
+        // Assert - Check for semantics widgets with proper structure
+        expect(find.byWidgetPredicate((widget) =>
+          widget is Semantics &&
+          widget.properties.label == 'San Francisco Bay chart card'
+        ), findsOneWidget);
+        
+        expect(find.byWidgetPredicate((widget) =>
+          widget is Semantics &&
+          widget.properties.label == 'Select chart San Francisco Bay'
+        ), findsOneWidget);
+        
+        expect(find.byWidgetPredicate((widget) =>
+          widget is Semantics &&
+          widget.properties.label == 'Chart information for San Francisco Bay'
+        ), findsOneWidget);
       });
 
       testWidgets('should be keyboard accessible', (WidgetTester tester) async {
