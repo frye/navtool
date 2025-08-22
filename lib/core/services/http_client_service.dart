@@ -248,25 +248,36 @@ class HttpClientService {
     );
   }
 
-  /// Download a file with progress tracking
+  /// Download a file with progress tracking and resume support
   Future<void> downloadFile(
     String url,
     String savePath, {
     ProgressCallback? onReceiveProgress,
     CancelToken? cancelToken,
     Map<String, dynamic>? queryParameters,
+    int? resumeFrom,
   }) async {
     try {
+      final options = Options(
+        // Use longer timeout for large chart files
+        receiveTimeout: const Duration(minutes: 30),
+        headers: resumeFrom != null ? {'Range': 'bytes=$resumeFrom-'} : null,
+      );
+
       await _dio.download(
         url,
         savePath,
-        onReceiveProgress: onReceiveProgress,
+        onReceiveProgress: resumeFrom != null 
+          ? (received, total) {
+              // Adjust progress for resumed downloads
+              final adjustedReceived = received + resumeFrom;
+              final adjustedTotal = total > 0 ? total + resumeFrom : total;
+              onReceiveProgress?.call(adjustedReceived, adjustedTotal);
+            }
+          : onReceiveProgress,
         cancelToken: cancelToken,
         queryParameters: queryParameters,
-        options: Options(
-          // Use longer timeout for large chart files
-          receiveTimeout: const Duration(minutes: 30),
-        ),
+        options: options,
       );
     } on DioException catch (e) {
       throw _convertDioErrorToAppError(e);

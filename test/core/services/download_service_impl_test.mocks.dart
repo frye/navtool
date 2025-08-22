@@ -99,6 +99,7 @@ class MockHttpClientService extends _i1.Mock implements _i7.HttpClientService {
     _i2.ProgressCallback? onReceiveProgress,
     _i2.CancelToken? cancelToken,
     Map<String, dynamic>? queryParameters,
+    int? resumeFrom,
   }) =>
       (super.noSuchMethod(
             Invocation.method(
@@ -108,6 +109,7 @@ class MockHttpClientService extends _i1.Mock implements _i7.HttpClientService {
                 #onReceiveProgress: onReceiveProgress,
                 #cancelToken: cancelToken,
                 #queryParameters: queryParameters,
+                #resumeFrom: resumeFrom,
               },
             ),
             returnValue: _i6.Future<void>.value(),
