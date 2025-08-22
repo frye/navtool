@@ -221,31 +221,13 @@ void main() {
         const url1 = 'https://charts.noaa.gov/ENCs/US5CA52M.zip';
         const url2 = 'https://charts.noaa.gov/ENCs/US4CA11M.zip';
 
-        // Reset and set up slower mock for this test to keep items in queue
-        reset(mockHttpClient);
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-        )).thenAnswer((invocation) async {
-          // Add a delay to keep items in queue during test
-          await Future.delayed(const Duration(milliseconds: 200));
-          final filePath = invocation.positionalArguments[1] as String;
-          final file = File(filePath);
-          await file.create(recursive: true);
-          await file.writeAsBytes([1, 2, 3, 4, 5]);
-        });
-
         // Act
         final queue1 = await downloadService.getDownloadQueue();
         
-        // Start downloads (they should be queued)
-        unawaited(downloadService.downloadChart(chartId1, url1));
-        await Future.delayed(const Duration(milliseconds: 10)); // Let first download get queued
-        unawaited(downloadService.downloadChart(chartId2, url2));
+        // Add charts to queue (don't start immediate downloads)
+        await downloadService.addToQueue(chartId1, url1);
+        await downloadService.addToQueue(chartId2, url2);
         
-        await Future.delayed(const Duration(milliseconds: 50)); // Check queue while downloads are running
         final queue2 = await downloadService.getDownloadQueue();
 
         // Assert
@@ -303,19 +285,14 @@ void main() {
       });
 
     test('should resume download with error message', () async {
-      // Arrange - The resume method should throw because it's not implemented
-      // regardless of whether there's a paused download or not
+      // Arrange - The resume method should throw because no URL is provided
       const chartId = 'test-chart';
 
-      // Act & Assert - Resume should complete without error for non-existent chart
-      // because the implementation only throws for paused downloads
+      // Act & Assert - Resume should throw AppError for missing URL
       await expectLater(
         downloadService.resumeDownload(chartId),
-        completes,
+        throwsA(isA<AppError>()),
       );
-      
-      // Test the actual error case would require a paused download,
-      // but since resume isn't implemented, we'll test the current behavior
     });
 
     test('should cancel download successfully', () async {
@@ -414,10 +391,10 @@ void main() {
           type: DioExceptionType.connectionError,
         ));
 
-        // Act & Assert
+        // Act & Assert - The service wraps DioException in AppError
         await expectLater(
           downloadService.downloadChart(chartId, url),
-          throwsA(isA<DioException>()),
+          throwsA(isA<AppError>()),
         );
 
         verify(mockErrorHandler.handleError(any, any)).called(1);
@@ -585,10 +562,10 @@ void main() {
           );
         });
 
-        // Act
+        // Act & Assert - The service wraps DioException in AppError
         await expectLater(
           downloadService.downloadChart(chartId, url),
-          throwsA(isA<DioException>()),
+          throwsA(isA<AppError>()),
         );
 
         // Assert - cleanup should be called

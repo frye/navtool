@@ -81,6 +81,7 @@ class _TestHttpClientService implements HttpClientService {
     CancelToken? cancelToken,
     ProgressCallback? onReceiveProgress,
     Map<String, dynamic>? queryParameters,
+    int? resumeFrom,
   }) async {
     try {
       await _dio.download(url, savePath, 
