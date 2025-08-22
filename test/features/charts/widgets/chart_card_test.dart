@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:navtool/features/charts/widgets/chart_card.dart';
@@ -31,7 +32,7 @@ void main() {
         type: type ?? ChartType.harbor,
         description: 'Detailed harbor chart of San Francisco Bay',
         isDownloaded: isDownloaded ?? false,
-        fileSize: fileSize ?? 15728640, // 15MB
+        fileSize: fileSize, // Don't provide default value
       );
     }
 
@@ -393,7 +394,7 @@ void main() {
         final chart = Chart(
           id: '',
           title: '',
-          scale: 0,
+          scale: 1, // Minimum valid scale
           bounds: GeographicBounds(north: 0, south: 0, east: 0, west: 0),
           lastUpdate: DateTime.now(),
           state: '',

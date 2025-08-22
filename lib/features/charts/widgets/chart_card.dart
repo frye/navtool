@@ -67,11 +67,13 @@ class ChartCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    IconButton(
-                      onPressed: onInfoTap,
-                      icon: const Icon(Icons.info_outline),
-                      tooltip: 'Chart information',
-                      semanticLabel: 'Chart information for ${chart.title}',
+                    Semantics(
+                      label: 'Chart information for ${chart.title}',
+                      child: IconButton(
+                        onPressed: onInfoTap,
+                        icon: const Icon(Icons.info_outline),
+                        tooltip: 'Chart information',
+                      ),
                     ),
                   ],
                 ),
@@ -98,12 +100,15 @@ class ChartCard extends StatelessWidget {
                     const SizedBox(width: 12),
                     
                     // Scale
-                    Text(
-                      'Scale: 1:${_formatNumber(chart.scale)}',
-                      style: Theme.of(context).textTheme.bodySmall,
+                    Expanded(
+                      child: Text(
+                        'Scale: 1:${_formatNumber(chart.scale)}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                     
-                    const Spacer(),
+                    const SizedBox(width: 8),
                     
                     // Download status
                     Icon(
@@ -139,7 +144,7 @@ class ChartCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         '${chart.bounds.south.toStringAsFixed(1)}° - ${chart.bounds.north.toStringAsFixed(1)}°N, '
-                        '${chart.bounds.east.toStringAsFixed(1)}° - ${chart.bounds.west.toStringAsFixed(1)}°W',
+                        '${chart.bounds.east.abs().toStringAsFixed(1)}° - ${chart.bounds.west.abs().toStringAsFixed(1)}°W',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                         ),
