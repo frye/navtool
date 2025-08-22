@@ -9,22 +9,38 @@ import 'package:navtool/features/about/about_screen.dart';
 import 'package:navtool/features/charts/chart_screen.dart';
 import 'package:navtool/features/charts/chart_browser_screen.dart';
 import 'package:navtool/core/services/noaa/noaa_chart_discovery_service.dart';
+import 'package:navtool/core/services/gps_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/providers/noaa_providers.dart';
 import 'package:navtool/core/state/providers.dart';
+import 'package:navtool/core/models/gps_position.dart';
 
 // Generate mocks for dependencies
-@GenerateMocks([NoaaChartDiscoveryService, AppLogger])
+@GenerateMocks([NoaaChartDiscoveryService, AppLogger, GpsService])
 import 'routes_test.mocks.dart';
 
 void main() {
   group('App Routes Tests', () {
     late MockNoaaChartDiscoveryService mockDiscoveryService;
     late MockAppLogger mockLogger;
+    late MockGpsService mockGpsService;
 
     setUp(() {
       mockDiscoveryService = MockNoaaChartDiscoveryService();
       mockLogger = MockAppLogger();
+      mockGpsService = MockGpsService();
+      
+      // Setup default GPS service behavior
+      when(mockGpsService.getCurrentPosition()).thenAnswer((_) async => 
+        GpsPosition(
+          latitude: 37.7749,
+          longitude: -122.4194,
+          accuracy: 5.0,
+          timestamp: DateTime.now(),
+        )
+      );
+      when(mockGpsService.isLocationEnabled()).thenAnswer((_) async => true);
+      when(mockGpsService.checkLocationPermission()).thenAnswer((_) async => true);
     });
 
     Widget createTestApp() {
@@ -32,6 +48,7 @@ void main() {
         overrides: [
           noaaChartDiscoveryServiceProvider.overrideWithValue(mockDiscoveryService),
           loggerProvider.overrideWithValue(mockLogger),
+          gpsServiceProvider.overrideWithValue(mockGpsService),
         ],
         child: MaterialApp(
           routes: AppRoutes.routes,

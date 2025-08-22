@@ -10,6 +10,7 @@ import 'package:navtool/core/services/gps_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/state/providers.dart';
 import 'package:navtool/core/models/gps_position.dart';
+import 'package:navtool/app/routes.dart';
 
 import 'home_test.mocks.dart';
 
@@ -44,8 +45,9 @@ void main() {
           loggerProvider.overrideWithValue(mockLogger),
           ...overrides,
         ],
-        child: const MaterialApp(
-          home: HomeScreen(),
+        child: MaterialApp(
+          routes: AppRoutes.routes,
+          initialRoute: AppRoutes.home,
         ),
       );
     }
@@ -104,10 +106,8 @@ void main() {
               loggerProvider.overrideWithValue(mockLogger),
             ],
             child: MaterialApp(
-              home: const HomeScreen(),
-              routes: {
-                '/chart': (context) => const Scaffold(body: Text('Chart Screen')),
-              },
+              routes: AppRoutes.routes,
+              initialRoute: AppRoutes.home,
             ),
           ),
         );
@@ -118,7 +118,7 @@ void main() {
         await tester.pumpAndSettle();
         
         // Assert
-        expect(find.text('Chart Screen'), findsOneWidget);
+        expect(find.text('Chart Browser'), findsOneWidget);
       });
 
       testWidgets('should navigate to charts when Open Chart button tapped', (WidgetTester tester) async {
@@ -130,10 +130,8 @@ void main() {
               loggerProvider.overrideWithValue(mockLogger),
             ],
             child: MaterialApp(
-              home: const HomeScreen(),
-              routes: {
-                '/chart': (context) => const Scaffold(body: Text('Chart Screen')),
-              },
+              routes: AppRoutes.routes,
+              initialRoute: AppRoutes.home,
             ),
           ),
         );
@@ -144,7 +142,7 @@ void main() {
         await tester.pumpAndSettle();
         
         // Assert
-        expect(find.text('Chart Screen'), findsOneWidget);
+        expect(find.text('Chart Browser'), findsOneWidget);
       });
 
       testWidgets('should navigate to about screen from drawer', (WidgetTester tester) async {
