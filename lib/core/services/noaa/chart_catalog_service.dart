@@ -7,6 +7,8 @@ import 'package:navtool/core/services/cache_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/app_error.dart';
 import 'package:navtool/core/services/noaa/noaa_api_client.dart';
+import 'package:navtool/core/services/database_storage_service.dart';
+import 'package:navtool/core/services/storage/noaa_storage_extensions.dart';
 
 /// Abstract interface for chart catalog management and caching
 abstract class ChartCatalogService {
@@ -40,14 +42,17 @@ class ChartCatalogServiceImpl implements ChartCatalogService {
   final CacheService _cacheService;
   final AppLogger _logger;
   final NoaaApiClient _noaaApiClient;
+  final DatabaseStorageService _databaseStorageService;
 
   ChartCatalogServiceImpl({
     required CacheService cacheService,
     required AppLogger logger,
     required NoaaApiClient noaaApiClient,
+    required DatabaseStorageService databaseStorageService,
   }) : _cacheService = cacheService,
        _logger = logger,
-       _noaaApiClient = noaaApiClient;
+       _noaaApiClient = noaaApiClient,
+       _databaseStorageService = databaseStorageService;
 
   @override
   Future<Chart?> getCachedChart(String chartId) async {
@@ -286,6 +291,7 @@ class ChartCatalogServiceImpl implements ChartCatalogService {
       
       int successCount = 0;
       int errorCount = 0;
+      final List<Chart> chartsToStore = []; // Collect charts for database storage
       
       // Process each chart feature
       for (final feature in features) {
@@ -301,7 +307,6 @@ class ChartCatalogServiceImpl implements ChartCatalogService {
           // Extract chart information from NOAA ENC coverage attributes
           final cellName = properties['DSNM'] as String? ?? properties['CELL_NAME'] as String?;
           final title = properties['TITLE'] as String? ?? properties['INFORM'] as String? ?? 'Unknown Chart';
-          final state = properties['STATE'] as String? ?? 'Unknown';
           final lastUpdateStr = properties['DATE_UPD'] as String? ?? properties['SORDAT'] as String?;
           
           // For NOAA ENC data, we parse chart type from dataset name (DSNM)
@@ -336,44 +341,107 @@ class ChartCatalogServiceImpl implements ChartCatalogService {
             chartType = ChartType.berthing;
           }
           
-          // For regular JSON format (non-GeoJSON), create default bounds since geometry not included
+          // Extract geographic bounds from geometry data
           GeographicBounds bounds;
           final geometry = feature['geometry'];
-          if (geometry != null && geometry['type'] == 'Polygon' && geometry['coordinates'] != null) {
-            // Handle GeoJSON geometry if present
-            final coordinates = geometry['coordinates'][0] as List;
-            
+          
+          if (geometry != null) {
             double minLat = double.infinity;
             double maxLat = double.negativeInfinity;
             double minLon = double.infinity;
             double maxLon = double.negativeInfinity;
             
-            for (final coord in coordinates) {
-              if (coord is List && coord.length >= 2) {
-                final lon = (coord[0] as num).toDouble();
-                final lat = (coord[1] as num).toDouble();
-                
-                minLat = math.min(minLat, lat);
-                maxLat = math.max(maxLat, lat);
-                minLon = math.min(minLon, lon);
-                maxLon = math.max(maxLon, lon);
+            bool validBounds = false;
+            
+            // Handle ArcGIS rings format (NOAA API format)
+            if (geometry['rings'] != null) {
+              final rings = geometry['rings'] as List;
+              for (final ring in rings) {
+                if (ring is List) {
+                  for (final coord in ring) {
+                    if (coord is List && coord.length >= 2) {
+                      final lon = (coord[0] as num).toDouble();
+                      final lat = (coord[1] as num).toDouble();
+                      
+                      minLat = math.min(minLat, lat);
+                      maxLat = math.max(maxLat, lat);
+                      minLon = math.min(minLon, lon);
+                      maxLon = math.max(maxLon, lon);
+                      validBounds = true;
+                    }
+                  }
+                }
+              }
+            }
+            // Handle GeoJSON coordinates format (backup)
+            else if (geometry['type'] == 'Polygon' && geometry['coordinates'] != null) {
+              final coordinates = geometry['coordinates'][0] as List;
+              for (final coord in coordinates) {
+                if (coord is List && coord.length >= 2) {
+                  final lon = (coord[0] as num).toDouble();
+                  final lat = (coord[1] as num).toDouble();
+                  
+                  minLat = math.min(minLat, lat);
+                  maxLat = math.max(maxLat, lat);
+                  minLon = math.min(minLon, lon);
+                  maxLon = math.max(maxLon, lon);
+                  validBounds = true;
+                }
               }
             }
             
-            bounds = GeographicBounds(
-              north: maxLat,
-              south: minLat,
-              east: maxLon,
-              west: minLon,
-            );
+            if (validBounds) {
+              bounds = GeographicBounds(
+                north: maxLat,
+                south: minLat,
+                east: maxLon,
+                west: minLon,
+              );
+              _logger.debug('Extracted bounds for $cellName: ($minLon, $minLat) to ($maxLon, $maxLat)');
+            } else {
+              // Skip charts with invalid geometry
+              _logger.warning('Skipping chart $cellName: no valid geometry bounds found');
+              continue;
+            }
           } else {
-            // Default bounds for NOAA ENC data (covers US waters)
-            bounds = GeographicBounds(
-              north: 0.0,
-              south: 0.0,
-              east: 0.0,
-              west: 0.0,
-            );
+            // Skip charts without geometry
+            _logger.warning('Skipping chart $cellName: no geometry data');
+            continue;
+          }
+          
+          // Determine state from chart bounds (since NOAA API doesn't provide state)
+          String state = 'Unknown';
+          final centerLat = (bounds.north + bounds.south) / 2;
+          final centerLon = (bounds.east + bounds.west) / 2;
+          
+          // Use predefined state boundaries to determine state
+          final stateBounds = {
+            'California': GeographicBounds(north: 42.0, south: 32.5, east: -114.1, west: -124.4),
+            'Florida': GeographicBounds(north: 31.0, south: 24.5, east: -80.0, west: -87.6),
+            'Texas': GeographicBounds(north: 36.5, south: 25.8, east: -93.5, west: -106.6),
+            'Washington': GeographicBounds(north: 49.0, south: 45.5, east: -116.9, west: -124.8),
+            'Alaska': GeographicBounds(north: 71.4, south: 54.8, east: -130.0, west: -179.1),
+            'Hawaii': GeographicBounds(north: 28.4, south: 18.9, east: -154.8, west: -178.3),
+            'Oregon': GeographicBounds(north: 46.3, south: 42.0, east: -116.5, west: -124.6),
+            'Maine': GeographicBounds(north: 47.5, south: 43.1, east: -66.9, west: -71.1),
+            'Massachusetts': GeographicBounds(north: 42.9, south: 41.2, east: -69.9, west: -73.5),
+            'New York': GeographicBounds(north: 45.0, south: 40.5, east: -71.9, west: -79.8),
+            'North Carolina': GeographicBounds(north: 36.6, south: 33.8, east: -75.5, west: -84.3),
+            'South Carolina': GeographicBounds(north: 35.2, south: 32.0, east: -78.5, west: -83.4),
+            'Georgia': GeographicBounds(north: 35.0, south: 30.4, east: -80.8, west: -85.6),
+            'Alabama': GeographicBounds(north: 35.0, south: 30.2, east: -84.9, west: -88.5),
+            'Mississippi': GeographicBounds(north: 35.0, south: 30.2, east: -88.1, west: -91.7),
+            'Louisiana': GeographicBounds(north: 33.0, south: 28.9, east: -88.8, west: -94.0),
+          };
+          
+          for (final entry in stateBounds.entries) {
+            final stateName = entry.key;
+            final stateRegion = entry.value;
+            if (centerLat >= stateRegion.south && centerLat <= stateRegion.north &&
+                centerLon >= stateRegion.west && centerLon <= stateRegion.east) {
+              state = stateName;
+              break;
+            }
           }
           
           // Parse last update date
@@ -403,6 +471,10 @@ class ChartCatalogServiceImpl implements ChartCatalogService {
           
           // Cache the chart
           await cacheChart(chart);
+          
+          // Add to list for database storage
+          chartsToStore.add(chart);
+          
           successCount++;
           
           // Log progress every 100 charts
@@ -414,6 +486,18 @@ class ChartCatalogServiceImpl implements ChartCatalogService {
           errorCount++;
           _logger.warning('Failed to process chart feature during bootstrap', exception: e);
           // Continue processing other charts
+        }
+      }
+      
+      // Store all charts in database
+      if (chartsToStore.isNotEmpty) {
+        _logger.info('Storing ${chartsToStore.length} charts in database...');
+        try {
+          await _databaseStorageService.insertNoaaCharts(chartsToStore);
+          _logger.info('Successfully stored ${chartsToStore.length} charts in database');
+        } catch (e) {
+          _logger.error('Failed to store charts in database during bootstrap', exception: e);
+          // Don't fail the entire bootstrap if database storage fails
         }
       }
       

@@ -120,6 +120,14 @@ class MockNoaaChartDiscoveryService extends _i1.Mock
             returnValue: _i5.Future<bool>.value(false),
           )
           as _i5.Future<bool>);
+
+  @override
+  _i5.Future<int> fixChartDiscoveryCache() =>
+      (super.noSuchMethod(
+            Invocation.method(#fixChartDiscoveryCache, []),
+            returnValue: _i5.Future<int>.value(0),
+          )
+          as _i5.Future<int>);
 }
 
 /// A class which mocks [AppLogger].

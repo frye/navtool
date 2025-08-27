@@ -10,9 +10,10 @@ import 'package:navtool/core/models/chart.dart';
 import 'package:navtool/core/models/geographic_bounds.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/app_error.dart';
+import 'package:navtool/core/services/database_storage_service.dart';
 
 // Generate mocks for dependencies
-@GenerateMocks([CacheService, AppLogger, NoaaApiClient])
+@GenerateMocks([CacheService, AppLogger, NoaaApiClient, DatabaseStorageService])
 import 'chart_catalog_service_test.mocks.dart';
 
 void main() {
@@ -21,16 +22,19 @@ void main() {
     late MockCacheService mockCacheService;
     late MockAppLogger mockLogger;
     late MockNoaaApiClient mockApiClient;
+    late MockDatabaseStorageService mockDatabaseStorageService;
 
     setUp(() {
       mockCacheService = MockCacheService();
       mockLogger = MockAppLogger();
       mockApiClient = MockNoaaApiClient();
+      mockDatabaseStorageService = MockDatabaseStorageService();
       
       catalogService = ChartCatalogServiceImpl(
         cacheService: mockCacheService,
         logger: mockLogger,
         noaaApiClient: mockApiClient,
+        databaseStorageService: mockDatabaseStorageService,
       );
     });
 

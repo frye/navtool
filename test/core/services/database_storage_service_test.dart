@@ -181,6 +181,183 @@ void main() {
         expect(chartsInBounds.any((c) => c.id == 'chart2'), isTrue);
       });
 
+      test('should demonstrate cache invalidation needed for Washington charts', () async {
+        // Arrange - Simulate the real issue: OLD cached charts with wrong bounds
+        // These represent charts that were cached BEFORE geometry extraction was implemented
+        
+        // OLD cached West Coast chart with wrong default bounds
+        final oldCachedChart = _createTestChart(
+          id: 'US1WC07M', 
+          bounds: GeographicBounds(
+            north: 0.0, south: 0.0, east: 0.0, west: 0.0, // Wrong default bounds from old API
+          )
+        );
+        
+        await storageService.storeChart(oldCachedChart, [1]);
+
+        // Act - Query for Washington (this should find 0 charts due to old cache)
+        final washingtonBounds = GeographicBounds(
+          north: 49.0, south: 45.5, east: -116.9, west: -124.8
+        );
+        final chartsInWashington = await storageService.getChartsInBounds(washingtonBounds);
+        
+        print('DEBUG: Found ${chartsInWashington.length} charts with old cached bounds');
+
+        // Assert - Demonstrates the cache invalidation problem
+        expect(chartsInWashington.length, equals(0), 
+               reason: 'Old cached charts with wrong bounds (0,0,0,0) don\'t intersect Washington');
+               
+        // Now test what SHOULD happen with correct bounds
+        final correctedChart = _createTestChart(
+          id: 'US1WC07M', 
+          bounds: GeographicBounds(
+            north: 49.0, south: 32.0, east: -117.0, west: -125.0, // Correct West Coast bounds
+          )
+        );
+        
+        // Update the chart with correct bounds (simulating re-fetch with geometry)
+        await storageService.storeChart(correctedChart, [1]);
+        
+        final chartsAfterUpdate = await storageService.getChartsInBounds(washingtonBounds);
+        print('DEBUG: Found ${chartsAfterUpdate.length} charts after bounds correction');
+        
+        expect(chartsAfterUpdate.length, equals(1), 
+               reason: 'After bounds correction, West Coast chart should be found for Washington');
+        expect(chartsAfterUpdate.first.id, equals('US1WC07M'));
+      });
+
+      test('should detect and count charts with invalid bounds', () async {
+        // Arrange - Create charts with various bound scenarios
+        final validChart = Chart(
+          id: 'US5CA52M',
+          title: 'San Francisco Bay',
+          scale: 25000,
+          bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
+          lastUpdate: DateTime(2024, 1, 15),
+          state: 'California',
+          type: ChartType.harbor,
+        );
+        
+        final invalidChart1 = Chart(
+          id: 'US1WC01M',
+          title: 'Columbia River Chart',
+          scale: 80000,
+          bounds: GeographicBounds(north: 0, south: 0, east: 0, west: 0), // Invalid: all zeros
+          lastUpdate: DateTime(2024, 1, 15),
+          state: 'Washington',
+          type: ChartType.general,
+        );
+        
+        final invalidChart2 = Chart(
+          id: 'US1WC04M',
+          title: 'Puget Sound Chart',
+          scale: 25000,
+          bounds: GeographicBounds(north: 0, south: 0, east: 0, west: 0), // Invalid: all zeros
+          lastUpdate: DateTime(2024, 1, 15),
+          state: 'Washington',
+          type: ChartType.harbor,
+        );
+        
+        await storageService.storeChart(validChart, [1]);
+        await storageService.storeChart(invalidChart1, [1]);
+        await storageService.storeChart(invalidChart2, [1]);
+        
+        // Act - Count charts with invalid bounds
+        final invalidBoundsCount = await storageService.countChartsWithInvalidBounds();
+        
+        // Assert
+        expect(invalidBoundsCount, equals(2), reason: 'Should find exactly 2 charts with invalid bounds (0,0,0,0)');
+      });
+
+      test('should provide cache invalidation for charts with invalid bounds', () async {
+        // Arrange - Create charts that simulate the Washington chart discovery issue
+        final washingtonChart1 = Chart(
+          id: 'US1WC01M',
+          title: 'Columbia River to Destruction I.',
+          scale: 80000,
+          bounds: GeographicBounds(north: 0, south: 0, east: 0, west: 0), // Old cached bounds
+          lastUpdate: DateTime(2024, 1, 15),
+          state: 'Washington',
+          type: ChartType.general,
+        );
+        
+        final washingtonChart2 = Chart(
+          id: 'US1WC04M',
+          title: 'Cape Disappointment to Lincoln City',
+          scale: 80000,
+          bounds: GeographicBounds(north: 0, south: 0, east: 0, west: 0), // Old cached bounds
+          lastUpdate: DateTime(2024, 1, 15),
+          state: 'Washington',
+          type: ChartType.general,
+        );
+        
+        await storageService.storeChart(washingtonChart1, [1]);
+        await storageService.storeChart(washingtonChart2, [1]);
+        
+        // Verify the problem exists
+        final invalidCountBefore = await storageService.countChartsWithInvalidBounds();
+        expect(invalidCountBefore, equals(2), reason: 'Should have 2 charts with invalid bounds initially');
+        
+        // Act - Clear charts with invalid bounds (cache invalidation)
+        final clearedCount = await storageService.clearChartsWithInvalidBounds();
+        
+        // Assert - Verify cache invalidation worked
+        expect(clearedCount, equals(2), reason: 'Should clear exactly 2 charts with invalid bounds');
+        
+        final invalidCountAfter = await storageService.countChartsWithInvalidBounds();
+        expect(invalidCountAfter, equals(0), reason: 'Should have 0 charts with invalid bounds after clearing');
+        
+        // Verify the charts are actually gone
+        final remainingCharts = await storageService.getChartsInBounds(
+          GeographicBounds(north: 90, south: -90, east: 180, west: -180)
+        );
+        expect(remainingCharts.length, equals(0), reason: 'All charts with invalid bounds should be removed');
+      });
+
+      test('should handle edge case charts that just touch boundaries', () async {
+        // Arrange - Chart that just barely touches the query area
+        final edgeChart = _createTestChart(
+          id: 'EDGE01M',
+          bounds: GeographicBounds(
+            north: 45.5, south: 45.0, east: -116.0, west: -117.0, // Just touches Washington's south-east corner
+          )
+        );
+        
+        await storageService.storeChart(edgeChart, [1]);
+
+        // Act - Query for Washington state bounds
+        final washingtonBounds = GeographicBounds(
+          north: 49.0, south: 45.5, east: -116.9, west: -124.8
+        );
+        final chartsInWashington = await storageService.getChartsInBounds(washingtonBounds);
+
+        // Assert - Should find chart that touches the boundary
+        expect(chartsInWashington.length, equals(1));
+        expect(chartsInWashington.first.id, equals('EDGE01M'));
+      });
+
+      test('should handle charts that partially overlap query bounds', () async {
+        // Arrange - Chart that overlaps but extends in all directions
+        final overlapChart = _createTestChart(
+          id: 'OVERLAP01M',
+          bounds: GeographicBounds(
+            north: 50.0, south: 44.0, east: -115.0, west: -126.0, // Larger than Washington
+          )
+        );
+        
+        await storageService.storeChart(overlapChart, [1]);
+
+        // Act - Query for Washington state bounds  
+        final washingtonBounds = GeographicBounds(
+          north: 49.0, south: 45.5, east: -116.9, west: -124.8
+        );
+        final chartsInWashington = await storageService.getChartsInBounds(washingtonBounds);
+
+        // Assert - Should find overlapping chart
+        expect(chartsInWashington.length, equals(1));
+        expect(chartsInWashington.first.id, equals('OVERLAP01M'));
+      });
+
       test('should query charts by scale range', () async {
         // Arrange
         final smallScale = _createTestChart(id: 'small', scale: 10000);

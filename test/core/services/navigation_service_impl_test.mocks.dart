@@ -284,4 +284,20 @@ class MockStorageService extends _i1.Mock implements _i5.StorageService {
             returnValue: _i6.Future<List<_i7.Chart>>.value(<_i7.Chart>[]),
           )
           as _i6.Future<List<_i7.Chart>>);
+
+  @override
+  _i6.Future<int> countChartsWithInvalidBounds() =>
+      (super.noSuchMethod(
+            Invocation.method(#countChartsWithInvalidBounds, []),
+            returnValue: _i6.Future<int>.value(0),
+          )
+          as _i6.Future<int>);
+
+  @override
+  _i6.Future<int> clearChartsWithInvalidBounds() =>
+      (super.noSuchMethod(
+            Invocation.method(#clearChartsWithInvalidBounds, []),
+            returnValue: _i6.Future<int>.value(0),
+          )
+          as _i6.Future<int>);
 }

@@ -9,8 +9,20 @@ class HttpClientService {
   late final Dio _dio;
   final AppLogger _logger;
 
-  HttpClientService({required AppLogger logger}) : _logger = logger {
-    _initializeDio();
+  HttpClientService({
+    required AppLogger logger,
+    Dio? testDio, // For testing
+  }) : _logger = logger {
+    if (testDio != null) {
+      _dio = testDio;
+    } else {
+      _initializeDio();
+    }
+  }
+
+  /// Checks if a path is already a full URL (starts with http:// or https://)
+  static bool isFullUrl(String path) {
+    return path.startsWith('http://') || path.startsWith('https://');
   }
 
   /// Gets the configured Dio instance
@@ -284,7 +296,7 @@ class HttpClientService {
     }
   }
 
-  /// Make a GET request with error handling
+  /// Make a GET request with error handling and smart URL construction
   Future<Response> get(
     String path, {
     Map<String, dynamic>? queryParameters,
@@ -292,14 +304,36 @@ class HttpClientService {
     CancelToken? cancelToken,
   }) async {
     try {
+      // Handle full URLs vs relative paths intelligently
+      final effectivePath = _resolveUrl(path);
+      
       return await _dio.get(
-        path,
+        effectivePath,
         queryParameters: queryParameters,
         options: options,
         cancelToken: cancelToken,
       );
     } on DioException catch (e) {
       throw _convertDioErrorToAppError(e);
+    }
+  }
+
+  /// Resolve URL handling for both full URLs and relative paths
+  String _resolveUrl(String path) {
+    if (isFullUrl(path)) {
+      // For full URLs, temporarily clear baseUrl to prevent concatenation
+      final originalBaseUrl = _dio.options.baseUrl;
+      _dio.options.baseUrl = '';
+      
+      // Schedule restoration of baseUrl for next request
+      Future.microtask(() {
+        _dio.options.baseUrl = originalBaseUrl;
+      });
+      
+      return path;
+    } else {
+      // For relative paths, use normal Dio behavior (baseUrl + path)
+      return path;
     }
   }
 

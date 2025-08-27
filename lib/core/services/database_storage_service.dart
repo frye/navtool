@@ -504,19 +504,74 @@ class DatabaseStorageService implements StorageService {
     final db = _database!;
     
     try {
+      // Debug logging
+      _logger.debug('Searching for charts in bounds: north=${bounds.north}, south=${bounds.south}, east=${bounds.east}, west=${bounds.west}');
+      
+      // First, let's see what charts exist in the database
+      final allChartsResult = await db.query('charts', columns: ['cell_name', 'bounds_north', 'bounds_south', 'bounds_east', 'bounds_west']);
+      _logger.debug('Total charts in database: ${allChartsResult.length}');
+      for (final row in allChartsResult) {
+        _logger.debug('Chart in DB: ${row['cell_name']} bounds=(S:${row['bounds_south']}, N:${row['bounds_north']}, W:${row['bounds_west']}, E:${row['bounds_east']})');
+      }
+      
+      // Correct bounding box intersection: chart and bounds overlap if none of the separation conditions are true
+      // Separation conditions: chart.south > bounds.north OR chart.north < bounds.south OR 
+      //                       chart.west > bounds.east OR chart.east < bounds.west
+      // Intersection is the negation: NOT separated
       final result = await db.query(
         'charts',
         where: '''
-          bounds_north >= ? AND bounds_south <= ? AND 
-          bounds_east >= ? AND bounds_west <= ?
+          bounds_south <= ? AND bounds_north >= ? AND 
+          bounds_west <= ? AND bounds_east >= ?
         ''',
-        whereArgs: [bounds.south, bounds.north, bounds.west, bounds.east],
+        whereArgs: [bounds.north, bounds.south, bounds.east, bounds.west],
       );
+
+      _logger.debug('SQL query returned ${result.length} charts for Washington bounds (N:${bounds.north}, S:${bounds.south}, E:${bounds.east}, W:${bounds.west})');
+      for (final row in result) {
+        _logger.debug('Found chart: ${row['cell_name']} bounds=(S:${row['bounds_south']}, N:${row['bounds_north']}, W:${row['bounds_west']}, E:${row['bounds_east']})');
+      }
 
       return result.map(_chartFromMap).toList();
     } catch (e) {
       _logger.error('Failed to get charts in bounds: $e');
       return [];
+    }
+  }
+
+  /// Counts charts with invalid bounds (typically 0,0,0,0 from old cache)
+  Future<int> countChartsWithInvalidBounds() async {
+    final db = _database!;
+    
+    try {
+      final result = await db.rawQuery(
+        'SELECT COUNT(*) as count FROM charts WHERE bounds_north = 0 AND bounds_south = 0 AND bounds_east = 0 AND bounds_west = 0'
+      );
+      
+      return Sqflite.firstIntValue(result) ?? 0;
+    } catch (e) {
+      _logger.error('Failed to count charts with invalid bounds: $e');
+      return 0;
+    }
+  }
+
+  /// Clears charts with invalid bounds (cache invalidation for old chart data)
+  Future<int> clearChartsWithInvalidBounds() async {
+    final db = _database!;
+    
+    try {
+      _logger.info('Clearing charts with invalid bounds to force cache refresh');
+      
+      final deletedCount = await db.delete(
+        'charts',
+        where: 'bounds_north = 0 AND bounds_south = 0 AND bounds_east = 0 AND bounds_west = 0'
+      );
+      
+      _logger.info('Cleared $deletedCount charts with invalid bounds');
+      return deletedCount;
+    } catch (e) {
+      _logger.error('Failed to clear charts with invalid bounds: $e');
+      return 0;
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:navtool/core/models/chart.dart';
 import 'package:navtool/core/models/gps_position.dart';
 import 'package:navtool/core/services/noaa/chart_catalog_service.dart';
 import 'package:navtool/core/services/noaa/state_region_mapping_service.dart';
+import 'package:navtool/core/services/storage_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 
 /// Abstract interface for NOAA chart discovery operations
@@ -32,20 +33,26 @@ abstract class NoaaChartDiscoveryService {
 
   /// Refreshes the chart catalog cache
   Future<bool> refreshCatalog({bool force = false});
+
+  /// Fixes chart discovery issues by clearing invalid cached data and forcing refresh
+  Future<int> fixChartDiscoveryCache();
 }
 
 /// Implementation of NOAA chart discovery service
 class NoaaChartDiscoveryServiceImpl implements NoaaChartDiscoveryService {
   final ChartCatalogService _catalogService;
   final StateRegionMappingService _mappingService;
+  final StorageService _storageService;
   final AppLogger _logger;
 
   NoaaChartDiscoveryServiceImpl({
     required ChartCatalogService catalogService,
     required StateRegionMappingService mappingService,
+    required StorageService storageService,
     required AppLogger logger,
   }) : _catalogService = catalogService,
        _mappingService = mappingService,
+       _storageService = storageService,
        _logger = logger;
 
   @override
@@ -194,6 +201,39 @@ class NoaaChartDiscoveryServiceImpl implements NoaaChartDiscoveryService {
       return await _catalogService.refreshCatalog(force: force);
     } catch (error) {
       _logger.error('Failed to refresh catalog', exception: error);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<int> fixChartDiscoveryCache() async {
+    _logger.info('Starting chart discovery cache fix for invalid bounds issue');
+    
+    try {
+      // Check if we have any charts with invalid bounds (from old cache)
+      final invalidCount = await _storageService.countChartsWithInvalidBounds();
+      
+      if (invalidCount == 0) {
+        _logger.info('No charts with invalid bounds found - cache is clean');
+        return 0;
+      }
+      
+      _logger.warning('Found $invalidCount charts with invalid bounds - clearing and forcing refresh');
+      
+      // Clear charts with invalid bounds (cache invalidation)
+      final clearedCount = await _storageService.clearChartsWithInvalidBounds();
+      
+      // Force refresh the catalog to re-fetch with correct geometry
+      await _catalogService.refreshCatalog(force: true);
+      
+      // Bootstrap the catalog to ensure new charts are cached with correct bounds
+      await _catalogService.ensureCatalogBootstrapped();
+      
+      _logger.info('Chart discovery cache fix completed: cleared $clearedCount charts, forcing catalog refresh');
+      return clearedCount;
+      
+    } catch (error) {
+      _logger.error('Failed to fix chart discovery cache', exception: error);
       rethrow;
     }
   }
