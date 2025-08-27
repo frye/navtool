@@ -78,35 +78,15 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
     try {
       _logger.debug('Getting chart cells for state: $stateName');
       
-      // Check database cache first
-      final cachedMapping = await _storageService.getStateCellMapping(stateName);
-      if (cachedMapping != null) {
-        _logger.debug('Found cached mapping for $stateName: ${cachedMapping.length} charts');
-        return cachedMapping;
-      }
-      
-      // Check memory cache
-      final cacheKey = 'state_cells_$stateName';
-      try {
-        final cached = await _cacheService.get(cacheKey);
-        if (cached != null) {
-          final decodedData = jsonDecode(String.fromCharCodes(cached));
-          if (decodedData is List) {
-            final result = List<String>.from(decodedData);
-            // Store in database for persistence
-            await _storageService.storeStateCellMapping(stateName, result);
-            return result;
-          }
-        }
-      } catch (e) {
-        _logger.warning('Cache error, proceeding with computation: $e');
-        // Continue with computation if cache fails
-      }
+      // Force refresh for testing new geometry extraction
+      // TODO: Remove this force refresh after verifying spatial intersection works
+      _logger.info('Force refreshing state-chart mapping to test new chart bounds for $stateName');
 
       // Compute mapping using spatial intersection
       final chartCells = await _computeChartCellsForState(stateName);
       
       // Cache the result in memory and database
+      final cacheKey = 'state_cells_$stateName';
       final encodedData = jsonEncode(chartCells);
       final encodedBytes = Uint8List.fromList(utf8.encode(encodedData));
       try {
