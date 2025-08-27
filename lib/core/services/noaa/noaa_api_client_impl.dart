@@ -97,7 +97,7 @@ class NoaaApiClientImpl implements NoaaApiClient {
         'where': '1=1', // Return all features
         'outFields': '*', // Return all fields
         'f': 'json', // Return JSON format (not GeoJSON for easier parsing)
-        'returnGeometry': 'false', // Don't need geometry for catalog
+        'returnGeometry': 'true', // Include geometry for bounds calculation
         'resultRecordCount': '1000', // Limit results to avoid timeouts
       };
 
@@ -460,14 +460,16 @@ class NoaaApiClientImpl implements NoaaApiClient {
     // Extract basic scale information from dataset name if possible
     final scale = _parseScaleFromDSNM(dsnm);
     
-    // Create default bounds since we're not requesting geometry
-    // These will be populated properly when the chart is loaded from the server
-    final bounds = GeographicBounds(
-      north: 50.0,  // Default to approximate US waters
-      south: 20.0,
-      east: -60.0,
-      west: -180.0,
-    );
+    // Extract bounds from geometry if available, otherwise use reasonable defaults
+    GeographicBounds bounds;
+    final geometry = featureData['geometry'] as Map<String, dynamic>?;
+    if (geometry != null && geometry['rings'] != null) {
+      // ArcGIS JSON format uses 'rings' for polygon geometry
+      bounds = _extractBoundsFromArcGISGeometry(geometry);
+    } else {
+      // Use region-specific default bounds based on dataset name
+      bounds = _getDefaultBoundsForDataset(dsnm);
+    }
     
     return Chart(
       id: dsnm,
@@ -541,6 +543,72 @@ class NoaaApiClientImpl implements NoaaApiClient {
     }
     
     return 50000; // Default scale
+  }
+
+  /// Extracts geographic bounds from ArcGIS JSON geometry
+  GeographicBounds _extractBoundsFromArcGISGeometry(Map<String, dynamic> geometry) {
+    final rings = geometry['rings'] as List<dynamic>?;
+    if (rings == null || rings.isEmpty) {
+      return _getDefaultBoundsForDataset('US1WC01M.000'); // Fallback
+    }
+    
+    final firstRing = rings[0] as List<dynamic>;
+    
+    double minLat = double.infinity;
+    double maxLat = double.negativeInfinity;
+    double minLng = double.infinity;
+    double maxLng = double.negativeInfinity;
+    
+    for (final coord in firstRing) {
+      if (coord is List && coord.length >= 2) {
+        final lng = (coord[0] as num).toDouble();
+        final lat = (coord[1] as num).toDouble();
+        
+        minLat = lat < minLat ? lat : minLat;
+        maxLat = lat > maxLat ? lat : maxLat;
+        minLng = lng < minLng ? lng : minLng;
+        maxLng = lng > maxLng ? lng : maxLng;
+      }
+    }
+    
+    return GeographicBounds(
+      north: maxLat,
+      south: minLat,
+      east: maxLng,
+      west: minLng,
+    );
+  }
+
+  /// Returns reasonable default bounds for a dataset based on its name pattern
+  GeographicBounds _getDefaultBoundsForDataset(String dsnm) {
+    // Parse region from dataset name (e.g., US1AK90M -> Alaska, US1WC01M -> West Coast)
+    if (dsnm.length >= 5) {
+      final region = dsnm.substring(3, 5);
+      switch (region.toUpperCase()) {
+        case 'AK': // Alaska
+          return GeographicBounds(north: 71.0, south: 54.0, east: -130.0, west: -180.0);
+        case 'WC': // West Coast
+          return GeographicBounds(north: 49.0, south: 32.0, east: -117.0, west: -125.0);
+        case 'EC': // East Coast
+          return GeographicBounds(north: 45.0, south: 25.0, east: -67.0, west: -82.0);
+        case 'GC': // Gulf Coast
+          return GeographicBounds(north: 31.0, south: 24.0, east: -81.0, west: -97.0);
+        case 'HA': // Hawaii
+          return GeographicBounds(north: 22.5, south: 18.5, east: -154.0, west: -161.0);
+        case 'BS': // Bering Sea
+          return GeographicBounds(north: 66.0, south: 54.0, east: -157.0, west: -180.0);
+        case 'PO': // Pacific Ocean
+          return GeographicBounds(north: 49.0, south: 32.0, east: -117.0, west: -180.0);
+        case 'EE': // Exclusive Economic Zone
+          return GeographicBounds(north: 49.0, south: 24.0, east: -67.0, west: -180.0);
+        default:
+          // Default to US waters
+          return GeographicBounds(north: 49.0, south: 24.0, east: -67.0, west: -125.0);
+      }
+    }
+    
+    // Fallback for unrecognized patterns
+    return GeographicBounds(north: 49.0, south: 24.0, east: -67.0, west: -125.0);
   }
 
   /// Cleans up download tracking state
