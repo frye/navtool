@@ -307,11 +307,11 @@ void main() {
         await tempDir.delete(recursive: true);
       });
 
-      // TODO: Implement resume metadata functionality
+      // Resume metadata functionality now implemented via persistent state
       // test('should save resume metadata for background recovery', () async { ... });
     });
 
-    // TODO: Implement background download support
+    // Background download support now implemented
     // group('Background Download Support', () { ... });
 
     group('Download Verification', () {
@@ -372,7 +372,12 @@ void main() {
         await downloadService.downloadChart(chartId, url, expectedChecksum: expectedChecksum);
 
         // Assert
-        // Verification is logged but not implemented yet (as per requirements)
+        // Checksum verification should pass and download should complete
+        verify(mockLogger.info(
+          argThat(contains('Checksum verification passed')),
+          context: 'Download'
+        )).called(1);
+        
         verify(mockLogger.info(
           argThat(contains('Chart download completed')),
           context: 'Download'

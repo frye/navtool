@@ -406,7 +406,7 @@ class DownloadQueueNotifier extends StateNotifier<DownloadQueueState> {
       final toStart = state.queue.take(availableSlots);
       for (final chartId in toStart) {
         updateProgress(chartId, status: DownloadStatus.downloading);
-        // TODO: Start actual download process
+        // Queue processing is now handled by DownloadServiceImpl._processQueue()
       }
     }
   }

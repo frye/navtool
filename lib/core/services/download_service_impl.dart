@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:path/path.dart' as path;
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
 import '../logging/app_logger.dart';
 import '../error/app_error.dart';
 import '../error/error_handler.dart';
@@ -92,6 +94,26 @@ class DownloadServiceImpl implements DownloadService {
           throw AppError.storage('Downloaded file is empty: $filePath');
         }
 
+        // Verify checksum if provided
+        if (expectedChecksum != null) {
+          final actualChecksum = await _calculateFileChecksum(file);
+          if (actualChecksum != expectedChecksum) {
+            _logger.error(
+              'Checksum verification failed for chart: $chartId. Expected: $expectedChecksum, Actual: $actualChecksum',
+              context: 'Download',
+            );
+            
+            // Delete corrupted file
+            await file.delete();
+            throw AppError.storage('Downloaded file failed checksum verification: $chartId');
+          }
+          
+          _logger.info(
+            'Checksum verification passed for chart: $chartId',
+            context: 'Download',
+          );
+        }
+
         _logger.info(
           'Chart download completed: $chartId (${_formatBytes(fileSize)})',
           context: 'Download',
@@ -111,6 +133,12 @@ class DownloadServiceImpl implements DownloadService {
 
       // Clean up
       _cleanup(chartId);
+      
+      // Process queue to start next downloads
+      _processQueue();
+      
+      // Process queue to start next downloads
+      _processQueue();
 
     } catch (error, stackTrace) {
       _logger.error(
@@ -123,7 +151,7 @@ class DownloadServiceImpl implements DownloadService {
       _updateProgress(chartId, 0, 0, 0.0, DownloadStatus.failed);
 
       // Save resume data for potential recovery
-      _saveResumeData(chartId, url, 0);
+      _saveResumeData(chartId, url, 0, checksum: expectedChecksum);
 
       // Add failure notification if enabled
       if (_backgroundNotificationsEnabled) {
@@ -367,6 +395,9 @@ class DownloadServiceImpl implements DownloadService {
     _sortQueueByPriority();
 
     _logger.info('Added chart to queue: $chartId (priority: $priority)', context: 'Download');
+    
+    // Process queue to start downloads if slots are available
+    _processQueue();
   }
 
   @override
@@ -531,23 +562,41 @@ class DownloadServiceImpl implements DownloadService {
 
   @override
   Future<List<DownloadProgress>> getPersistedDownloadState() async {
-    return _downloadProgress.values.toList();
+    try {
+      // Save current state to disk for persistence
+      await _savePersistentState();
+      return _downloadProgress.values.toList();
+    } catch (e) {
+      _logger.warning('Failed to persist download state: $e', context: 'Download');
+      return _downloadProgress.values.toList();
+    }
   }
 
   @override
   Future<void> recoverDownloads(List<DownloadProgress> persistedDownloads) async {
-    for (final download in persistedDownloads) {
-      if (download.status == DownloadStatus.downloading) {
-        // Attempt to resume automatically
-        try {
-          await resumeDownload(download.chartId);
-        } catch (e) {
-          _logger.warning('Failed to auto-resume download: ${download.chartId}', context: 'Download');
+    try {
+      // Load persistent state from disk
+      await _loadPersistentState();
+      
+      // Merge with provided downloads
+      for (final download in persistedDownloads) {
+        if (download.status == DownloadStatus.downloading) {
+          // Attempt to resume automatically
+          try {
+            await resumeDownload(download.chartId);
+          } catch (e) {
+            _logger.warning('Failed to auto-resume download: ${download.chartId}', context: 'Download');
+          }
+        } else if (download.status == DownloadStatus.paused) {
+          // Add back to queue as paused
+          _downloadProgress[download.chartId] = download;
         }
-      } else if (download.status == DownloadStatus.paused) {
-        // Add back to queue as paused
-        _downloadProgress[download.chartId] = download;
       }
+      
+      _logger.info('Recovered ${persistedDownloads.length} download states', context: 'Download');
+    } catch (e) {
+      _logger.error('Failed to recover downloads: $e', context: 'Download');
+      rethrow;
     }
   }
 
@@ -670,14 +719,59 @@ class DownloadServiceImpl implements DownloadService {
     }
   }
 
+  /// Process the download queue automatically
+  void _processQueue() {
+    final availableSlots = _maxConcurrentDownloads - _activeDownloads;
+    
+    if (availableSlots <= 0 || _downloadQueue.isEmpty) {
+      return;
+    }
+    
+    // Get items to start (up to available slots)
+    final toStart = _downloadQueue.take(availableSlots).toList();
+    
+    for (final item in toStart) {
+      // Skip if already downloading
+      if (_downloadProgress.containsKey(item.chartId) && 
+          _downloadProgress[item.chartId]!.status == DownloadStatus.downloading) {
+        continue;
+      }
+      
+      // Start download asynchronously
+      _startQueuedDownload(item).catchError((e) {
+        _logger.error('Failed to start queued download: ${item.chartId}', exception: e, context: 'Download');
+      });
+    }
+  }
+
+  /// Start a queued download item
+  Future<void> _startQueuedDownload(QueueItem item) async {
+    try {
+      // Remove from queue
+      _downloadQueue.removeWhere((queueItem) => queueItem.chartId == item.chartId);
+      
+      // Start the download
+      await downloadChart(item.chartId, item.url, expectedChecksum: item.expectedChecksum);
+    } catch (e) {
+      _logger.error('Failed to start queued download: ${item.chartId}', exception: e, context: 'Download');
+      rethrow;
+    }
+  }
+
   /// Save resume data
-  void _saveResumeData(String chartId, String url, int downloadedBytes) {
+  void _saveResumeData(String chartId, String url, int downloadedBytes, {String? checksum}) {
     _resumeData[chartId] = ResumeData(
       chartId: chartId,
       originalUrl: url,
       downloadedBytes: downloadedBytes,
       lastAttempt: DateTime.now(),
+      checksum: checksum,
     );
+    
+    // Persist to disk for background recovery
+    _savePersistentState().catchError((e) {
+      _logger.warning('Failed to persist resume data: $e', context: 'Download');
+    });
   }
 
   /// Add notification
@@ -734,6 +828,123 @@ class DownloadServiceImpl implements DownloadService {
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
+  /// Calculate SHA-256 checksum of a file
+  Future<String> _calculateFileChecksum(File file) async {
+    try {
+      final bytes = await file.readAsBytes();
+      final digest = sha256.convert(bytes);
+      return digest.toString();
+    } catch (e) {
+      _logger.error('Failed to calculate checksum for file: ${file.path}', exception: e, context: 'Download');
+      rethrow;
+    }
+  }
+
+  /// Save persistent download state to disk
+  Future<void> _savePersistentState() async {
+    try {
+      final storageDir = await _storageService.getChartsDirectory();
+      final stateFile = File(path.join(storageDir.path, '.download_state.json'));
+      
+      final state = {
+        'downloads': _downloadProgress.map((key, value) => MapEntry(key, {
+          'chartId': value.chartId,
+          'status': value.status.name,
+          'progress': value.progress,
+          'totalBytes': value.totalBytes,
+          'downloadedBytes': value.downloadedBytes,
+          'lastUpdated': value.lastUpdated.toIso8601String(),
+        })),
+        'resumeData': _resumeData.map((key, value) => MapEntry(key, {
+          'chartId': value.chartId,
+          'originalUrl': value.originalUrl,
+          'downloadedBytes': value.downloadedBytes,
+          'lastAttempt': value.lastAttempt.toIso8601String(),
+          'checksum': value.checksum,
+        })),
+        'queue': _downloadQueue.map((item) => {
+          'chartId': item.chartId,
+          'url': item.url,
+          'priority': item.priority.name,
+          'addedAt': item.addedAt.toIso8601String(),
+          'expectedChecksum': item.expectedChecksum,
+        }).toList(),
+      };
+      
+      await stateFile.writeAsString(jsonEncode(state));
+      _logger.debug('Download state saved to disk', context: 'Download');
+    } catch (e) {
+      _logger.warning('Failed to save download state: $e', context: 'Download');
+    }
+  }
+
+  /// Load persistent download state from disk
+  Future<void> _loadPersistentState() async {
+    try {
+      final storageDir = await _storageService.getChartsDirectory();
+      final stateFile = File(path.join(storageDir.path, '.download_state.json'));
+      
+      if (!await stateFile.exists()) {
+        _logger.debug('No persistent download state found', context: 'Download');
+        return;
+      }
+      
+      final stateJson = await stateFile.readAsString();
+      final state = jsonDecode(stateJson) as Map<String, dynamic>;
+      
+      // Restore download progress
+      if (state.containsKey('downloads')) {
+        final downloads = state['downloads'] as Map<String, dynamic>;
+        for (final entry in downloads.entries) {
+          final data = entry.value as Map<String, dynamic>;
+          _downloadProgress[entry.key] = DownloadProgress(
+            chartId: data['chartId'],
+            status: DownloadStatus.values.firstWhere((s) => s.name == data['status']),
+            progress: data['progress'],
+            totalBytes: data['totalBytes'],
+            downloadedBytes: data['downloadedBytes'],
+            lastUpdated: DateTime.parse(data['lastUpdated']),
+          );
+        }
+      }
+      
+      // Restore resume data
+      if (state.containsKey('resumeData')) {
+        final resumeData = state['resumeData'] as Map<String, dynamic>;
+        for (final entry in resumeData.entries) {
+          final data = entry.value as Map<String, dynamic>;
+          _resumeData[entry.key] = ResumeData(
+            chartId: data['chartId'],
+            originalUrl: data['originalUrl'],
+            downloadedBytes: data['downloadedBytes'],
+            lastAttempt: DateTime.parse(data['lastAttempt']),
+            checksum: data['checksum'],
+          );
+        }
+      }
+      
+      // Restore queue
+      if (state.containsKey('queue')) {
+        final queue = state['queue'] as List<dynamic>;
+        _downloadQueue.clear();
+        for (final item in queue) {
+          final data = item as Map<String, dynamic>;
+          _downloadQueue.add(QueueItem(
+            chartId: data['chartId'],
+            url: data['url'],
+            priority: DownloadPriority.values.firstWhere((p) => p.name == data['priority']),
+            addedAt: DateTime.parse(data['addedAt']),
+            expectedChecksum: data['expectedChecksum'],
+          ));
+        }
+      }
+      
+      _logger.info('Download state loaded from disk: ${_downloadProgress.length} downloads, ${_resumeData.length} resume entries, ${_downloadQueue.length} queued', context: 'Download');
+    } catch (e) {
+      _logger.warning('Failed to load download state: $e', context: 'Download');
+    }
   }
 
   @override
