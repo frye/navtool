@@ -4,6 +4,7 @@ import 'package:mockito/annotations.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:navtool/core/services/noaa/chart_catalog_service.dart';
+import 'package:navtool/core/services/noaa/noaa_api_client.dart';
 import 'package:navtool/core/services/cache_service.dart';
 import 'package:navtool/core/models/chart.dart';
 import 'package:navtool/core/models/geographic_bounds.dart';
@@ -11,7 +12,7 @@ import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/app_error.dart';
 
 // Generate mocks for dependencies
-@GenerateMocks([CacheService, AppLogger])
+@GenerateMocks([CacheService, AppLogger, NoaaApiClient])
 import 'chart_catalog_service_test.mocks.dart';
 
 void main() {
@@ -19,14 +20,17 @@ void main() {
     late ChartCatalogServiceImpl catalogService;
     late MockCacheService mockCacheService;
     late MockAppLogger mockLogger;
+    late MockNoaaApiClient mockApiClient;
 
     setUp(() {
       mockCacheService = MockCacheService();
       mockLogger = MockAppLogger();
+      mockApiClient = MockNoaaApiClient();
       
       catalogService = ChartCatalogServiceImpl(
         cacheService: mockCacheService,
         logger: mockLogger,
+        noaaApiClient: mockApiClient,
       );
     });
 

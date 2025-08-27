@@ -44,6 +44,9 @@ class NoaaChartDiscoveryServiceImpl implements NoaaChartDiscoveryService {
     _logger.debug('Discovering charts for state: $state');
     
     try {
+      // Ensure catalog is bootstrapped before discovery
+      await _catalogService.ensureCatalogBootstrapped();
+      
       final cellNames = await _mappingService.getChartCellsForState(state);
       final charts = <Chart>[];
       

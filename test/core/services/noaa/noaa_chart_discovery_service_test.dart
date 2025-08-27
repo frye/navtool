@@ -58,6 +58,10 @@ void main() {
           ),
         ];
 
+        // Mock bootstrap method
+        when(mockCatalogService.ensureCatalogBootstrapped())
+            .thenAnswer((_) async {});
+
         when(mockMappingService.getChartCellsForState(stateName))
             .thenAnswer((_) async => chartCells);
         when(mockCatalogService.getCachedChart('US5CA52M'))
@@ -80,6 +84,10 @@ void main() {
       test('should return empty list for state with no charts', () async {
         // Arrange
         const stateName = 'Nevada';
+        
+        // Mock bootstrap method
+        when(mockCatalogService.ensureCatalogBootstrapped())
+            .thenAnswer((_) async {});
         
         when(mockMappingService.getChartCellsForState(stateName))
             .thenAnswer((_) async => <String>[]);
@@ -107,6 +115,10 @@ void main() {
           type: ChartType.harbor,
         );
 
+        // Mock bootstrap method
+        when(mockCatalogService.ensureCatalogBootstrapped())
+            .thenAnswer((_) async {});
+
         when(mockMappingService.getChartCellsForState(stateName))
             .thenAnswer((_) async => chartCells);
         when(mockCatalogService.getCachedChart('US5CA52M'))
@@ -125,6 +137,10 @@ void main() {
       test('should throw AppError when mapping service fails', () async {
         // Arrange
         const stateName = 'California';
+        
+        // Mock bootstrap method
+        when(mockCatalogService.ensureCatalogBootstrapped())
+            .thenAnswer((_) async {});
         
         when(mockMappingService.getChartCellsForState(stateName))
             .thenThrow(AppError.storage('Failed to get chart cells'));

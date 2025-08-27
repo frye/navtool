@@ -144,16 +144,22 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
     
     final intersectingCells = <String>[];
     for (final chart in candidateCharts) {
-      if (chart.source == ChartSource.noaa && chart.bounds != null) {
-        final chartPolygon = SpatialOperations.boundsToPolygon(chart.bounds!);
-        
-        if (SpatialOperations.doPolygonsIntersect(stateBoundary, chartPolygon)) {
-          final coverage = SpatialOperations.calculateCoveragePercentage(stateBoundary, chartPolygon);
+      if (chart.source == ChartSource.noaa) {
+        try {
+          final chartPolygon = SpatialOperations.boundsToPolygon(chart.bounds);
           
-          // Include charts with meaningful coverage (>1%)
-          if (coverage > 0.01) {
-            intersectingCells.add(chart.id);
+          if (SpatialOperations.doPolygonsIntersect(stateBoundary, chartPolygon)) {
+            final coverage = SpatialOperations.calculateCoveragePercentage(stateBoundary, chartPolygon);
+            
+            // Include charts with meaningful coverage (>1%)
+            if (coverage > 0.01) {
+              intersectingCells.add(chart.id);
+            }
           }
+        } catch (e) {
+          _logger.warning('Skipping chart ${chart.id} due to invalid bounds: $e');
+          // Continue with next chart instead of failing the entire operation
+          continue;
         }
       }
     }

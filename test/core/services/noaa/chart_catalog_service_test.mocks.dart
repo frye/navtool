@@ -7,9 +7,12 @@ import 'dart:async' as _i3;
 import 'dart:typed_data' as _i4;
 
 import 'package:mockito/mockito.dart' as _i1;
+import 'package:mockito/src/dummies.dart' as _i8;
 import 'package:navtool/core/error/app_error.dart' as _i6;
 import 'package:navtool/core/logging/app_logger.dart' as _i5;
+import 'package:navtool/core/models/chart.dart' as _i9;
 import 'package:navtool/core/services/cache_service.dart' as _i2;
+import 'package:navtool/core/services/noaa/noaa_api_client.dart' as _i7;
 
 // ignore_for_file: type=lint
 // ignore_for_file: avoid_redundant_argument_values
@@ -223,4 +226,76 @@ class MockAppLogger extends _i1.Mock implements _i5.AppLogger {
     Invocation.method(#logError, [error]),
     returnValueForMissingStub: null,
   );
+}
+
+/// A class which mocks [NoaaApiClient].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockNoaaApiClient extends _i1.Mock implements _i7.NoaaApiClient {
+  MockNoaaApiClient() {
+    _i1.throwOnMissingStub(this);
+  }
+
+  @override
+  _i3.Future<String> fetchChartCatalog({Map<String, String>? filters}) =>
+      (super.noSuchMethod(
+            Invocation.method(#fetchChartCatalog, [], {#filters: filters}),
+            returnValue: _i3.Future<String>.value(
+              _i8.dummyValue<String>(
+                this,
+                Invocation.method(#fetchChartCatalog, [], {#filters: filters}),
+              ),
+            ),
+          )
+          as _i3.Future<String>);
+
+  @override
+  _i3.Future<_i9.Chart?> getChartMetadata(String? cellName) =>
+      (super.noSuchMethod(
+            Invocation.method(#getChartMetadata, [cellName]),
+            returnValue: _i3.Future<_i9.Chart?>.value(),
+          )
+          as _i3.Future<_i9.Chart?>);
+
+  @override
+  _i3.Future<bool> isChartAvailable(String? cellName) =>
+      (super.noSuchMethod(
+            Invocation.method(#isChartAvailable, [cellName]),
+            returnValue: _i3.Future<bool>.value(false),
+          )
+          as _i3.Future<bool>);
+
+  @override
+  _i3.Future<void> downloadChart(
+    String? cellName,
+    String? savePath, {
+    _i7.NoaaProgressCallback? onProgress,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #downloadChart,
+              [cellName, savePath],
+              {#onProgress: onProgress},
+            ),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Stream<double> getDownloadProgress(String? cellName) =>
+      (super.noSuchMethod(
+            Invocation.method(#getDownloadProgress, [cellName]),
+            returnValue: _i3.Stream<double>.empty(),
+          )
+          as _i3.Stream<double>);
+
+  @override
+  _i3.Future<void> cancelDownload(String? cellName) =>
+      (super.noSuchMethod(
+            Invocation.method(#cancelDownload, [cellName]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
 }

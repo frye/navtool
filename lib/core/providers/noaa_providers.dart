@@ -22,6 +22,7 @@ final chartCatalogServiceProvider = Provider<ChartCatalogService>((ref) {
   return ChartCatalogServiceImpl(
     cacheService: ref.read(cacheServiceProvider),
     logger: ref.read(loggerProvider),
+    noaaApiClient: ref.read(noaaApiClientProvider),
   );
 });
 

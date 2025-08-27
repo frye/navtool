@@ -36,9 +36,9 @@ import 'package:navtool/core/error/noaa_error_classifier.dart';
 /// - Stream-based downloads with memory management
 /// - Concurrent request handling with proper resource limits
 class NoaaApiClientImpl implements NoaaApiClient {
-  /// NOAA GIS services catalog endpoint for chart metadata queries
+  /// NOAA Chart catalog endpoint (ArcGIS REST service for chart coverage data)
   static const String catalogEndpoint = 
-      'https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/ENCOnline/MapServer/exts/MaritimeChartService/WMSServer';
+      'https://gis.charttools.noaa.gov/arcgis/rest/services/encdirect/enc_coverage/MapServer/0/query';
   
   /// NOAA chart download base URL for S-57 format chart files
   static const String chartDownloadBase = 'https://charts.noaa.gov/ENCs/';
@@ -92,12 +92,13 @@ class NoaaApiClientImpl implements NoaaApiClient {
       // Apply rate limiting before making the request
       await _rateLimiter.acquire();
 
-      // Build WMS query parameters for chart catalog
+      // Build ArcGIS REST query parameters for chart catalog
       final queryParams = <String, String>{
-        'SERVICE': 'WMS',
-        'REQUEST': 'GetCapabilities',
-        'VERSION': '1.3.0',
-        'FORMAT': 'application/json',
+        'where': '1=1', // Return all features
+        'outFields': '*', // Return all fields
+        'f': 'json', // Return JSON format (not GeoJSON for easier parsing)
+        'returnGeometry': 'false', // Don't need geometry for catalog
+        'resultRecordCount': '1000', // Limit results to avoid timeouts
       };
 
       // Merge any additional filters provided
@@ -112,25 +113,40 @@ class NoaaApiClientImpl implements NoaaApiClient {
       );
 
       if (response.statusCode != 200) {
+        final statusCode = response.statusCode ?? 0;
         throw NoaaApiException(
-          'Failed to fetch chart catalog: HTTP ${response.statusCode}',
+          'Failed to fetch chart catalog: HTTP $statusCode',
           errorCode: 'CATALOG_FETCH_ERROR',
-          isRetryable: response.statusCode! >= 500,
+          isRetryable: statusCode >= 500,
         );
       }
 
-      final catalogData = response.data as String;
-      
-      // Validate JSON format
-      try {
-        jsonDecode(catalogData);
-      } on FormatException catch (e) {
+      // Get the already parsed JSON data from Dio
+      Map<String, dynamic> responseData;
+      if (response.data is String) {
+        // If it's a string, parse it as JSON
+        try {
+          responseData = jsonDecode(response.data as String) as Map<String, dynamic>;
+        } on FormatException catch (e) {
+          throw NoaaApiException(
+            'Invalid JSON response from chart catalog endpoint: ${e.message}',
+            errorCode: 'INVALID_JSON_RESPONSE',
+            isRetryable: false,
+          );
+        }
+      } else if (response.data is Map<String, dynamic>) {
+        // If it's already a Map, use it directly
+        responseData = response.data as Map<String, dynamic>;
+      } else {
         throw NoaaApiException(
-          'Invalid JSON response from chart catalog endpoint: ${e.message}',
-          errorCode: 'INVALID_JSON_RESPONSE',
+          'Unexpected response data type: ${response.data.runtimeType}',
+          errorCode: 'INVALID_RESPONSE_TYPE',
           isRetryable: false,
         );
       }
+      
+      // Convert the parsed JSON back to string for the interface contract
+      final catalogData = jsonEncode(responseData);
       
       _logger.info('Successfully fetched chart catalog', 
         context: 'NoaaApiClient');
@@ -159,12 +175,17 @@ class NoaaApiClientImpl implements NoaaApiClient {
       // Apply rate limiting before making the request
       await _rateLimiter.acquire();
 
-      // Build chart-specific metadata endpoint URL
-      final metadataUrl = '${catalogEndpoint}?SERVICE=WMS&REQUEST=GetFeatureInfo&CHART=$cellName';
+      // Build chart-specific metadata query for ArcGIS REST
+      final queryParams = <String, String>{
+        'where': "DSNM='$cellName'", // Filter by dataset name (chart cell name)
+        'outFields': '*', // Return all fields
+        'f': 'json', // Return JSON format
+        'returnGeometry': 'false', // Don't need geometry for metadata
+      };
       
       final response = await _httpClient.get(
-        metadataUrl,
-        queryParameters: {'FORMAT': 'application/json'},
+        catalogEndpoint,
+        queryParameters: queryParams,
       );
 
       if (response.statusCode != 200) {
@@ -172,30 +193,47 @@ class NoaaApiClientImpl implements NoaaApiClient {
           _logger.info('Chart not found', context: 'NoaaApiClient');
           return null;
         }
+        final statusCode = response.statusCode ?? 0;
         throw NoaaApiException(
-          'Failed to fetch chart metadata for $cellName: HTTP ${response.statusCode}',
+          'Failed to fetch chart metadata for $cellName: HTTP $statusCode',
           errorCode: 'METADATA_FETCH_ERROR',
-          isRetryable: response.statusCode! >= 500,
+          isRetryable: statusCode >= 500,
         );
       }
 
-      // Parse response data
-      Map<String, dynamic> chartData;
-      try {
-        chartData = jsonDecode(response.data as String) as Map<String, dynamic>;
-      } on FormatException catch (e) {
+      // Parse response data (GeoJSON FeatureCollection)
+      Map<String, dynamic> responseData;
+      if (response.data is String) {
+        // If it's a string, parse it as JSON
+        try {
+          responseData = jsonDecode(response.data as String) as Map<String, dynamic>;
+        } on FormatException catch (e) {
+          throw NoaaApiException(
+            'Invalid JSON response from chart metadata endpoint: ${e.message}',
+            errorCode: 'INVALID_JSON_RESPONSE',
+            isRetryable: false,
+          );
+        }
+      } else if (response.data is Map<String, dynamic>) {
+        // If it's already a Map, use it directly
+        responseData = response.data as Map<String, dynamic>;
+      } else {
         throw NoaaApiException(
-          'Invalid JSON response from chart metadata endpoint: ${e.message}',
-          errorCode: 'INVALID_JSON_RESPONSE',
+          'Unexpected response data type: ${response.data.runtimeType}',
+          errorCode: 'INVALID_RESPONSE_TYPE',
           isRetryable: false,
         );
       }
       
-      if (chartData.isEmpty || chartData['properties'] == null) {
+      // Check if any features were returned
+      final features = responseData['features'] as List<dynamic>?;
+      if (features == null || features.isEmpty) {
         _logger.info('Chart metadata not available', context: 'NoaaApiClient');
         return null;
       }
 
+      // Use the first feature found
+      final chartData = features.first as Map<String, dynamic>;
       final chart = _parseChartFromGeoJson(chartData);
       _logger.info('Successfully retrieved chart metadata', 
         context: 'NoaaApiClient');
@@ -404,93 +442,105 @@ class NoaaApiClientImpl implements NoaaApiClient {
     }
   }
 
-  /// Parses a Chart object from GeoJSON feature data
-  Chart _parseChartFromGeoJson(Map<String, dynamic> geoJsonFeature) {
-    final properties = geoJsonFeature['properties'] as Map<String, dynamic>;
-    final geometry = geoJsonFeature['geometry'] as Map<String, dynamic>;
+  /// Parses a Chart object from NOAA ENC coverage data
+  Chart _parseChartFromGeoJson(Map<String, dynamic> featureData) {
+    final attributes = featureData['attributes'] as Map<String, dynamic>;
     
-    // Extract bounds from geometry
-    final bounds = _extractBoundsFromGeometry(geometry);
+    // Extract chart information from NOAA ENC coverage attributes
+    final dsnm = attributes['DSNM'] as String? ?? 'Unknown';
+    final title = attributes['TITLE'] as String? ?? attributes['INFORM'] as String? ?? dsnm;
+    final catcov = attributes['CATCOV'] as String? ?? 'unknown';
     
-    // Parse chart type from usage
-    final usage = properties['USAGE'] as String? ?? 'harbor';
-    final chartType = _parseChartUsageToType(usage);
+    // Determine chart type from dataset name pattern
+    final chartType = _parseChartTypeFromDSNM(dsnm);
     
-    // Parse last update date
-    final lastUpdateStr = properties['LAST_UPDATE'] as String?;
-    final lastUpdate = lastUpdateStr != null 
-        ? DateTime.parse(lastUpdateStr) 
-        : DateTime.now();
+    // Use current time as last update since NOAA doesn't provide this in coverage data
+    final lastUpdate = DateTime.now();
+    
+    // Extract basic scale information from dataset name if possible
+    final scale = _parseScaleFromDSNM(dsnm);
+    
+    // Create default bounds since we're not requesting geometry
+    // These will be populated properly when the chart is loaded from the server
+    final bounds = GeographicBounds(
+      north: 50.0,  // Default to approximate US waters
+      south: 20.0,
+      east: -60.0,
+      west: -180.0,
+    );
     
     return Chart(
-      id: properties['CHART'] as String,
-      title: properties['TITLE'] as String,
-      scale: properties['SCALE'] as int,
+      id: dsnm,
+      title: title,
+      scale: scale,
       bounds: bounds,
       lastUpdate: lastUpdate,
-      state: properties['STATE'] as String? ?? 'Unknown',
+      state: 'Unknown', // Will be determined later by geographic analysis
       type: chartType,
+      metadata: {
+        'cell_name': dsnm,
+        'coverage_category': catcov,
+        'inform': attributes['INFORM'] as String? ?? '',
+        'source_date': attributes['SORDAT'] as String? ?? '',
+        'source_indicator': attributes['SORIND'] as String? ?? '',
+        'object_id': attributes['OBJECTID']?.toString() ?? '',
+      },
     );
   }
 
-  /// Extracts geographic bounds from GeoJSON geometry
-  GeographicBounds _extractBoundsFromGeometry(Map<String, dynamic> geometry) {
-    final coordinates = geometry['coordinates'] as List<dynamic>;
+  /// Determines chart type from NOAA dataset name patterns
+  ChartType _parseChartTypeFromDSNM(String dsnm) {
+    // NOAA ENC dataset names follow patterns like US5AK51M, US4AK7M, etc.
+    // The number after US indicates the usage band:
+    // 1 = Overview, 2 = General, 3 = Coastal, 4 = Approach, 5 = Harbour, 6 = Berthing
     
-    // Handle Polygon geometry (most common for charts)
-    if (geometry['type'] == 'Polygon') {
-      final ring = coordinates[0] as List<dynamic>;
-      
-      double minLat = double.infinity;
-      double maxLat = double.negativeInfinity;
-      double minLng = double.infinity;
-      double maxLng = double.negativeInfinity;
-      
-      for (final coord in ring) {
-        final lng = (coord[0] as num).toDouble();
-        final lat = (coord[1] as num).toDouble();
-        
-        minLat = lat < minLat ? lat : minLat;
-        maxLat = lat > maxLat ? lat : maxLat;
-        minLng = lng < minLng ? lng : minLng;
-        maxLng = lng > maxLng ? lng : maxLng;
+    if (dsnm.length >= 4) {
+      final usageBand = dsnm.substring(2, 3);
+      switch (usageBand) {
+        case '1':
+          return ChartType.overview;
+        case '2':
+          return ChartType.general;
+        case '3':
+          return ChartType.coastal;
+        case '4':
+          return ChartType.approach;
+        case '5':
+          return ChartType.harbor;
+        case '6':
+          return ChartType.berthing;
+        default:
+          return ChartType.harbor; // Default fallback
       }
-      
-      return GeographicBounds(
-        north: maxLat,
-        south: minLat,
-        east: maxLng,
-        west: minLng,
-      );
     }
     
-    // Fallback bounds for unsupported geometry types
-    return GeographicBounds(
-      north: 38.0,
-      south: 37.0,
-      east: -122.0,
-      west: -123.0,
-    );
+    return ChartType.harbor; // Default fallback
   }
 
-  /// Converts NOAA usage string to ChartType enum
-  ChartType _parseChartUsageToType(String usage) {
-    switch (usage.toLowerCase()) {
-      case 'harbor':
-        return ChartType.harbor;
-      case 'approach':
-        return ChartType.approach;
-      case 'coastal':
-        return ChartType.coastal;
-      case 'general':
-        return ChartType.general;
-      case 'overview':
-        return ChartType.overview;
-      case 'berthing':
-        return ChartType.berthing;
-      default:
-        return ChartType.harbor; // Default fallback
+  /// Estimates scale from NOAA dataset name
+  int _parseScaleFromDSNM(String dsnm) {
+    // Estimate scale based on usage band (rough approximations)
+    if (dsnm.length >= 4) {
+      final usageBand = dsnm.substring(2, 3);
+      switch (usageBand) {
+        case '1': // Overview
+          return 3000000;
+        case '2': // General
+          return 1000000;
+        case '3': // Coastal
+          return 200000;
+        case '4': // Approach
+          return 50000;
+        case '5': // Harbour
+          return 20000;
+        case '6': // Berthing
+          return 5000;
+        default:
+          return 50000; // Default scale
+      }
     }
+    
+    return 50000; // Default scale
   }
 
   /// Cleans up download tracking state

@@ -287,6 +287,10 @@ void main() {
           source: ChartSource.noaa,
         )).toList();
 
+        // Mock bootstrap method
+        when(mockCatalogService.ensureCatalogBootstrapped())
+            .thenAnswer((_) async {});
+
         when(mockMappingService.getChartCellsForState(stateName))
             .thenAnswer((_) async => chartCells);
         

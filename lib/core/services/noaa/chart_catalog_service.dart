@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:math' as math;
 import 'package:navtool/core/models/chart.dart';
+import 'package:navtool/core/models/geographic_bounds.dart';
 import 'package:navtool/core/services/cache_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/app_error.dart';
+import 'package:navtool/core/services/noaa/noaa_api_client.dart';
 
 /// Abstract interface for chart catalog management and caching
 abstract class ChartCatalogService {
@@ -24,18 +27,27 @@ abstract class ChartCatalogService {
 
   /// Refreshes the catalog cache
   Future<bool> refreshCatalog({bool force = false});
+
+  /// Bootstraps the catalog by fetching all charts from NOAA if catalog is empty
+  Future<void> ensureCatalogBootstrapped();
+
+  /// Gets count of cached charts for bootstrap status checking
+  Future<int> getCachedChartCount();
 }
 
 /// Implementation of chart catalog service
 class ChartCatalogServiceImpl implements ChartCatalogService {
   final CacheService _cacheService;
   final AppLogger _logger;
+  final NoaaApiClient _noaaApiClient;
 
   ChartCatalogServiceImpl({
     required CacheService cacheService,
     required AppLogger logger,
+    required NoaaApiClient noaaApiClient,
   }) : _cacheService = cacheService,
-       _logger = logger;
+       _logger = logger,
+       _noaaApiClient = noaaApiClient;
 
   @override
   Future<Chart?> getCachedChart(String chartId) async {
@@ -240,5 +252,253 @@ class ChartCatalogServiceImpl implements ChartCatalogService {
       _logger.warning('Failed to update chart list for $chartId', exception: e);
       // Not critical, don't throw
     }
+  }
+
+  @override
+  Future<void> ensureCatalogBootstrapped() async {
+    try {
+      _logger.debug('Checking if chart catalog needs bootstrapping');
+      
+      // Check if catalog is already populated
+      final chartCount = await getCachedChartCount();
+      if (chartCount > 0) {
+        _logger.debug('Chart catalog already has $chartCount charts, skipping bootstrap');
+        return;
+      }
+      
+      _logger.info('Chart catalog is empty, bootstrapping from NOAA API...');
+      
+      // Fetch the complete chart catalog from NOAA API
+      final catalogGeoJson = await _noaaApiClient.fetchChartCatalog();
+      
+      // Parse the GeoJSON catalog
+      final catalogData = jsonDecode(catalogGeoJson);
+      
+      if (catalogData['features'] == null) {
+        _logger.warning('NOAA catalog response missing features array');
+        return;
+      }
+      
+      final features = catalogData['features'] as List;
+      _logger.info('Processing ${features.length} charts from NOAA catalog');
+      
+      int successCount = 0;
+      int errorCount = 0;
+      
+      // Process each chart feature
+      for (final feature in features) {
+        try {
+          // Handle both GeoJSON format (properties) and regular JSON format (attributes)
+          final properties = feature['properties'] ?? feature['attributes'];
+          
+          if (properties == null) {
+            _logger.debug('Skipping feature with missing properties or attributes');
+            continue;
+          }
+          
+          // Extract chart information from NOAA ENC coverage attributes
+          final cellName = properties['DSNM'] as String? ?? properties['CELL_NAME'] as String?;
+          final title = properties['TITLE'] as String? ?? properties['INFORM'] as String? ?? 'Unknown Chart';
+          final state = properties['STATE'] as String? ?? 'Unknown';
+          final lastUpdateStr = properties['DATE_UPD'] as String? ?? properties['SORDAT'] as String?;
+          
+          // For NOAA ENC data, we parse chart type from dataset name (DSNM)
+          final usageStr = _parseUsageFromDSNM(cellName ?? '');
+          final scaleStr = properties['SCALE'] as String?;
+          
+          if (cellName == null || cellName.isEmpty) {
+            _logger.debug('Skipping feature with missing cell name');
+            continue;
+          }
+          
+          // Parse scale from string (e.g., "1:80000" -> 80000) or estimate from dataset name
+          int scale = _parseScaleFromDSNM(cellName);
+          if (scaleStr != null && scaleStr.contains(':')) {
+            final scaleParts = scaleStr.split(':');
+            if (scaleParts.length > 1) {
+              scale = int.tryParse(scaleParts[1]) ?? scale;
+            }
+          }
+          
+          // Determine chart type from usage
+          ChartType chartType = ChartType.general;
+          if (usageStr.toLowerCase().contains('harbor')) {
+            chartType = ChartType.harbor;
+          } else if (usageStr.toLowerCase().contains('approach')) {
+            chartType = ChartType.approach;
+          } else if (usageStr.toLowerCase().contains('coastal')) {
+            chartType = ChartType.coastal;
+          } else if (usageStr.toLowerCase().contains('overview')) {
+            chartType = ChartType.overview;
+          } else if (usageStr.toLowerCase().contains('berthing')) {
+            chartType = ChartType.berthing;
+          }
+          
+          // For regular JSON format (non-GeoJSON), create default bounds since geometry not included
+          GeographicBounds bounds;
+          final geometry = feature['geometry'];
+          if (geometry != null && geometry['type'] == 'Polygon' && geometry['coordinates'] != null) {
+            // Handle GeoJSON geometry if present
+            final coordinates = geometry['coordinates'][0] as List;
+            
+            double minLat = double.infinity;
+            double maxLat = double.negativeInfinity;
+            double minLon = double.infinity;
+            double maxLon = double.negativeInfinity;
+            
+            for (final coord in coordinates) {
+              if (coord is List && coord.length >= 2) {
+                final lon = (coord[0] as num).toDouble();
+                final lat = (coord[1] as num).toDouble();
+                
+                minLat = math.min(minLat, lat);
+                maxLat = math.max(maxLat, lat);
+                minLon = math.min(minLon, lon);
+                maxLon = math.max(maxLon, lon);
+              }
+            }
+            
+            bounds = GeographicBounds(
+              north: maxLat,
+              south: minLat,
+              east: maxLon,
+              west: minLon,
+            );
+          } else {
+            // Default bounds for NOAA ENC data (covers US waters)
+            bounds = GeographicBounds(
+              north: 0.0,
+              south: 0.0,
+              east: 0.0,
+              west: 0.0,
+            );
+          }
+          
+          // Parse last update date
+          DateTime lastUpdate = DateTime.now();
+          if (lastUpdateStr != null) {
+            try {
+              lastUpdate = DateTime.parse(lastUpdateStr);
+            } catch (e) {
+              // Use current date if parsing fails
+              lastUpdate = DateTime.now();
+            }
+          }
+          
+          // Create Chart object from GeoJSON feature
+          final chart = Chart(
+            id: cellName,
+            title: title,
+            scale: scale,
+            bounds: bounds,
+            lastUpdate: lastUpdate,
+            state: state,
+            type: chartType,
+            source: ChartSource.noaa,
+            status: ChartStatus.current,
+            metadata: Map<String, dynamic>.from(properties),
+          );
+          
+          // Cache the chart
+          await cacheChart(chart);
+          successCount++;
+          
+          // Log progress every 100 charts
+          if (successCount % 100 == 0) {
+            _logger.info('Bootstrapped $successCount charts so far...');
+          }
+          
+        } catch (e) {
+          errorCount++;
+          _logger.warning('Failed to process chart feature during bootstrap', exception: e);
+          // Continue processing other charts
+        }
+      }
+      
+      _logger.info('Chart catalog bootstrap completed: $successCount charts cached, $errorCount errors');
+      
+      if (successCount == 0) {
+        throw AppError.storage('Failed to bootstrap chart catalog: no charts were successfully cached');
+      }
+      
+    } catch (error) {
+      _logger.error('Failed to bootstrap chart catalog', exception: error);
+      if (error is AppError) rethrow;
+      throw AppError.storage('Failed to bootstrap chart catalog', originalError: error);
+    }
+  }
+
+  @override
+  Future<int> getCachedChartCount() async {
+    try {
+      final chartListKey = 'chart_list';
+      final cached = await _cacheService.get(chartListKey);
+      
+      if (cached == null) {
+        return 0;
+      }
+      
+      final decodedData = jsonDecode(String.fromCharCodes(cached));
+      final chartIds = List<String>.from(decodedData);
+      return chartIds.length;
+    } catch (error) {
+      _logger.warning('Failed to get cached chart count', exception: error);
+      return 0; // Return 0 on error to trigger bootstrap
+    }
+  }
+
+  /// Parses chart usage type from NOAA dataset name
+  String _parseUsageFromDSNM(String dsnm) {
+    // NOAA ENC dataset names follow patterns like US5AK51M, US4AK7M, etc.
+    // The number after US indicates the usage band:
+    // 1 = Overview, 2 = General, 3 = Coastal, 4 = Approach, 5 = Harbour, 6 = Berthing
+    
+    if (dsnm.length >= 4) {
+      final usageBand = dsnm.substring(2, 3);
+      switch (usageBand) {
+        case '1':
+          return 'overview';
+        case '2':
+          return 'general';
+        case '3':
+          return 'coastal';
+        case '4':
+          return 'approach';
+        case '5':
+          return 'harbor';
+        case '6':
+          return 'berthing';
+        default:
+          return 'general';
+      }
+    }
+    
+    return 'general';
+  }
+
+  /// Estimates scale from NOAA dataset name
+  int _parseScaleFromDSNM(String dsnm) {
+    // Estimate scale based on usage band (rough approximations)
+    if (dsnm.length >= 4) {
+      final usageBand = dsnm.substring(2, 3);
+      switch (usageBand) {
+        case '1': // Overview
+          return 3000000;
+        case '2': // General
+          return 1000000;
+        case '3': // Coastal
+          return 200000;
+        case '4': // Approach
+          return 50000;
+        case '5': // Harbour
+          return 20000;
+        case '6': // Berthing
+          return 5000;
+        default:
+          return 50000; // Default scale
+      }
+    }
+    
+    return 50000; // Default scale
   }
 }
