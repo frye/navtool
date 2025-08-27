@@ -261,9 +261,11 @@ class ChartCatalogServiceImpl implements ChartCatalogService {
       
       // Check if catalog is already populated
       final chartCount = await getCachedChartCount();
+      
+      // Force re-bootstrap to test new geometry extraction
+      // TODO: Remove this force refresh after verifying geometry extraction works
       if (chartCount > 0) {
-        _logger.debug('Chart catalog already has $chartCount charts, skipping bootstrap');
-        return;
+        _logger.info('Force refreshing chart catalog to test geometry extraction (chartCount: $chartCount)');
       }
       
       _logger.info('Chart catalog is empty, bootstrapping from NOAA API...');
