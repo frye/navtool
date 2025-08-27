@@ -94,6 +94,44 @@ class GpsServiceWin32 implements GpsService {
   }
 
   @override
+  Future<GpsPosition?> getCurrentPositionWithFallback() async {
+    try {
+      _logger.debug('Attempting to get current position with Seattle fallback on Windows');
+      
+      // First try to get real GPS position
+      final realPosition = await getCurrentPosition();
+      if (realPosition != null) {
+        _logger.debug('Using real GPS position: ${realPosition.latitude}, ${realPosition.longitude}');
+        return realPosition;
+      }
+      
+      // If real position unavailable, use Seattle fallback
+      _logger.info('Location services unavailable, using Seattle fallback coordinates');
+      return _getSeattleFallbackPosition();
+      
+    } catch (e) {
+      _logger.warning('Error getting position, using Seattle fallback: $e');
+      return _getSeattleFallbackPosition();
+    }
+  }
+
+  /// Creates a fallback GPS position for Seattle area
+  /// 
+  /// Uses Space Needle coordinates as a central Seattle location
+  /// that will discover Pacific Northwest marine charts.
+  GpsPosition _getSeattleFallbackPosition() {
+    return GpsPosition(
+      latitude: 47.6062,  // Seattle Space Needle latitude
+      longitude: -122.3321, // Seattle Space Needle longitude
+      timestamp: DateTime.now(),
+      altitude: 56.0, // Approximate Seattle elevation in meters
+      accuracy: 1000.0, // Large accuracy radius for fallback
+      heading: null, // No heading for fallback position
+      speed: null, // No speed for fallback position
+    );
+  }
+
+  @override
   Future<void> startLocationTracking() async {
     try {
       _logger.info('Starting location tracking on Windows');

@@ -6,13 +6,13 @@
 import 'dart:async' as _i5;
 
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:navtool/core/error/app_error.dart' as _i8;
-import 'package:navtool/core/logging/app_logger.dart' as _i7;
+import 'package:navtool/core/error/app_error.dart' as _i9;
+import 'package:navtool/core/logging/app_logger.dart' as _i8;
 import 'package:navtool/core/models/chart.dart' as _i6;
-import 'package:navtool/core/models/gps_position.dart' as _i10;
+import 'package:navtool/core/models/gps_position.dart' as _i7;
 import 'package:navtool/core/models/gps_signal_quality.dart' as _i2;
 import 'package:navtool/core/models/position_history.dart' as _i3;
-import 'package:navtool/core/services/gps_service.dart' as _i9;
+import 'package:navtool/core/services/gps_service.dart' as _i10;
 import 'package:navtool/core/services/noaa/noaa_chart_discovery_service.dart'
     as _i4;
 
@@ -77,6 +77,16 @@ class MockNoaaChartDiscoveryService extends _i1.Mock
           as _i5.Future<List<_i6.Chart>>);
 
   @override
+  _i5.Future<List<_i6.Chart>> discoverChartsByLocation(
+    _i7.GpsPosition? position,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#discoverChartsByLocation, [position]),
+            returnValue: _i5.Future<List<_i6.Chart>>.value(<_i6.Chart>[]),
+          )
+          as _i5.Future<List<_i6.Chart>>);
+
+  @override
   _i5.Future<List<_i6.Chart>> searchCharts(
     String? query, {
     Map<String, String>? filters,
@@ -110,12 +120,20 @@ class MockNoaaChartDiscoveryService extends _i1.Mock
             returnValue: _i5.Future<bool>.value(false),
           )
           as _i5.Future<bool>);
+
+  @override
+  _i5.Future<int> fixChartDiscoveryCache() =>
+      (super.noSuchMethod(
+            Invocation.method(#fixChartDiscoveryCache, []),
+            returnValue: _i5.Future<int>.value(0),
+          )
+          as _i5.Future<int>);
 }
 
 /// A class which mocks [AppLogger].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockAppLogger extends _i1.Mock implements _i7.AppLogger {
+class MockAppLogger extends _i1.Mock implements _i8.AppLogger {
   MockAppLogger() {
     _i1.throwOnMissingStub(this);
   }
@@ -165,7 +183,7 @@ class MockAppLogger extends _i1.Mock implements _i7.AppLogger {
       );
 
   @override
-  void logError(_i8.AppError? error) => super.noSuchMethod(
+  void logError(_i9.AppError? error) => super.noSuchMethod(
     Invocation.method(#logError, [error]),
     returnValueForMissingStub: null,
   );
@@ -174,7 +192,7 @@ class MockAppLogger extends _i1.Mock implements _i7.AppLogger {
 /// A class which mocks [GpsService].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockGpsService extends _i1.Mock implements _i9.GpsService {
+class MockGpsService extends _i1.Mock implements _i10.GpsService {
   MockGpsService() {
     _i1.throwOnMissingStub(this);
   }
@@ -198,20 +216,28 @@ class MockGpsService extends _i1.Mock implements _i9.GpsService {
           as _i5.Future<void>);
 
   @override
-  _i5.Future<_i10.GpsPosition?> getCurrentPosition() =>
+  _i5.Future<_i7.GpsPosition?> getCurrentPosition() =>
       (super.noSuchMethod(
             Invocation.method(#getCurrentPosition, []),
-            returnValue: _i5.Future<_i10.GpsPosition?>.value(),
+            returnValue: _i5.Future<_i7.GpsPosition?>.value(),
           )
-          as _i5.Future<_i10.GpsPosition?>);
+          as _i5.Future<_i7.GpsPosition?>);
 
   @override
-  _i5.Stream<_i10.GpsPosition> getLocationStream() =>
+  _i5.Future<_i7.GpsPosition?> getCurrentPositionWithFallback() =>
+      (super.noSuchMethod(
+            Invocation.method(#getCurrentPositionWithFallback, []),
+            returnValue: _i5.Future<_i7.GpsPosition?>.value(),
+          )
+          as _i5.Future<_i7.GpsPosition?>);
+
+  @override
+  _i5.Stream<_i7.GpsPosition> getLocationStream() =>
       (super.noSuchMethod(
             Invocation.method(#getLocationStream, []),
-            returnValue: _i5.Stream<_i10.GpsPosition>.empty(),
+            returnValue: _i5.Stream<_i7.GpsPosition>.empty(),
           )
-          as _i5.Stream<_i10.GpsPosition>);
+          as _i5.Stream<_i7.GpsPosition>);
 
   @override
   _i5.Future<bool> requestLocationPermission() =>
@@ -239,7 +265,7 @@ class MockGpsService extends _i1.Mock implements _i9.GpsService {
 
   @override
   _i5.Future<_i2.GpsSignalQuality> assessSignalQuality(
-    _i10.GpsPosition? position,
+    _i7.GpsPosition? position,
   ) =>
       (super.noSuchMethod(
             Invocation.method(#assessSignalQuality, [position]),
@@ -253,7 +279,7 @@ class MockGpsService extends _i1.Mock implements _i9.GpsService {
           as _i5.Future<_i2.GpsSignalQuality>);
 
   @override
-  _i5.Future<void> logPosition(_i10.GpsPosition? position) =>
+  _i5.Future<void> logPosition(_i7.GpsPosition? position) =>
       (super.noSuchMethod(
             Invocation.method(#logPosition, [position]),
             returnValue: _i5.Future<void>.value(),
@@ -337,16 +363,16 @@ class MockGpsService extends _i1.Mock implements _i9.GpsService {
           as _i5.Future<_i3.PositionFreshness>);
 
   @override
-  _i5.Future<List<_i10.GpsPosition>> filterForMarineAccuracy(
-    List<_i10.GpsPosition>? positions,
+  _i5.Future<List<_i7.GpsPosition>> filterForMarineAccuracy(
+    List<_i7.GpsPosition>? positions,
   ) =>
       (super.noSuchMethod(
             Invocation.method(#filterForMarineAccuracy, [positions]),
-            returnValue: _i5.Future<List<_i10.GpsPosition>>.value(
-              <_i10.GpsPosition>[],
+            returnValue: _i5.Future<List<_i7.GpsPosition>>.value(
+              <_i7.GpsPosition>[],
             ),
           )
-          as _i5.Future<List<_i10.GpsPosition>>);
+          as _i5.Future<List<_i7.GpsPosition>>);
 
   @override
   _i5.Future<_i3.CourseOverGround?> calculateCourseOverGround(

@@ -91,6 +91,14 @@ class MockGpsService extends _i1.Mock implements _i4.GpsService {
           as _i5.Future<_i6.GpsPosition?>);
 
   @override
+  _i5.Future<_i6.GpsPosition?> getCurrentPositionWithFallback() =>
+      (super.noSuchMethod(
+            Invocation.method(#getCurrentPositionWithFallback, []),
+            returnValue: _i5.Future<_i6.GpsPosition?>.value(),
+          )
+          as _i5.Future<_i6.GpsPosition?>);
+
+  @override
   _i5.Stream<_i6.GpsPosition> getLocationStream() =>
       (super.noSuchMethod(
             Invocation.method(#getLocationStream, []),

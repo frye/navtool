@@ -224,63 +224,99 @@ class DatabaseStorageService implements StorageService {
     _logger.info('Migrating database to version 2 - adding NOAA extensions');
     
     await db.transaction((txn) async {
-      // Add NOAA-specific columns to charts table
-      await txn.execute('ALTER TABLE charts ADD COLUMN cell_name TEXT');
-      await txn.execute('ALTER TABLE charts ADD COLUMN usage_band TEXT');
-      await txn.execute('ALTER TABLE charts ADD COLUMN edition_number INTEGER DEFAULT 0');
-      await txn.execute('ALTER TABLE charts ADD COLUMN update_number INTEGER DEFAULT 0');
-      await txn.execute('ALTER TABLE charts ADD COLUMN compilation_scale INTEGER');
-      await txn.execute('ALTER TABLE charts ADD COLUMN region TEXT');
-      await txn.execute('ALTER TABLE charts ADD COLUMN dt_pub TEXT');
-      await txn.execute('ALTER TABLE charts ADD COLUMN issue_date TEXT');
-      await txn.execute('ALTER TABLE charts ADD COLUMN source_date_string TEXT');
-      await txn.execute('ALTER TABLE charts ADD COLUMN edition_date TEXT');
-      await txn.execute('ALTER TABLE charts ADD COLUMN boundary_polygon TEXT');
-      await txn.execute('ALTER TABLE charts ADD COLUMN source TEXT DEFAULT "noaa"');
-      await txn.execute('ALTER TABLE charts ADD COLUMN status TEXT DEFAULT "current"');
+      // Check if charts table exists and add NOAA-specific columns
+      try {
+        await txn.execute('ALTER TABLE charts ADD COLUMN cell_name TEXT');
+        await txn.execute('ALTER TABLE charts ADD COLUMN usage_band TEXT');
+        await txn.execute('ALTER TABLE charts ADD COLUMN edition_number INTEGER DEFAULT 0');
+        await txn.execute('ALTER TABLE charts ADD COLUMN update_number INTEGER DEFAULT 0');
+        await txn.execute('ALTER TABLE charts ADD COLUMN compilation_scale INTEGER');
+        await txn.execute('ALTER TABLE charts ADD COLUMN region TEXT');
+        await txn.execute('ALTER TABLE charts ADD COLUMN dt_pub TEXT');
+        await txn.execute('ALTER TABLE charts ADD COLUMN issue_date TEXT');
+        await txn.execute('ALTER TABLE charts ADD COLUMN source_date_string TEXT');
+        await txn.execute('ALTER TABLE charts ADD COLUMN edition_date TEXT');
+        await txn.execute('ALTER TABLE charts ADD COLUMN boundary_polygon TEXT');
+        await txn.execute('ALTER TABLE charts ADD COLUMN source TEXT DEFAULT "noaa"');
+        await txn.execute('ALTER TABLE charts ADD COLUMN status TEXT DEFAULT "current"');
+      } catch (e) {
+        _logger.warning('Some chart table columns may already exist: $e');
+      }
       
-      // Add coverage_percentage and updated_at to state_chart_mapping
-      await txn.execute('ALTER TABLE state_chart_mapping ADD COLUMN coverage_percentage REAL DEFAULT 0.0');
-      await txn.execute('ALTER TABLE state_chart_mapping ADD COLUMN updated_at TEXT');
+      // Check if state_chart_mapping table exists, create if not
+      final tables = await txn.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='state_chart_mapping'"
+      );
       
-      // Create new tables
-      await txn.execute('''
-        CREATE TABLE chart_catalog_cache (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          catalog_type TEXT NOT NULL DEFAULT 'noaa',
-          catalog_data TEXT NOT NULL,
-          catalog_hash TEXT,
-          last_updated TEXT NOT NULL,
-          etag TEXT,
-          is_valid INTEGER DEFAULT 1,
-          expires_at TEXT
-        )
-      ''');
+      if (tables.isEmpty) {
+        // Create state_chart_mapping table if it doesn't exist
+        await txn.execute('''
+          CREATE TABLE state_chart_mapping (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            state_name TEXT NOT NULL,
+            cell_name TEXT NOT NULL,
+            coverage_percentage REAL DEFAULT 0.0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(state_name, cell_name)
+          )
+        ''');
+      } else {
+        // Add new columns to existing table
+        try {
+          await txn.execute('ALTER TABLE state_chart_mapping ADD COLUMN coverage_percentage REAL DEFAULT 0.0');
+          await txn.execute('ALTER TABLE state_chart_mapping ADD COLUMN updated_at TEXT');
+        } catch (e) {
+          _logger.warning('Some state_chart_mapping columns may already exist: $e');
+        }
+      }
       
-      await txn.execute('''
-        CREATE TABLE chart_update_history (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          cell_name TEXT NOT NULL,
-          old_edition INTEGER,
-          new_edition INTEGER,
-          old_update_number INTEGER,
-          new_update_number INTEGER,
-          update_detected_at TEXT NOT NULL
-        )
-      ''');
+      // Create new tables if they don't exist
+      try {
+        await txn.execute('''
+          CREATE TABLE IF NOT EXISTS chart_catalog_cache (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            catalog_type TEXT NOT NULL DEFAULT 'noaa',
+            catalog_data TEXT NOT NULL,
+            catalog_hash TEXT,
+            last_updated TEXT NOT NULL,
+            etag TEXT,
+            is_valid INTEGER DEFAULT 1,
+            expires_at TEXT
+          )
+        ''');
+        
+        await txn.execute('''
+          CREATE TABLE IF NOT EXISTS chart_update_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cell_name TEXT NOT NULL,
+            old_edition INTEGER,
+            new_edition INTEGER,
+            old_update_number INTEGER,
+            new_update_number INTEGER,
+            update_detected_at TEXT NOT NULL
+          )
+        ''');
+      } catch (e) {
+        _logger.warning('Some tables may already exist: $e');
+      }
       
-      // Create NOAA-specific indexes
-      await txn.execute('CREATE INDEX idx_charts_cell_name ON charts (cell_name)');
-      await txn.execute('CREATE INDEX idx_charts_usage_band ON charts (usage_band)');
-      await txn.execute('CREATE INDEX idx_charts_region ON charts (region)');
-      await txn.execute('CREATE INDEX idx_charts_source ON charts (source)');
-      await txn.execute('CREATE INDEX idx_state_chart_mapping_cell ON state_chart_mapping (cell_name)');
-      await txn.execute('CREATE INDEX idx_state_chart_mapping_coverage ON state_chart_mapping (coverage_percentage)');
-      await txn.execute('CREATE INDEX idx_catalog_cache_type ON chart_catalog_cache (catalog_type)');
-      await txn.execute('CREATE INDEX idx_catalog_cache_valid ON chart_catalog_cache (is_valid)');
-      await txn.execute('CREATE INDEX idx_catalog_cache_expires ON chart_catalog_cache (expires_at)');
-      await txn.execute('CREATE INDEX idx_chart_history_cell ON chart_update_history (cell_name)');
-      await txn.execute('CREATE INDEX idx_chart_history_detected ON chart_update_history (update_detected_at)');
+      // Create NOAA-specific indexes (use IF NOT EXISTS to avoid conflicts)
+      try {
+        await txn.execute('CREATE INDEX IF NOT EXISTS idx_charts_cell_name ON charts (cell_name)');
+        await txn.execute('CREATE INDEX IF NOT EXISTS idx_charts_usage_band ON charts (usage_band)');
+        await txn.execute('CREATE INDEX IF NOT EXISTS idx_charts_region ON charts (region)');
+        await txn.execute('CREATE INDEX IF NOT EXISTS idx_charts_source ON charts (source)');
+        await txn.execute('CREATE INDEX IF NOT EXISTS idx_state_chart_mapping_cell ON state_chart_mapping (cell_name)');
+        await txn.execute('CREATE INDEX IF NOT EXISTS idx_state_chart_mapping_coverage ON state_chart_mapping (coverage_percentage)');
+        await txn.execute('CREATE INDEX IF NOT EXISTS idx_catalog_cache_type ON chart_catalog_cache (catalog_type)');
+        await txn.execute('CREATE INDEX IF NOT EXISTS idx_catalog_cache_valid ON chart_catalog_cache (is_valid)');
+        await txn.execute('CREATE INDEX IF NOT EXISTS idx_catalog_cache_expires ON chart_catalog_cache (expires_at)');
+        await txn.execute('CREATE INDEX IF NOT EXISTS idx_chart_history_cell ON chart_update_history (cell_name)');
+        await txn.execute('CREATE INDEX IF NOT EXISTS idx_chart_history_detected ON chart_update_history (update_detected_at)');
+      } catch (e) {
+        _logger.warning('Some indexes may already exist: $e');
+      }
     });
     
     _logger.info('Database migration to version 2 completed');
@@ -468,19 +504,74 @@ class DatabaseStorageService implements StorageService {
     final db = _database!;
     
     try {
+      // Debug logging
+      _logger.debug('Searching for charts in bounds: north=${bounds.north}, south=${bounds.south}, east=${bounds.east}, west=${bounds.west}');
+      
+      // First, let's see what charts exist in the database
+      final allChartsResult = await db.query('charts', columns: ['cell_name', 'bounds_north', 'bounds_south', 'bounds_east', 'bounds_west']);
+      _logger.debug('Total charts in database: ${allChartsResult.length}');
+      for (final row in allChartsResult) {
+        _logger.debug('Chart in DB: ${row['cell_name']} bounds=(S:${row['bounds_south']}, N:${row['bounds_north']}, W:${row['bounds_west']}, E:${row['bounds_east']})');
+      }
+      
+      // Correct bounding box intersection: chart and bounds overlap if none of the separation conditions are true
+      // Separation conditions: chart.south > bounds.north OR chart.north < bounds.south OR 
+      //                       chart.west > bounds.east OR chart.east < bounds.west
+      // Intersection is the negation: NOT separated
       final result = await db.query(
         'charts',
         where: '''
-          bounds_north >= ? AND bounds_south <= ? AND 
-          bounds_east >= ? AND bounds_west <= ?
+          bounds_south <= ? AND bounds_north >= ? AND 
+          bounds_west <= ? AND bounds_east >= ?
         ''',
-        whereArgs: [bounds.south, bounds.north, bounds.west, bounds.east],
+        whereArgs: [bounds.north, bounds.south, bounds.east, bounds.west],
       );
+
+      _logger.debug('SQL query returned ${result.length} charts for Washington bounds (N:${bounds.north}, S:${bounds.south}, E:${bounds.east}, W:${bounds.west})');
+      for (final row in result) {
+        _logger.debug('Found chart: ${row['cell_name']} bounds=(S:${row['bounds_south']}, N:${row['bounds_north']}, W:${row['bounds_west']}, E:${row['bounds_east']})');
+      }
 
       return result.map(_chartFromMap).toList();
     } catch (e) {
       _logger.error('Failed to get charts in bounds: $e');
       return [];
+    }
+  }
+
+  /// Counts charts with invalid bounds (typically 0,0,0,0 from old cache)
+  Future<int> countChartsWithInvalidBounds() async {
+    final db = _database!;
+    
+    try {
+      final result = await db.rawQuery(
+        'SELECT COUNT(*) as count FROM charts WHERE bounds_north = 0 AND bounds_south = 0 AND bounds_east = 0 AND bounds_west = 0'
+      );
+      
+      return Sqflite.firstIntValue(result) ?? 0;
+    } catch (e) {
+      _logger.error('Failed to count charts with invalid bounds: $e');
+      return 0;
+    }
+  }
+
+  /// Clears charts with invalid bounds (cache invalidation for old chart data)
+  Future<int> clearChartsWithInvalidBounds() async {
+    final db = _database!;
+    
+    try {
+      _logger.info('Clearing charts with invalid bounds to force cache refresh');
+      
+      final deletedCount = await db.delete(
+        'charts',
+        where: 'bounds_north = 0 AND bounds_south = 0 AND bounds_east = 0 AND bounds_west = 0'
+      );
+      
+      _logger.info('Cleared $deletedCount charts with invalid bounds');
+      return deletedCount;
+    } catch (e) {
+      _logger.error('Failed to clear charts with invalid bounds: $e');
+      return 0;
     }
   }
 

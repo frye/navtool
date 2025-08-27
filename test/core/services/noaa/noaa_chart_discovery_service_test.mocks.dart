@@ -88,6 +88,23 @@ class MockChartCatalogService extends _i1.Mock
             returnValue: _i3.Future<bool>.value(false),
           )
           as _i3.Future<bool>);
+
+  @override
+  _i3.Future<void> ensureCatalogBootstrapped() =>
+      (super.noSuchMethod(
+            Invocation.method(#ensureCatalogBootstrapped, []),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<int> getCachedChartCount() =>
+      (super.noSuchMethod(
+            Invocation.method(#getCachedChartCount, []),
+            returnValue: _i3.Future<int>.value(0),
+          )
+          as _i3.Future<int>);
 }
 
 /// A class which mocks [StateRegionMappingService].
@@ -122,6 +139,17 @@ class MockStateRegionMappingService extends _i1.Mock
             returnValue: _i3.Future<List<String>>.value(<String>[]),
           )
           as _i3.Future<List<String>>);
+
+  @override
+  _i3.Future<String?> getStateFromCoordinates(
+    double? latitude,
+    double? longitude,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getStateFromCoordinates, [latitude, longitude]),
+            returnValue: _i3.Future<String?>.value(),
+          )
+          as _i3.Future<String?>);
 
   @override
   _i3.Future<void> updateStateCellMapping(

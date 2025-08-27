@@ -63,6 +63,15 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
   List<Chart> _filteredCharts = [];
 
   @override
+  void initState() {
+    super.initState();
+    // Automatically discover charts based on location when screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _discoverChartsBasedOnLocation();
+    });
+  }
+
+  @override
   void dispose() {
     _searchDebouncer?.cancel();
     super.dispose();
@@ -379,6 +388,52 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     _filterCharts();
   }
 
+  /// Automatically discovers charts based on current GPS location with Seattle fallback
+  Future<void> _discoverChartsBasedOnLocation() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      // Get GPS service and discovery service
+      final gpsService = ref.read(gpsServiceProvider);
+      final discoveryService = ref.read(noaaChartDiscoveryServiceProvider);
+      
+      // Get current position with Seattle fallback
+      final position = await gpsService.getCurrentPositionWithFallback();
+      
+      if (position != null) {
+        // Discover charts based on location
+        final charts = await discoveryService.discoverChartsByLocation(position);
+        
+        if (mounted) {
+          setState(() {
+            _charts = charts;
+            _isLoading = false;
+          });
+          _filterCharts();
+        }
+      } else {
+        // Fallback to manual state selection if location discovery fails
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'Unable to determine location. Please select a state manually.';
+          });
+        }
+      }
+    } catch (error) {
+      // Fallback to manual state selection on error
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Location discovery failed. Please select a state manually.';
+        });
+      }
+    }
+  }
+
   Future<void> _loadChartsForState(String state) async {
     setState(() {
       _isLoading = true;
@@ -465,15 +520,51 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     }
   }
 
-  void _downloadSelectedCharts() {
-    if (_selectedChartIds.isNotEmpty) {
-      // TODO: Implement chart download functionality
+  void _downloadSelectedCharts() async {
+    if (_selectedChartIds.isEmpty) return;
+
+    try {
+      final downloadService = ref.read(downloadServiceProvider);
+      final selectedCharts = _charts.where((chart) => _selectedChartIds.contains(chart.id)).toList();
+      
+      // Show initial feedback
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Download ${_selectedChartIds.length} charts - Feature coming soon!'),
-          duration: const Duration(seconds: 3),
+          content: Text('Starting download of ${selectedCharts.length} charts...'),
+          duration: const Duration(seconds: 2),
         ),
       );
+
+      // Start downloading each selected chart
+      for (final chart in selectedCharts) {
+        final downloadUrl = 'https://charts.noaa.gov/ENCs/${chart.id}.zip';
+        await downloadService.downloadChart(chart.id, downloadUrl);
+      }
+
+      // Clear selection after successful downloads
+      setState(() {
+        _selectedChartIds.clear();
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Successfully started download of ${selectedCharts.length} charts'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to start downloads: $error'),
+            duration: const Duration(seconds: 5),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -524,14 +615,42 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
           ),
           if (!chart.isDownloaded)
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(context).pop();
-                // TODO: Implement single chart download
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Download ${chart.title} - Feature coming soon!'),
-                  ),
-                );
+                
+                try {
+                  final downloadService = ref.read(downloadServiceProvider);
+                  final downloadUrl = 'https://charts.noaa.gov/ENCs/${chart.id}.zip';
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Starting download of ${chart.title}...'),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                  
+                  await downloadService.downloadChart(chart.id, downloadUrl);
+                  
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Successfully started download of ${chart.title}'),
+                        duration: const Duration(seconds: 3),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } catch (error) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to download ${chart.title}: $error'),
+                        duration: const Duration(seconds: 5),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
               },
               child: const Text('Download'),
             ),

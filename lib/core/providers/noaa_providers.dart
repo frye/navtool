@@ -5,6 +5,7 @@ import 'package:navtool/core/services/noaa/state_region_mapping_service.dart';
 import 'package:navtool/core/services/noaa/noaa_metadata_parser.dart';
 import 'package:navtool/core/services/noaa/noaa_api_client.dart';
 import 'package:navtool/core/services/noaa/noaa_api_client_impl.dart';
+import 'package:navtool/core/services/database_storage_service.dart';
 import 'package:navtool/core/utils/rate_limiter.dart';
 import 'package:navtool/core/utils/circuit_breaker.dart';
 import 'package:navtool/core/models/retry_policy.dart';
@@ -22,6 +23,8 @@ final chartCatalogServiceProvider = Provider<ChartCatalogService>((ref) {
   return ChartCatalogServiceImpl(
     cacheService: ref.read(cacheServiceProvider),
     logger: ref.read(loggerProvider),
+    noaaApiClient: ref.read(noaaApiClientProvider),
+    databaseStorageService: ref.read(storageServiceProvider) as DatabaseStorageService,
   );
 });
 
@@ -40,6 +43,7 @@ final noaaChartDiscoveryServiceProvider = Provider<NoaaChartDiscoveryService>((r
   return NoaaChartDiscoveryServiceImpl(
     catalogService: ref.read(chartCatalogServiceProvider),
     mappingService: ref.read(stateRegionMappingServiceProvider),
+    storageService: ref.read(storageServiceProvider),
     logger: ref.read(loggerProvider),
   );
 });

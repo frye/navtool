@@ -230,25 +230,70 @@ class GpsStatusWidget extends ConsumerWidget {
   }
 
   Widget _buildGpsActions(BuildContext context, WidgetRef ref) {
+    final gpsService = ref.read(gpsServiceProvider);
+    
     return Row(
       children: [
-        Expanded(
-          child: ElevatedButton.icon(
-            onPressed: () async {
-              // Invalidate the provider to trigger a refresh
-              ref.invalidate(gpsPositionProvider);
-              
-              // Show feedback to user
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Refreshing GPS position...'),
-                  duration: Duration(seconds: 2),
+        // Check if we need a permission request button
+        FutureBuilder<bool>(
+          future: gpsService.checkLocationPermission(),
+          builder: (context, snapshot) {
+            final hasPermission = snapshot.data ?? false;
+            
+            if (!hasPermission) {
+              return Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    final granted = await gpsService.requestLocationPermission();
+                    
+                    if (granted) {
+                      // Refresh position after permission granted
+                      ref.invalidate(gpsPositionProvider);
+                      
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Location permission granted! Updating position...'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Location permission denied. Using fallback coordinates.'),
+                          duration: Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.location_on, size: 16),
+                  label: const Text('Enable Location'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                  ),
                 ),
               );
-            },
-            icon: const Icon(Icons.refresh, size: 16),
-            label: const Text('Update Position'),
-          ),
+            }
+            
+            return Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  // Invalidate the provider to trigger a refresh
+                  ref.invalidate(gpsPositionProvider);
+                  
+                  // Show feedback to user
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Refreshing GPS position...'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('Update Position'),
+              ),
+            );
+          },
         ),
         const SizedBox(width: 8),
         IconButton(

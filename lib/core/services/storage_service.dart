@@ -69,4 +69,10 @@ abstract class StorageService {
 
   /// Get charts within geographic bounds (used for spatial intersection)
   Future<List<Chart>> getChartsInBounds(GeographicBounds bounds);
+
+  /// Count charts with invalid bounds (typically 0,0,0,0 from old cache)
+  Future<int> countChartsWithInvalidBounds();
+
+  /// Clear charts with invalid bounds (cache invalidation)
+  Future<int> clearChartsWithInvalidBounds();
 }
