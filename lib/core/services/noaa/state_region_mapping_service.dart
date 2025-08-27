@@ -30,6 +30,12 @@ abstract class StateRegionMappingService {
   /// Gets all supported states
   Future<List<String>> getSupportedStates();
   
+  /// Gets the state name for given coordinates
+  /// 
+  /// Returns the state name if coordinates fall within a supported
+  /// coastal state's boundaries, otherwise returns null.
+  Future<String?> getStateFromCoordinates(double latitude, double longitude);
+  
   /// Updates the state-to-cell mapping for a state
   Future<void> updateStateCellMapping(String stateName, List<String> mapping);
   
@@ -282,6 +288,30 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
       _logger.error('Failed to clear state mappings', exception: e);
       if (e is AppError) rethrow;
       throw AppError.storage('Failed to clear state mappings', originalError: e);
+    }
+  }
+
+  @override
+  Future<String?> getStateFromCoordinates(double latitude, double longitude) async {
+    try {
+      _logger.debug('Determining state for coordinates: $latitude, $longitude');
+      
+      // Check each state's bounds to find which one contains the coordinates
+      for (final entry in _stateRegions.entries) {
+        final stateName = entry.key;
+        final bounds = entry.value;
+        
+        if (bounds.contains(latitude, longitude)) {
+          _logger.debug('Coordinates fall within $stateName bounds');
+          return stateName;
+        }
+      }
+      
+      _logger.debug('Coordinates do not fall within any supported state bounds');
+      return null;
+    } catch (e) {
+      _logger.error('Failed to determine state from coordinates: $latitude, $longitude', exception: e);
+      rethrow;
     }
   }
 

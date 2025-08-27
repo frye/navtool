@@ -3,14 +3,18 @@
 // Do not manually edit this file.
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i3;
+import 'dart:async' as _i5;
 
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:navtool/core/error/app_error.dart' as _i6;
-import 'package:navtool/core/logging/app_logger.dart' as _i5;
-import 'package:navtool/core/models/chart.dart' as _i4;
+import 'package:navtool/core/error/app_error.dart' as _i9;
+import 'package:navtool/core/logging/app_logger.dart' as _i8;
+import 'package:navtool/core/models/chart.dart' as _i6;
+import 'package:navtool/core/models/gps_position.dart' as _i7;
+import 'package:navtool/core/models/gps_signal_quality.dart' as _i2;
+import 'package:navtool/core/models/position_history.dart' as _i3;
+import 'package:navtool/core/services/gps_service.dart' as _i10;
 import 'package:navtool/core/services/noaa/noaa_chart_discovery_service.dart'
-    as _i2;
+    as _i4;
 
 // ignore_for_file: type=lint
 // ignore_for_file: avoid_redundant_argument_values
@@ -26,63 +30,102 @@ import 'package:navtool/core/services/noaa/noaa_chart_discovery_service.dart'
 // ignore_for_file: camel_case_types
 // ignore_for_file: subtype_of_sealed_class
 
+class _FakeGpsSignalQuality_0 extends _i1.SmartFake
+    implements _i2.GpsSignalQuality {
+  _FakeGpsSignalQuality_0(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakePositionHistory_1 extends _i1.SmartFake
+    implements _i3.PositionHistory {
+  _FakePositionHistory_1(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeAccuracyStatistics_2 extends _i1.SmartFake
+    implements _i3.AccuracyStatistics {
+  _FakeAccuracyStatistics_2(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeMovementState_3 extends _i1.SmartFake implements _i3.MovementState {
+  _FakeMovementState_3(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakePositionFreshness_4 extends _i1.SmartFake
+    implements _i3.PositionFreshness {
+  _FakePositionFreshness_4(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
 /// A class which mocks [NoaaChartDiscoveryService].
 ///
 /// See the documentation for Mockito's code generation for more information.
 class MockNoaaChartDiscoveryService extends _i1.Mock
-    implements _i2.NoaaChartDiscoveryService {
+    implements _i4.NoaaChartDiscoveryService {
   MockNoaaChartDiscoveryService() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i3.Future<List<_i4.Chart>> discoverChartsByState(String? state) =>
+  _i5.Future<List<_i6.Chart>> discoverChartsByState(String? state) =>
       (super.noSuchMethod(
             Invocation.method(#discoverChartsByState, [state]),
-            returnValue: _i3.Future<List<_i4.Chart>>.value(<_i4.Chart>[]),
+            returnValue: _i5.Future<List<_i6.Chart>>.value(<_i6.Chart>[]),
           )
-          as _i3.Future<List<_i4.Chart>>);
+          as _i5.Future<List<_i6.Chart>>);
 
   @override
-  _i3.Future<List<_i4.Chart>> searchCharts(
+  _i5.Future<List<_i6.Chart>> discoverChartsByLocation(
+    _i7.GpsPosition? position,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#discoverChartsByLocation, [position]),
+            returnValue: _i5.Future<List<_i6.Chart>>.value(<_i6.Chart>[]),
+          )
+          as _i5.Future<List<_i6.Chart>>);
+
+  @override
+  _i5.Future<List<_i6.Chart>> searchCharts(
     String? query, {
     Map<String, String>? filters,
   }) =>
       (super.noSuchMethod(
             Invocation.method(#searchCharts, [query], {#filters: filters}),
-            returnValue: _i3.Future<List<_i4.Chart>>.value(<_i4.Chart>[]),
+            returnValue: _i5.Future<List<_i6.Chart>>.value(<_i6.Chart>[]),
           )
-          as _i3.Future<List<_i4.Chart>>);
+          as _i5.Future<List<_i6.Chart>>);
 
   @override
-  _i3.Future<_i4.Chart?> getChartMetadata(String? chartId) =>
+  _i5.Future<_i6.Chart?> getChartMetadata(String? chartId) =>
       (super.noSuchMethod(
             Invocation.method(#getChartMetadata, [chartId]),
-            returnValue: _i3.Future<_i4.Chart?>.value(),
+            returnValue: _i5.Future<_i6.Chart?>.value(),
           )
-          as _i3.Future<_i4.Chart?>);
+          as _i5.Future<_i6.Chart?>);
 
   @override
-  _i3.Stream<List<_i4.Chart>> watchChartsForState(String? state) =>
+  _i5.Stream<List<_i6.Chart>> watchChartsForState(String? state) =>
       (super.noSuchMethod(
             Invocation.method(#watchChartsForState, [state]),
-            returnValue: _i3.Stream<List<_i4.Chart>>.empty(),
+            returnValue: _i5.Stream<List<_i6.Chart>>.empty(),
           )
-          as _i3.Stream<List<_i4.Chart>>);
+          as _i5.Stream<List<_i6.Chart>>);
 
   @override
-  _i3.Future<bool> refreshCatalog({bool? force = false}) =>
+  _i5.Future<bool> refreshCatalog({bool? force = false}) =>
       (super.noSuchMethod(
             Invocation.method(#refreshCatalog, [], {#force: force}),
-            returnValue: _i3.Future<bool>.value(false),
+            returnValue: _i5.Future<bool>.value(false),
           )
-          as _i3.Future<bool>);
+          as _i5.Future<bool>);
 }
 
 /// A class which mocks [AppLogger].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockAppLogger extends _i1.Mock implements _i5.AppLogger {
+class MockAppLogger extends _i1.Mock implements _i8.AppLogger {
   MockAppLogger() {
     _i1.throwOnMissingStub(this);
   }
@@ -132,8 +175,214 @@ class MockAppLogger extends _i1.Mock implements _i5.AppLogger {
       );
 
   @override
-  void logError(_i6.AppError? error) => super.noSuchMethod(
+  void logError(_i9.AppError? error) => super.noSuchMethod(
     Invocation.method(#logError, [error]),
     returnValueForMissingStub: null,
   );
+}
+
+/// A class which mocks [GpsService].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockGpsService extends _i1.Mock implements _i10.GpsService {
+  MockGpsService() {
+    _i1.throwOnMissingStub(this);
+  }
+
+  @override
+  _i5.Future<void> startLocationTracking() =>
+      (super.noSuchMethod(
+            Invocation.method(#startLocationTracking, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> stopLocationTracking() =>
+      (super.noSuchMethod(
+            Invocation.method(#stopLocationTracking, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<_i7.GpsPosition?> getCurrentPosition() =>
+      (super.noSuchMethod(
+            Invocation.method(#getCurrentPosition, []),
+            returnValue: _i5.Future<_i7.GpsPosition?>.value(),
+          )
+          as _i5.Future<_i7.GpsPosition?>);
+
+  @override
+  _i5.Future<_i7.GpsPosition?> getCurrentPositionWithFallback() =>
+      (super.noSuchMethod(
+            Invocation.method(#getCurrentPositionWithFallback, []),
+            returnValue: _i5.Future<_i7.GpsPosition?>.value(),
+          )
+          as _i5.Future<_i7.GpsPosition?>);
+
+  @override
+  _i5.Stream<_i7.GpsPosition> getLocationStream() =>
+      (super.noSuchMethod(
+            Invocation.method(#getLocationStream, []),
+            returnValue: _i5.Stream<_i7.GpsPosition>.empty(),
+          )
+          as _i5.Stream<_i7.GpsPosition>);
+
+  @override
+  _i5.Future<bool> requestLocationPermission() =>
+      (super.noSuchMethod(
+            Invocation.method(#requestLocationPermission, []),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<bool> checkLocationPermission() =>
+      (super.noSuchMethod(
+            Invocation.method(#checkLocationPermission, []),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<bool> isLocationEnabled() =>
+      (super.noSuchMethod(
+            Invocation.method(#isLocationEnabled, []),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<_i2.GpsSignalQuality> assessSignalQuality(
+    _i7.GpsPosition? position,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#assessSignalQuality, [position]),
+            returnValue: _i5.Future<_i2.GpsSignalQuality>.value(
+              _FakeGpsSignalQuality_0(
+                this,
+                Invocation.method(#assessSignalQuality, [position]),
+              ),
+            ),
+          )
+          as _i5.Future<_i2.GpsSignalQuality>);
+
+  @override
+  _i5.Future<void> logPosition(_i7.GpsPosition? position) =>
+      (super.noSuchMethod(
+            Invocation.method(#logPosition, [position]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<_i3.PositionHistory> getPositionHistory(Duration? timeWindow) =>
+      (super.noSuchMethod(
+            Invocation.method(#getPositionHistory, [timeWindow]),
+            returnValue: _i5.Future<_i3.PositionHistory>.value(
+              _FakePositionHistory_1(
+                this,
+                Invocation.method(#getPositionHistory, [timeWindow]),
+              ),
+            ),
+          )
+          as _i5.Future<_i3.PositionHistory>);
+
+  @override
+  _i5.Future<List<_i2.GpsSignalQuality>> getSignalQualityTrend(
+    Duration? timeWindow,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getSignalQualityTrend, [timeWindow]),
+            returnValue: _i5.Future<List<_i2.GpsSignalQuality>>.value(
+              <_i2.GpsSignalQuality>[],
+            ),
+          )
+          as _i5.Future<List<_i2.GpsSignalQuality>>);
+
+  @override
+  _i5.Future<void> clearPositionHistory() =>
+      (super.noSuchMethod(
+            Invocation.method(#clearPositionHistory, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<_i3.AccuracyStatistics> getAccuracyStatistics(
+    Duration? timeWindow,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getAccuracyStatistics, [timeWindow]),
+            returnValue: _i5.Future<_i3.AccuracyStatistics>.value(
+              _FakeAccuracyStatistics_2(
+                this,
+                Invocation.method(#getAccuracyStatistics, [timeWindow]),
+              ),
+            ),
+          )
+          as _i5.Future<_i3.AccuracyStatistics>);
+
+  @override
+  _i5.Future<_i3.MovementState> getMovementState(Duration? analysisWindow) =>
+      (super.noSuchMethod(
+            Invocation.method(#getMovementState, [analysisWindow]),
+            returnValue: _i5.Future<_i3.MovementState>.value(
+              _FakeMovementState_3(
+                this,
+                Invocation.method(#getMovementState, [analysisWindow]),
+              ),
+            ),
+          )
+          as _i5.Future<_i3.MovementState>);
+
+  @override
+  _i5.Future<_i3.PositionFreshness> getPositionFreshness() =>
+      (super.noSuchMethod(
+            Invocation.method(#getPositionFreshness, []),
+            returnValue: _i5.Future<_i3.PositionFreshness>.value(
+              _FakePositionFreshness_4(
+                this,
+                Invocation.method(#getPositionFreshness, []),
+              ),
+            ),
+          )
+          as _i5.Future<_i3.PositionFreshness>);
+
+  @override
+  _i5.Future<List<_i7.GpsPosition>> filterForMarineAccuracy(
+    List<_i7.GpsPosition>? positions,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#filterForMarineAccuracy, [positions]),
+            returnValue: _i5.Future<List<_i7.GpsPosition>>.value(
+              <_i7.GpsPosition>[],
+            ),
+          )
+          as _i5.Future<List<_i7.GpsPosition>>);
+
+  @override
+  _i5.Future<_i3.CourseOverGround?> calculateCourseOverGround(
+    Duration? timeWindow,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#calculateCourseOverGround, [timeWindow]),
+            returnValue: _i5.Future<_i3.CourseOverGround?>.value(),
+          )
+          as _i5.Future<_i3.CourseOverGround?>);
+
+  @override
+  _i5.Future<_i3.SpeedOverGround?> calculateSpeedOverGround(
+    Duration? timeWindow,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#calculateSpeedOverGround, [timeWindow]),
+            returnValue: _i5.Future<_i3.SpeedOverGround?>.value(),
+          )
+          as _i5.Future<_i3.SpeedOverGround?>);
 }

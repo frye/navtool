@@ -63,6 +63,15 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
   List<Chart> _filteredCharts = [];
 
   @override
+  void initState() {
+    super.initState();
+    // Automatically discover charts based on location when screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _discoverChartsBasedOnLocation();
+    });
+  }
+
+  @override
   void dispose() {
     _searchDebouncer?.cancel();
     super.dispose();
@@ -377,6 +386,52 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
       _searchQuery = '';
     });
     _filterCharts();
+  }
+
+  /// Automatically discovers charts based on current GPS location with Seattle fallback
+  Future<void> _discoverChartsBasedOnLocation() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      // Get GPS service and discovery service
+      final gpsService = ref.read(gpsServiceProvider);
+      final discoveryService = ref.read(noaaChartDiscoveryServiceProvider);
+      
+      // Get current position with Seattle fallback
+      final position = await gpsService.getCurrentPositionWithFallback();
+      
+      if (position != null) {
+        // Discover charts based on location
+        final charts = await discoveryService.discoverChartsByLocation(position);
+        
+        if (mounted) {
+          setState(() {
+            _charts = charts;
+            _isLoading = false;
+          });
+          _filterCharts();
+        }
+      } else {
+        // Fallback to manual state selection if location discovery fails
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'Unable to determine location. Please select a state manually.';
+          });
+        }
+      }
+    } catch (error) {
+      // Fallback to manual state selection on error
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Location discovery failed. Please select a state manually.';
+        });
+      }
+    }
   }
 
   Future<void> _loadChartsForState(String state) async {

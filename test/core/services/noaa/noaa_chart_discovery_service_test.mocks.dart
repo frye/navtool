@@ -141,6 +141,17 @@ class MockStateRegionMappingService extends _i1.Mock
           as _i3.Future<List<String>>);
 
   @override
+  _i3.Future<String?> getStateFromCoordinates(
+    double? latitude,
+    double? longitude,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getStateFromCoordinates, [latitude, longitude]),
+            returnValue: _i3.Future<String?>.value(),
+          )
+          as _i3.Future<String?>);
+
+  @override
   _i3.Future<void> updateStateCellMapping(
     String? stateName,
     List<String>? mapping,

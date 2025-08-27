@@ -11,19 +11,23 @@ import 'package:navtool/core/models/geographic_bounds.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/providers/noaa_providers.dart';
 import 'package:navtool/core/state/providers.dart';
+import 'package:navtool/core/services/gps_service.dart';
+import 'package:navtool/core/models/gps_position.dart';
 
 // Generate mocks for dependencies
-@GenerateMocks([NoaaChartDiscoveryService, AppLogger])
+@GenerateMocks([NoaaChartDiscoveryService, AppLogger, GpsService])
 import 'chart_browser_screen_test.mocks.dart';
 
 void main() {
   group('ChartBrowserScreen Tests', () {
     late MockNoaaChartDiscoveryService mockDiscoveryService;
     late MockAppLogger mockLogger;
+    late MockGpsService mockGpsService;
 
     setUp(() {
       mockDiscoveryService = MockNoaaChartDiscoveryService();
       mockLogger = MockAppLogger();
+      mockGpsService = MockGpsService();
     });
 
     Widget createTestWidget({bool withNavigation = false}) {
@@ -31,6 +35,7 @@ void main() {
         overrides: [
           noaaChartDiscoveryServiceProvider.overrideWithValue(mockDiscoveryService),
           loggerProvider.overrideWithValue(mockLogger),
+          gpsServiceProvider.overrideWithValue(mockGpsService),
         ],
         child: MaterialApp(
           home: const ChartBrowserScreen(),
@@ -642,5 +647,93 @@ void main() {
         expect(find.byType(ChartBrowserScreen), findsOneWidget);
       });
     });
+
+    group('Location-Based Chart Discovery', () {
+      testWidgets('should automatically discover charts using GPS location', (WidgetTester tester) async {
+        // Arrange
+        final testCharts = createTestCharts();
+        final seattlePosition = GpsPosition(
+          latitude: 47.6062,
+          longitude: -122.3321,
+          timestamp: DateTime.now(),
+          accuracy: 1000.0,
+        );
+        
+        when(mockGpsService.getCurrentPositionWithFallback())
+            .thenAnswer((_) async => seattlePosition);
+        when(mockDiscoveryService.discoverChartsByLocation(any))
+            .thenAnswer((_) async => testCharts);
+
+        // Act
+        await tester.pumpWidget(createTestWidget());
+        await tester.pumpAndSettle();
+
+        // Assert - Should automatically discover charts without manual state selection
+        verify(mockGpsService.getCurrentPositionWithFallback()).called(1);
+        verify(mockDiscoveryService.discoverChartsByLocation(any)).called(1);
+        expect(find.text('San Francisco Bay'), findsOneWidget);
+      });
+
+      testWidgets('should use Seattle fallback when location services disabled', (WidgetTester tester) async {
+        // Arrange
+        final testCharts = createSeattleTestCharts();
+        final seattlePosition = GpsPosition(
+          latitude: 47.6062,
+          longitude: -122.3321,
+          timestamp: DateTime.now(),
+          accuracy: 1000.0,
+        );
+        
+        when(mockGpsService.getCurrentPositionWithFallback())
+            .thenAnswer((_) async => seattlePosition);
+        when(mockDiscoveryService.discoverChartsByLocation(any))
+            .thenAnswer((_) async => testCharts);
+
+        // Act
+        await tester.pumpWidget(createTestWidget());
+        await tester.pumpAndSettle();
+
+        // Assert - Should discover Seattle area charts as fallback
+        final capturedCall = verify(mockDiscoveryService.discoverChartsByLocation(captureAny)).captured.first;
+        expect(capturedCall.latitude, closeTo(47.6062, 0.001)); // Seattle latitude
+        expect(capturedCall.longitude, closeTo(-122.3321, 0.001)); // Seattle longitude
+        expect(find.text('Puget Sound'), findsOneWidget);
+      });
+
+      testWidgets('should fall back to manual state selection if location discovery fails', (WidgetTester tester) async {
+        // Arrange
+        when(mockGpsService.getCurrentPositionWithFallback())
+            .thenThrow(Exception('Location discovery failed'));
+
+        // Act
+        await tester.pumpWidget(createTestWidget());
+        await tester.pumpAndSettle();
+
+        // Assert - Should show state dropdown for manual selection
+        expect(find.byType(DropdownButton<String>), findsOneWidget);
+        expect(find.text('Select State'), findsOneWidget);
+        expect(find.text('Location discovery failed. Please select a state manually.'), findsOneWidget);
+      });
+    });
   });
+}
+
+// Helper method for Seattle test charts
+List<Chart> createSeattleTestCharts() {
+  return [
+    Chart(
+      id: 'US5WA23M',
+      title: 'Puget Sound',
+      scale: 50000,
+      bounds: GeographicBounds(
+        north: 47.8,
+        south: 47.4,
+        east: -122.2,
+        west: -122.5,
+      ),
+      type: ChartType.harbor,
+      lastUpdate: DateTime.now(),
+      state: 'Washington',
+    ),
+  ];
 }

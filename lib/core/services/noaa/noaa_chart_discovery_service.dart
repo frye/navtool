@@ -1,4 +1,5 @@
 import 'package:navtool/core/models/chart.dart';
+import 'package:navtool/core/models/gps_position.dart';
 import 'package:navtool/core/services/noaa/chart_catalog_service.dart';
 import 'package:navtool/core/services/noaa/state_region_mapping_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
@@ -7,6 +8,18 @@ import 'package:navtool/core/logging/app_logger.dart';
 abstract class NoaaChartDiscoveryService {
   /// Discovers charts available for a specific US state
   Future<List<Chart>> discoverChartsByState(String state);
+
+  /// Discovers charts based on GPS location coordinates
+  /// 
+  /// Finds NOAA charts that cover the specified geographic location.
+  /// This method automatically determines the appropriate state/region
+  /// and returns relevant charts for the area.
+  /// 
+  /// Parameters:
+  /// - position: GPS coordinates to search around
+  /// 
+  /// Returns list of charts covering the specified location
+  Future<List<Chart>> discoverChartsByLocation(GpsPosition position);
 
   /// Searches charts by title or other metadata
   Future<List<Chart>> searchCharts(String query, {Map<String, String>? filters});
@@ -61,6 +74,46 @@ class NoaaChartDiscoveryServiceImpl implements NoaaChartDiscoveryService {
       return charts;
     } catch (error) {
       _logger.error('Failed to discover charts for state $state', exception: error);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<List<Chart>> discoverChartsByLocation(GpsPosition position) async {
+    _logger.debug('Discovering charts for location: ${position.latitude}, ${position.longitude}');
+    
+    try {
+      // Ensure catalog is bootstrapped before discovery
+      await _catalogService.ensureCatalogBootstrapped();
+      
+      // Determine state based on coordinates
+      final state = await _mappingService.getStateFromCoordinates(
+        position.latitude, 
+        position.longitude
+      );
+      
+      if (state == null) {
+        _logger.warning('No state found for coordinates: ${position.latitude}, ${position.longitude}');
+        return [];
+      }
+      
+      _logger.debug('Location maps to state: $state');
+      
+      // Use existing state-based discovery
+      final charts = await discoverChartsByState(state);
+      
+      // Filter charts that actually cover the specific location
+      final coveringCharts = charts.where((chart) => 
+        chart.coversPoint(position.latitude, position.longitude)
+      ).toList();
+      
+      // Sort by scale (smaller scale = larger area = lower priority for specific location)
+      coveringCharts.sort((a, b) => a.scale.compareTo(b.scale));
+      
+      _logger.info('Found ${coveringCharts.length} charts covering location ${position.latitude}, ${position.longitude}');
+      return coveringCharts;
+    } catch (error) {
+      _logger.error('Failed to discover charts for location: ${position.latitude}, ${position.longitude}', exception: error);
       rethrow;
     }
   }

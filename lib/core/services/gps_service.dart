@@ -13,6 +13,18 @@ abstract class GpsService {
   /// Gets the current position
   Future<GpsPosition?> getCurrentPosition();
 
+  /// Gets current position with Seattle fallback when location services disabled
+  /// 
+  /// This method attempts to get the real GPS position first, but if location
+  /// services are disabled or permission is denied, it returns Seattle coordinates
+  /// as a fallback location for chart discovery.
+  /// 
+  /// Returns:
+  /// - Real GPS position if available and permission granted
+  /// - Seattle fallback coordinates if location services disabled/denied
+  /// - Never returns null (always provides a usable location)
+  Future<GpsPosition?> getCurrentPositionWithFallback();
+
   /// Gets a stream of location updates
   Stream<GpsPosition> getLocationStream();
 
