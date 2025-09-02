@@ -5,6 +5,7 @@ import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
 import 'package:dio/dio.dart';
 import 'package:navtool/core/services/download_service_impl.dart';
+import '../../helpers/download_test_utils.dart';
 import 'package:navtool/core/services/http_client_service.dart';
 import 'package:navtool/core/services/storage_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
@@ -39,23 +40,8 @@ void main() {
       when(mockStorageService.getChartsDirectory())
           .thenAnswer((_) async => tempDir);
 
-      // Set up successful HTTP download stub by default
-      when(mockHttpClient.downloadFile(
-        any,
-        any,
-        cancelToken: anyNamed('cancelToken'),
-        onReceiveProgress: anyNamed('onReceiveProgress'),
-      )).thenAnswer((invocation) async {
-        // Simulate file creation
-        final savePath = invocation.positionalArguments[1] as String;
-        final file = File(savePath);
-        await file.create(recursive: true);
-        await file.writeAsString('test chart data');
-        
-        // Simulate progress callback
-        final onProgress = invocation.namedArguments[#onReceiveProgress] as Function?;
-        onProgress?.call(1024, 1024); // 100% complete
-      });
+      // Centralized HTTP head/get/download stubs (fractional progress 0..1 via bytes)
+      configureDownloadHttpClientMock(mockHttpClient);
 
       downloadService = DownloadServiceImpl(
         httpClient: mockHttpClient,
@@ -66,9 +52,8 @@ void main() {
     });
 
     tearDown(() async {
-      // Clean up temporary directory
       if (await tempDir.exists()) {
-        await tempDir.delete(recursive: true);
+        await retryDeleteDirectory(tempDir);
       }
     });
 
@@ -207,8 +192,12 @@ void main() {
 
         // Assert - We should have received some progress updates
         expect(hasProgress, isTrue, reason: 'Should have received at least one progress update');
+        // All emitted progress values must be normalized fractions in [0,1]
+        for (final p in progressValues) {
+          expect(p, inInclusiveRange(0.0, 1.0), reason: 'Download progress values must be normalized (got $p)');
+        }
         if (progressValues.isNotEmpty) {
-          expect(progressValues.last, equals(100.0), reason: 'Final progress should be 100%');
+          expectProgressCloseTo(progressValues.last, 1.0);
         }
       });
     });
@@ -220,21 +209,23 @@ void main() {
         const chartId2 = 'US4CA11M';
         const url1 = 'https://charts.noaa.gov/ENCs/US5CA52M.zip';
         const url2 = 'https://charts.noaa.gov/ENCs/US4CA11M.zip';
+        // Re-create service with network probe that always returns false so queue is not auto-processed
+        downloadService = DownloadServiceImpl(
+          httpClient: mockHttpClient,
+          storageService: mockStorageService,
+          logger: mockLogger,
+          errorHandler: mockErrorHandler,
+          networkSuitabilityProbe: () async => false,
+        );
 
-        // Act
-        final queue1 = await downloadService.getDownloadQueue();
-        
-        // Add charts to queue (don't start immediate downloads)
+        final queueBefore = await downloadService.getDownloadQueue();
         await downloadService.addToQueue(chartId1, url1);
         await downloadService.addToQueue(chartId2, url2);
-        
-        final queue2 = await downloadService.getDownloadQueue();
+        final queueAfter = await downloadService.getDownloadQueue();
 
-        // Assert
-        expect(queue1, isEmpty);
-        expect(queue2, isNotEmpty);
-        expect(queue2, contains(chartId1));
-        expect(queue2, contains(chartId2));
+        expect(queueBefore, isEmpty);
+        expect(queueAfter.length, 2);
+        expect(queueAfter, containsAll([chartId1, chartId2]));
       });
 
       test('should get download queue correctly', () async {
@@ -252,23 +243,21 @@ void main() {
         // Arrange
         const chartId = 'US5CA52M';
         
-        // Mock cancel token creation (this is internal to implementation)
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-        )).thenAnswer((invocation) async {
-          // Don't delay, just throw the cancellation immediately  
-          throw DioException(
-            requestOptions: RequestOptions(path: '/test'),
-            type: DioExceptionType.cancel,
-          );
-        });
+        // Provide a slow download so we can pause mid-flight
+        reset(mockHttpClient);
+        configureDownloadHttpClientMock(
+          mockHttpClient,
+          fileContents: {
+            'https://test.com/chart.zip': List.generate(400, (i) => i % 256),
+          },
+          progressChunks: 20,
+        );
 
         // Act
-        final downloadFuture = downloadService.downloadChart(chartId, 'https://test.com/chart.zip');
-        await downloadService.pauseDownload(chartId);
+  final downloadFuture = downloadService.downloadChart(chartId, 'https://test.com/chart.zip');
+  // Allow a little time for first progress events
+  await Future.delayed(const Duration(milliseconds: 30));
+  await downloadService.pauseDownload(chartId);
         
         // Wait for download to complete/cancel
         try {
@@ -299,27 +288,48 @@ void main() {
         // Arrange
         const chartId = 'US5CA52M';
 
-        // Mock download that can be cancelled - simulate file creation like the default setup
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-        )).thenAnswer((invocation) async {
-          // Simulate file creation for successful cancellation test
+        // Slow download to allow cancellation before completion
+        reset(mockHttpClient);
+        final completer = Completer<void>();
+        when(mockHttpClient.head(any,
+                queryParameters: anyNamed('queryParameters'),
+                options: anyNamed('options'),
+                cancelToken: anyNamed('cancelToken')))
+            .thenAnswer((_) async => Response(
+                  requestOptions: RequestOptions(path: 'https://test.com/chart.zip'),
+                  statusCode: 200,
+                  headers: Headers.fromMap({'content-length': ['400']}),
+                ));
+        int sent = 0;
+        when(mockHttpClient.downloadFile(any, any,
+                onReceiveProgress: anyNamed('onReceiveProgress'),
+                cancelToken: anyNamed('cancelToken'),
+                queryParameters: anyNamed('queryParameters'),
+                resumeFrom: anyNamed('resumeFrom')))
+            .thenAnswer((invocation) async {
           final savePath = invocation.positionalArguments[1] as String;
+          final onProgress = invocation.namedArguments[#onReceiveProgress] as void Function(int, int)?;
+          final total = 400;
+          while (!completer.isCompleted && sent < total) {
+            await Future.delayed(const Duration(milliseconds: 10));
+            sent += 40;
+            if (sent > total) sent = total;
+            onProgress?.call(sent, total);
+          }
+          if (!completer.isCompleted) {
+            // Simulate early termination due to cancellation
+            throw DioException(requestOptions: RequestOptions(path: 'https://test.com/chart.zip'), type: DioExceptionType.cancel);
+          }
           final file = File(savePath);
-          await file.create(recursive: true);
-          await file.writeAsString('test chart data');
-          
-          // Simulate progress callback
-          final onProgress = invocation.namedArguments[#onReceiveProgress] as Function?;
-          onProgress?.call(1024, 1024); // 100% complete
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(List.generate(total, (i) => i % 256));
         });
 
         // Act
-        final downloadFuture = downloadService.downloadChart(chartId, 'https://test.com/chart.zip');
-        await downloadService.cancelDownload(chartId);
+  final downloadFuture = downloadService.downloadChart(chartId, 'https://test.com/chart.zip');
+  await Future.delayed(const Duration(milliseconds: 30));
+  await downloadService.cancelDownload(chartId);
+  completer.complete();
         
         // Wait for download to complete/cancel
         try {

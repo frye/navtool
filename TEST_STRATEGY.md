@@ -152,6 +152,33 @@ flutter test integration_test/noaa_real_endpoint_test.dart
    - End-to-end workflows
    - API contract verification
 
+### Download Progress Semantics
+
+All download progress values emitted by services and observed in tests are normalized fractions in the inclusive range [0.0, 1.0].
+
+Rationale:
+- Simplifies UI bindings (direct percentage = fraction * 100).
+- Avoids historic ambiguity where some mocks emitted 0–100 values.
+- Enables consistent mathematical treatment (easing aggregation / averaging).
+
+Guidelines:
+- When simulating progress in tests, call progress callbacks with (receivedBytes, totalBytes) so the service normalizes internally.
+- Never emit raw percentage integers (e.g., 25, 50, 100) into progress streams—use fractions if constructing synthetic streams directly.
+- Assertions should enforce 0 ≤ p ≤ 1 and use helper `expectProgressCloseTo` for approximate comparisons.
+- If a future regression introduces values >1, tests SHOULD fail loudly rather than auto-normalize silently.
+
+Example (correct):
+```
+onReceiveProgress: (received, total) {
+   // received: 50, total: 100  -> progress stream emits 0.5
+}
+```
+
+Example (incorrect – do not use):
+```
+progressController.add(50); // 50 interpreted incorrectly as 50x completion
+```
+
 ### Updating Test Data
 
 - **Mock Data**: Update `test/utils/test_fixtures.dart`
