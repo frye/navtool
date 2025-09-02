@@ -31,8 +31,7 @@ void main() {
     late MockStorageService mockStorageService;
     late MockAppLogger mockLogger;
     late MockErrorHandler mockErrorHandler;
-    late MockDirectory mockChartsDirectory;
-    late MockFile mockFile;
+  late Directory realChartsDirectory;
 
     // Mutable network suitability flag to allow selective auto-processing
     bool networkSuitable = true;
@@ -43,15 +42,11 @@ void main() {
       mockStorageService = MockStorageService();
       mockLogger = MockAppLogger();
       mockErrorHandler = MockErrorHandler();
-      mockChartsDirectory = MockDirectory();
-      mockFile = MockFile();
-
-      // Setup default storage service behavior
-      when(mockStorageService.getChartsDirectory())
-          .thenAnswer((_) async => mockChartsDirectory);
-      when(mockChartsDirectory.path).thenReturn('/test/charts');
-      when(mockChartsDirectory.create(recursive: true))
-          .thenAnswer((_) async => mockChartsDirectory);
+    // Use a real temporary directory instead of a mocked Directory to avoid
+    // filesystem rename issues (Windows path edge cases) during tests.
+    realChartsDirectory = Directory.systemTemp.createTempSync('enhanced_downloads_');
+    when(mockStorageService.getChartsDirectory())
+      .thenAnswer((_) async => realChartsDirectory);
 
       downloadService = DownloadServiceImpl(
         httpClient: mockHttpClient,
@@ -160,8 +155,6 @@ void main() {
           cancelToken: anyNamed('cancelToken'),
           onReceiveProgress: anyNamed('onReceiveProgress')))
             .thenAnswer((_) async {});
-        when(mockFile.exists()).thenAnswer((_) async => true);
-        when(mockFile.length()).thenAnswer((_) async => 1024);
 
         // Act
         final batchId = await downloadService.startBatchDownload(chartIds, urls);
@@ -182,8 +175,6 @@ void main() {
           cancelToken: anyNamed('cancelToken'),
           onReceiveProgress: anyNamed('onReceiveProgress')))
             .thenAnswer((_) async {});
-        when(mockFile.exists()).thenAnswer((_) async => true);
-        when(mockFile.length()).thenAnswer((_) async => 1024);
 
         // Act
         final batchId = await downloadService.startBatchDownload(chartIds, urls);
@@ -251,8 +242,9 @@ void main() {
         const resumeFrom = 1024;
 
         // Setup partial file scenario
-        when(mockFile.exists()).thenAnswer((_) async => true);
-        when(mockFile.length()).thenAnswer((_) async => resumeFrom);
+  // Create a real partial .part file to simulate prior partial download
+  final partFile = File('${realChartsDirectory.path}/chart1.zip.part');
+  await partFile.writeAsBytes(List.filled(resumeFrom, 0x00));
         when(mockHttpClient.downloadFile(any, any,
           cancelToken: anyNamed('cancelToken'),
           onReceiveProgress: anyNamed('onReceiveProgress'),
@@ -281,8 +273,8 @@ void main() {
         await partFile.writeAsBytes([1, 2, 3]); // Partial file content
 
         // Override the charts directory to point to our temp directory
-        when(mockStorageService.getChartsDirectory())
-            .thenAnswer((_) async => tempDir);
+    when(mockStorageService.getChartsDirectory())
+      .thenAnswer((_) async => tempDir);
 
         // Setup scenario where resume fails with 416 (range not satisfiable)
         when(mockHttpClient.downloadFile(any, any,
@@ -343,8 +335,8 @@ void main() {
         await tempFile.writeAsBytes(List.generate(expectedSize, (i) => i % 256));
 
         // Override the charts directory to point to our temp directory
-        when(mockStorageService.getChartsDirectory())
-            .thenAnswer((_) async => tempDir);
+    when(mockStorageService.getChartsDirectory())
+      .thenAnswer((_) async => tempDir);
 
         when(mockHttpClient.downloadFile(any, any,
           cancelToken: anyNamed('cancelToken'),
@@ -450,8 +442,8 @@ void main() {
         const url = 'http://example.com/chart1.zip';
         networkSuitable = true;
 
-        when(mockStorageService.getChartsDirectory())
-            .thenThrow(const FileSystemException('Storage unavailable'));
+    when(mockStorageService.getChartsDirectory())
+      .thenThrow(const FileSystemException('Storage unavailable'));
 
         // Act & Assert (async)
         await expectLater(
