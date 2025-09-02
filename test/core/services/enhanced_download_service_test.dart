@@ -462,22 +462,31 @@ void main() {
         networkSuitable = true;
 
         // Start a download
+        final inProgress = Completer<void>();
+        final unblock = Completer<void>();
         when(mockHttpClient.downloadFile(any, any,
           cancelToken: anyNamed('cancelToken'),
           onReceiveProgress: anyNamed('onReceiveProgress')))
             .thenAnswer((_) async {
-              await Future.delayed(const Duration(seconds: 1));
+              // Signal that the download has started so the test can proceed deterministically.
+              if (!inProgress.isCompleted) inProgress.complete();
+              // Wait until test explicitly allows completion (no real-time sleep).
+              await unblock.future;
             });
 
   final downloadFuture = downloadService.downloadChart(chartId, url).catchError((_) {
     // Disposal may trigger an AppError(storage) since file not finalized; this is acceptable.
   });
+  // Ensure the mocked download actually started before disposing (eliminates race conditions).
+  await inProgress.future;
 
         // Act
-        downloadService.dispose();
+  downloadService.dispose();
+  // Allow the mocked download to finish after disposal logic executes.
+  unblock.complete();
 
         // Assert - future should complete (cancellation benign in mock implementation)
-        await downloadFuture;
+  await downloadFuture;
         // After disposal, progress stream should be empty (no crash) and not throw.
         final stream = downloadService.getDownloadProgress(chartId);
         expect(stream, isA<Stream<double>>());
