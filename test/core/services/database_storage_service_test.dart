@@ -188,8 +188,8 @@ void main() {
         // OLD cached West Coast chart with wrong default bounds
         final oldCachedChart = _createTestChart(
           id: 'US1WC07M', 
-          bounds: GeographicBounds(
-            north: 0.0, south: 0.0, east: 0.0, west: 0.0, // Wrong default bounds from old API
+          bounds: GeographicBounds.unvalidated(
+            north: 0.0, south: 0.0, east: 0.0, west: 0.0, // Wrong default bounds from old API (legacy)
           )
         );
         
@@ -242,7 +242,7 @@ void main() {
           id: 'US1WC01M',
           title: 'Columbia River Chart',
           scale: 80000,
-          bounds: GeographicBounds(north: 0, south: 0, east: 0, west: 0), // Invalid: all zeros
+          bounds: GeographicBounds.unvalidated(north: 0, south: 0, east: 0, west: 0), // Invalid legacy cached bounds
           lastUpdate: DateTime(2024, 1, 15),
           state: 'Washington',
           type: ChartType.general,
@@ -252,7 +252,7 @@ void main() {
           id: 'US1WC04M',
           title: 'Puget Sound Chart',
           scale: 25000,
-          bounds: GeographicBounds(north: 0, south: 0, east: 0, west: 0), // Invalid: all zeros
+          bounds: GeographicBounds.unvalidated(north: 0, south: 0, east: 0, west: 0), // Invalid legacy cached bounds
           lastUpdate: DateTime(2024, 1, 15),
           state: 'Washington',
           type: ChartType.harbor,
@@ -275,7 +275,7 @@ void main() {
           id: 'US1WC01M',
           title: 'Columbia River to Destruction I.',
           scale: 80000,
-          bounds: GeographicBounds(north: 0, south: 0, east: 0, west: 0), // Old cached bounds
+          bounds: GeographicBounds.unvalidated(north: 0, south: 0, east: 0, west: 0), // Old cached bounds
           lastUpdate: DateTime(2024, 1, 15),
           state: 'Washington',
           type: ChartType.general,
@@ -285,7 +285,7 @@ void main() {
           id: 'US1WC04M',
           title: 'Cape Disappointment to Lincoln City',
           scale: 80000,
-          bounds: GeographicBounds(north: 0, south: 0, east: 0, west: 0), // Old cached bounds
+          bounds: GeographicBounds.unvalidated(north: 0, south: 0, east: 0, west: 0), // Old cached bounds
           lastUpdate: DateTime(2024, 1, 15),
           state: 'Washington',
           type: ChartType.general,

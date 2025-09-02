@@ -28,7 +28,7 @@ void main() {
         id: 'US1WC01M',
         title: 'Columbia River to Destruction I.',
         scale: 80000,
-        bounds: GeographicBounds(north: 0, south: 0, east: 0, west: 0), // Invalid bounds from old cache
+        bounds: GeographicBounds.unvalidated(north: 0, south: 0, east: 0, west: 0), // Invalid legacy cached bounds
         lastUpdate: DateTime(2024, 1, 15),
         state: 'Washington',
         type: ChartType.general,
@@ -38,7 +38,7 @@ void main() {
         id: 'US1WC04M',
         title: 'Cape Disappointment to Lincoln City',
         scale: 80000,
-        bounds: GeographicBounds(north: 0, south: 0, east: 0, west: 0), // Invalid bounds from old cache
+        bounds: GeographicBounds.unvalidated(north: 0, south: 0, east: 0, west: 0), // Invalid legacy cached bounds
         lastUpdate: DateTime(2024, 1, 15),
         state: 'Washington',
         type: ChartType.general,

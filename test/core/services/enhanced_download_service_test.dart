@@ -275,10 +275,10 @@ void main() {
         const chartId = 'chart1';
         const url = 'http://example.com/chart1.zip';
 
-        // Create a real temporary directory and file for this test
+        // Create a real temporary directory and .part file to simulate partial download
         final tempDir = Directory.systemTemp.createTempSync('download_test_');
-        final tempFile = File('${tempDir.path}/chart1.zip');
-        await tempFile.writeAsBytes([1, 2, 3]); // Partial file
+        final partFile = File('${tempDir.path}/chart1.zip.part');
+        await partFile.writeAsBytes([1, 2, 3]); // Partial file content
 
         // Override the charts directory to point to our temp directory
         when(mockStorageService.getChartsDirectory())
@@ -312,11 +312,9 @@ void main() {
         // Act
         await downloadService.resumeDownload(chartId, url: url);
 
-        // Assert - Should attempt resume, fail, then restart
-        verify(mockLogger.warning(
-          argThat(contains('Range not satisfiable, restarting download')),
-          context: 'Download'
-        )).called(1);
+        // Assert - Should log range not satisfiable warning and then complete
+        verify(mockLogger.warning(argThat(contains('Range not satisfiable, restarting download')), context: 'Download')).called(1);
+        verify(mockLogger.info(argThat(contains('Chart download completed')), context: 'Download')).called(1);
 
         // Cleanup
         await tempDir.delete(recursive: true);

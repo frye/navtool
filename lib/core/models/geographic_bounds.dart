@@ -41,6 +41,23 @@ class GeographicBounds {
     }
   }
 
+  // Internal raw constructor bypassing validation (used by unvalidated factory)
+  GeographicBounds._raw(this.north, this.south, this.east, this.west);
+
+  /// Test-only factory to construct bounds without validation.
+  ///
+  /// WARNING: This should only be used in tests that need to simulate
+  /// legacy/invalid cached data (e.g., 0,0,0,0 bounds) for migration
+  /// or cache invalidation scenarios. Production code should always
+  /// rely on the validated default constructor.
+  @visibleForTesting
+  factory GeographicBounds.unvalidated({
+    required double north,
+    required double south,
+    required double east,
+    required double west,
+  }) => GeographicBounds._raw(north, south, east, west);
+
   /// Calculates the center point of the bounds
   ({double latitude, double longitude}) get center => (
     latitude: (north + south) / 2,

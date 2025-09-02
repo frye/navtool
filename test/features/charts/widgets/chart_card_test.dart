@@ -406,7 +406,7 @@ void main() {
           id: '',
           title: '',
           scale: 1, // Minimum valid scale
-          bounds: GeographicBounds(north: 0, south: 0, east: 0, west: 0),
+          bounds: GeographicBounds.unvalidated(north: 0, south: 0, east: 0, west: 0), // Simulate legacy invalid cached bounds
           lastUpdate: DateTime.now(),
           state: '',
           type: ChartType.harbor,
