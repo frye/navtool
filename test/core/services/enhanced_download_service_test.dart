@@ -11,6 +11,7 @@ import 'package:navtool/core/services/storage_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/error_handler.dart';
 import 'package:navtool/core/error/app_error.dart';
+import '../../helpers/download_test_utils.dart';
 
 // Generate mocks for the dependencies
 @GenerateMocks([
@@ -33,6 +34,9 @@ void main() {
     late MockDirectory mockChartsDirectory;
     late MockFile mockFile;
 
+    // Mutable network suitability flag to allow selective auto-processing
+    bool networkSuitable = true;
+
     setUp(() {
       mockHttpClient = MockHttpClientService();
       mockStorageService = MockStorageService();
@@ -53,11 +57,15 @@ void main() {
         storageService: mockStorageService,
         logger: mockLogger,
         errorHandler: mockErrorHandler,
+        // Use mutable probe; tests can toggle networkSuitable
+        networkSuitabilityProbe: () async => networkSuitable,
       );
+      configureDownloadHttpClientMock(mockHttpClient);
     });
 
     group('Queue Management', () {
       test('should add charts to download queue with priority', () async {
+        networkSuitable = false; // prevent auto start
         // Act - Add charts with different priorities
         await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip', priority: DownloadPriority.high);
         await downloadService.addToQueue('chart2', 'http://example.com/chart2.zip', priority: DownloadPriority.normal);
@@ -77,6 +85,7 @@ void main() {
       });
 
       test('should not add duplicate charts to queue', () async {
+        networkSuitable = false; // prevent auto start
         // Act - Add same chart twice
         await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
         await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
@@ -88,6 +97,7 @@ void main() {
       });
 
       test('should remove charts from queue', () async {
+        networkSuitable = false; // prevent auto start
         // Arrange
         await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
         await downloadService.addToQueue('chart2', 'http://example.com/chart2.zip');
@@ -102,6 +112,7 @@ void main() {
       });
 
       test('should clear entire queue', () async {
+        networkSuitable = false; // prevent auto start
         // Arrange
         await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
         await downloadService.addToQueue('chart2', 'http://example.com/chart2.zip');
@@ -115,6 +126,7 @@ void main() {
       });
 
       test('should reorder queue items by priority', () async {
+        networkSuitable = false; // prevent auto start
         // Arrange - Add charts in mixed priority order
         await downloadService.addToQueue('low1', 'http://example.com/low1.zip', priority: DownloadPriority.low);
         await downloadService.addToQueue('high1', 'http://example.com/high1.zip', priority: DownloadPriority.high);
@@ -393,6 +405,7 @@ void main() {
         // Arrange
         const chartId = 'chart1';
         const url = 'http://example.com/chart1.zip';
+        networkSuitable = true; // allow retries to execute immediately
 
         // Create a real temporary file for this test
         final tempDir = Directory.systemTemp.createTempSync('download_test_');
@@ -435,6 +448,7 @@ void main() {
         // Arrange
         const chartId = 'chart1';
         const url = 'http://example.com/chart1.zip';
+        networkSuitable = true;
 
         when(mockStorageService.getChartsDirectory())
             .thenThrow(const FileSystemException('Storage unavailable'));
@@ -452,6 +466,7 @@ void main() {
         // Arrange
         const chartId = 'chart1';
         const url = 'http://example.com/chart1.zip';
+        networkSuitable = true;
 
         // Start a download
         when(mockHttpClient.downloadFile(any, any,
