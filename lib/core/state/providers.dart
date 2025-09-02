@@ -73,12 +73,14 @@ final httpClientServiceProvider = Provider<HttpClientService>((ref) {
 });
 
 final downloadServiceProvider = Provider<DownloadService>((ref) {
-  return DownloadServiceImpl(
+  final service = DownloadServiceImpl(
     httpClient: ref.read(httpClientServiceProvider),
     storageService: ref.read(storageServiceProvider),
     logger: ref.read(loggerProvider),
     errorHandler: ref.read(errorHandlerProvider),
+    queueNotifier: ref.read(downloadQueueProvider.notifier),
   );
+  return service;
 });
 
 // Storage service (placeholder - should be implemented)

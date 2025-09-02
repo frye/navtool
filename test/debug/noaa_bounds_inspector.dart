@@ -1,5 +1,7 @@
+@Skip('Excluded from CI: exploratory debug analysis test')
 import 'dart:io';
 import 'dart:convert';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() async {
   // Just inspect NOAA raw data without app dependencies

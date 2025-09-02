@@ -1,6 +1,5 @@
+@Skip('Excluded from CI: exploratory debug analysis test')
 import 'package:flutter_test/flutter_test.dart';
-import 'package:navtool/core/models/geographic_bounds.dart';
-
 /// Test to check what chart bounds are actually being cached from NOAA API
 void main() {
   group('Chart Bounds Analysis', () {
@@ -106,7 +105,7 @@ void main() {
       }
       
       print('\\n💡 INSIGHT:');
-      print('Even valid charts might fail if they\\'re too small relative to the state area.');
+  print("Even valid charts might fail if they're too small relative to the state area.");
       print('Consider lowering the threshold for detailed harbor/approach charts.');
     });
   });

@@ -83,6 +83,33 @@ void main() {
       ];
     }
 
+    Chart createTestChart({
+      String id = 'TEST_CHART',
+      String title = 'Test Chart',
+      int scale = 25000,
+      String state = 'California',
+      ChartType type = ChartType.harbor,
+      String? description,
+      int? fileSize,
+    }) {
+      return Chart(
+        id: id,
+        title: title,
+        scale: scale,
+        bounds: GeographicBounds(
+          north: 37.9,
+          south: 37.7,
+          east: -122.3,
+          west: -122.5,
+        ),
+        lastUpdate: DateTime.now(),
+        state: state,
+        type: type,
+        description: description,
+        fileSize: fileSize,
+      );
+    }
+
     group('Screen Structure and Layout', () {
       testWidgets('should create ChartBrowserScreen with all required components', (WidgetTester tester) async {
         // Arrange

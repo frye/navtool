@@ -393,6 +393,10 @@ class MockGpsService implements GpsService {
   @override
   Future<GpsPosition?> getCurrentPosition() async => _createTestPosition();
 
+  // Added to satisfy updated interface (Seattle fallback behavior not needed for tests)
+  @override
+  Future<GpsPosition?> getCurrentPositionWithFallback() async => _createTestPosition();
+
   @override
   Stream<GpsPosition> getLocationStream() => Stream.value(_createTestPosition());
 
@@ -573,6 +577,13 @@ class MockStorageService implements StorageService {
 
   @override
   Future<List<Waypoint>> getAllWaypoints() async => [];
+
+  // Added to satisfy updated interface for invalid bounds cache fix workflow
+  @override
+  Future<int> countChartsWithInvalidBounds() async => 0;
+
+  @override
+  Future<int> clearChartsWithInvalidBounds() async => 0;
 }
 
 class MockSettingsService implements SettingsService {

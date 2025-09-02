@@ -328,6 +328,10 @@ class MockNoaaChartDiscoveryService implements NoaaChartDiscoveryService {
   @override
   Future<List<Chart>> discoverChartsByState(String state) async => [];
   
+  // Added to satisfy updated interface
+  @override
+  Future<List<Chart>> discoverChartsByLocation(_) async => [];
+
   @override
   Future<List<Chart>> searchCharts(String query, {Map<String, String>? filters}) async => [];
   
@@ -339,6 +343,10 @@ class MockNoaaChartDiscoveryService implements NoaaChartDiscoveryService {
   
   @override
   Future<bool> refreshCatalog({bool force = false}) async => true;
+
+  // Added to satisfy updated interface
+  @override
+  Future<int> fixChartDiscoveryCache() async => 0;
 }
 
 class MockNoaaApiClient implements NoaaApiClient {

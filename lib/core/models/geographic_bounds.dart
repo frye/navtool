@@ -10,27 +10,25 @@ class GeographicBounds {
   final double west;
 
   GeographicBounds({
-    required this.north,
-    required this.south,
-    required this.east,
-    required this.west,
-  }) {
-    if (north < south) {
-      throw ArgumentError('North must be greater than or equal to south');
-    }
-    if (east < west) {
-      throw ArgumentError('East must be greater than or equal to west');
-    }
-    if (north < -90 || north > 90) {
+    required double north,
+    required double south,
+    required double east,
+    required double west,
+  })  : north = north >= south ? north : south,
+        south = north >= south ? south : north,
+        east = east >= west ? east : west,
+        west = east >= west ? west : east {
+    // Validate ranges after normalization
+    if (this.north < -90 || this.north > 90) {
       throw ArgumentError('North must be between -90 and 90');
     }
-    if (south < -90 || south > 90) {
+    if (this.south < -90 || this.south > 90) {
       throw ArgumentError('South must be between -90 and 90');
     }
-    if (east < -180 || east > 180) {
+    if (this.east < -180 || this.east > 180) {
       throw ArgumentError('East must be between -180 and 180');
     }
-    if (west < -180 || west > 180) {
+    if (this.west < -180 || this.west > 180) {
       throw ArgumentError('West must be between -180 and 180');
     }
   }

@@ -318,6 +318,26 @@ class HttpClientService {
     }
   }
 
+  /// Make a HEAD request (used for preflight size / range checks)
+  Future<Response> head(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final effectivePath = _resolveUrl(path);
+      return await _dio.head(
+        effectivePath,
+        queryParameters: queryParameters,
+        options: options,
+        cancelToken: cancelToken,
+      );
+    } on DioException catch (e) {
+      throw _convertDioErrorToAppError(e);
+    }
+  }
+
   /// Resolve URL handling for both full URLs and relative paths
   String _resolveUrl(String path) {
     if (isFullUrl(path)) {

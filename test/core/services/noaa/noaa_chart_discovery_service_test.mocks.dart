@@ -3,16 +3,20 @@
 // Do not manually edit this file.
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i3;
+import 'dart:async' as _i4;
+import 'dart:io' as _i2;
 
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:navtool/core/error/app_error.dart' as _i8;
-import 'package:navtool/core/logging/app_logger.dart' as _i7;
-import 'package:navtool/core/models/chart.dart' as _i4;
-import 'package:navtool/core/models/geographic_bounds.dart' as _i6;
-import 'package:navtool/core/services/noaa/chart_catalog_service.dart' as _i2;
+import 'package:navtool/core/error/app_error.dart' as _i9;
+import 'package:navtool/core/logging/app_logger.dart' as _i8;
+import 'package:navtool/core/models/chart.dart' as _i5;
+import 'package:navtool/core/models/geographic_bounds.dart' as _i7;
+import 'package:navtool/core/models/route.dart' as _i11;
+import 'package:navtool/core/models/waypoint.dart' as _i12;
+import 'package:navtool/core/services/noaa/chart_catalog_service.dart' as _i3;
 import 'package:navtool/core/services/noaa/state_region_mapping_service.dart'
-    as _i5;
+    as _i6;
+import 'package:navtool/core/services/storage_service.dart' as _i10;
 
 // ignore_for_file: type=lint
 // ignore_for_file: avoid_redundant_argument_values
@@ -28,155 +32,160 @@ import 'package:navtool/core/services/noaa/state_region_mapping_service.dart'
 // ignore_for_file: camel_case_types
 // ignore_for_file: subtype_of_sealed_class
 
+class _FakeDirectory_0 extends _i1.SmartFake implements _i2.Directory {
+  _FakeDirectory_0(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
 /// A class which mocks [ChartCatalogService].
 ///
 /// See the documentation for Mockito's code generation for more information.
 class MockChartCatalogService extends _i1.Mock
-    implements _i2.ChartCatalogService {
+    implements _i3.ChartCatalogService {
   MockChartCatalogService() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i3.Future<_i4.Chart?> getCachedChart(String? chartId) =>
+  _i4.Future<_i5.Chart?> getCachedChart(String? chartId) =>
       (super.noSuchMethod(
             Invocation.method(#getCachedChart, [chartId]),
-            returnValue: _i3.Future<_i4.Chart?>.value(),
+            returnValue: _i4.Future<_i5.Chart?>.value(),
           )
-          as _i3.Future<_i4.Chart?>);
+          as _i4.Future<_i5.Chart?>);
 
   @override
-  _i3.Future<void> cacheChart(_i4.Chart? chart) =>
+  _i4.Future<void> cacheChart(_i5.Chart? chart) =>
       (super.noSuchMethod(
             Invocation.method(#cacheChart, [chart]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 
   @override
-  _i3.Future<_i4.Chart?> getChartById(String? chartId) =>
+  _i4.Future<_i5.Chart?> getChartById(String? chartId) =>
       (super.noSuchMethod(
             Invocation.method(#getChartById, [chartId]),
-            returnValue: _i3.Future<_i4.Chart?>.value(),
+            returnValue: _i4.Future<_i5.Chart?>.value(),
           )
-          as _i3.Future<_i4.Chart?>);
+          as _i4.Future<_i5.Chart?>);
 
   @override
-  _i3.Future<List<_i4.Chart>> searchCharts(String? query) =>
+  _i4.Future<List<_i5.Chart>> searchCharts(String? query) =>
       (super.noSuchMethod(
             Invocation.method(#searchCharts, [query]),
-            returnValue: _i3.Future<List<_i4.Chart>>.value(<_i4.Chart>[]),
+            returnValue: _i4.Future<List<_i5.Chart>>.value(<_i5.Chart>[]),
           )
-          as _i3.Future<List<_i4.Chart>>);
+          as _i4.Future<List<_i5.Chart>>);
 
   @override
-  _i3.Future<List<_i4.Chart>> searchChartsWithFilters(
+  _i4.Future<List<_i5.Chart>> searchChartsWithFilters(
     String? query,
     Map<String, String>? filters,
   ) =>
       (super.noSuchMethod(
             Invocation.method(#searchChartsWithFilters, [query, filters]),
-            returnValue: _i3.Future<List<_i4.Chart>>.value(<_i4.Chart>[]),
+            returnValue: _i4.Future<List<_i5.Chart>>.value(<_i5.Chart>[]),
           )
-          as _i3.Future<List<_i4.Chart>>);
+          as _i4.Future<List<_i5.Chart>>);
 
   @override
-  _i3.Future<bool> refreshCatalog({bool? force = false}) =>
+  _i4.Future<bool> refreshCatalog({bool? force = false}) =>
       (super.noSuchMethod(
             Invocation.method(#refreshCatalog, [], {#force: force}),
-            returnValue: _i3.Future<bool>.value(false),
+            returnValue: _i4.Future<bool>.value(false),
           )
-          as _i3.Future<bool>);
+          as _i4.Future<bool>);
 
   @override
-  _i3.Future<void> ensureCatalogBootstrapped() =>
+  _i4.Future<void> ensureCatalogBootstrapped() =>
       (super.noSuchMethod(
             Invocation.method(#ensureCatalogBootstrapped, []),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 
   @override
-  _i3.Future<int> getCachedChartCount() =>
+  _i4.Future<int> getCachedChartCount() =>
       (super.noSuchMethod(
             Invocation.method(#getCachedChartCount, []),
-            returnValue: _i3.Future<int>.value(0),
+            returnValue: _i4.Future<int>.value(0),
           )
-          as _i3.Future<int>);
+          as _i4.Future<int>);
 }
 
 /// A class which mocks [StateRegionMappingService].
 ///
 /// See the documentation for Mockito's code generation for more information.
 class MockStateRegionMappingService extends _i1.Mock
-    implements _i5.StateRegionMappingService {
+    implements _i6.StateRegionMappingService {
   MockStateRegionMappingService() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i3.Future<List<String>> getChartCellsForState(String? stateName) =>
+  _i4.Future<List<String>> getChartCellsForState(String? stateName) =>
       (super.noSuchMethod(
             Invocation.method(#getChartCellsForState, [stateName]),
-            returnValue: _i3.Future<List<String>>.value(<String>[]),
+            returnValue: _i4.Future<List<String>>.value(<String>[]),
           )
-          as _i3.Future<List<String>>);
+          as _i4.Future<List<String>>);
 
   @override
-  _i3.Future<_i6.GeographicBounds?> getStateBounds(String? stateName) =>
+  _i4.Future<_i7.GeographicBounds?> getStateBounds(String? stateName) =>
       (super.noSuchMethod(
             Invocation.method(#getStateBounds, [stateName]),
-            returnValue: _i3.Future<_i6.GeographicBounds?>.value(),
+            returnValue: _i4.Future<_i7.GeographicBounds?>.value(),
           )
-          as _i3.Future<_i6.GeographicBounds?>);
+          as _i4.Future<_i7.GeographicBounds?>);
 
   @override
-  _i3.Future<List<String>> getSupportedStates() =>
+  _i4.Future<List<String>> getSupportedStates() =>
       (super.noSuchMethod(
             Invocation.method(#getSupportedStates, []),
-            returnValue: _i3.Future<List<String>>.value(<String>[]),
+            returnValue: _i4.Future<List<String>>.value(<String>[]),
           )
-          as _i3.Future<List<String>>);
+          as _i4.Future<List<String>>);
 
   @override
-  _i3.Future<String?> getStateFromCoordinates(
+  _i4.Future<String?> getStateFromCoordinates(
     double? latitude,
     double? longitude,
   ) =>
       (super.noSuchMethod(
             Invocation.method(#getStateFromCoordinates, [latitude, longitude]),
-            returnValue: _i3.Future<String?>.value(),
+            returnValue: _i4.Future<String?>.value(),
           )
-          as _i3.Future<String?>);
+          as _i4.Future<String?>);
 
   @override
-  _i3.Future<void> updateStateCellMapping(
+  _i4.Future<void> updateStateCellMapping(
     String? stateName,
     List<String>? mapping,
   ) =>
       (super.noSuchMethod(
             Invocation.method(#updateStateCellMapping, [stateName, mapping]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 
   @override
-  _i3.Future<void> clearStateMappings() =>
+  _i4.Future<void> clearStateMappings() =>
       (super.noSuchMethod(
             Invocation.method(#clearStateMappings, []),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 }
 
 /// A class which mocks [AppLogger].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockAppLogger extends _i1.Mock implements _i7.AppLogger {
+class MockAppLogger extends _i1.Mock implements _i8.AppLogger {
   MockAppLogger() {
     _i1.throwOnMissingStub(this);
   }
@@ -226,8 +235,217 @@ class MockAppLogger extends _i1.Mock implements _i7.AppLogger {
       );
 
   @override
-  void logError(_i8.AppError? error) => super.noSuchMethod(
+  void logError(_i9.AppError? error) => super.noSuchMethod(
     Invocation.method(#logError, [error]),
     returnValueForMissingStub: null,
   );
+}
+
+/// A class which mocks [StorageService].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockStorageService extends _i1.Mock implements _i10.StorageService {
+  MockStorageService() {
+    _i1.throwOnMissingStub(this);
+  }
+
+  @override
+  _i4.Future<void> storeChart(_i5.Chart? chart, List<int>? data) =>
+      (super.noSuchMethod(
+            Invocation.method(#storeChart, [chart, data]),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<List<int>?> loadChart(String? chartId) =>
+      (super.noSuchMethod(
+            Invocation.method(#loadChart, [chartId]),
+            returnValue: _i4.Future<List<int>?>.value(),
+          )
+          as _i4.Future<List<int>?>);
+
+  @override
+  _i4.Future<void> deleteChart(String? chartId) =>
+      (super.noSuchMethod(
+            Invocation.method(#deleteChart, [chartId]),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<Map<String, dynamic>> getStorageInfo() =>
+      (super.noSuchMethod(
+            Invocation.method(#getStorageInfo, []),
+            returnValue: _i4.Future<Map<String, dynamic>>.value(
+              <String, dynamic>{},
+            ),
+          )
+          as _i4.Future<Map<String, dynamic>>);
+
+  @override
+  _i4.Future<void> cleanupOldData() =>
+      (super.noSuchMethod(
+            Invocation.method(#cleanupOldData, []),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<int> getStorageUsage() =>
+      (super.noSuchMethod(
+            Invocation.method(#getStorageUsage, []),
+            returnValue: _i4.Future<int>.value(0),
+          )
+          as _i4.Future<int>);
+
+  @override
+  _i4.Future<_i2.Directory> getChartsDirectory() =>
+      (super.noSuchMethod(
+            Invocation.method(#getChartsDirectory, []),
+            returnValue: _i4.Future<_i2.Directory>.value(
+              _FakeDirectory_0(
+                this,
+                Invocation.method(#getChartsDirectory, []),
+              ),
+            ),
+          )
+          as _i4.Future<_i2.Directory>);
+
+  @override
+  _i4.Future<void> storeRoute(_i11.NavigationRoute? route) =>
+      (super.noSuchMethod(
+            Invocation.method(#storeRoute, [route]),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<_i11.NavigationRoute?> loadRoute(String? routeId) =>
+      (super.noSuchMethod(
+            Invocation.method(#loadRoute, [routeId]),
+            returnValue: _i4.Future<_i11.NavigationRoute?>.value(),
+          )
+          as _i4.Future<_i11.NavigationRoute?>);
+
+  @override
+  _i4.Future<void> deleteRoute(String? routeId) =>
+      (super.noSuchMethod(
+            Invocation.method(#deleteRoute, [routeId]),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<List<_i11.NavigationRoute>> getAllRoutes() =>
+      (super.noSuchMethod(
+            Invocation.method(#getAllRoutes, []),
+            returnValue: _i4.Future<List<_i11.NavigationRoute>>.value(
+              <_i11.NavigationRoute>[],
+            ),
+          )
+          as _i4.Future<List<_i11.NavigationRoute>>);
+
+  @override
+  _i4.Future<void> storeWaypoint(_i12.Waypoint? waypoint) =>
+      (super.noSuchMethod(
+            Invocation.method(#storeWaypoint, [waypoint]),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<_i12.Waypoint?> loadWaypoint(String? waypointId) =>
+      (super.noSuchMethod(
+            Invocation.method(#loadWaypoint, [waypointId]),
+            returnValue: _i4.Future<_i12.Waypoint?>.value(),
+          )
+          as _i4.Future<_i12.Waypoint?>);
+
+  @override
+  _i4.Future<void> updateWaypoint(_i12.Waypoint? waypoint) =>
+      (super.noSuchMethod(
+            Invocation.method(#updateWaypoint, [waypoint]),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<void> deleteWaypoint(String? waypointId) =>
+      (super.noSuchMethod(
+            Invocation.method(#deleteWaypoint, [waypointId]),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<List<_i12.Waypoint>> getAllWaypoints() =>
+      (super.noSuchMethod(
+            Invocation.method(#getAllWaypoints, []),
+            returnValue: _i4.Future<List<_i12.Waypoint>>.value(
+              <_i12.Waypoint>[],
+            ),
+          )
+          as _i4.Future<List<_i12.Waypoint>>);
+
+  @override
+  _i4.Future<void> storeStateCellMapping(
+    String? stateName,
+    List<String>? chartCells,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#storeStateCellMapping, [stateName, chartCells]),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<List<String>?> getStateCellMapping(String? stateName) =>
+      (super.noSuchMethod(
+            Invocation.method(#getStateCellMapping, [stateName]),
+            returnValue: _i4.Future<List<String>?>.value(),
+          )
+          as _i4.Future<List<String>?>);
+
+  @override
+  _i4.Future<void> clearAllStateCellMappings() =>
+      (super.noSuchMethod(
+            Invocation.method(#clearAllStateCellMappings, []),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<List<_i5.Chart>> getChartsInBounds(_i7.GeographicBounds? bounds) =>
+      (super.noSuchMethod(
+            Invocation.method(#getChartsInBounds, [bounds]),
+            returnValue: _i4.Future<List<_i5.Chart>>.value(<_i5.Chart>[]),
+          )
+          as _i4.Future<List<_i5.Chart>>);
+
+  @override
+  _i4.Future<int> countChartsWithInvalidBounds() =>
+      (super.noSuchMethod(
+            Invocation.method(#countChartsWithInvalidBounds, []),
+            returnValue: _i4.Future<int>.value(0),
+          )
+          as _i4.Future<int>);
+
+  @override
+  _i4.Future<int> clearChartsWithInvalidBounds() =>
+      (super.noSuchMethod(
+            Invocation.method(#clearChartsWithInvalidBounds, []),
+            returnValue: _i4.Future<int>.value(0),
+          )
+          as _i4.Future<int>);
 }

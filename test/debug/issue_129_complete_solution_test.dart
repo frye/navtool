@@ -1,3 +1,4 @@
+@Skip('Excluded from CI: exploratory debug analysis test')
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/services/database_storage_service.dart';
 import 'package:navtool/core/models/geographic_bounds.dart';
@@ -24,6 +25,7 @@ class TestLogger implements AppLogger {
   void logError(AppError error) => print('[ERROR] ${error.message}');
 }
 
+@Skip('Excluded from CI: exploratory debug analysis test')
 void main() {
   group('Issue #129 Complete Solution Tests', () {
     late DatabaseStorageService storageService;

@@ -71,6 +71,9 @@ class ResumeData {
   final int downloadedBytes;
   final DateTime lastAttempt;
   final String? checksum;
+  final bool? supportsRange;
+  final int attempts;
+  final int? lastErrorCode;
 
   ResumeData({
     required this.chartId,
@@ -78,7 +81,24 @@ class ResumeData {
     required this.downloadedBytes,
     required this.lastAttempt,
     this.checksum,
+    this.supportsRange,
+    this.attempts = 0,
+    this.lastErrorCode,
   });
+}
+
+/// Structured download error codes persisted in `ResumeData.lastErrorCode`.
+/// These are intentionally stable small integers for lightweight persistence
+/// and potential future native platform interop.
+class DownloadErrorCode {
+  DownloadErrorCode._();
+  static const int checksumMismatch = 1;
+  static const int insufficientDiskSpace = 2;
+  static const int networkTimeout = 3;
+  static const int network = 4;
+  static const int storage = 5;
+  static const int rangeNotSupported = 6; // reserved for future explicit signaling
+  static const int unknown = 99;
 }
 
 /// Download notification for background operations

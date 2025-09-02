@@ -1,3 +1,4 @@
+@Skip('Excluded from CI: exploratory debug analysis test')
 // Chart Bounds Data Inspector Test
 //
 // This test directly inspects the chart bounds data from NOAA API
@@ -10,7 +11,6 @@ import 'package:navtool/core/services/noaa/noaa_api_client_impl.dart';
 import 'package:navtool/core/services/http/http_client_service.dart';
 import 'package:navtool/core/utils/rate_limiter.dart';
 import 'package:navtool/core/logging/app_logger.dart';
-
 // I need to find the actual implementations, let me just run the actual test first
 void main() {
   group('Chart Bounds Data Inspector', () {

@@ -95,7 +95,44 @@ NOAA provides free Electronic Navigational Charts (ENCs) in the international S-
 - Charts organized by geographic cells with Usage bands (Harbor/Approach/Coastal/General/Overview)
 - State-to-region mapping requires spatial intersection between US state boundaries and chart coverage polygons
 
-### Current Implementation Plan
+## Research Updates (August 27, 2025)
+
+### Chart Service Discovery Research
+
+**Comprehensive Analysis Completed:**
+- **OpenCPN Integration Patterns**: Analyzed the Chart Downloader plugin architecture and NOAA catalog format usage
+- **NOAA Vector Chart APIs**: Researched official ENC distribution methods, catalog APIs, and coordinate-based discovery
+- **Spatial Query Algorithms**: Identified proven approaches for chart boundary intersection and selection
+
+**Key Research Findings:**
+
+1. **NOAA ENC Catalog API Structure**:
+   - GeoJSON format with polygon coverage areas for each chart
+   - Daily updates with edition dates and metadata
+   - Public domain access with no authentication required
+   - Rate limiting recommended at 5 requests/second
+
+2. **Chart Selection Algorithm**:
+   - Point-in-polygon spatial intersection for coordinate-based discovery
+   - Priority ranking by usage band (Harbor > Approach > Coastal > General > Overview)
+   - Distance-based relevance scoring for chart recommendations
+   - Multi-scale chart availability for comprehensive coverage
+
+3. **Download Management Strategy**:
+   - S-57 ENC files distributed in ZIP archives from official NOAA endpoints
+   - Queue-based download system with progress tracking and error recovery
+   - Integrity verification using checksums and format validation
+   - Incremental updates with delta download capability
+
+**Technical Implementation Plan:**
+- Spatial query engine using R-tree indexing for performance
+- Multi-level caching (memory, SQLite, filesystem) for offline reliability
+- Riverpod-based service architecture for dependency injection
+- Comprehensive error handling with exponential backoff retry logic
+
+*Detailed specifications documented in `chartservice-spec.md`*
+
+---
 
 **Phase 2.1.3 - Implementation Sub-Issues (In Progress)**
 - **Issue #85**: NOAA Chart Discovery and Metadata Implementation (Parent Issue)
@@ -132,32 +169,53 @@ NoaaMetadataParser -> GeoJSON to Chart model transformation
 - >90% test coverage for reliability
 - Seamless integration with existing chart browsing UI
 
-## Technical Architecture (Preliminary)
+## Technical Architecture
 
 ### Data Sources
-- NOAA ENC Download API endpoints
-- Chart metadata catalogs (CSV/JSON format)
+- **NOAA ENC Catalog API** (GeoJSON format) for chart discovery
+- **NOAA Chart Display Service** (Esri REST/OGC WMS) for preview
+- **Official NOAA ENC Downloads** (S-57 format in ZIP archives)
 - State boundary data for geographic mapping
 
 ### Core Components
-- State selection interface
-- Chart discovery and filtering engine
-- Download manager with queue system
-- **S-57 chart rendering engine with S-52 symbology compliance**
-- **GPS integration and real-time position tracking**
-- **Interactive chart viewer with navigation controls**
-- Local storage and file management
-- Update checking service
+- **Coordinate-based chart discovery service** using spatial intersection algorithms
+- **NOAA API client** with rate limiting and retry logic
+- **Chart selection engine** with intelligent recommendations
+- **Download queue manager** with progress tracking and error recovery
+- **S-57 chart rendering engine** with S-52 symbology compliance
+- **GPS integration** and real-time position tracking
+- **Interactive chart viewer** with navigation controls
+- **Local storage and metadata caching** (SQLite + file system)
+- **Automatic update checking** service with daily NOAA catalog refresh
+
+### Chart Service Architecture
+*Based on research findings documented in `chartservice-spec.md`*
+
+```
+GPS Location → Chart Discovery Service → NOAA Catalog API
+                     ↓
+Spatial Query Engine → Chart Selection Algorithm → User Recommendations
+                     ↓
+Download Queue Service → NOAA Download API → Local Chart Storage
+```
+
+**Key Technical Decisions:**
+- **OpenCPN Pattern Adoption**: Leveraging proven chart catalog format and spatial algorithms
+- **NOAA Official APIs**: Using public domain ENC data with no authentication required
+- **Intelligent Selection**: Automatic chart prioritization based on scale, distance, and usage band
+- **Offline-First Design**: Complete functionality without internet after initial download
 
 ### Platform Considerations
 - Flutter for cross-platform mobile/desktop support
-- Local SQLite database for chart metadata
-- HTTP client for NOAA API integration
-- File system access for chart storage
-- Background download capabilities
-- **High-performance graphics rendering (OpenGL/Metal integration)**
+- Local SQLite database for chart metadata and spatial indexing
+- **HTTP client with rate limiting** (5 requests/second recommended for NOAA APIs)
+- **Spatial algorithms for coordinate-based chart discovery**
+- File system access for chart storage with integrity verification
+- Background download capabilities with queue management
+- **High-performance graphics rendering** (OpenGL/Metal integration)
 - **GPS and location services integration**
-- **IHO S-52 Presentation Library for standard chart symbology**
+- **IHO S-52 Presentation Library** for standard chart symbology
+- **Multi-level caching strategy** (memory, database, filesystem)
 
 ## Chart Rendering Technical Requirements
 

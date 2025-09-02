@@ -152,6 +152,40 @@ class MockHttpClientService extends _i1.Mock implements _i7.HttpClientService {
           as _i6.Future<_i2.Response<dynamic>>);
 
   @override
+  _i6.Future<_i2.Response<dynamic>> head(
+    String? path, {
+    Map<String, dynamic>? queryParameters,
+    _i2.Options? options,
+    _i2.CancelToken? cancelToken,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #head,
+              [path],
+              {
+                #queryParameters: queryParameters,
+                #options: options,
+                #cancelToken: cancelToken,
+              },
+            ),
+            returnValue: _i6.Future<_i2.Response<dynamic>>.value(
+              _FakeResponse_1<dynamic>(
+                this,
+                Invocation.method(
+                  #head,
+                  [path],
+                  {
+                    #queryParameters: queryParameters,
+                    #options: options,
+                    #cancelToken: cancelToken,
+                  },
+                ),
+              ),
+            ),
+          )
+          as _i6.Future<_i2.Response<dynamic>>);
+
+  @override
   _i6.Future<_i2.Response<dynamic>> post(
     String? path, {
     dynamic data,

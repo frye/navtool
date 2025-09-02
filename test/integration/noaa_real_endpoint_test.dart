@@ -77,6 +77,25 @@ class _TestHttpClientService implements HttpClientService {
   }
 
   @override
+  Future<Response> head(String url, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      return await _dio.head(
+        url,
+        queryParameters: queryParameters,
+        options: options,
+        cancelToken: cancelToken,
+      );
+    } catch (e) {
+      _logger.error('HTTP HEAD failed', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
   Future<void> downloadFile(String url, String savePath, {
     CancelToken? cancelToken,
     ProgressCallback? onReceiveProgress,

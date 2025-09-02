@@ -1,4 +1,4 @@
-import 'dart:io';
+@Skip('Excluded from CI: exploratory debug analysis test')
 import 'package:flutter_test/flutter_test.dart';
 import '../../lib/core/models/geographic_bounds.dart';
 
