@@ -23,6 +23,16 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
   String? _errorMessage;
   Timer? _searchDebouncer;
   
+  // Scale filtering
+  double _minScale = 1000;
+  double _maxScale = 10000000;
+  bool _scaleFilterEnabled = false;
+  
+  // Date filtering  
+  DateTime? _startDate;
+  DateTime? _endDate;
+  bool _dateFilterEnabled = false;
+  
   // List of US coastal states that have NOAA charts
   static const List<String> _coastalStates = [
     'Alabama',
@@ -192,6 +202,16 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
               }).toList(),
             ),
           ),
+          
+          const SizedBox(height: 16),
+          
+          // Scale filtering section
+          _buildScaleFilterSection(),
+          
+          const SizedBox(height: 16),
+          
+          // Date filtering section  
+          _buildDateFilterSection(),
         ],
       ),
     );
@@ -331,6 +351,12 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
         _charts.clear();
         _filteredCharts.clear();
         _errorMessage = null;
+        // Reset filters when changing state
+        _selectedChartTypes.clear();
+        _scaleFilterEnabled = false;
+        _dateFilterEnabled = false;
+        _startDate = null;
+        _endDate = null;
       });
       _loadChartsForState(state);
     }
@@ -501,6 +527,23 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
           return false;
         }
         
+        // Filter by scale range
+        if (_scaleFilterEnabled) {
+          if (chart.scale < _minScale || chart.scale > _maxScale) {
+            return false;
+          }
+        }
+        
+        // Filter by date range
+        if (_dateFilterEnabled) {
+          if (_startDate != null && chart.lastUpdate.isBefore(_startDate!)) {
+            return false;
+          }
+          if (_endDate != null && chart.lastUpdate.isAfter(_endDate!.add(const Duration(days: 1)))) {
+            return false;
+          }
+        }
+        
         // Filter by search query
         if (_searchQuery.isNotEmpty) {
           final query = _searchQuery.toLowerCase();
@@ -572,39 +615,132 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Chart Details'),
+        title: Row(
+          children: [
+            Icon(
+              Icons.map,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+            const Expanded(child: Text('Chart Details')),
+          ],
+        ),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Chart title and ID
+              Card(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        chart.title,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'ID: ${chart.id}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              
+              // Chart metadata
+              _buildDetailRow('Type', chart.type.displayName),
+              _buildDetailRow('Scale', chart.displayScale),
+              _buildDetailRow('State', chart.state),
+              _buildDetailRow('Source', chart.source.displayName),
+              _buildDetailRow('Status', chart.status.displayName),
+              _buildDetailRow('Edition', chart.edition.toString()),
+              if (chart.updateNumber > 0)
+                _buildDetailRow('Update', chart.updateNumber.toString()),
+              
+              const SizedBox(height: 12),
+              
+              // Geographic bounds
               Text(
-                chart.title,
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                'Coverage Area',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 8),
-              Text('Chart ID: ${chart.id}'),
-              Text('Scale: 1:${chart.scale.toString().replaceAllMapped(
-                RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-                (Match m) => '${m[1]},',
-              )}'),
-              Text('Type: ${chart.type.displayName}'),
-              Text('State: ${chart.state}'),
-              const SizedBox(height: 8),
-              Text('Coverage Area:'),
-              Text('  North: ${chart.bounds.north.toStringAsFixed(4)}°'),
-              Text('  South: ${chart.bounds.south.toStringAsFixed(4)}°'),
-              Text('  East: ${chart.bounds.east.toStringAsFixed(4)}°'),
-              Text('  West: ${chart.bounds.west.toStringAsFixed(4)}°'),
-              if (chart.description != null) ...[
-                const SizedBox(height: 8),
-                Text('Description:'),
-                Text(chart.description!),
-              ],
-              const SizedBox(height: 8),
-              Text('Last Updated: ${chart.lastUpdate.toString().split(' ')[0]}'),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    children: [
+                      _buildDetailRow('North', '${chart.bounds.north.toStringAsFixed(4)}°'),
+                      _buildDetailRow('South', '${chart.bounds.south.toStringAsFixed(4)}°'),
+                      _buildDetailRow('East', '${chart.bounds.east.toStringAsFixed(4)}°'),
+                      _buildDetailRow('West', '${chart.bounds.west.toStringAsFixed(4)}°'),
+                    ],
+                  ),
+                ),
+              ),
+              
+              const SizedBox(height: 12),
+              
+              // Additional information
+              _buildDetailRow('Last Updated', _formatDate(chart.lastUpdate)),
               if (chart.fileSize != null)
-                Text('File Size: ${_formatFileSize(chart.fileSize!)}'),
+                _buildDetailRow('File Size', _formatFileSize(chart.fileSize!)),
+              _buildDetailRow('Downloaded', chart.isDownloaded ? 'Yes' : 'No'),
+              
+              if (chart.description != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Description',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      chart.description!,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                ),
+              ],
+              
+              // Metadata
+              if (chart.metadata.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Additional Metadata',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: chart.metadata.entries.map((entry) =>
+                        _buildDetailRow(entry.key, entry.value.toString())
+                      ).toList(),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -659,10 +795,229 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     );
   }
 
+  Widget _buildScaleFilterSection() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Semantics(
+                  label: 'Enable scale filtering',
+                  child: Checkbox(
+                    value: _scaleFilterEnabled,
+                    onChanged: (value) => setState(() {
+                      _scaleFilterEnabled = value ?? false;
+                      if (_scaleFilterEnabled) _filterCharts();
+                    }),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Filter by Scale Range',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ],
+            ),
+            if (_scaleFilterEnabled) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Scale: 1:${_formatScale(_minScale.round())} - 1:${_formatScale(_maxScale.round())}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              Semantics(
+                label: 'Minimum scale slider',
+                child: Slider(
+                  value: _minScale,
+                  min: 1000,
+                  max: 10000000,
+                  divisions: 100,
+                  onChanged: (value) => setState(() {
+                    _minScale = value;
+                    if (_minScale > _maxScale) {
+                      _maxScale = _minScale;
+                    }
+                    _filterCharts();
+                  }),
+                ),
+              ),
+              Semantics(
+                label: 'Maximum scale slider',
+                child: Slider(
+                  value: _maxScale,
+                  min: 1000,
+                  max: 10000000,
+                  divisions: 100,
+                  onChanged: (value) => setState(() {
+                    _maxScale = value;
+                    if (_maxScale < _minScale) {
+                      _minScale = _maxScale;
+                    }
+                    _filterCharts();
+                  }),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDateFilterSection() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Semantics(
+                  label: 'Enable date filtering',
+                  child: Checkbox(
+                    value: _dateFilterEnabled,
+                    onChanged: (value) => setState(() {
+                      _dateFilterEnabled = value ?? false;
+                      if (_dateFilterEnabled) _filterCharts();
+                    }),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Filter by Update Date',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ],
+            ),
+            if (_dateFilterEnabled) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _selectStartDate(),
+                      child: Text(
+                        _startDate == null
+                            ? 'Start Date'
+                            : _formatDate(_startDate!),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _selectEndDate(),
+                      child: Text(
+                        _endDate == null
+                            ? 'End Date'
+                            : _formatDate(_endDate!),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (_startDate != null || _endDate != null) ...[
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => setState(() {
+                    _startDate = null;
+                    _endDate = null;
+                    _filterCharts();
+                  }),
+                  child: const Text('Clear Date Filter'),
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _selectStartDate() async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _startDate ?? DateTime.now().subtract(const Duration(days: 365)),
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (pickedDate != null) {
+      setState(() {
+        _startDate = pickedDate;
+        // Ensure start date is before end date
+        if (_endDate != null && _startDate!.isAfter(_endDate!)) {
+          _endDate = _startDate;
+        }
+        _filterCharts();
+      });
+    }
+  }
+
+  Future<void> _selectEndDate() async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _endDate ?? DateTime.now(),
+      firstDate: _startDate ?? DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (pickedDate != null) {
+      setState(() {
+        _endDate = pickedDate;
+        // Ensure end date is after start date
+        if (_startDate != null && _endDate!.isBefore(_startDate!)) {
+          _startDate = _endDate;
+        }
+        _filterCharts();
+      });
+    }
+  }
+
+  String _formatScale(int scale) {
+    return scale.toString().replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
