@@ -13,6 +13,7 @@ import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/error_handler.dart';
 import 'package:navtool/core/state/download_state.dart';
 import 'package:navtool/core/error/app_error.dart';
+import '../../helpers/download_test_utils.dart';
 
 // Generate mocks for the dependencies
 @GenerateMocks([
@@ -34,8 +35,10 @@ void main() {
     // Use real temporary directory for file operations
     late Directory tempDirectory;
     late Directory tempChartsDirectory;
+  // Mutable network suitability flag accessible to tests
+  late bool networkSuitable;
 
-    setUp(() async {
+  setUp(() async {
       mockHttpClient = MockHttpClientService();
       mockStorageService = MockStorageService();
       mockLogger = MockAppLogger();
@@ -50,18 +53,21 @@ void main() {
       when(mockStorageService.getChartsDirectory())
           .thenAnswer((_) async => tempChartsDirectory);
 
+  networkSuitable = true; // reset each test
       downloadService = DownloadServiceImpl(
         httpClient: mockHttpClient,
         storageService: mockStorageService,
         logger: mockLogger,
         errorHandler: mockErrorHandler,
+        networkSuitabilityProbe: () async => networkSuitable,
       );
+      configureDownloadHttpClientMock(mockHttpClient);
     });
 
     tearDown(() async {
       // Clean up temporary directory
       if (await tempDirectory.exists()) {
-        await tempDirectory.delete(recursive: true);
+        await retryDeleteDirectory(tempDirectory);
       }
     });
 
@@ -201,6 +207,7 @@ void main() {
       });
 
       test('should manage resume data for background recovery', () async {
+        networkSuitable = true;
         // Arrange
         const chartId = 'chart1';
         const url = 'http://example.com/chart1.zip';
@@ -281,6 +288,7 @@ void main() {
 
     group('Error Handling and Resilience', () {
       test('should handle storage errors gracefully', () async {
+        networkSuitable = true;
         // Arrange
         const chartId = 'chart1';
         const url = 'http://example.com/chart1.zip';
@@ -293,6 +301,7 @@ void main() {
       });
 
       test('should handle network errors with proper error conversion', () async {
+        networkSuitable = true;
         // Arrange
         const chartId = 'chart1';
         const url = 'http://example.com/chart1.zip';
