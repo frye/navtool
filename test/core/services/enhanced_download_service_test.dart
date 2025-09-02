@@ -304,9 +304,10 @@ void main() {
         when(mockHttpClient.downloadFile(any, any,
           cancelToken: anyNamed('cancelToken'),
           onReceiveProgress: anyNamed('onReceiveProgress')))
-            .thenAnswer((_) async {
-              // Write the final file content
-              await tempFile.writeAsBytes([1, 2, 3, 4, 5]);
+            .thenAnswer((invocation) async {
+              final targetPath = invocation.positionalArguments[1] as String; // tempFilePath
+              final restartedPartFile = File(targetPath);
+              await restartedPartFile.writeAsBytes([1, 2, 3, 4, 5]);
             });
 
         // Act
