@@ -1,0 +1,192 @@
+# GitHub Copilot Setup Steps for NavTool Development
+# This file configures the environment for GitHub Copilot coding agents
+# to work effectively with the NavTool Flutter marine navigation application.
+#
+# These steps run before firewall restrictions are applied, allowing
+# access to Flutter SDK downloads and package repositories.
+
+name: Copilot Environment Setup
+
+# Environment variables for NavTool development
+env:
+  FLUTTER_VERSION: '3.24.5'  # Latest stable, meets ^3.8.1 requirement
+  DART_VERSION: '3.5.4'      # Bundled with Flutter 3.24.5
+  SKIP_INTEGRATION_TESTS: 'false'  # Enable integration tests in development
+  CI: 'false'                       # Local development environment
+  MARINE_SIMULATION: 'false'        # Disable network simulation for setup
+
+steps:
+  # Step 1: Install system dependencies for Linux desktop development
+  - name: Install Linux System Dependencies
+    if: runner.os == 'Linux'
+    run: |
+      sudo apt-get update
+      sudo apt-get install -y \
+        build-essential \
+        cmake \
+        pkg-config \
+        libgtk-3-dev \
+        ninja-build \
+        curl \
+        git \
+        unzip \
+        clang \
+        libstdc++-12-dev
+      echo "✓ Linux system dependencies installed"
+
+  # Step 2: Install Windows dependencies (if running on Windows)
+  - name: Install Windows Dependencies
+    if: runner.os == 'Windows'
+    run: |
+      # Visual Studio Build Tools should be pre-installed
+      # Verify C++ compiler availability
+      where cl.exe || echo "Warning: Visual Studio C++ compiler not found"
+      echo "✓ Windows dependencies verified"
+
+  # Step 3: Install macOS dependencies (if running on macOS)
+  - name: Install macOS Dependencies
+    if: runner.os == 'macOS'
+    run: |
+      # Xcode should be pre-installed
+      xcode-select --version || echo "Warning: Xcode not found"
+      echo "✓ macOS dependencies verified"
+
+  # Step 4: Setup Flutter SDK with caching
+  - name: Setup Flutter SDK
+    uses: subosito/flutter-action@v2
+    with:
+      flutter-version: ${{ env.FLUTTER_VERSION }}
+      cache: true
+      cache-key: 'flutter-${{ env.FLUTTER_VERSION }}-${{ runner.os }}'
+      cache-path: ${{ runner.tool_cache }}/flutter
+      pub-cache-key: 'pub-cache-${{ hashFiles(''**/pubspec.lock'') }}'
+      pub-cache-path: ${{ runner.tool_cache }}/pub-cache
+
+  # Step 5: Verify Flutter installation
+  - name: Verify Flutter Installation
+    run: |
+      flutter --version
+      flutter doctor -v
+      dart --version
+      echo "✓ Flutter SDK verified and ready"
+
+  # Step 6: Configure Flutter for desktop development
+  - name: Configure Flutter Desktop Support
+    run: |
+      flutter config --enable-linux-desktop
+      flutter config --enable-windows-desktop
+      flutter config --enable-macos-desktop
+      flutter config --no-analytics
+      echo "✓ Flutter desktop support enabled"
+
+  # Step 7: Get project dependencies (CRITICAL: Never cancel, takes 5-10 minutes)
+  - name: Install Project Dependencies
+    timeout-minutes: 15
+    run: |
+      echo "Installing Flutter dependencies (this may take 5-10 minutes)..."
+      flutter pub get
+      echo "✓ Project dependencies installed"
+
+  # Step 8: Generate mocks for testing (CRITICAL: Never cancel, takes 3-5 minutes)
+  - name: Generate Test Mocks
+    timeout-minutes: 10
+    run: |
+      echo "Generating test mocks (this may take 3-5 minutes)..."
+      flutter packages pub run build_runner build --delete-conflicting-outputs
+      echo "✓ Test mocks generated"
+
+  # Step 9: Verify build tools and dependencies
+  - name: Verify Build Environment
+    timeout-minutes: 5
+    run: |
+      echo "Verifying build environment..."
+      
+      # Check Flutter tools
+      flutter doctor --verbose
+      
+      # Verify project structure
+      ls -la lib/ test/ || echo "Warning: Expected project structure not found"
+      
+      # Check test script availability
+      if [ -f "scripts/test.sh" ]; then
+        chmod +x scripts/test.sh
+        echo "✓ Test script found and made executable"
+      else
+        echo "Warning: Test script not found"
+      fi
+      
+      # Verify key project files
+      [ -f "pubspec.yaml" ] && echo "✓ pubspec.yaml found" || echo "✗ pubspec.yaml missing"
+      [ -f "analysis_options.yaml" ] && echo "✓ analysis_options.yaml found" || echo "✗ analysis_options.yaml missing"
+      
+      echo "✓ Build environment verification complete"
+
+  # Step 10: Pre-compile frequently used tools (optional optimization)
+  - name: Pre-compile Development Tools
+    timeout-minutes: 10
+    continue-on-error: true
+    run: |
+      echo "Pre-compiling development tools for faster execution..."
+      
+      # Pre-compile analyzer
+      flutter analyze --no-fatal-infos || echo "Pre-compilation: analyzer ready"
+      
+      # Pre-compile formatter
+      dart format --set-exit-if-changed . --dry-run || echo "Pre-compilation: formatter ready"
+      
+      # Verify test runner
+      if [ -f "scripts/test.sh" ]; then
+        ./scripts/test.sh help || echo "Test script verification complete"
+      fi
+      
+      echo "✓ Development tools pre-compiled"
+
+  # Step 11: Create development environment summary
+  - name: Environment Summary
+    run: |
+      echo "=== NavTool Development Environment Ready ==="
+      echo "Flutter Version: $(flutter --version | head -n1)"
+      echo "Dart Version: $(dart --version)"
+      echo "Platform: ${{ runner.os }}"
+      echo "Project: NavTool Marine Navigation Application"
+      echo ""
+      echo "Available Commands:"
+      echo "  flutter run -d linux         # Run on Linux desktop"
+      echo "  flutter run -d windows       # Run on Windows desktop"
+      echo "  flutter run -d macos         # Run on macOS desktop"
+      echo "  ./scripts/test.sh unit       # Fast unit tests (5-10 min)"
+      echo "  ./scripts/test.sh validate   # Pre-commit validation (10-15 min)"
+      echo "  flutter analyze              # Static analysis (1-2 min)"
+      echo "  dart format .                # Format code (<1 min)"
+      echo ""
+      echo "IMPORTANT: Never cancel builds or tests - they can take 15-90 minutes"
+      echo "Set timeouts of 90+ minutes for builds, 45+ minutes for tests"
+      echo ""
+      echo "✓ Environment setup complete - Ready for marine navigation development!"
+
+# Cache configuration for faster subsequent runs
+cache:
+  flutter-sdk:
+    key: flutter-${{ env.FLUTTER_VERSION }}-${{ runner.os }}
+    paths:
+      - ${{ runner.tool_cache }}/flutter
+  
+  pub-dependencies:
+    key: pub-deps-${{ hashFiles(''**/pubspec.lock'') }}
+    paths:
+      - ${{ runner.tool_cache }}/pub-cache
+      - ~/.pub-cache
+  
+  build-cache:
+    key: build-cache-${{ runner.os }}-${{ hashFiles(''**/*.dart'') }}
+    paths:
+      - .dart_tool
+      - build
+
+# Notes for Copilot coding agents:
+# 1. This setup prioritizes reliability over speed for safety-critical marine software
+# 2. All timeouts account for marine environment conditions (satellite internet, etc.)
+# 3. Desktop platforms are the primary target (Linux, Windows, macOS)
+# 4. Integration tests may require real NOAA API access - handle failures gracefully
+# 5. The project uses Riverpod for state management and follows marine navigation standards
+# 6. Always run the full test suite before committing changes to navigation-critical code
