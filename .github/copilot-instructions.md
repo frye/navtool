@@ -26,7 +26,9 @@ export PATH="$PATH:/tmp/flutter/bin"
 flutter doctor  # Verify installation
 
 # Navigate to project and get dependencies - NEVER CANCEL: Takes 5-10 minutes
-cd /path/to/navtool
+# For GitHub Actions: cd $GITHUB_WORKSPACE
+# For local development: cd /path/to/your/navtool/repository
+cd $GITHUB_WORKSPACE
 flutter pub get
 
 # Generate mocks for testing - NEVER CANCEL: Takes 3-5 minutes  

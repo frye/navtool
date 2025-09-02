@@ -16,7 +16,13 @@ env:
   MARINE_SIMULATION: 'false'        # Disable network simulation for setup
 
 steps:
-  # Step 1: Install system dependencies for Linux desktop development
+  # Step 1: Checkout repository
+  - name: Checkout Repository
+    uses: actions/checkout@v4
+    with:
+      fetch-depth: 0  # Full history for comprehensive analysis
+
+  # Step 2: Install system dependencies for Linux desktop development
   - name: Install Linux System Dependencies
     if: runner.os == 'Linux'
     run: |
@@ -95,7 +101,7 @@ steps:
       flutter packages pub run build_runner build --delete-conflicting-outputs
       echo "✓ Test mocks generated"
 
-  # Step 9: Verify build tools and dependencies
+  # Step 9: Verify build environment
   - name: Verify Build Environment
     timeout-minutes: 5
     run: |
