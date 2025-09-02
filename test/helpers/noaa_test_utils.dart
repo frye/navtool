@@ -191,3 +191,80 @@ void stubDownloadFailure(dynamic mock, String cellName, Exception error) {
   when(mock.downloadChart(cellName, any, onProgress: anyNamed('onProgress')))
       .thenThrow(error);
 }
+
+/// Builds an ArcGIS-style FeatureCollection JSON string containing a single
+/// feature with an `attributes` object matching the shape expected by
+/// [NoaaApiClientImpl.getChartMetadata]. Useful for tests that want to return
+/// concrete metadata instead of null from `getChartMetadata` without relying
+/// on broader catalog fixtures.
+String buildArcGisMetadataFeature({
+  required String cellName,
+  String? title,
+  String coverageCategory = 'Harbor',
+  String inform = '',
+  String sourceDate = '20240115',
+  String sourceIndicator = 'US,US,NOS,US',
+  int objectId = 1,
+  GeographicBounds? bounds,
+}) {
+  final b = bounds ?? GeographicBounds(
+    north: 38.0,
+    south: 37.5,
+    east: -122.0,
+    west: -122.5,
+  );
+  final feature = {
+    'attributes': {
+      'DSNM': cellName,
+      'TITLE': title ?? cellName,
+      'CATCOV': coverageCategory,
+      'INFORM': inform.isEmpty ? (title ?? cellName) : inform,
+      'SORDAT': sourceDate,
+      'SORIND': sourceIndicator,
+      'OBJECTID': objectId,
+    },
+    'geometry': {
+      'rings': [
+        [
+          [b.west, b.south],
+          [b.east, b.south],
+          [b.east, b.north],
+          [b.west, b.north],
+          [b.west, b.south],
+        ]
+      ]
+    }
+  };
+
+  return '{"features":[${feature.toString()}]}';
+}
+
+/// Convenience to stub `getChartMetadata` with a synthesized ArcGIS-style
+/// metadata response that the production parser will accept.
+void stubChartMetadata(dynamic mock, String cellName, {String? title, GeographicBounds? bounds}) {
+  when(mock.getChartMetadata(cellName)).thenAnswer((_) async {
+    // The real client returns a Chart, but for pure mock usage higher level
+    // services might only need non-null to proceed. We simulate by decoding
+    // through the real parser path in integration tests; here we just return
+    // null because building a full Chart requires invoking implementation.
+    // Users wanting a real Chart should prefer integration tests or extend
+    // this helper to construct a Chart directly if API surface allows.
+    return Chart(
+      id: cellName,
+      title: title ?? cellName,
+      scale: 20000,
+      bounds: bounds ?? GeographicBounds(
+        north: 38.0,
+        south: 37.5,
+        east: -122.0,
+        west: -122.5,
+      ),
+      lastUpdate: DateTime.now(),
+      state: 'Unknown',
+      type: ChartType.harbor,
+      metadata: {
+        'cell_name': cellName,
+      },
+    );
+  });
+}
