@@ -53,7 +53,9 @@ void main() {
       when(mockStorageService.getChartsDirectory())
           .thenAnswer((_) async => tempChartsDirectory);
 
-  networkSuitable = true; // reset each test
+  // Default network suitability to false so queue/order tests don't auto-start downloads.
+  // Individual tests that need active downloading will set this to true explicitly.
+  networkSuitable = false; // reset each test
       downloadService = DownloadServiceImpl(
         httpClient: mockHttpClient,
         storageService: mockStorageService,
@@ -207,7 +209,7 @@ void main() {
       });
 
       test('should manage resume data for background recovery', () async {
-        networkSuitable = true;
+        networkSuitable = true; // enable active download behavior for this test
         // Arrange
         const chartId = 'chart1';
         const url = 'http://example.com/chart1.zip';
@@ -288,7 +290,7 @@ void main() {
 
     group('Error Handling and Resilience', () {
       test('should handle storage errors gracefully', () async {
-        networkSuitable = true;
+        networkSuitable = true; // need active attempt
         // Arrange
         const chartId = 'chart1';
         const url = 'http://example.com/chart1.zip';
@@ -301,7 +303,7 @@ void main() {
       });
 
       test('should handle network errors with proper error conversion', () async {
-        networkSuitable = true;
+        networkSuitable = true; // need active attempt
         // Arrange
         const chartId = 'chart1';
         const url = 'http://example.com/chart1.zip';
