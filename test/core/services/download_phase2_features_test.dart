@@ -131,12 +131,12 @@ void main() {
             data: ResponseBody.fromString('', 206),
           );
         } else {
-          // Append stream 80-199
+          // Append stream 80-199 (120 bytes total) to reach EXACT total (200)
           final appendedChunks = [
-            Uint8List.fromList(List<int>.filled(40, 1)),
-            Uint8List.fromList(List<int>.filled(40, 2)),
-            Uint8List.fromList(List<int>.filled(40, 3)),
-            Uint8List.fromList(List<int>.filled(40, 4)),
+            Uint8List.fromList(List<int>.filled(30, 1)),
+            Uint8List.fromList(List<int>.filled(30, 2)),
+            Uint8List.fromList(List<int>.filled(30, 3)),
+            Uint8List.fromList(List<int>.filled(30, 4)),
           ];
           return Response(
             requestOptions: RequestOptions(path: url),
@@ -155,8 +155,8 @@ void main() {
       await service.resumeDownload(chartId, url: url);
       final finalFile = File('${tempDir.path}/append_chart.zip');
       expect(await finalFile.exists(), isTrue);
-  // 80 initial partial + 4 * 40 appended = 240 total
-  expect(await finalFile.length(), equals(240));
+      // 80 initial partial + 4 * 30 appended = 200 total (normalized progress stays <=1.0)
+      expect(await finalFile.length(), equals(200));
     });
 
     test('retry logic applies jitter (attempts > 1 increments ResumeData.attempts)', () async {

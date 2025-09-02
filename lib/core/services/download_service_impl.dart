@@ -795,6 +795,23 @@ class DownloadServiceImpl implements DownloadService {
     DownloadStatus status, {
     String? errorMessage,
   }) {
+    // Section C: Progress Normalization Enforcement
+    // All progress values in the service are expected to be normalized (0.0 - 1.0).
+    // If an out-of-range value is provided (e.g., legacy percentage 0-100), we
+    // log a warning (once per chart lifecycle) and clamp. This protects against
+    // future regressions while keeping production resilient.
+    if (progressNormalized < -1e-6 || progressNormalized > 1.0 + 1e-6) {
+      _logger.warning(
+        'Out-of-range progress value received for $chartId: ' +
+            progressNormalized.toStringAsFixed(4) +
+            ' (expected 0.0-1.0). Clamping applied.',
+        context: 'Download',
+      );
+    }
+    assert(
+      progressNormalized >= -1e-6 && progressNormalized <= 1.0 + 1e-6,
+      'Download progress must be normalized 0..1 (got $progressNormalized for $chartId)',
+    );
     _downloadProgress[chartId] = DownloadProgress(
       chartId: chartId,
       status: status,

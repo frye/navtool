@@ -185,6 +185,8 @@ void main() {
     // This avoids a race where a normal priority item begins downloading before the high
     // priority item is added (since auto-processing starts immediately).
   await downloadService.addToQueue('chart-high', 'http://example.com/chart-high.zip', priority: DownloadPriority.high);
+  // Give the service a brief moment to start high priority before adding others
+  await Future.delayed(const Duration(milliseconds: 30));
   await downloadService.addToQueue('chart-normal', 'http://example.com/chart-normal.zip', priority: DownloadPriority.normal);
   await downloadService.addToQueue('chart-low', 'http://example.com/chart-low.zip', priority: DownloadPriority.low);
   await Future.delayed(const Duration(milliseconds: 250));
