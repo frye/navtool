@@ -5,6 +5,7 @@ import 'package:navtool/core/models/geographic_bounds.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'test_logger.dart';
 
 /// Comprehensive test utilities for NOAA testing
 /// 
@@ -348,8 +349,8 @@ class NoaaTestAssertions {
     
     if (itemCount > 0) {
       final msPerItem = elapsedMs / itemCount;
-      print('Performance: ${operation ?? 'Operation'} processed $itemCount items '
-            'in ${elapsedMs}ms (${msPerItem.toStringAsFixed(2)}ms per item)');
+  testLogger.info('Performance: ${operation ?? 'Operation'} processed $itemCount items '
+    'in ${elapsedMs}ms (${msPerItem.toStringAsFixed(2)}ms/item)');
     }
   }
 
@@ -364,7 +365,7 @@ class NoaaTestAssertions {
                'expected < ${maxAllowedBytes} bytes');
     
     final mb = memoryBytes / (1024 * 1024);
-    print('Memory: ${operation ?? 'Operation'} used ${mb.toStringAsFixed(2)}MB');
+  testLogger.info('Memory: ${operation ?? 'Operation'} used ${mb.toStringAsFixed(2)}MB');
   }
 }
 
@@ -454,12 +455,12 @@ class TestEnvironment {
 
   /// Print test environment information
   static void printEnvironmentInfo() {
-    print('Test Environment:');
-    print('  Platform: ${Platform.operatingSystem}');
-    print('  CI: ${Platform.environment['CI'] ?? 'false'}');
-    print('  Skip Integration: $shouldSkipIntegrationTests');
-    print('  Skip Performance: $shouldSkipPerformanceTests');
-    print('  Timeout: $testTimeout');
+  testLogger.info('Test Environment:');
+  testLogger.info('  Platform: ${Platform.operatingSystem}');
+  testLogger.info('  CI: ${Platform.environment['CI'] ?? 'false'}');
+  testLogger.info('  Skip Integration: $shouldSkipIntegrationTests');
+  testLogger.info('  Skip Performance: $shouldSkipPerformanceTests');
+  testLogger.info('  Timeout: $testTimeout');
   }
 }
 

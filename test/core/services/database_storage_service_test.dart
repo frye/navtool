@@ -201,7 +201,7 @@ void main() {
         );
         final chartsInWashington = await storageService.getChartsInBounds(washingtonBounds);
         
-        print('DEBUG: Found ${chartsInWashington.length} charts with old cached bounds');
+  mockLogger.debug('Found ${chartsInWashington.length} charts with old cached bounds', context: 'DB.CacheInvalidation');
 
         // Assert - Demonstrates the cache invalidation problem
         expect(chartsInWashington.length, equals(0), 
@@ -219,7 +219,7 @@ void main() {
         await storageService.storeChart(correctedChart, [1]);
         
         final chartsAfterUpdate = await storageService.getChartsInBounds(washingtonBounds);
-        print('DEBUG: Found ${chartsAfterUpdate.length} charts after bounds correction');
+  mockLogger.debug('Found ${chartsAfterUpdate.length} charts after bounds correction', context: 'DB.CacheInvalidation');
         
         expect(chartsAfterUpdate.length, equals(1), 
                reason: 'After bounds correction, West Coast chart should be found for Washington');

@@ -802,9 +802,7 @@ class DownloadServiceImpl implements DownloadService {
     // future regressions while keeping production resilient.
     if (progressNormalized < -1e-6 || progressNormalized > 1.0 + 1e-6) {
       _logger.warning(
-        'Out-of-range progress value received for $chartId: ' +
-            progressNormalized.toStringAsFixed(4) +
-            ' (expected 0.0-1.0). Clamping applied.',
+        'Out-of-range progress value received for $chartId: ${progressNormalized.toStringAsFixed(4)} (expected 0.0-1.0). Clamping applied.',
         context: 'Download',
       );
     }
@@ -871,12 +869,10 @@ class DownloadServiceImpl implements DownloadService {
     // Get items to start (up to available slots)
     final toStart = _downloadQueue.take(availableSlots).toList();
     
-    bool anyDeferred = false;
     for (final item in toStart) {
       // ignore: discarded_futures
       _isNetworkSuitable().then((suitable) {
         if (!suitable) {
-          anyDeferred = true;
           _logger.debug('Network unsuitable; deferring queued download: ${item.chartId}', context: 'Download');
           _scheduleNetworkRetry();
           return; // keep item queued

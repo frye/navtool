@@ -50,6 +50,7 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
   final HttpClientService _httpClient;
   final StorageService _storageService;
   final Map<String, List<LatLng>> _stateBoundariesCache = {};
+  // ignore: unused_field -- retained for planned remote boundary refresh / API lookups in Phase 2
 
   StateRegionMappingServiceImpl({
     required AppLogger logger,

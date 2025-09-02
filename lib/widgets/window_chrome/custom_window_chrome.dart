@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:io';
+import 'package:navtool/core/logging/app_logger.dart';
 
 import 'integrated_menu_bar.dart';
 import 'status_bar.dart';
@@ -53,7 +54,8 @@ class _CustomTitleBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onPanStart: (details) {
-        print('Starting drag from title bar background');
+        // Use logger instead of print to respect avoid_print lint
+        logger.debug('Starting drag from title bar background', context: 'WindowChrome');
         windowManager.startDragging();
       },
       onDoubleTap: () async {
@@ -172,9 +174,11 @@ class _WindowControlButtonState extends State<_WindowControlButton> {
 
   @override
   Widget build(BuildContext context) {
-    final backgroundColor = _isHovered
-        ? (widget.isClose ? Colors.red : Colors.grey.withOpacity(0.2))
-        : Colors.transparent;
+  final backgroundColor = _isHovered
+    ? (widget.isClose
+      ? Colors.red
+      : Colors.grey.withValues(alpha: 0.2))
+    : Colors.transparent;
     
     final iconColor = _isHovered && widget.isClose 
         ? Colors.white 

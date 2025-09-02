@@ -204,7 +204,6 @@ class HttpClientService {
         );
       
       case DioExceptionType.unknown:
-      default:
         return AppError.network(
           'An unexpected network error occurred: ${error.message ?? 'Unknown error'}',
           originalError: error,

@@ -63,7 +63,6 @@ class NetworkError {
         );
       
       case DioExceptionType.unknown:
-      default:
         return AppError.network(
           exception.message ?? 'An unknown network error occurred.',
           originalError: exception,
@@ -212,14 +211,13 @@ class NetworkError {
         return 'Service unavailable. The chart service is temporarily down for maintenance.';
       case 504:
         return 'Gateway timeout. The chart service is not responding.';
-      default:
-        if (statusCode >= 400 && statusCode < 500) {
-          return 'Client error (HTTP $statusCode). There is an issue with the request.';
-        } else if (statusCode >= 500) {
-          return 'Server error (HTTP $statusCode). The chart service is experiencing problems.';
-        }
-        return 'HTTP error $statusCode occurred.';
     }
+    if (statusCode >= 400 && statusCode < 500) {
+      return 'Client error (HTTP $statusCode). There is an issue with the request.';
+    } else if (statusCode >= 500) {
+      return 'Server error (HTTP $statusCode). The chart service is experiencing problems.';
+    }
+    return 'HTTP error $statusCode occurred.';
   }
 }
 

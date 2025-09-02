@@ -7,8 +7,8 @@ import 'background_task_service.dart';
 /// Implementation of BackgroundTaskService using workmanager
 class BackgroundTaskServiceImpl implements BackgroundTaskService {
   final Workmanager _workmanager;
-  final DownloadService _downloadService;
-  final GpsService _gpsService;
+  final DownloadService _downloadService; // ignore: unused_field
+  final GpsService _gpsService; // ignore: unused_field
   final AppLogger _logger;
 
   // Track active tasks (workmanager doesn't provide this natively)
@@ -175,6 +175,10 @@ class BackgroundTaskServiceImpl implements BackgroundTaskService {
 /// This function runs in a separate isolate and handles background task execution
 @pragma('vm:entry-point')
 void callbackDispatcher() {
+  // Create a lightweight logger suitable for the background isolate.
+  // We can't reuse dependency injection here; construct a ConsoleLogger directly.
+  // Using a top-level static so helper functions can reuse the same instance.
+  _backgroundLogger ??= ConsoleLogger(minimumLevel: LogLevel.info);
   Workmanager().executeTask((task, inputData) async {
     switch (task) {
       case 'chartDownload':
@@ -188,21 +192,24 @@ void callbackDispatcher() {
       case 'weatherUpdate':
         return await _handleWeatherUpdateTask(inputData);
       default:
-        print('Unknown background task: $task');
+        _backgroundLogger?.warning('Unknown background task: $task', context: 'BackgroundTask');
         return false;
     }
   });
 }
 
+// Lazily initialized background isolate logger
+AppLogger? _backgroundLogger;
+
 /// Handle periodic chart download task
 Future<bool> _handleChartDownloadTask(Map<String, dynamic>? inputData) async {
   try {
-    print('Executing background chart download task');
+    _backgroundLogger?.info('Executing background chart download task', context: 'BackgroundTask');
     // TODO: Implement chart download queue processing
     // This would check for pending downloads and process them
     return true;
   } catch (e) {
-    print('Error in chart download task: $e');
+    _backgroundLogger?.error('Chart download task failed', context: 'BackgroundTask', exception: e);
     return false;
   }
 }
@@ -212,15 +219,14 @@ Future<bool> _handleSingleChartDownload(Map<String, dynamic>? inputData) async {
   try {
     final chartId = inputData?['chartId'] as String?;
     if (chartId == null) {
-      print('No chartId provided for single chart download');
+      _backgroundLogger?.warning('No chartId provided for single chart download', context: 'BackgroundTask');
       return false;
     }
-    
-    print('Executing background download for chart: $chartId');
+    _backgroundLogger?.info('Executing background download for chart: $chartId', context: 'BackgroundTask');
     // TODO: Implement single chart download
     return true;
   } catch (e) {
-    print('Error in single chart download task: $e');
+    _backgroundLogger?.error('Single chart download task failed', context: 'BackgroundTask', exception: e);
     return false;
   }
 }
@@ -228,12 +234,12 @@ Future<bool> _handleSingleChartDownload(Map<String, dynamic>? inputData) async {
 /// Handle GPS tracking task
 Future<bool> _handleGpsTrackingTask(Map<String, dynamic>? inputData) async {
   try {
-    print('Executing background GPS tracking task');
+    _backgroundLogger?.info('Executing background GPS tracking task', context: 'BackgroundTask');
     // TODO: Implement GPS position logging
     // This would get current position and store it for tracking
     return true;
   } catch (e) {
-    print('Error in GPS tracking task: $e');
+    _backgroundLogger?.error('GPS tracking task failed', context: 'BackgroundTask', exception: e);
     return false;
   }
 }
@@ -243,16 +249,15 @@ Future<bool> _handleRouteRecordingTask(Map<String, dynamic>? inputData) async {
   try {
     final routeId = inputData?['routeId'] as String?;
     if (routeId == null) {
-      print('No routeId provided for route recording');
+      _backgroundLogger?.warning('No routeId provided for route recording', context: 'BackgroundTask');
       return false;
     }
-    
-    print('Executing background route recording for route: $routeId');
+    _backgroundLogger?.info('Executing background route recording for route: $routeId', context: 'BackgroundTask');
     // TODO: Implement route recording
     // This would get current position and add it to the route track
     return true;
   } catch (e) {
-    print('Error in route recording task: $e');
+    _backgroundLogger?.error('Route recording task failed', context: 'BackgroundTask', exception: e);
     return false;
   }
 }
@@ -260,12 +265,12 @@ Future<bool> _handleRouteRecordingTask(Map<String, dynamic>? inputData) async {
 /// Handle weather update task
 Future<bool> _handleWeatherUpdateTask(Map<String, dynamic>? inputData) async {
   try {
-    print('Executing background weather update task');
+    _backgroundLogger?.info('Executing background weather update task', context: 'BackgroundTask');
     // TODO: Implement weather data updates
     // This would fetch latest weather data for the user's location
     return true;
   } catch (e) {
-    print('Error in weather update task: $e');
+    _backgroundLogger?.error('Weather update task failed', context: 'BackgroundTask', exception: e);
     return false;
   }
 }

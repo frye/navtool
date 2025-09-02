@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:ffi';
 import 'dart:math';
-import 'package:win32/win32.dart';
 import '../models/gps_position.dart';
 import '../models/gps_signal_quality.dart';
 import '../models/position_history.dart';

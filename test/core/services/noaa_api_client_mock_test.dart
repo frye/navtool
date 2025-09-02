@@ -1,17 +1,15 @@
-import 'dart:async';
+@Tags(['unit', 'mock', 'noaa'])
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
 import 'package:dio/dio.dart';
-import 'package:navtool/core/models/chart.dart';
 import 'package:navtool/core/services/noaa/noaa_api_client_impl.dart';
 import 'package:navtool/core/services/http_client_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/utils/rate_limiter.dart';
 import 'package:navtool/core/error/noaa_exceptions.dart';
 import '../../utils/test_fixtures.dart';
-import '../../helpers/noaa_test_utils.dart';
 
 // Generate mocks for dependencies
 @GenerateMocks([HttpClientService, AppLogger])
@@ -23,7 +21,6 @@ import 'noaa_api_client_mock_test.mocks.dart';
 /// 
 /// Tagged as 'unit' for quick CI/development feedback.
 /// For actual API validation, see integration_test/noaa_real_endpoint_test.dart
-@Tags(['unit', 'mock', 'noaa'])
 void main() {
   group('NOAA API Client Mock Tests', () {
     late NoaaApiClientImpl apiClient;

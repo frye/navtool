@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../logging/app_logger.dart';
@@ -81,7 +80,8 @@ class SettingsServiceImpl implements SettingsService {
         return cached;
       }
 
-      final value = _prefs!.getString(key);
+  final prefs = _prefs; // safe after _validatePrefs
+  final value = prefs!.getString(key);
       if (value != null) {
         _setCached(key, value);
       }
@@ -163,7 +163,8 @@ class SettingsServiceImpl implements SettingsService {
         return cached;
       }
 
-      final value = _prefs!.getBool(key) ?? false;
+  final prefs = _prefs; // safe after _validatePrefs
+  final value = prefs!.getBool(key) ?? false;
       _setCached(key, value);
       
       return value;
@@ -183,7 +184,7 @@ class SettingsServiceImpl implements SettingsService {
       _validateKey(key);
       _validatePrefs();
 
-      final success = await _prefs!.setBool(key, value);
+  final success = await _prefs!.setBool(key, value);
       if (!success) {
         throw AppError(
           message: 'Failed to save bool setting to storage',
@@ -216,7 +217,8 @@ class SettingsServiceImpl implements SettingsService {
         return cached;
       }
 
-      final value = _prefs!.getInt(key) ?? 0;
+  final prefs = _prefs; // safe after _validatePrefs
+  final value = prefs!.getInt(key) ?? 0;
       _setCached(key, value);
       
       return value;
@@ -239,7 +241,7 @@ class SettingsServiceImpl implements SettingsService {
       // Validate marine navigation ranges
       _validateIntegerValue(key, value);
 
-      final success = await _prefs!.setInt(key, value);
+  final success = await _prefs!.setInt(key, value);
       if (!success) {
         throw AppError(
           message: 'Failed to save int setting to storage',
@@ -272,7 +274,8 @@ class SettingsServiceImpl implements SettingsService {
         return cached;
       }
 
-      final value = _prefs!.getDouble(key) ?? 0.0;
+  final prefs = _prefs; // safe after _validatePrefs
+  final value = prefs!.getDouble(key) ?? 0.0;
       _setCached(key, value);
       
       return value;
@@ -295,7 +298,7 @@ class SettingsServiceImpl implements SettingsService {
       // Validate marine navigation ranges
       _validateDoubleValue(key, value);
 
-      final success = await _prefs!.setDouble(key, value);
+  final success = await _prefs!.setDouble(key, value);
       if (!success) {
         throw AppError(
           message: 'Failed to save double setting to storage',

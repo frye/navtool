@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import 'dart:io' as io;
 import 'package:archive/archive.dart';
 import '../models/compression_result.dart';
 import '../services/compression_service.dart';

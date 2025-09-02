@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:navtool/core/error/noaa_error_classifier.dart';
-import 'package:navtool/core/error/noaa_exceptions.dart';
 import 'package:navtool/core/models/retry_policy.dart';
 
 /// Exception thrown when retry attempts are exhausted

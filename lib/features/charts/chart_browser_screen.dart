@@ -332,13 +332,19 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
         Icon(
           icon,
           size: compact ? 32 : 64,
-          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+      color: Theme.of(context)
+        .colorScheme
+        .onSurface
+  .withValues(alpha: 0.4),
         ),
         SizedBox(height: compact ? 8 : 16),
         Text(
           title,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+        color: Theme.of(context)
+          .colorScheme
+          .onSurface
+          .withValues(alpha: 0.6),
               ),
           textAlign: TextAlign.center,
         ),
@@ -346,7 +352,10 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
         Text(
           message,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+        color: Theme.of(context)
+          .colorScheme
+          .onSurface
+          .withValues(alpha: 0.6),
               ),
           textAlign: TextAlign.center,
         ),
@@ -712,7 +721,10 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                       Text(
                         'ID: ${chart.id}',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.8),
+              color: Theme.of(context)
+                .colorScheme
+                .onPrimaryContainer
+                .withValues(alpha: 0.8),
                         ),
                       ),
                     ],
@@ -1082,7 +1094,10 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
               '$label:',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+        color: Theme.of(context)
+          .colorScheme
+          .onSurface
+          .withValues(alpha: 0.7),
               ),
             ),
           ),

@@ -450,7 +450,7 @@ class DatabaseStorageService implements StorageService {
     }
   }
 
-  /// Get chart metadata without the binary data
+  /// Get chart metadata without the binary data (not part of interface)
   Future<Chart?> getChartMetadata(String chartId) async {
     final db = _database!;
     
@@ -470,7 +470,7 @@ class DatabaseStorageService implements StorageService {
     }
   }
 
-  /// Update chart metadata
+  /// Update chart metadata (not part of interface)
   Future<void> updateChartMetadata(Chart chart) async {
     final db = _database!;
     
@@ -500,6 +500,7 @@ class DatabaseStorageService implements StorageService {
   }
 
   /// Get charts within geographic bounds
+  @override
   Future<List<Chart>> getChartsInBounds(GeographicBounds bounds) async {
     final db = _database!;
     
@@ -540,6 +541,7 @@ class DatabaseStorageService implements StorageService {
   }
 
   /// Counts charts with invalid bounds (typically 0,0,0,0 from old cache)
+  @override
   Future<int> countChartsWithInvalidBounds() async {
     final db = _database!;
     
@@ -556,6 +558,7 @@ class DatabaseStorageService implements StorageService {
   }
 
   /// Clears charts with invalid bounds (cache invalidation for old chart data)
+  @override
   Future<int> clearChartsWithInvalidBounds() async {
     final db = _database!;
     
@@ -575,7 +578,7 @@ class DatabaseStorageService implements StorageService {
     }
   }
 
-  /// Get charts by scale range
+  /// Get charts by scale range (helper, not part of StorageService interface)
   Future<List<Chart>> getChartsByScaleRange(int minScale, int maxScale) async {
     final db = _database!;
     
@@ -595,6 +598,7 @@ class DatabaseStorageService implements StorageService {
 
   // Route Operations
   /// Store a navigation route
+  @override
   Future<void> storeRoute(NavigationRoute route) async {
     final db = _database!;
     
@@ -635,7 +639,7 @@ class DatabaseStorageService implements StorageService {
     }
   }
 
-  /// Get a navigation route by ID
+  /// Get a navigation route by ID (helper, prefer loadRoute for interface compliance)
   Future<NavigationRoute?> getRoute(String routeId) async {
     final db = _database!;
     
@@ -664,7 +668,7 @@ class DatabaseStorageService implements StorageService {
     }
   }
 
-  /// Update a navigation route
+  /// Update a navigation route (helper, not part of interface)
   Future<void> updateRoute(NavigationRoute route) async {
     final db = _database!;
     
@@ -689,6 +693,7 @@ class DatabaseStorageService implements StorageService {
   }
 
   /// Delete a navigation route
+  @override
   Future<void> deleteRoute(String routeId) async {
     final db = _database!;
     
@@ -703,6 +708,7 @@ class DatabaseStorageService implements StorageService {
   }
 
   /// Get all navigation routes
+  @override
   Future<List<NavigationRoute>> getAllRoutes() async {
     final db = _database!;
     
@@ -732,6 +738,7 @@ class DatabaseStorageService implements StorageService {
 
   // Waypoint Operations
   /// Store a standalone waypoint
+  @override
   Future<void> storeWaypoint(Waypoint waypoint) async {
     final db = _database!;
     
@@ -756,7 +763,7 @@ class DatabaseStorageService implements StorageService {
     }
   }
 
-  /// Get a waypoint by ID
+  /// Get a waypoint by ID (helper, prefer loadWaypoint for interface compliance)
   Future<Waypoint?> getWaypoint(String waypointId) async {
     final db = _database!;
     
@@ -776,6 +783,7 @@ class DatabaseStorageService implements StorageService {
   }
 
   /// Delete a waypoint
+  @override
   Future<void> deleteWaypoint(String waypointId) async {
     final db = _database!;
     

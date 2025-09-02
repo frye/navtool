@@ -64,7 +64,10 @@ class ChartCard extends StatelessWidget {
                           Text(
                             chart.id,
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                  color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.6),
                                 ),
                           ),
                         ],
@@ -128,7 +131,10 @@ class ChartCard extends StatelessWidget {
                     Icon(
                       Icons.place,
                       size: 14,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+            color: Theme.of(context)
+              .colorScheme
+              .onSurface
+              .withValues(alpha: 0.6),
                     ),
                     const SizedBox(width: 4),
                     Expanded(
@@ -136,7 +142,10 @@ class ChartCard extends StatelessWidget {
                         '${chart.bounds.south.toStringAsFixed(1)}° - ${chart.bounds.north.toStringAsFixed(1)}°N, '
                         '${chart.bounds.east.abs().toStringAsFixed(1)}° - ${chart.bounds.west.abs().toStringAsFixed(1)}°W',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.6),
                             ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -146,21 +155,30 @@ class ChartCard extends StatelessWidget {
                     Icon(
                       Icons.storage,
                       size: 14,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+            color: Theme.of(context)
+              .colorScheme
+              .onSurface
+              .withValues(alpha: 0.6),
                     ),
                     const SizedBox(width: 4),
                     if (chart.fileSize != null && chart.fileSize! > 1024 * 1024)
                       Text(
                         _formatFileSize(chart.fileSize!),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.6),
                             ),
                       ),
                     if (chart.fileSize == null)
                       Text(
                         'Size unknown',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.6),
                             ),
                       ),
                   ],
