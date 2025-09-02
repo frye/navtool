@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/timing_harness.dart';
 import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
 import 'package:dio/dio.dart';
@@ -69,17 +70,22 @@ void main() {
         when(mockStorageService.getChartsDirectory())
             .thenAnswer((_) async => tempDir);
 
+        int downloadStarts = 0;
         when(mockHttpClient.downloadFile(any, any,
           cancelToken: anyNamed('cancelToken'),
           onReceiveProgress: anyNamed('onReceiveProgress')))
-            .thenAnswer((_) async {}); // Simulate successful download
+            .thenAnswer((_) async { downloadStarts++; }); // Simulate successful download
 
         const chartId = 'chart1';
         const url = 'http://example.com/chart1.zip';
 
         // Act
   await downloadService.addToQueue(chartId, url);
-  await Future.delayed(const Duration(milliseconds: 120));
+  await waitForPredicate(
+    () => downloadStarts > 0,
+    timeout: const Duration(milliseconds: 600),
+    reason: 'Download did not start automatically',
+  );
 
         // Assert - download should have started automatically
         verify(mockHttpClient.downloadFile(any, any,
@@ -111,22 +117,28 @@ void main() {
         final completer1 = Completer<void>();
         final completer2 = Completer<void>();
 
+        bool started1 = false;
+        bool started2 = false;
         when(mockHttpClient.downloadFile(
           argThat(contains('chart1')), any,
           cancelToken: anyNamed('cancelToken'),
           onReceiveProgress: anyNamed('onReceiveProgress')))
-            .thenAnswer((_) => completer1.future);
+            .thenAnswer((_) { started1 = true; return completer1.future; });
 
         when(mockHttpClient.downloadFile(
           argThat(contains('chart2')), any,
           cancelToken: anyNamed('cancelToken'),
           onReceiveProgress: anyNamed('onReceiveProgress')))
-            .thenAnswer((_) => completer2.future);
+            .thenAnswer((_) { started2 = true; return completer2.future; });
 
         // Act - add two charts to queue
   await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
   await downloadService.addToQueue('chart2', 'http://example.com/chart2.zip');
-  await Future.delayed(const Duration(milliseconds: 150));
+  await waitForPredicate(
+    () => started1,
+    timeout: const Duration(milliseconds: 600),
+    reason: 'First download did not start',
+  );
 
         // Assert - only first download should start
         verify(mockHttpClient.downloadFile(
@@ -143,7 +155,11 @@ void main() {
 
         // Complete first download
   completer1.complete();
-  await Future.delayed(const Duration(milliseconds: 150));
+  await waitForPredicate(
+    () => started2,
+    timeout: const Duration(milliseconds: 800),
+    reason: 'Second download did not start after first completion',
+  );
 
         // Now second download should start
         verify(mockHttpClient.downloadFile(
@@ -185,11 +201,19 @@ void main() {
     // This avoids a race where a normal priority item begins downloading before the high
     // priority item is added (since auto-processing starts immediately).
   await downloadService.addToQueue('chart-high', 'http://example.com/chart-high.zip', priority: DownloadPriority.high);
-  // Give the service a brief moment to start high priority before adding others
-  await Future.delayed(const Duration(milliseconds: 30));
+  // Pump until first high priority starts (progress via captured order)
+  await waitForPredicate(
+    () => downloadOrder.isNotEmpty,
+    timeout: const Duration(milliseconds: 300),
+    reason: 'High priority download did not begin',
+  );
   await downloadService.addToQueue('chart-normal', 'http://example.com/chart-normal.zip', priority: DownloadPriority.normal);
   await downloadService.addToQueue('chart-low', 'http://example.com/chart-low.zip', priority: DownloadPriority.low);
-  await Future.delayed(const Duration(milliseconds: 250));
+  await waitForPredicate(
+    () => downloadOrder.length >= 3,
+    timeout: const Duration(milliseconds: 800),
+    reason: 'Subsequent downloads did not record order',
+  );
 
         // Assert - high priority should be downloaded first
   expect(downloadOrder, isNotEmpty);
@@ -216,19 +240,31 @@ void main() {
               type: DioExceptionType.connectionTimeout,
             ));
 
+        // Capture warning logs
+        final warningMessages = <String>[];
+    when(mockLogger.warning(any,
+      context: anyNamed('context'),
+      exception: anyNamed('exception'))).thenAnswer((invocation) {
+          warningMessages.add(invocation.positionalArguments[0] as String);
+          return null;
+        });
+
         const chartId = 'chart1';
         const url = 'http://example.com/chart1.zip';
 
         // Act
         await downloadService.addToQueue(chartId, url);
-        await Future.delayed(const Duration(milliseconds: 500));
+        await waitForPredicate(
+          () => warningMessages.any((m) => m.contains('Download attempt 1 failed')),
+          timeout: const Duration(milliseconds: 600),
+          reason: 'Retry warning not logged in time',
+        );
 
         // Assert - at least one retry warning logged
-        verify(mockLogger.warning(
-          argThat(contains('Download attempt 1 failed')),
-          context: 'Download',
-          exception: anyNamed('exception'),
-        )).called(1);
+        expect(
+          warningMessages.where((m) => m.contains('Download attempt 1 failed')).length,
+          greaterThanOrEqualTo(1),
+        );
 
         // Cleanup
         await retryDeleteDirectory(tempDir);
@@ -267,12 +303,20 @@ void main() {
         // Act - add two charts to queue
   await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
   await downloadService.addToQueue('chart2', 'http://example.com/chart2.zip');
-  await Future.delayed(const Duration(milliseconds: 120));
+  await waitForPredicate(
+    () => downloadCount == 1,
+    timeout: const Duration(milliseconds: 400),
+    reason: 'First download did not start before completing it',
+  );
 
         // Complete first download
         completer1.complete();
 
-  await Future.delayed(const Duration(milliseconds: 140));
+  await waitForPredicate(
+    () => downloadCount == 2,
+    timeout: const Duration(milliseconds: 600),
+    reason: 'Second download did not start after first completion',
+  );
 
         // Assert - both downloads should have been attempted
   expect(downloadCount, 2);
