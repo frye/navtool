@@ -49,7 +49,7 @@ class CompressionServiceImpl implements CompressionService {
                    context: 'Compression');
       
       return result;
-    } catch (error, stackTrace) {
+    } catch (error) {
       _logger.error('Failed to compress chart data: $chartId', 
                    exception: error);
       throw AppError.storage('Chart compression failed', 
@@ -102,7 +102,7 @@ class CompressionServiceImpl implements CompressionService {
       // Use custom compression settings
       final encoder = GZipEncoder();
       
-      final compressedData = encoder.encode(data)!;;
+  final compressedData = encoder.encode(data)!;
       stopwatch.stop();
       
       final result = CompressionResult(

@@ -116,10 +116,6 @@ Future<void> retryDeleteDirectory(Directory dir,
   }
 }
 
-/// Expect progress values (fractional) close to expected fraction.
-void expectProgressCloseTo(double actualFraction, double expectedFraction,
-    {double epsilon = 0.0001}) {
-  expect((actualFraction - expectedFraction).abs(), lessThan(epsilon),
-      reason:
-          'Progress mismatch. Expected ~${expectedFraction.toStringAsFixed(4)}, got ${actualFraction.toStringAsFixed(4)}');
-}
+// NOTE: Progress expectation helper moved to progress_matchers.dart (alias
+// expectProgressCloseTo / expectNormalizedProgress). This legacy helper was
+// removed to centralize normalization logic (Issue #139 C3).

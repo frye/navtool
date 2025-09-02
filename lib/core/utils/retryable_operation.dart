@@ -84,15 +84,10 @@ class RetryableOperation {
     RetryPolicy? policy,
     bool Function(dynamic)? shouldRetry,
   }) async {
-    if (operation == null) {
-      throw ArgumentError('Operation cannot be null');
-    }
-
     final effectivePolicy = policy ?? _defaultPolicy;
     final effectiveShouldRetry = shouldRetry ?? isRetryable;
     
     final errors = <dynamic>[];
-    final startTime = DateTime.now();
     
     for (int attempt = 0; attempt <= effectivePolicy.maxRetries; attempt++) {
       try {
@@ -108,7 +103,7 @@ class RetryableOperation {
         
         // Check if this error should trigger a retry
         if (!effectiveShouldRetry(error)) {
-          throw error; // Don't retry non-retryable errors
+          rethrow; // Don't retry non-retryable errors
         }
         
         // Calculate and apply delay before next attempt
@@ -132,10 +127,6 @@ class RetryableOperation {
     RetryPolicy? policy,
     bool Function(dynamic)? shouldRetry,
   }) async {
-    if (operation == null) {
-      throw ArgumentError('Operation cannot be null');
-    }
-
     final effectivePolicy = policy ?? _defaultPolicy;
     final effectiveShouldRetry = shouldRetry ?? isRetryable;
     
@@ -164,7 +155,7 @@ class RetryableOperation {
         
         // Check if this error should trigger a retry
         if (!effectiveShouldRetry(error)) {
-          throw error; // Don't retry non-retryable errors
+          rethrow; // Don't retry non-retryable errors
         }
         
         // Calculate and apply delay before next attempt

@@ -80,8 +80,8 @@ class SettingsServiceImpl implements SettingsService {
         return cached;
       }
 
-  final prefs = _prefs; // safe after _validatePrefs
-  final value = prefs!.getString(key);
+    final prefs = _prefs!; // safe after _validatePrefs
+    final value = prefs.getString(key);
       if (value != null) {
         _setCached(key, value);
       }
@@ -106,7 +106,8 @@ class SettingsServiceImpl implements SettingsService {
       // Validate specific settings
       _validateSettingValue(key, value);
 
-      final success = await _prefs!.setString(key, value);
+  final prefs = _prefs!; // safe after _validatePrefs
+  final success = await prefs.setString(key, value);
       if (!success) {
         throw AppError(
           message: 'Failed to save setting to storage',
@@ -133,12 +134,12 @@ class SettingsServiceImpl implements SettingsService {
       _validateKey(key);
       _validatePrefs();
 
-      if (!_prefs!.containsKey(key)) {
+      final prefs = _prefs!; // safe after _validatePrefs
+      if (!prefs.containsKey(key)) {
         _logger.warning('Attempted to delete non-existent setting: $key');
         return;
       }
-
-      await _prefs!.remove(key);
+      await prefs.remove(key);
       _invalidateCache(key);
       _logger.debug('Setting deleted: $key');
     } catch (error) {
@@ -184,7 +185,8 @@ class SettingsServiceImpl implements SettingsService {
       _validateKey(key);
       _validatePrefs();
 
-  final success = await _prefs!.setBool(key, value);
+    final prefs = _prefs!; // safe after _validatePrefs
+    final success = await prefs.setBool(key, value);
       if (!success) {
         throw AppError(
           message: 'Failed to save bool setting to storage',
@@ -217,8 +219,8 @@ class SettingsServiceImpl implements SettingsService {
         return cached;
       }
 
-  final prefs = _prefs; // safe after _validatePrefs
-  final value = prefs!.getInt(key) ?? 0;
+    final prefs = _prefs!; // safe after _validatePrefs
+    final value = prefs.getInt(key) ?? 0;
       _setCached(key, value);
       
       return value;
@@ -241,7 +243,8 @@ class SettingsServiceImpl implements SettingsService {
       // Validate marine navigation ranges
       _validateIntegerValue(key, value);
 
-  final success = await _prefs!.setInt(key, value);
+    final prefs = _prefs!; // safe after _validatePrefs
+    final success = await prefs.setInt(key, value);
       if (!success) {
         throw AppError(
           message: 'Failed to save int setting to storage',
@@ -274,8 +277,8 @@ class SettingsServiceImpl implements SettingsService {
         return cached;
       }
 
-  final prefs = _prefs; // safe after _validatePrefs
-  final value = prefs!.getDouble(key) ?? 0.0;
+    final prefs = _prefs!; // safe after _validatePrefs
+    final value = prefs.getDouble(key) ?? 0.0;
       _setCached(key, value);
       
       return value;
@@ -298,7 +301,8 @@ class SettingsServiceImpl implements SettingsService {
       // Validate marine navigation ranges
       _validateDoubleValue(key, value);
 
-  final success = await _prefs!.setDouble(key, value);
+    final prefs = _prefs!; // safe after _validatePrefs
+    final success = await prefs.setDouble(key, value);
       if (!success) {
         throw AppError(
           message: 'Failed to save double setting to storage',
@@ -324,11 +328,12 @@ class SettingsServiceImpl implements SettingsService {
     try {
       _validatePrefs();
 
-      final keys = _prefs!.getKeys();
+      final prefs = _prefs!; // safe after _validatePrefs
+      final keys = prefs.getKeys();
       final settings = <String, dynamic>{};
       
       for (final key in keys) {
-        settings[key] = _prefs!.get(key);
+        settings[key] = prefs.get(key);
       }
 
       // Add metadata
@@ -395,9 +400,10 @@ class SettingsServiceImpl implements SettingsService {
     try {
       _validatePrefs();
 
-      final keys = _prefs!.getKeys();
+      final prefs = _prefs!; // safe after _validatePrefs
+      final keys = prefs.getKeys();
       for (final key in keys) {
-        await _prefs!.remove(key);
+        await prefs.remove(key);
       }
 
       // Clear cache

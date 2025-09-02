@@ -63,13 +63,13 @@ class RateLimitExceededException extends NoaaApiException {
     String message = 'Rate limit exceeded for NOAA API requests',
     this.retryAfter,
   }) : super(
-        message,
-        errorCode: 'RATE_LIMIT_EXCEEDED',
-        isRetryable: true,
-        metadata: retryAfter != null
-          ? {'retryAfterSeconds': retryAfter!.inSeconds}
-          : null,
-      );
+          message,
+          errorCode: 'RATE_LIMIT_EXCEEDED',
+          isRetryable: true,
+          metadata: retryAfter != null
+              ? {'retryAfterSeconds': retryAfter.inSeconds}
+              : null,
+        );
 
   /// Duration to wait before retrying
   final Duration? retryAfter;

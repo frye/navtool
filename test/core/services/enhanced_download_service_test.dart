@@ -12,6 +12,7 @@ import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/error_handler.dart';
 import 'package:navtool/core/error/app_error.dart';
 import '../../helpers/download_test_utils.dart';
+import '../../helpers/progress_matchers.dart';
 
 // Generate mocks for the dependencies
 @GenerateMocks([
@@ -183,10 +184,11 @@ void main() {
         final progressStream = downloadService.getBatchProgressStream(batchId);
         expect(progressStream, isA<Stream<BatchDownloadProgress>>());
 
+        // Fetch current snapshot and assert normalized progress.
         final progress = await downloadService.getBatchProgress(batchId);
         expect(progress.completedCharts, 0);
         expect(progress.failedCharts, 0);
-        expect(progress.overallProgress, 0.0);
+        expectProgressCloseTo(progress.overallProgress, 0.0);
       });
 
       test('should pause batch download', () async {

@@ -47,10 +47,10 @@ abstract class StateRegionMappingService {
 class StateRegionMappingServiceImpl implements StateRegionMappingService {
   final AppLogger _logger;
   final CacheService _cacheService;
+  // ignore: unused_field, remove once remote boundary refresh implemented in Phase 2
   final HttpClientService _httpClient;
   final StorageService _storageService;
   final Map<String, List<LatLng>> _stateBoundariesCache = {};
-  // ignore: unused_field -- retained for planned remote boundary refresh / API lookups in Phase 2
 
   StateRegionMappingServiceImpl({
     required AppLogger logger,
