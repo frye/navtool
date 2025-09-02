@@ -12,6 +12,7 @@ import 'package:navtool/core/services/storage_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/error_handler.dart';
 import 'package:navtool/core/state/download_state.dart';
+import '../../helpers/download_test_utils.dart';
 
 // Generate mocks for the dependencies
 @GenerateMocks([
@@ -52,7 +53,9 @@ void main() {
         storageService: mockStorageService,
         logger: mockLogger,
         errorHandler: mockErrorHandler,
+        networkSuitabilityProbe: () async => false, // keep items queued for persistence assertions
       );
+      configureDownloadHttpClientMock(mockHttpClient);
     });
 
     group('Background Download State Persistence', () {
@@ -94,7 +97,7 @@ void main() {
         expect(queue[0]['expectedChecksum'], 'test_checksum');
 
         // Cleanup
-        await tempDir.delete(recursive: true);
+          await retryDeleteDirectory(tempDir);
       });
 
       test('should load download state from disk', () async {
@@ -156,7 +159,7 @@ void main() {
         expect(queue[0].url, 'http://example.com/chart2.zip');
 
         // Cleanup
-        await tempDir.delete(recursive: true);
+          await retryDeleteDirectory(tempDir);
       });
 
       test('should handle missing state file gracefully', () async {
@@ -177,7 +180,7 @@ void main() {
         )).called(1);
 
         // Cleanup
-        await tempDir.delete(recursive: true);
+          await retryDeleteDirectory(tempDir);
       });
 
       test('should handle corrupted state file gracefully', () async {
@@ -202,7 +205,7 @@ void main() {
         )).called(1);
 
         // Cleanup
-        await tempDir.delete(recursive: true);
+          await retryDeleteDirectory(tempDir);
       });
     });
 
@@ -228,11 +231,22 @@ void main() {
               type: DioExceptionType.connectionTimeout,
             ));
 
-        // Act
+        // Reconfigure service to allow network suitability so direct download call doesn't block
+        downloadService = DownloadServiceImpl(
+          httpClient: mockHttpClient,
+          storageService: mockStorageService,
+          logger: mockLogger,
+          errorHandler: mockErrorHandler,
+          networkSuitabilityProbe: () async => true,
+        );
+        configureDownloadHttpClientMock(mockHttpClient);
+
+        // Act - invoke download (will throw due to mocked timeout)
         try {
           await downloadService.downloadChart(chartId, url, expectedChecksum: checksum);
-        } catch (e) {
-          // Expected to fail
+          fail('Expected downloadChart to throw');
+        } catch (_) {
+          // Expected - continue to assertions
         }
 
         // Wait for async persistence
@@ -251,7 +265,7 @@ void main() {
         expect(resumeData[chartId]['checksum'], checksum);
 
         // Cleanup
-        await tempDir.delete(recursive: true);
+          await retryDeleteDirectory(tempDir);
       });
 
       test('should restore resume data on recovery', () async {
@@ -293,7 +307,7 @@ void main() {
         expect(resumeData.checksum, checksum);
 
         // Cleanup
-        await tempDir.delete(recursive: true);
+          await retryDeleteDirectory(tempDir);
       });
     });
   });
