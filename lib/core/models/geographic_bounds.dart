@@ -14,11 +14,19 @@ class GeographicBounds {
     required double south,
     required double east,
     required double west,
-  })  : north = north >= south ? north : south,
-        south = north >= south ? south : north,
-        east = east >= west ? east : west,
-        west = east >= west ? west : east {
-    // Validate ranges after normalization
+  })  : north = north,
+        south = south,
+        east = east,
+        west = west {
+    // Structural relationship validations (must be a non-empty box)
+    if (north <= south) {
+      throw ArgumentError('North must be greater than south');
+    }
+    if (east <= west) {
+      throw ArgumentError('East must be greater than west');
+    }
+
+    // Validate ranges
     if (this.north < -90 || this.north > 90) {
       throw ArgumentError('North must be between -90 and 90');
     }
