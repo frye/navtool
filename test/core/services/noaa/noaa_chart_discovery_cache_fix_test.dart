@@ -8,6 +8,7 @@ import 'package:navtool/core/services/noaa/chart_catalog_service.dart';
 import 'package:navtool/core/services/noaa/noaa_chart_discovery_service.dart';
 import 'package:navtool/core/services/noaa/state_region_mapping_service.dart';
 import 'package:navtool/core/services/storage_service.dart';
+import '../../../helpers/noaa_test_utils.dart';
 
 @GenerateMocks([
   ChartCatalogService,
@@ -30,8 +31,8 @@ void main() {
       mockMappingService = MockStateRegionMappingService();
       mockStorageService = MockStorageService();
       mockLogger = MockAppLogger();
-
-      discoveryService = NoaaChartDiscoveryServiceImpl(
+      // Using factory to ensure constructor signature consistency.
+      discoveryService = createDiscoveryService(
         catalogService: mockCatalogService,
         mappingService: mockMappingService,
         storageService: mockStorageService,

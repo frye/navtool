@@ -394,15 +394,40 @@ class MockResponseBuilders {
 
   /// Build a chart metadata response
   static String buildChartMetadataResponse(Chart chart) {
-    final feature = TestFixtures.createTestGeoJsonFeature(
-      cellName: chart.id,
-      title: chart.title,
-      scale: chart.scale,
-      state: chart.state,
-      usage: chart.type.toString().split('.').last,
-    );
-    
-    return jsonEncode(feature);
+    // The production client expects an ArcGIS style FeatureCollection with
+    // features[].attributes.* when requesting metadata (because it queries the
+    // coverage service). Adjust the test fixture shape accordingly.
+    final attributes = {
+      'DSNM': chart.id,
+      'TITLE': chart.title,
+      'CATCOV': 'Harbor',
+      'INFORM': chart.metadata['inform'] ?? chart.title,
+      'SORDAT': '20240115',
+      'SORIND': 'US,US,NOS,US',
+      'OBJECTID': 12345,
+    };
+
+    final feature = {
+      'attributes': attributes,
+      // Provide simple rectangular geometry rings similar to ArcGIS polygon
+      'geometry': {
+        'rings': [
+          [
+            [chart.bounds.west, chart.bounds.south],
+            [chart.bounds.east, chart.bounds.south],
+            [chart.bounds.east, chart.bounds.north],
+            [chart.bounds.west, chart.bounds.north],
+            [chart.bounds.west, chart.bounds.south],
+          ]
+        ]
+      }
+    };
+
+    final collection = {
+      'features': [feature]
+    };
+
+    return jsonEncode(collection);
   }
 }
 

@@ -11,6 +11,7 @@ import 'package:navtool/core/models/geographic_bounds.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/app_error.dart';
 import 'package:navtool/core/services/database_storage_service.dart';
+import '../../../helpers/noaa_test_utils.dart';
 
 // Generate mocks for dependencies
 @GenerateMocks([CacheService, AppLogger, NoaaApiClient, DatabaseStorageService])
@@ -29,6 +30,8 @@ void main() {
       mockLogger = MockAppLogger();
       mockApiClient = MockNoaaApiClient();
       mockDatabaseStorageService = MockDatabaseStorageService();
+      // Provide baseline stubs to avoid MissingStubError from unconfigured API calls
+      configureNoaaApiClientMock(mockApiClient);
       
       catalogService = ChartCatalogServiceImpl(
         cacheService: mockCacheService,

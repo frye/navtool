@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
 import 'package:navtool/core/services/noaa/noaa_chart_discovery_service.dart';
+import 'package:navtool/core/services/storage_service.dart';
+import '../../../helpers/noaa_test_utils.dart';
 import 'package:navtool/core/services/noaa/chart_catalog_service.dart';
 import 'package:navtool/core/services/noaa/state_region_mapping_service.dart';
 import 'package:navtool/core/services/noaa/noaa_metadata_parser.dart';
@@ -11,6 +13,7 @@ import 'package:navtool/core/models/geographic_bounds.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'dart:convert';
 import 'dart:io';
+import '../../../helpers/noaa_test_utils.dart';
 
 // Generate mocks for dependencies
 @GenerateMocks([
@@ -27,7 +30,8 @@ import 'noaa_performance_test.mocks.dart';
 /// for critical operations that will be used in marine environments.
 void main() {
   group('NOAA Performance Tests', () {
-    late NoaaChartDiscoveryServiceImpl discoveryService;
+  late NoaaChartDiscoveryServiceImpl discoveryService;
+  late StorageService storageService;
     late NoaaMetadataParserImpl metadataParser;
     late MockChartCatalogService mockCatalogService;
     late MockStateRegionMappingService mockMappingService;
@@ -39,10 +43,13 @@ void main() {
       mockMappingService = MockStateRegionMappingService();
       mockApiClient = MockNoaaApiClient();
       mockLogger = MockAppLogger();
+  configureNoaaApiClientMock(mockApiClient);
       
-      discoveryService = NoaaChartDiscoveryServiceImpl(
+      storageService = InMemoryStorageServiceFake();
+      discoveryService = createDiscoveryService(
         catalogService: mockCatalogService,
         mappingService: mockMappingService,
+        storageService: storageService,
         logger: mockLogger,
       );
       
