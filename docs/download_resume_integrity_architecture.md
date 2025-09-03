@@ -1,6 +1,6 @@
 # Resumable Download & Integrity Architecture
 
-Updated: 2025-09-02
+Updated: 2025-09-03 (Phase 2 Complete)
 
 This document consolidates Phase 2 implementation details into a cohesive architectural reference for the NavTool chart download pipeline.
 
@@ -116,6 +116,23 @@ Future test opportunities:
 - All mutation paths persist asynchronously; sudden process termination may lose last few bytes of metadata but not corrupt final files.
 - Partial file integrity not verified mid-stream (checksum deferred to completion) to minimize CPU overhead on constrained devices.
 - Error codes enable UI decisions (e.g., suggest freeing space, advise connectivity checks).
+- Sweep operations normalize mismatched metadata automatically on load to prevent resume failures.
+- Structured error classification enables future analytics on failure patterns without increasing coupling.
+
+---
+## Phase 2 Completion Summary
+
+**All Phase 2 objectives achieved:**
+
+1. ✅ **Safe atomic writes** - No corrupt finals on crash/interruption via `.part` files
+2. ✅ **Efficient resume** - HTTP Range support detection and streaming append  
+3. ✅ **Accurate partial accounting** - Normalized byte counts with automatic sweep
+4. ✅ **Adaptive retry with jitter** - Exponential backoff with 0-500ms randomization
+5. ✅ **Early size rejection** - Best-effort heuristic prevents obviously too-large downloads
+6. ✅ **Structured failure diagnostics** - Error codes for analytics and UX adaptation
+7. ✅ **Automated cleanup** - Stale/invalid resume state removal
+
+**Ready for production use** in marine environments with intermittent connectivity.
 
 ---
 ## Extension Roadmap (Phase 3 Candidates)
@@ -149,4 +166,43 @@ Future test opportunities:
 
 ---
 ## Status
-All Phase 2 core mechanics and diagnostics complete. Pending: ensure this doc merged; run full CI.
+**Phase 2 Complete** - All core mechanics and diagnostics implemented.
+
+### Implementation Checklist (Final Status)
+- [x] Extend `ResumeData` with `supportsRange`, `attempts`, `lastErrorCode` fields
+- [x] Range support probe (`_probeRangeSupport`)
+- [x] Manual append resume streaming (`_appendResumeStream`)
+- [x] Exponential retry + jitter inside `_downloadWithRetry`
+- [x] Persist actual partial bytes on failure path
+- [x] Disk space preflight heuristic (`_hasSufficientDiskSpace`)
+- [x] Stale resume cleanup (remove/normalize orphan, mismatch, completed, zero-length scenarios)
+- [x] Structured `lastErrorCode` population (checksum_mismatch, insufficient_disk_space, network_timeout, network, storage, unknown)
+- [x] Load-time proactive invalid resume sweep (runs after `_loadPersistentState`)
+- [x] Unit tests: range probe, append correctness, disk space preflight, checksum mismatch cleanup, jitter, error classification
+- [x] Documentation: Architecture and implementation guide consolidated
+
+### Test Coverage Status
+All Phase 2 feature tests passing:
+- Range probe sets `supportsRange` flag correctly
+- Manual append resume reconstructs full file from partial
+- Retry jitter ensures multiple attempts with variance
+- Disk space heuristic rejects oversized content-length (>5GB aggregate)
+- Stale cleanup variants: orphan removal, mismatch normalization, completed final removal, zero-length purge
+- Checksum mismatch handling: eliminates artifacts & sets proper error code
+- Error code classification: checksum mismatch, insufficient disk space, network timeout, generic network
+
+Test files:
+- `test/core/services/download_phase2_features_test.dart` - Core Phase 2 functionality
+- `test/core/services/download_resume_cleanup_test.dart` - Stale entry cleanup
+- `test/core/services/download_checksum_mismatch_test.dart` - Integrity verification
+- `test/core/services/download_error_classification_test.dart` - Error code mapping
+
+### Known Limitations & Future Enhancements
+| Area | Current Limitation | Future Enhancement (Phase 3 Candidates) |
+|------|-------------------|------------------------------------------|
+| Disk Space Check | Heuristic-based (may accept downloads exceeding actual free disk) | Platform channel / FFI disk free space query |
+| Integrity Verification | Only checksum on full download completion | Chunk-level rolling hash for mid-stream verification |
+| Error Code Coverage | Core network/storage/integrity errors | Auth/quota error codes for enhanced UX guidance |
+| Concurrency | Fixed max concurrent downloads | Adaptive concurrency based on rolling failure window |
+
+---
