@@ -70,28 +70,52 @@ await waitForCondition<List<String>>(
 ```
 
 ## Logger Verification Best Practices
+Centralized helpers in `test/helpers/verify_helpers.dart` reduce brittle Mockito chains and keep tests resilient to benign wording changes. They accept either substring or `RegExp` patterns and optional context matching.
 
-To reduce brittleness and over-specification in tests that assert logging behavior, use the centralized helpers in `test/helpers/verify_helpers.dart`:
-
-Helpers:
+Available helpers:
 ```dart
-verifyInfoLogged(mockLogger, 'Chart download completed', expectedContext: 'Download');
-verifyWarningLogged(mockLogger, RegExp(r'Failed .* state')); // regex patterns supported
-verifyErrorLogged(mockLogger, 'Failed to fix chart discovery cache');
+verifyDebugLogged(mockLogger, 'Starting download:');
+verifyInfoLogged(mockLogger, RegExp(r'Compression completed:'), expectedContext: 'Compression');
+verifyWarningLogged(mockLogger, 'Retry failed');
+verifyErrorLogged(mockLogger, 'Failed to import settings');
+expectNoErrorLogs(mockLogger); // negative invariant (happy-path tests)
 ```
 
 Guidelines:
-1. Prefer substring or concise RegExp patterns over full message literals (allows minor wording/format changes without breaking tests).
-2. Supply `expectedContext` only when the context string is semantically important; otherwise omit it to accept any context.
-3. For negative assertions (ensuring something was NOT logged) keep direct `verifyNever` calls – helpers intentionally focus on positive verification.
-4. Avoid asserting debug-level logs unless they encode functional behavior (debug logs may be pruned or toggled in production configurations).
-5. When adding new log-producing branches, prefer a short stable prefix (e.g. `Checksum verification passed`) so tests can match on that anchor.
+1. Prefer stable prefixes or succinct regex patterns instead of full literal messages.
+2. Only assert `expectedContext:` when the context is semantically meaningful (e.g. distinguishes subsystems: `HTTP`, `Compression`).
+3. Use `expectNoErrorLogs` in happy-path tests where emitting any error log would indicate regression (added in Phase F, Task F3).
+4. Avoid over‑verifying incidental debug logs; focus on logs that confirm side-effects, branch selection, or externally observable behaviors.
+5. Do not verify log ordering unless behavior depends on sequence—order-based assertions are usually a smell; prefer independent semantic checks.
+6. For multiple log events of same type, use `times:` only when cardinality matters (e.g. exactly one compression completion per operation). Otherwise, omit.
 
-Migration Status:
-- Applied helpers to: download queue processing (pilot), checksum verification, persistence, NOAA chart discovery cache fix.
-- Pending broader rollout: other download service tests, performance tests (may skip – high churn outputs), settings/navigation service tests.
+Anti-patterns (avoid):
+- Full string equality: `verify(logger.info('Settings imported successfully from backup'))` (brittle to punctuation/wording).
+- Count-only assertions without content: `verify(logger.info(any)).called(2)` (allows unrelated messages to satisfy the test).
+- Verifying volatile debug traces (e.g., low-level progress ticks) – these churn frequently and add noise.
+- Mixing direct `verify()` and helper usage for the same log type within one test (consistency aids readability).
 
-Future Enhancements:
-- Add `verifyNeverInfoLogged` style convenience wrappers if negative checks become frequent.
-- Introduce a custom matcher for ordered log sequences if ordering becomes significant in behavior tests.
+When to introduce a new helper wrapper:
+- Repeated triad (start/success/failure) patterns across ≥3 suites.
+- Domain-specific context where a dedicated semantic function improves intent (e.g. `verifyChartDownloadStarted`). Delay until a pattern stabilizes.
+
+Negative expectations:
+Use `expectNoErrorLogs(mockLogger)` rather than scattering multiple `verifyNever(logger.error(...))` calls. This asserts zero error emissions regardless of message content or context.
+
+Migration Coverage (Phase F Batches 1–4):
+- Downloads, persistence, catalog, compression, NOAA metadata/API, settings, HTTP client, filesystem, cache suites now use helpers.
+- Pending optional extension: parser success tests (could add `expectNoErrorLogs`) and any future domain modules.
+
+Future Improvements:
+- Potential `verifyNoWarningsLogged` sibling if warning silence becomes a public invariant.
+- Lightweight ordered group matcher only if a real ordering semantic emerges.
+
+Example pattern vs literal improvement:
+```dart
+// Before (brittle)
+verify(mockLogger.info('Settings reset to marine navigation defaults'));
+
+// After (resilient)
+verifyInfoLogged(mockLogger, 'Settings reset to marine navigation defaults');
+```
 

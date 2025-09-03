@@ -78,6 +78,7 @@ void main() {
   // Two info logs: start + completion (context 'Compression')
   verifyInfoLogged(mockLogger, RegExp(r'Compressing chart data:'), expectedContext: 'Compression', times: 1);
   verifyInfoLogged(mockLogger, RegExp(r'Chart compression completed:'), expectedContext: 'Compression', times: 1);
+  expectNoErrorLogs(mockLogger);
       });
 
       test('should decompress S-57 chart file data successfully', () async {
@@ -100,6 +101,7 @@ void main() {
         // Assert
         expect(decompressedData, equals(originalData));
         expect(decompressedData.length, equals(originalData.length));
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should handle different compression levels for charts', () async {
@@ -140,6 +142,7 @@ void main() {
         expect(fastResult.compressionRatio, lessThan(1.0));
         expect(balancedResult.compressionRatio, lessThan(1.0));
         expect(maxResult.compressionRatio, lessThan(1.0));
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should handle empty chart data gracefully', () async {
@@ -197,6 +200,7 @@ void main() {
         expect(result.originalSize, equals(routeData.length));
         expect(result.compressedSize, lessThan(result.originalSize));
         expect(result.compressionRatio, lessThan(1.0));
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should decompress route JSON data successfully', () async {
@@ -220,6 +224,7 @@ void main() {
         // Assert
         expect(decompressedData, equals(originalData));
         expect(String.fromCharCodes(decompressedData), equals(routeJson));
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should compress multiple routes for backup', () async {

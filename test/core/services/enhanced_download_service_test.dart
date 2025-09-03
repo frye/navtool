@@ -81,6 +81,7 @@ void main() {
         // Low priority should be last
         expect(queue.last.chartId, 'chart3');
         expect(queue.last.priority, DownloadPriority.low);
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should not add duplicate charts to queue', () async {
@@ -93,6 +94,7 @@ void main() {
         final queue = await downloadService.getDetailedQueue();
         expect(queue.length, 1);
         expect(queue.first.chartId, 'chart1');
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should remove charts from queue', () async {
@@ -108,6 +110,7 @@ void main() {
         final queue = await downloadService.getDetailedQueue();
         expect(queue.length, 1);
         expect(queue.first.chartId, 'chart2');
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should clear entire queue', () async {
@@ -122,6 +125,7 @@ void main() {
         // Assert
         final queue = await downloadService.getDetailedQueue();
         expect(queue.isEmpty, true);
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should reorder queue items by priority', () async {
@@ -141,6 +145,7 @@ void main() {
         expect(queue[1].priority, DownloadPriority.normal);
         expect(queue[2].chartId, 'low1');
         expect(queue[2].priority, DownloadPriority.low);
+        expectNoErrorLogs(mockLogger);
       });
     });
 
@@ -167,6 +172,7 @@ void main() {
         final batchProgress = await downloadService.getBatchProgress(batchId);
         expect(batchProgress.totalCharts, 3);
         expect(batchProgress.status, BatchDownloadStatus.inProgress);
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should track batch download progress', () async {
@@ -191,6 +197,7 @@ void main() {
         expect(progress.completedCharts, 0);
         expect(progress.failedCharts, 0);
         expectProgressCloseTo(progress.overallProgress, 0.0);
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should pause batch download', () async {
