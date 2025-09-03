@@ -282,13 +282,31 @@ Chart _createTestChart(String chartId) {
 
 /// Helper function to create valid S-57 test data
 List<int> _createValidS57Data() {
-  // This matches the validation requirements in ChartServiceImpl
-  // Implementation expects: data[0] == 0x30 && data[1] == 0x30
-  return [
-    // S-57 header signature that matches _isValidS57Header validation
-    0x30, 0x30, 0x30, 0x31, // Record length with proper header
-    0x44, 0x44, 0x52, 0x20, // DDR (Data Descriptive Record)
-    // Add enough bytes to satisfy minimum length requirement (24 bytes)
-    ...List.generate(16, (i) => i % 256), // 8 + 16 = 24 bytes minimum
-  ];
+  // Create a minimal but valid S-57 ISO 8211 record structure
+  final data = <int>[];
+  
+  // Record leader (24 bytes) - matches S-57 format
+  data.addAll('00100'.codeUnits);     // Record length (minimal)
+  data.addAll('3'.codeUnits);         // Interchange level
+  data.addAll('L'.codeUnits);         // Leader identifier  
+  data.addAll('E'.codeUnits);         // Inline code extension
+  data.addAll('1'.codeUnits);         // Version number
+  data.addAll(' '.codeUnits);         // Application indicator
+  data.addAll('09'.codeUnits);        // Field control length
+  data.addAll('00050'.codeUnits);     // Base address of data
+  data.addAll(' ! '.codeUnits);       // Extended character set
+  data.addAll('3'.codeUnits);         // Size of field length
+  data.addAll('4'.codeUnits);         // Size of field position
+  data.addAll('0'.codeUnits);         // Reserved
+  data.addAll('4'.codeUnits);         // Size of field tag
+  
+  // Directory terminator
+  data.add(0x1e);
+  
+  // Pad to reach base address and total length
+  while (data.length < 100) {
+    data.add(0x20); // Space padding
+  }
+  
+  return data;
 }
