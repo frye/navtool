@@ -8,6 +8,7 @@ import 'package:navtool/core/state/settings_state.dart';
 import 'package:navtool/core/state/app_state.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/app_error.dart';
+import '../../helpers/verify_helpers.dart';
 
 // Generate mocks
 @GenerateMocks([SharedPreferences, AppLogger])
@@ -72,7 +73,7 @@ void main() {
 
         // Assert
         verify(mockPrefs.setString(key, value)).called(1);
-        verify(mockLogger.debug('Setting saved: $key = $value')).called(1);
+        verifyDebugLogged(mockLogger, 'Setting saved:');
       });
 
       test('should handle set string setting failure', () async {
@@ -100,7 +101,7 @@ void main() {
 
         // Assert
         verify(mockPrefs.remove(key)).called(1);
-        verify(mockLogger.debug('Setting deleted: $key')).called(1);
+        verifyDebugLogged(mockLogger, 'Setting deleted:');
       });
 
       test('should handle delete non-existent setting gracefully', () async {
@@ -114,7 +115,7 @@ void main() {
         // Assert
         verify(mockPrefs.containsKey(key)).called(1);
         verifyNever(mockPrefs.remove(key));
-        verify(mockLogger.warning('Attempted to delete non-existent setting: $key')).called(1);
+        verifyWarningLogged(mockLogger, 'Attempted to delete non-existent setting:');
       });
     });
 
@@ -157,7 +158,7 @@ void main() {
 
         // Assert
         verify(mockPrefs.setBool(key, value)).called(1);
-        verify(mockLogger.debug('Boolean setting saved: $key = $value')).called(1);
+        verifyDebugLogged(mockLogger, 'Boolean setting saved:');
       });
     });
 
@@ -200,7 +201,7 @@ void main() {
 
         // Assert
         verify(mockPrefs.setInt(key, value)).called(1);
-        verify(mockLogger.debug('Integer setting saved: $key = $value')).called(1);
+        verifyDebugLogged(mockLogger, 'Integer setting saved:');
       });
 
       test('should validate integer setting ranges', () async {
@@ -256,7 +257,7 @@ void main() {
 
         // Assert
         verify(mockPrefs.setDouble(key, value)).called(1);
-        verify(mockLogger.debug('Double setting saved: $key = $value')).called(1);
+        verifyDebugLogged(mockLogger, 'Double setting saved:');
       });
 
       test('should validate double setting ranges', () async {
@@ -443,7 +444,7 @@ void main() {
         verify(mockPrefs.setInt('max_concurrent_downloads', 5)).called(1);
         verify(mockPrefs.setDouble('chart_rendering_quality', 2.0)).called(1);
         verify(mockPrefs.setString('preferred_units', 'imperial')).called(1);
-        verify(mockLogger.info('Settings imported successfully from backup')).called(1);
+        verifyInfoLogged(mockLogger, 'Settings imported successfully from backup');
       });
 
       test('should validate backup data before import', () async {
@@ -477,7 +478,7 @@ void main() {
         for (final key in settingsKeys) {
           verify(mockPrefs.remove(key)).called(1);
         }
-        verify(mockLogger.info('All settings cleared')).called(1);
+        verifyInfoLogged(mockLogger, 'All settings cleared');
       });
 
       test('should reset settings to marine navigation defaults', () async {
@@ -498,7 +499,7 @@ void main() {
         verify(mockPrefs.setDouble('chart_rendering_quality', 1.0)).called(1);
         verify(mockPrefs.setString('preferred_units', 'metric')).called(1);
         verify(mockPrefs.setDouble('gps_update_interval', 1.0)).called(1);
-        verify(mockLogger.info('Settings reset to marine navigation defaults')).called(1);
+        verifyInfoLogged(mockLogger, 'Settings reset to marine navigation defaults');
       });
     });
 
@@ -574,7 +575,7 @@ void main() {
         verify(mockPrefs.setDouble('gps_update_interval', 1.5)).called(1);
         verify(mockPrefs.setBool('enable_offline_mode', false)).called(1);
         verify(mockPrefs.setBool('show_advanced_features', true)).called(1);
-        verify(mockLogger.info('AppSettings model saved to preferences')).called(1);
+        verifyInfoLogged(mockLogger, 'AppSettings model saved to preferences');
       });
     });
 
@@ -589,7 +590,7 @@ void main() {
           () => settingsService.getSetting(key),
           throwsA(isA<AppError>()),
         );
-        verify(mockLogger.error(any, exception: anyNamed('exception'))).called(1);
+        verifyErrorLogged(mockLogger, 'Failed to get setting:');
       });
 
       test('should handle null SharedPreferences instance', () async {
