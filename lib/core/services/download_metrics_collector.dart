@@ -94,8 +94,8 @@ class DownloadMetricsCollector {
       failureByCat[cat] = (failureByCat[cat] ?? 0) + 1;
     }
     final durations = _completed.map((e) => e.durationSeconds).where((d) => d > 0).toList()..sort();
-    final avg = durations.isEmpty ? 0 : durations.reduce((a, b) => a + b) / durations.length;
-    final median = durations.isEmpty ? 0 : (durations.length.isOdd
+  final avg = durations.isEmpty ? 0.0 : durations.reduce((a, b) => a + b) / durations.length;
+  final median = durations.isEmpty ? 0.0 : (durations.length.isOdd
         ? durations[durations.length ~/ 2]
         : (durations[durations.length ~/ 2 - 1] + durations[durations.length ~/ 2]) / 2);
     final retries = _completed.fold<int>(0, (sum, r) => sum + r.retries);

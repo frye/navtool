@@ -14,6 +14,8 @@ import 'download_service.dart';
 import 'http_client_service.dart';
 import 'storage_service.dart';
 import 'download_metrics_collector.dart';
+import '../utils/network_resilience.dart';
+import 'package:meta/meta.dart';
 
 /// Enhanced implementation of DownloadService with queue management, 
 /// batch operations, resumption, and background support
@@ -25,6 +27,8 @@ class DownloadServiceImpl implements DownloadService {
   // Optional adapter to push events into queue notifier (Phase 1 integration)
   DownloadQueueNotifier? _queueNotifier;
   DownloadMetricsCollector? _metrics; // Phase 3 metrics integration
+  NetworkResilience? _networkResilience; // for auto-retry monitoring
+  StreamSubscription<NetworkStatus>? _netStatusSub;
 
   // Enhanced download state management
   final Map<String, CancelToken> _cancelTokens = {};
@@ -59,6 +63,7 @@ class DownloadServiceImpl implements DownloadService {
     required ErrorHandler errorHandler,
     DownloadQueueNotifier? queueNotifier,
     DownloadMetricsCollector? metrics,
+  NetworkResilience? networkResilience,
     Future<bool> Function()? networkSuitabilityProbe,
     /// Internal/testing hook to override the low-level rename call used by
     /// [_safeRename]. This lets tests simulate transient failures to drive
@@ -71,7 +76,9 @@ class DownloadServiceImpl implements DownloadService {
         _renameImpl = renameImpl {
     _queueNotifier = queueNotifier;
     _metrics = metrics;
+    _networkResilience = networkResilience;
     _networkSuitabilityProbe = networkSuitabilityProbe;
+    _initNetworkListener();
   }
 
   /// Allows late binding of queue notifier (e.g. after provider init)
@@ -1545,6 +1552,7 @@ class DownloadServiceImpl implements DownloadService {
 
   @override
   void dispose() {
+    _netStatusSub?.cancel();
     _networkRetryTimer?.cancel();
     // Cancel all active downloads
     for (final cancelToken in _cancelTokens.values) {
@@ -1579,6 +1587,64 @@ class DownloadServiceImpl implements DownloadService {
     _pendingNotifications.clear();
 
     _logger.info('Enhanced download service disposed', context: 'Download');
+  }
+
+  void _initNetworkListener() {
+    if (_networkResilience == null) return;
+    _netStatusSub = _networkResilience!.networkStatusStream.listen(_handleNetworkStatusChange);
+  }
+
+  bool _isTransientCategory(String? category) {
+    if (category == null) return false;
+    return ['network', 'timeout'].contains(category);
+  }
+
+  void _handleNetworkStatusChange(NetworkStatus status) {
+    if (status == NetworkStatus.connected || status == NetworkStatus.limited) {
+      for (final entry in _downloadProgress.entries) {
+        final prog = entry.value;
+        if (prog.status == DownloadStatus.failed && _isTransientCategory(prog.errorCategory)) {
+          final resume = _resumeData[prog.chartId];
+          final url = resume?.originalUrl;
+          if (url != null) {
+            // ignore: discarded_futures
+            addToQueue(prog.chartId, url);
+          }
+        }
+      }
+    }
+  }
+
+  // ---------------- Testing Hooks ----------------
+  @visibleForTesting
+  Map<String, DownloadProgress> get debugProgressMap => Map.unmodifiable(_downloadProgress);
+
+  @visibleForTesting
+  List<String> get debugQueueIds => _downloadQueue.map((e) => e.chartId).toList(growable: false);
+
+  /// Inject a failed download state for auto-retry tests
+  @visibleForTesting
+  void injectFailedDownload(String chartId, String url, {String category = 'network'}) {
+    _downloadProgress[chartId] = DownloadProgress(
+      chartId: chartId,
+      status: DownloadStatus.failed,
+      progress: 0.0,
+      errorMessage: 'Simulated failure',
+      errorCategory: category,
+      lastUpdated: DateTime.now(),
+    );
+    _resumeData[chartId] = ResumeData(
+      chartId: chartId,
+      originalUrl: url,
+      downloadedBytes: 0,
+      lastAttempt: DateTime.now(),
+    );
+  }
+
+  /// Manually simulate network status (test helper)
+  @visibleForTesting
+  void simulateNetworkStatus(NetworkStatus status) {
+    _handleNetworkStatusChange(status);
   }
 
   // ---- Filesystem mitigation helpers (Phase E) ----

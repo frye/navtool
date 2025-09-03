@@ -33,6 +33,7 @@ import 'app_state.dart';
 import 'app_state_notifier.dart';
 import 'download_state.dart';
 import 'settings_state.dart';
+import '../utils/network_resilience.dart';
 
 // Dependencies
 final loggerProvider = Provider<AppLogger>((ref) => const ConsoleLogger());
@@ -80,6 +81,7 @@ final downloadServiceProvider = Provider<DownloadService>((ref) {
     errorHandler: ref.read(errorHandlerProvider),
     queueNotifier: ref.read(downloadQueueProvider.notifier),
     metrics: ref.read(downloadMetricsCollectorProvider),
+    networkResilience: ref.read(networkResilienceProvider),
   );
   return service;
 });
@@ -96,6 +98,11 @@ final downloadMetricsSnapshotProvider = StreamProvider.autoDispose((ref) async* 
     await Future.delayed(const Duration(seconds: 1));
     yield collector.snapshot();
   }
+});
+
+final networkResilienceProvider = Provider<NetworkResilience>((ref) {
+  // Single shared instance; starts monitoring when constructed
+  return NetworkResilience();
 });
 
 // Storage service (placeholder - should be implemented)
