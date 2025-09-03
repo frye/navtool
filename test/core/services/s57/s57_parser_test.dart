@@ -497,7 +497,8 @@ List<int> _createValidS57TestData() {
   _addBinaryInt(data, 58, 2); // OBJL (Object label) - BOYLAT code
   _addBinaryInt(data, 1, 2);  // RVER (Record version)
   data.add(1);   // RUIN (Record update instruction)
-  // Pad to 48 bytes
+  // Pad to exactly 48 bytes
+  final fridStartLength = data.length - (201 + 165);
   while (data.length < 201 + 165 + 48) {
     data.add(0x20);
   }
@@ -506,7 +507,8 @@ List<int> _createValidS57TestData() {
   _addBinaryInt(data, 550, 2);  // AGEN (Agency code) - NOAA
   _addBinaryInt(data, 98765, 4); // FIDN (Feature ID)
   _addBinaryInt(data, 1, 2);    // FIDS (Feature subdivision)
-  // Pad to 24 bytes
+  // Pad to exactly 24 bytes
+  final foidStartLength = data.length - (201 + 165 + 48);
   while (data.length < 201 + 165 + 48 + 24) {
     data.add(0x20);
   }
@@ -518,7 +520,8 @@ List<int> _createValidS57TestData() {
   _addBinaryInt(data, 2, 4);    // Port hand buoy
   _addBinaryInt(data, 86, 2);   // COLPAT attribute code
   _addBinaryInt(data, 1, 4);    // Horizontal stripes
-  // Pad to 36 bytes
+  // Pad to exactly 36 bytes
+  final attfStartLength = data.length - (201 + 165 + 48 + 24);
   while (data.length < 201 + 165 + 48 + 24 + 36) {
     data.add(0x20);
   }
@@ -543,8 +546,24 @@ List<int> _createValidS57TestData() {
 
 /// Helper to add binary integer to data list
 void _addBinaryInt(List<int> data, int value, int bytes) {
-  final byteData = ByteData(bytes);
-  byteData.setInt32(0, value, Endian.little);
+  final byteData = ByteData(8); // Use max size to avoid overflow
+  
+  switch (bytes) {
+    case 1:
+      byteData.setUint8(0, value & 0xFF);
+      break;
+    case 2:
+      byteData.setUint16(0, value & 0xFFFF, Endian.little);
+      break;
+    case 4:
+      byteData.setUint32(0, value & 0xFFFFFFFF, Endian.little);
+      break;
+    default:
+      // Default to 4-byte for unknown sizes
+      byteData.setUint32(0, value & 0xFFFFFFFF, Endian.little);
+      bytes = 4;
+  }
+  
   for (int i = 0; i < bytes; i++) {
     data.add(byteData.getUint8(i));
   }

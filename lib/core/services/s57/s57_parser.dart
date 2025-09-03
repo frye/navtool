@@ -257,26 +257,61 @@ class S57Parser {
   Map<String, dynamic> _parseFeatureRecordId(Uint8List data) {
     if (data.length < 5) return {};
     
-    return {
-      'record_name': _parseSubfield(data, 0, 1), // RCNM
-      'record_id': _parseSubfield(data, 1, 4),   // RCID
-      'primitive': _parseSubfield(data, 5, 1),   // PRIM
-      'group': _parseSubfield(data, 6, 1),       // GRUP
-      'object_label': _parseSubfield(data, 7, 2), // OBJL
-      'record_version': _parseSubfield(data, 9, 2), // RVER
-      'record_update': _parseSubfield(data, 11, 1), // RUIN
-    };
+    final result = <String, dynamic>{};
+    int offset = 0;
+    
+    // Parse available fields safely
+    if (offset < data.length) {
+      result['record_name'] = _parseSubfield(data, offset, 1); // RCNM
+      offset += 1;
+    }
+    if (offset + 4 <= data.length) {
+      result['record_id'] = _parseSubfield(data, offset, 4);   // RCID
+      offset += 4;
+    }
+    if (offset < data.length) {
+      result['primitive'] = _parseSubfield(data, offset, 1);   // PRIM
+      offset += 1;
+    }
+    if (offset < data.length) {
+      result['group'] = _parseSubfield(data, offset, 1);       // GRUP
+      offset += 1;
+    }
+    if (offset + 2 <= data.length) {
+      result['object_label'] = _parseSubfield(data, offset, 2); // OBJL
+      offset += 2;
+    }
+    if (offset + 2 <= data.length) {
+      result['record_version'] = _parseSubfield(data, offset, 2); // RVER
+      offset += 2;
+    }
+    if (offset < data.length) {
+      result['record_update'] = _parseSubfield(data, offset, 1); // RUIN
+    }
+    
+    return result;
   }
   
   /// Parse Feature Object Identifier (FOID)
   Map<String, dynamic> _parseFeatureObjectId(Uint8List data) {
-    if (data.length < 8) return {};
+    if (data.length < 2) return {};
     
-    return {
-      'agency': _parseSubfield(data, 0, 2),     // AGEN
-      'feature_id': _parseSubfield(data, 2, 4), // FIDN
-      'subdivision': _parseSubfield(data, 6, 2), // FIDS
-    };
+    final result = <String, dynamic>{};
+    int offset = 0;
+    
+    if (offset + 2 <= data.length) {
+      result['agency'] = _parseSubfield(data, offset, 2);     // AGEN
+      offset += 2;
+    }
+    if (offset + 4 <= data.length) {
+      result['feature_id'] = _parseSubfield(data, offset, 4); // FIDN
+      offset += 4;
+    }
+    if (offset + 2 <= data.length) {
+      result['subdivision'] = _parseSubfield(data, offset, 2); // FIDS
+    }
+    
+    return result;
   }
   
   /// Parse Attribute Field (ATTF)
@@ -284,20 +319,45 @@ class S57Parser {
     final attributes = <String, dynamic>{};
     int pos = 0;
     
-    while (pos < data.length) {
-      if (pos + 6 > data.length) break;
-      
+    while (pos + 6 <= data.length) {
       final attrLabel = _parseSubfield(data, pos, 2);
       final attrValue = _parseSubfield(data, pos + 2, 4);
       
+      // Skip padding (0x2020 = 8224 in little endian, or space characters)
+      if (attrLabel is int && (attrLabel == 8224 || attrLabel == 0x2020)) {
+        break;
+      }
+      
       if (attrLabel != null && attrValue != null) {
-        attributes[attrLabel.toString()] = attrValue;
+        // Convert numeric attribute codes to string keys for consistency
+        String key;
+        if (attrLabel is int) {
+          key = _getAttributeCodeName(attrLabel) ?? attrLabel.toString();
+        } else {
+          key = attrLabel.toString();
+        }
+        attributes[key] = attrValue;
       }
       
       pos += 6;
     }
     
     return attributes;
+  }
+  
+  /// Get S-57 attribute name from code
+  String? _getAttributeCodeName(int code) {
+    switch (code) {
+      case 84: return 'COLOUR';
+      case 85: return 'CATBOY';
+      case 86: return 'COLPAT';
+      case 131: return 'VALDCO';
+      case 172: return 'VALSOU';
+      case 55: return 'DRVAL1';
+      case 56: return 'DRVAL2';
+      case 113: return 'QUASOU';
+      default: return null;
+    }
   }
   
   /// Parse 2D Coordinate (SG2D)
@@ -381,9 +441,24 @@ class S57Parser {
     
     final bytes = data.sublist(offset, offset + length);
     
-    // Try to parse as integer first
+    // Try to parse as integer based on length
     try {
-      return ByteData.sublistView(bytes).getUint32(0, Endian.little);
+      final byteData = ByteData.sublistView(bytes);
+      switch (length) {
+        case 1:
+          return byteData.getUint8(0);
+        case 2:
+          return byteData.getUint16(0, Endian.little);
+        case 4:
+          return byteData.getUint32(0, Endian.little);
+        default:
+          // For other lengths, try to parse as string first
+          final str = ascii.decode(bytes).trim();
+          if (str.isNotEmpty && str != String.fromCharCodes(List.filled(length, 0x20))) {
+            return str;
+          }
+          return bytes;
+      }
     } catch (e) {
       // Fall back to string parsing
       try {
@@ -400,7 +475,14 @@ class S57Parser {
     if (offset + 4 > data.length) return null;
     
     try {
-      return ByteData.sublistView(data, offset, offset + 4)
+      final bytes = data.sublist(offset, offset + 4);
+      // Handle potential padding or invalid data
+      final allZero = bytes.every((b) => b == 0);
+      final allPadding = bytes.every((b) => b == 0x20); // Space padding
+      
+      if (allZero || allPadding) return null;
+      
+      return ByteData.sublistView(bytes)
           .getInt32(0, Endian.little).toDouble();
     } catch (e) {
       return null;
