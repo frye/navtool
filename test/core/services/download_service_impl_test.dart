@@ -294,19 +294,16 @@ void main() {
         expect(progressStream, isA<Stream<double>>());
       });
 
-      test('should return empty stream for unknown chart', () async {
+      test('should emit initial 0.0 for unknown chart (lazy stream seed)', () async {
         // Arrange
         const unknownChartId = 'UNKNOWN_CHART';
 
         // Act
         final progressStream = downloadService.getDownloadProgress(unknownChartId);
-        final progressList = await progressStream.take(1).toList().timeout(
-          const Duration(milliseconds: 100),
-          onTimeout: () => <double>[],
-        );
+        final first = await progressStream.first.timeout(const Duration(milliseconds: 200));
 
         // Assert
-        expect(progressList, isEmpty);
+        expect(first, 0.0);
       });
     });
 

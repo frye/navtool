@@ -132,12 +132,14 @@ class DownloadServiceImpl implements DownloadService {
       final cancelToken = CancelToken();
       _cancelTokens[chartId] = cancelToken;
 
-      // Create progress controller
-      final progressController = StreamController<double>.broadcast();
-      _progressControllers[chartId] = progressController;
-
-  // Initialize progress (normalized 0..1)
-  _updateProgress(chartId, 0, 0, 0.0, DownloadStatus.downloading);
+      // Reuse lazily created controller (early subscriber) or create now
+      final progressController = _progressControllers[chartId] ??= StreamController<double>.broadcast();
+      if (_downloadProgress[chartId] == null) {
+        _updateProgress(chartId, 0, 0, 0.0, DownloadStatus.downloading);
+        if (!progressController.isClosed) {
+          progressController.add(0.0); // immediate seed
+        }
+      }
 
   // Determine final & temp file paths for chart storage (atomic write pattern)
       final chartDirectory = await _storageService.getChartsDirectory();
@@ -343,9 +345,14 @@ class DownloadServiceImpl implements DownloadService {
       final cancelToken = CancelToken();
       _cancelTokens[chartId] = cancelToken;
 
-      // Create progress controller
-      final progressController = StreamController<double>.broadcast();
-      _progressControllers[chartId] = progressController;
+      // Reuse existing (lazy) controller or create new
+      final progressController = _progressControllers[chartId] ??= StreamController<double>.broadcast();
+      if (_downloadProgress[chartId] == null) {
+        _updateProgress(chartId, resumeFrom, 0, 0.0, DownloadStatus.downloading);
+        if (!progressController.isClosed) {
+          progressController.add(0.0);
+        }
+      }
 
       try {
         // Phase 2: If server supports range (probe), attempt manual streaming append when resuming
@@ -494,18 +501,18 @@ class DownloadServiceImpl implements DownloadService {
 
   @override
   Stream<double> getDownloadProgress(String chartId) {
-    final controller = _progressControllers[chartId];
-    if (controller != null) {
-      return controller.stream;
+    // Lazily create a broadcast controller so early subscribers always receive
+    // an initial emission (0.0 or cached) even if they attach before a download starts.
+    var controller = _progressControllers[chartId];
+    if (controller == null) {
+      controller = StreamController<double>.broadcast();
+      _progressControllers[chartId] = controller;
+      final initial = _downloadProgress[chartId]?.progress ?? 0.0;
+      scheduleMicrotask(() {
+        if (!controller!.isClosed) controller.add(initial);
+      });
     }
-    
-    // Return a stream with current progress if available
-    final progress = _downloadProgress[chartId];
-    if (progress != null) {
-      return Stream.value(progress.progress); // normalized 0..1
-    }
-    
-    return const Stream.empty();
+    return controller.stream;
   }
 
   @override

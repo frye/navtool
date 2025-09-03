@@ -436,12 +436,9 @@ void main() {
   final sub = downloadService.getDownloadProgress(chartId).listen(captured.add);
   // Start download
   await downloadService.downloadChart(chartId, url);
-  // If stream implementation didn't emit (e.g., fast completion), inject final progress manually for assertion fairness
-  if (captured.isEmpty) {
-    captured.add(1.0); // fallback to indicate completion path (progress captured via final state)
-  }
-
-  expect(captured, isNotEmpty, reason: 'Progress emissions should be captured (or synthesized for fast path)');
+  expect(captured, isNotEmpty, reason: 'Progress emissions should be captured');
+  // First emission should be 0.0 (seed) unless download is trivially instantaneous; allow slight float tolerance.
+  expect(captured.first, closeTo(0.0, 1e-9), reason: 'First progress emission should be the seeded 0.0');
         // Range check
         for (final v in captured) {
           expect(v >= 0 && v <= 1, isTrue, reason: 'Progress value $v out of [0,1] range');
