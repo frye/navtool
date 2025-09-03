@@ -10,6 +10,7 @@ import '../models/waypoint.dart';
 import '../services/http_client_service.dart';
 import '../services/download_service.dart';
 import '../services/download_service_impl.dart';
+import '../services/download_metrics_collector.dart';
 import '../services/storage_service.dart';
 import '../services/database_storage_service.dart';
 import '../services/file_system_service.dart';
@@ -78,8 +79,23 @@ final downloadServiceProvider = Provider<DownloadService>((ref) {
     logger: ref.read(loggerProvider),
     errorHandler: ref.read(errorHandlerProvider),
     queueNotifier: ref.read(downloadQueueProvider.notifier),
+    metrics: ref.read(downloadMetricsCollectorProvider),
   );
   return service;
+});
+
+// Download metrics collector
+final downloadMetricsCollectorProvider = Provider<DownloadMetricsCollector>((ref) {
+  return DownloadMetricsCollector();
+});
+
+// Reactive metrics snapshot provider (simple polling every 1s)
+final downloadMetricsSnapshotProvider = StreamProvider.autoDispose((ref) async* {
+  final collector = ref.watch(downloadMetricsCollectorProvider);
+  while (true) {
+    await Future.delayed(const Duration(seconds: 1));
+    yield collector.snapshot();
+  }
 });
 
 // Storage service (placeholder - should be implemented)

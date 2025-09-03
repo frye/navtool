@@ -13,6 +13,7 @@ import '../state/download_state.dart';
 import 'download_service.dart';
 import 'http_client_service.dart';
 import 'storage_service.dart';
+import 'download_metrics_collector.dart';
 
 /// Enhanced implementation of DownloadService with queue management, 
 /// batch operations, resumption, and background support
@@ -23,6 +24,7 @@ class DownloadServiceImpl implements DownloadService {
   final ErrorHandler _errorHandler;
   // Optional adapter to push events into queue notifier (Phase 1 integration)
   DownloadQueueNotifier? _queueNotifier;
+  DownloadMetricsCollector? _metrics; // Phase 3 metrics integration
 
   // Enhanced download state management
   final Map<String, CancelToken> _cancelTokens = {};
@@ -56,6 +58,7 @@ class DownloadServiceImpl implements DownloadService {
     required AppLogger logger,
     required ErrorHandler errorHandler,
     DownloadQueueNotifier? queueNotifier,
+    DownloadMetricsCollector? metrics,
     Future<bool> Function()? networkSuitabilityProbe,
     /// Internal/testing hook to override the low-level rename call used by
     /// [_safeRename]. This lets tests simulate transient failures to drive
@@ -67,12 +70,18 @@ class DownloadServiceImpl implements DownloadService {
         _errorHandler = errorHandler,
         _renameImpl = renameImpl {
     _queueNotifier = queueNotifier;
+    _metrics = metrics;
     _networkSuitabilityProbe = networkSuitabilityProbe;
   }
 
   /// Allows late binding of queue notifier (e.g. after provider init)
   void attachQueueNotifier(DownloadQueueNotifier notifier) {
     _queueNotifier = notifier;
+  }
+
+  /// Allows late binding of metrics collector
+  void attachMetrics(DownloadMetricsCollector metrics) {
+    _metrics = metrics;
   }
 
   // --- Network suitability gating (stub for Phase 1; real integration in later phases) ---
@@ -92,6 +101,7 @@ class DownloadServiceImpl implements DownloadService {
   Future<void> downloadChart(String chartId, String url, {String? expectedChecksum}) async {
     try {
       _logger.info('Starting download for chart: $chartId', context: 'Download');
+      _metrics?.start(chartId);
 
       // Phase 2: disk space preflight (best effort)
       if (!await _hasSufficientDiskSpace(url)) {
@@ -181,6 +191,7 @@ class DownloadServiceImpl implements DownloadService {
 
         // Mark as completed
   _updateProgress(chartId, fileSize, fileSize, 1.0, DownloadStatus.completed);
+  _metrics?.completeSuccess(chartId);
   progressController.add(1.0);
 
         // Add notification if enabled
@@ -202,7 +213,9 @@ class DownloadServiceImpl implements DownloadService {
       );
 
       // Mark as failed
-  _updateProgress(chartId, 0, 0, 0.0, DownloadStatus.failed, errorMessage: error.toString());
+  final category = _deriveErrorCategory(error);
+  _updateProgress(chartId, 0, 0, 0.0, DownloadStatus.failed, errorMessage: error.toString(), errorCategory: category);
+  _metrics?.completeFailure(chartId, category);
 
       // Save resume data for potential recovery using actual partial bytes if present
       int partialBytes = 0;
@@ -393,6 +406,9 @@ class DownloadServiceImpl implements DownloadService {
       }
 
       _cleanup(chartId);
+      if (_downloadProgress[chartId]?.status == DownloadStatus.completed) {
+        _metrics?.completeSuccess(chartId);
+      }
 
     } catch (error, stackTrace) {
       _errorHandler.handleError(error, stackTrace);
@@ -513,9 +529,78 @@ class DownloadServiceImpl implements DownloadService {
     _sortQueueByPriority();
 
     _logger.info('Added chart to queue: $chartId (priority: $priority)', context: 'Download');
+    // Notify external queue notifier (UI state) if attached and not already present
+    try {
+      if (_queueNotifier != null) {
+        final existing = _queueNotifier!.state.downloads[chartId];
+        if (existing == null) {
+          _queueNotifier!.queueDownload(chartId);
+        } else if (existing.status == DownloadStatus.failed) {
+          // Requeue previously failed download
+          _queueNotifier!.resumeDownload(chartId);
+        }
+      }
+    } catch (e) {
+      _logger.warning('Failed to notify queue notifier for $chartId: $e', context: 'Download');
+    }
     
     // Process queue to start downloads if slots are available
     _processQueue();
+  }
+
+  @override
+  Future<void> pauseAllDownloads() async {
+    for (final id in _downloadProgress.keys.toList()) {
+      final prog = _downloadProgress[id];
+      if (prog != null && prog.status == DownloadStatus.downloading) {
+        // ignore: discarded_futures
+        pauseDownload(id);
+      }
+    }
+    _queueNotifier?.pauseAll();
+  }
+
+  @override
+  Future<void> resumeAllDownloads() async {
+    for (final id in _downloadProgress.keys.toList()) {
+      final prog = _downloadProgress[id];
+      if (prog != null && prog.status == DownloadStatus.paused) {
+        // ignore: discarded_futures
+        resumeDownload(id);
+      }
+    }
+    _queueNotifier?.resumeAll();
+    _processQueue();
+  }
+
+  @override
+  Future<String> exportDiagnostics() async {
+    try {
+      final metrics = _metrics?.snapshot();
+      final state = {
+        'timestamp': DateTime.now().toIso8601String(),
+        'activeDownloads': _downloadProgress.values.map((d) => {
+          'chartId': d.chartId,
+          'status': d.status.name,
+          'progress': d.progress,
+          'errorCategory': d.errorCategory,
+          'errorMessage': d.errorMessage,
+        }).toList(),
+        'queue': _downloadQueue.map((q) => q.chartId).toList(),
+        'metrics': metrics == null ? null : {
+          'successCount': metrics.successCount,
+          'failureCount': metrics.failureCount,
+          'failureByCategory': metrics.failureByCategory,
+          'averageDurationSeconds': metrics.averageDurationSeconds,
+          'medianDurationSeconds': metrics.medianDurationSeconds,
+          'retryCount': metrics.retryCount,
+        },
+      };
+      return jsonEncode(state);
+    } catch (e) {
+      _logger.warning('Diagnostics export failed: $e', context: 'Download');
+      return '{}';
+    }
   }
 
   @override
@@ -782,6 +867,10 @@ class DownloadServiceImpl implements DownloadService {
 
       } catch (e) {
         attempt++;
+        if (attempt > 1) {
+          // Count as a retry (attempt 2+)
+          _metrics?.incrementRetry(chartId);
+        }
         if (attempt >= maxRetries) {
           rethrow;
         }
@@ -804,6 +893,7 @@ class DownloadServiceImpl implements DownloadService {
     double progressNormalized,
     DownloadStatus status, {
     String? errorMessage,
+    String? errorCategory,
   }) {
     // Section C: Progress Normalization Enforcement
     // All progress values in the service are expected to be normalized (0.0 - 1.0).
@@ -820,6 +910,21 @@ class DownloadServiceImpl implements DownloadService {
       progressNormalized >= -1e-6 && progressNormalized <= 1.0 + 1e-6,
       'Download progress must be normalized 0..1 (got $progressNormalized for $chartId)',
     );
+    // Compute speed / ETA (simple instantaneous estimation)
+    double? bps;
+    int? eta;
+    if (status == DownloadStatus.downloading && downloaded > 0 && total > 0) {
+      final existing = _downloadProgress[chartId];
+      if (existing != null && existing.downloadedBytes != null) {
+        final deltaBytes = downloaded - (existing.downloadedBytes ?? 0);
+        final deltaMs = DateTime.now().difference(existing.lastUpdated).inMilliseconds;
+        if (deltaBytes > 0 && deltaMs > 0) {
+          bps = (deltaBytes * 1000) / deltaMs;
+          final remaining = total - downloaded;
+            if (bps > 0) eta = (remaining / bps).round();
+        }
+      }
+    }
     _downloadProgress[chartId] = DownloadProgress(
       chartId: chartId,
       status: status,
@@ -827,18 +932,19 @@ class DownloadServiceImpl implements DownloadService {
       totalBytes: total > 0 ? total : null,
       downloadedBytes: downloaded > 0 ? downloaded : null,
       errorMessage: errorMessage,
+      errorCategory: errorCategory,
+      bytesPerSecond: bps,
+      etaSeconds: eta,
       lastUpdated: DateTime.now(),
     );
 
     // Push to notifier adapter if attached
-    _queueNotifier?.updateProgress(
-      chartId,
-      status: status,
-      progress: progressNormalized,
-      totalBytes: total > 0 ? total : null,
-      downloadedBytes: downloaded > 0 ? downloaded : null,
-      errorMessage: errorMessage,
-    );
+    _queueNotifier?.updateProgress(chartId,
+        status: status,
+        progress: progressNormalized,
+        totalBytes: total > 0 ? total : null,
+        downloadedBytes: downloaded > 0 ? downloaded : null,
+        errorMessage: errorMessage);
   }
 
   /// Sort queue by priority
@@ -1017,6 +1123,33 @@ class DownloadServiceImpl implements DownloadService {
 
     // Remove from queue
     _downloadQueue.removeWhere((item) => item.chartId == chartId);
+  }
+
+  String _deriveErrorCategory(Object error) {
+    if (error is AppError) {
+      switch (error.type) {
+        case AppErrorType.network:
+          final msg = error.message.toLowerCase();
+          if (msg.contains('timeout')) return 'timeout';
+          return 'network';
+        case AppErrorType.storage:
+          final msg = error.message.toLowerCase();
+          if (msg.contains('disk') || msg.contains('space')) return 'disk';
+          return 'storage';
+        default:
+          return 'unknown';
+      }
+    } else if (error is DioException) {
+      if (error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout ||
+          error.type == DioExceptionType.sendTimeout) {
+        return 'timeout';
+      }
+      return 'network';
+    } else if (error is FileSystemException) {
+      return 'disk';
+    }
+    return 'unknown';
   }
 
   Future<int> _getPartialBytes(String chartId, DownloadProgress? existing) async {
