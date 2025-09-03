@@ -47,6 +47,8 @@ class DownloadServiceImpl implements DownloadService {
   Future<bool> Function()? _networkSuitabilityProbe;
   Timer? _networkRetryTimer;
   final Duration _networkRetryInterval = const Duration(seconds: 1);
+  // Optional injected rename implementation for testing retry/fallback logic.
+  final Future<void> Function(File tempFile, String finalPath)? _renameImpl;
 
   DownloadServiceImpl({
     required HttpClientService httpClient,
@@ -55,10 +57,15 @@ class DownloadServiceImpl implements DownloadService {
     required ErrorHandler errorHandler,
     DownloadQueueNotifier? queueNotifier,
     Future<bool> Function()? networkSuitabilityProbe,
+    /// Internal/testing hook to override the low-level rename call used by
+    /// [_safeRename]. This lets tests simulate transient failures to drive
+    /// retry and fallback copy logic without relying on OS-level file locks.
+    Future<void> Function(File tempFile, String finalPath)? renameImpl,
   })  : _httpClient = httpClient,
         _storageService = storageService,
         _logger = logger,
-        _errorHandler = errorHandler {
+        _errorHandler = errorHandler,
+        _renameImpl = renameImpl {
     _queueNotifier = queueNotifier;
     _networkSuitabilityProbe = networkSuitabilityProbe;
   }
@@ -155,10 +162,10 @@ class DownloadServiceImpl implements DownloadService {
 
         // If a previous file exists, remove it to allow atomic rename on all platforms (Windows can't overwrite on rename)
         final finalFile = File(filePath);
-        if (await finalFile.exists()) {
-          await finalFile.delete();
-        }
-        await tempFile.rename(filePath);
+        // Ensure no conflicting entity (file or directory) exists at final path
+        await _prepareFinalPath(File(filePath));
+        // Attempt atomic rename with retry fallback (Windows may transiently lock files)
+        await _safeRename(tempFile, filePath);
       }
 
       // Verify final file
@@ -477,6 +484,9 @@ class DownloadServiceImpl implements DownloadService {
     
     return const Stream.empty();
   }
+
+  @override
+  Stream<double> progressStream(String chartId) => getDownloadProgress(chartId);
 
   // Enhanced queue management methods
 
@@ -1436,5 +1446,73 @@ class DownloadServiceImpl implements DownloadService {
     _pendingNotifications.clear();
 
     _logger.info('Enhanced download service disposed', context: 'Download');
+  }
+
+  // ---- Filesystem mitigation helpers (Phase E) ----
+
+  /// Removes any existing entity at the target path (file or directory) with retries.
+  Future<void> _prepareFinalPath(File finalFile) async {
+    final pathStr = finalFile.path;
+    final entityType = await FileSystemEntity.type(pathStr);
+    if (entityType == FileSystemEntityType.notFound) return;
+    for (int attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (entityType == FileSystemEntityType.directory) {
+          // Unexpected: a directory where a file should be.
+          _logger.warning('Directory exists at target file path; removing: $pathStr', context: 'Download');
+          final dir = Directory(pathStr);
+          if (await dir.exists()) await dir.delete(recursive: true);
+        } else if (entityType == FileSystemEntityType.file) {
+          final existing = File(pathStr);
+          if (await existing.exists()) await existing.delete();
+        } else {
+          // Symlink or other: attempt generic delete.
+          final fse = FileSystemEntity.typeSync(pathStr);
+          if (fse != FileSystemEntityType.notFound) {
+            try { await File(pathStr).delete(); } catch (_) {}
+            try { await Directory(pathStr).delete(recursive: true); } catch (_) {}
+          }
+        }
+        return; // success or path gone
+      } catch (e) {
+        if (attempt == 2) {
+          _logger.warning('Failed to clear existing target path after retries: $pathStr', context: 'Download');
+          rethrow;
+        }
+        final backoff = Duration(milliseconds: 30 * (attempt + 1));
+        await Future.delayed(backoff);
+      }
+    }
+  }
+
+  /// Performs a safe rename with small retry/backoff; falls back to copy+delete if rename keeps failing.
+  Future<void> _safeRename(File tempFile, String finalPath) async {
+    const int maxAttempts = 3;
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        if (_renameImpl != null) {
+          await _renameImpl!(tempFile, finalPath);
+        } else {
+          await tempFile.rename(finalPath);
+        }
+        return;
+      } catch (e) {
+        if (attempt == maxAttempts - 1) {
+          _logger.warning('Rename failed after retries; attempting copy fallback for $finalPath', context: 'Download');
+          try {
+            final target = File(finalPath);
+            await target.writeAsBytes(await tempFile.readAsBytes(), flush: true);
+            await tempFile.delete();
+            return;
+          } catch (copyError) {
+            _logger.error('Copy fallback failed for $finalPath', exception: copyError, context: 'Download');
+            rethrow;
+          }
+        } else {
+          final delay = Duration(milliseconds: 40 * (attempt + 1));
+          await Future.delayed(delay);
+        }
+      }
+    }
   }
 }

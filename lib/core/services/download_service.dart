@@ -138,6 +138,10 @@ abstract class DownloadService {
   /// Gets download progress for a specific chart
   Stream<double> getDownloadProgress(String chartId);
 
+  /// (New) Returns a broadcast stream of normalized progress values (0..1) for the chart.
+  /// Alias of getDownloadProgress for clarity; existing implementations may just delegate.
+  Stream<double> progressStream(String chartId) => getDownloadProgress(chartId);
+
   // New enhanced methods for queue management
   
   /// Adds a chart to the download queue with priority

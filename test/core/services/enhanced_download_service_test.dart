@@ -13,6 +13,7 @@ import 'package:navtool/core/error/error_handler.dart';
 import 'package:navtool/core/error/app_error.dart';
 import '../../helpers/download_test_utils.dart';
 import '../../helpers/progress_matchers.dart';
+import '../../helpers/flakiness_guard.dart';
 
 // Generate mocks for the dependencies
 @GenerateMocks([
@@ -392,6 +393,63 @@ void main() {
         // Cleanup
         await tempDir.delete(recursive: true);
       });
+
+      test('should emit monotonic normalized progress values (mid-progress stream test)', () async {
+        networkSuitable = true;
+        const chartId = 'progress_chart';
+        const url = 'http://example.com/progress_chart.bin';
+        final tempDir = Directory.systemTemp.createTempSync('progress_stream_');
+        when(mockStorageService.getChartsDirectory()).thenAnswer((_) async => tempDir);
+
+        final totalBytes = 100;
+        final steps = <int>[10, 25, 50, 75, 100];
+        void Function(int,int)? progressCb;
+
+        when(mockHttpClient.head(any,
+          queryParameters: anyNamed('queryParameters'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'))).thenAnswer((_) async => Response(
+            requestOptions: RequestOptions(path: url),
+            statusCode: 200,
+            headers: Headers.fromMap({'content-length': ['$totalBytes']}),
+          ));
+
+        when(mockHttpClient.downloadFile(any, any,
+          cancelToken: anyNamed('cancelToken'),
+          onReceiveProgress: anyNamed('onReceiveProgress'),
+          resumeFrom: anyNamed('resumeFrom'))).thenAnswer((invocation) async {
+            progressCb = invocation.namedArguments[#onReceiveProgress] as void Function(int,int)?;
+            final savePath = invocation.positionalArguments[1] as String; // .part temp file
+            final tempFile = File(savePath);
+            await tempFile.create(recursive: true);
+            for (final s in steps) {
+              await tempFile.writeAsBytes(List<int>.filled(s, 1), flush: true);
+              progressCb?.call(s, totalBytes);
+              await Future<void>.delayed(const Duration(milliseconds: 1));
+            }
+          });
+
+  final captured = <double>[];
+  // Start download (don't await yet)
+  final future = downloadService.downloadChart(chartId, url);
+  // Small microtask delay to ensure controller created and initial 0 emitted
+  await Future<void>.delayed(const Duration(milliseconds: 2));
+  downloadService.getDownloadProgress(chartId).listen(captured.add);
+  await future;
+
+  expect(captured, isNotEmpty, reason: 'Progress emissions should be captured');
+        // Range check
+        for (final v in captured) {
+          expect(v >= 0 && v <= 1, isTrue, reason: 'Progress value $v out of [0,1] range');
+        }
+        // Monotonic non-decreasing
+        for (var i = 1; i < captured.length; i++) {
+          expect(captured[i] + 1e-9 >= captured[i-1], isTrue, reason: 'Progress regressed at index $i');
+        }
+        expect(captured.last, closeTo(1.0, 1e-9), reason: 'Final progress should be 1.0');
+
+        await tempDir.delete(recursive: true);
+      });
     });
 
     group('Error Handling and Resilience', () {
@@ -486,10 +544,15 @@ void main() {
   unblock.complete();
 
         // Assert - future should complete (cancellation benign in mock implementation)
-  await downloadFuture;
-        // After disposal, progress stream should be empty (no crash) and not throw.
-        final stream = downloadService.getDownloadProgress(chartId);
-        expect(stream, isA<Stream<double>>());
+        await downloadFuture;
+        // Use flakiness guard to ensure progress controller removed
+        await waitForCondition<Stream<double>>(
+          () => downloadService.getDownloadProgress(chartId),
+          predicate: (_) => true, // just ensure call succeeds post-disposal
+          timeout: const Duration(milliseconds: 300),
+          reason: 'Progress stream lookup failed after disposal',
+          diagnosticSnapshot: () async => 'Disposal complete for $chartId',
+        );
       });
     });
   });

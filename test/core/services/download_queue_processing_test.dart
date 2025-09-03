@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import '../../helpers/timing_harness.dart';
+import '../../helpers/timing_harness.dart'; // legacy predicate helper (some tests still reference)
+import '../../helpers/flakiness_guard.dart';
 import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
 import 'package:dio/dio.dart';
@@ -81,10 +82,12 @@ void main() {
 
         // Act
   await downloadService.addToQueue(chartId, url);
-  await waitForPredicate(
-    () => downloadStarts > 0,
+  await waitForCondition<int>(
+    () async => downloadStarts,
+    predicate: (v) => v > 0,
     timeout: const Duration(milliseconds: 600),
     reason: 'Download did not start automatically',
+    diagnosticSnapshot: () async => 'downloadStarts=$downloadStarts',
   );
 
         // Assert - download should have started automatically
@@ -134,8 +137,9 @@ void main() {
         // Act - add two charts to queue
   await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
   await downloadService.addToQueue('chart2', 'http://example.com/chart2.zip');
-  await waitForPredicate(
-    () => started1,
+  await waitForCondition<bool>(
+    () async => started1,
+    predicate: (v) => v,
     timeout: const Duration(milliseconds: 600),
     reason: 'First download did not start',
   );
@@ -155,8 +159,9 @@ void main() {
 
         // Complete first download
   completer1.complete();
-  await waitForPredicate(
-    () => started2,
+  await waitForCondition<bool>(
+    () async => started2,
+    predicate: (v) => v,
     timeout: const Duration(milliseconds: 800),
     reason: 'Second download did not start after first completion',
   );
@@ -202,17 +207,21 @@ void main() {
     // priority item is added (since auto-processing starts immediately).
   await downloadService.addToQueue('chart-high', 'http://example.com/chart-high.zip', priority: DownloadPriority.high);
   // Pump until first high priority starts (progress via captured order)
-  await waitForPredicate(
-    () => downloadOrder.isNotEmpty,
+  await waitForCondition<List<String>>(
+    () async => downloadOrder,
+    predicate: (list) => list.isNotEmpty,
     timeout: const Duration(milliseconds: 300),
     reason: 'High priority download did not begin',
+    diagnosticSnapshot: () async => 'order=${downloadOrder.join(',')}',
   );
   await downloadService.addToQueue('chart-normal', 'http://example.com/chart-normal.zip', priority: DownloadPriority.normal);
   await downloadService.addToQueue('chart-low', 'http://example.com/chart-low.zip', priority: DownloadPriority.low);
-  await waitForPredicate(
-    () => downloadOrder.length >= 3,
+  await waitForCondition<List<String>>(
+    () async => downloadOrder,
+    predicate: (list) => list.length >= 3,
     timeout: const Duration(milliseconds: 800),
     reason: 'Subsequent downloads did not record order',
+    diagnosticSnapshot: () async => 'order=${downloadOrder.join(',')}',
   );
 
         // Assert - high priority should be downloaded first
@@ -254,10 +263,12 @@ void main() {
 
         // Act
         await downloadService.addToQueue(chartId, url);
-        await waitForPredicate(
-          () => warningMessages.any((m) => m.contains('Download attempt 1 failed')),
+        await waitForCondition<List<String>>(
+          () async => warningMessages,
+          predicate: (msgs) => msgs.any((m) => m.contains('Download attempt 1 failed')),
           timeout: const Duration(milliseconds: 600),
           reason: 'Retry warning not logged in time',
+          diagnosticSnapshot: () async => 'warnings=${warningMessages.join('|')}',
         );
 
         // Assert - at least one retry warning logged
@@ -303,8 +314,9 @@ void main() {
         // Act - add two charts to queue
   await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
   await downloadService.addToQueue('chart2', 'http://example.com/chart2.zip');
-  await waitForPredicate(
-    () => downloadCount == 1,
+  await waitForCondition<int>(
+    () async => downloadCount,
+    predicate: (v) => v == 1,
     timeout: const Duration(milliseconds: 400),
     reason: 'First download did not start before completing it',
   );
@@ -312,8 +324,9 @@ void main() {
         // Complete first download
         completer1.complete();
 
-  await waitForPredicate(
-    () => downloadCount == 2,
+  await waitForCondition<int>(
+    () async => downloadCount,
+    predicate: (v) => v == 2,
     timeout: const Duration(milliseconds: 600),
     reason: 'Second download did not start after first completion',
   );
