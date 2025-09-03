@@ -68,3 +68,30 @@ await waitForCondition<List<String>>(
   diagnosticSnapshot: () async => 'last=${events.isNotEmpty ? events.last : 'none'}',
 );
 ```
+
+## Logger Verification Best Practices
+
+To reduce brittleness and over-specification in tests that assert logging behavior, use the centralized helpers in `test/helpers/verify_helpers.dart`:
+
+Helpers:
+```dart
+verifyInfoLogged(mockLogger, 'Chart download completed', expectedContext: 'Download');
+verifyWarningLogged(mockLogger, RegExp(r'Failed .* state')); // regex patterns supported
+verifyErrorLogged(mockLogger, 'Failed to fix chart discovery cache');
+```
+
+Guidelines:
+1. Prefer substring or concise RegExp patterns over full message literals (allows minor wording/format changes without breaking tests).
+2. Supply `expectedContext` only when the context string is semantically important; otherwise omit it to accept any context.
+3. For negative assertions (ensuring something was NOT logged) keep direct `verifyNever` calls – helpers intentionally focus on positive verification.
+4. Avoid asserting debug-level logs unless they encode functional behavior (debug logs may be pruned or toggled in production configurations).
+5. When adding new log-producing branches, prefer a short stable prefix (e.g. `Checksum verification passed`) so tests can match on that anchor.
+
+Migration Status:
+- Applied helpers to: download queue processing (pilot), checksum verification, persistence, NOAA chart discovery cache fix.
+- Pending broader rollout: other download service tests, performance tests (may skip – high churn outputs), settings/navigation service tests.
+
+Future Enhancements:
+- Add `verifyNeverInfoLogged` style convenience wrappers if negative checks become frequent.
+- Introduce a custom matcher for ordered log sequences if ordering becomes significant in behavior tests.
+

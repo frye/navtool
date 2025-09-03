@@ -143,7 +143,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
 
           final bool compact = constraints.maxHeight > 0 && constraints.maxHeight < 300;
 
-          // Always scrollable to avoid RenderFlex overflow in extremely small test harness constraints.
+          // Wrap everything in a SingleChildScrollView and force the inner content list to shrinkWrap
           return SafeArea(
             top: false,
             bottom: false,

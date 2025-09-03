@@ -13,6 +13,7 @@ import 'package:navtool/core/services/storage_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/error_handler.dart';
 import '../../helpers/download_test_utils.dart';
+import '../../helpers/verify_helpers.dart';
 
 // Generate mocks for the dependencies
 @GenerateMocks([
@@ -96,10 +97,7 @@ void main() {
           onReceiveProgress: anyNamed('onReceiveProgress')))
             .called(1);
 
-        verify(mockLogger.info(
-          argThat(contains('Starting download for chart: $chartId')),
-          context: 'Download'
-        )).called(1);
+        verifyInfoLogged(mockLogger, 'Starting download for chart: $chartId');
 
         // Cleanup
         await retryDeleteDirectory(tempDir);
@@ -271,11 +269,8 @@ void main() {
           diagnosticSnapshot: () async => 'warnings=${warningMessages.join('|')}',
         );
 
-        // Assert - at least one retry warning logged
-        expect(
-          warningMessages.where((m) => m.contains('Download attempt 1 failed')).length,
-          greaterThanOrEqualTo(1),
-        );
+        // Assert - at least one retry warning logged (pattern based)
+        expect(warningMessages.any((m) => m.contains('Download attempt 1 failed')), isTrue);
 
         // Cleanup
         await retryDeleteDirectory(tempDir);

@@ -11,6 +11,7 @@ import 'package:navtool/core/services/download_service_impl.dart';
 import 'package:navtool/core/services/http_client_service.dart';
 import 'package:navtool/core/services/storage_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
+import '../../helpers/verify_helpers.dart';
 import 'package:navtool/core/error/error_handler.dart';
 import 'package:navtool/core/error/app_error.dart';
 import '../../helpers/download_test_utils.dart';
@@ -99,15 +100,8 @@ void main() {
         await downloadService.downloadChart(chartId, url, expectedChecksum: expectedChecksum);
 
         // Assert
-        verify(mockLogger.info(
-          argThat(contains('Checksum verification passed')),
-          context: 'Download'
-        )).called(1);
-
-        verify(mockLogger.info(
-          argThat(contains('Chart download completed')),
-          context: 'Download'
-        )).called(1);
+        verifyInfoLogged(mockLogger, 'Checksum verification passed', expectedContext: 'Download');
+        verifyInfoLogged(mockLogger, 'Chart download completed', expectedContext: 'Download');
 
         // Cleanup
         await retryDeleteDirectory(tempDir);
@@ -220,16 +214,9 @@ void main() {
         await downloadService.downloadChart(chartId, url); // No checksum provided
 
         // Assert - should complete without verification
-        verify(mockLogger.info(
-          argThat(contains('Chart download completed')),
-          context: 'Download'
-        )).called(1);
-
-        // Should NOT call checksum verification
-        verifyNever(mockLogger.info(
-          argThat(contains('Checksum verification passed')),
-          context: 'Download'
-        ));
+        verifyInfoLogged(mockLogger, 'Chart download completed', expectedContext: 'Download');
+        // Should NOT call checksum verification (keep explicit negative verify for clarity)
+        verifyNever(mockLogger.info(argThat(contains('Checksum verification passed')), context: anyNamed('context')));
 
         // Cleanup
         await retryDeleteDirectory(tempDir);

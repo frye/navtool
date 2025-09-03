@@ -30,7 +30,7 @@ void main() {
       mockGpsService = MockGpsService();
     });
 
-    Widget createTestWidget({bool withNavigation = false}) {
+  Widget createTestWidget({bool withNavigation = false}) {
       return ProviderScope(
         overrides: [
           noaaChartDiscoveryServiceProvider.overrideWithValue(mockDiscoveryService),
@@ -583,8 +583,22 @@ void main() {
         expect(find.byType(ListView), findsOneWidget);
         expect(find.text('Test Chart 0'), findsOneWidget);
         
-        // Scroll to load more items and check that more charts are available
-        await tester.drag(find.byType(ListView), const Offset(0, -2000));
+  // Scroll incrementally to avoid off-screen drag warnings and trigger lazy list build.
+  // NOTE:
+  // We deliberately scroll the outer SingleChildScrollView instead of the inner ListView.
+  // The ListView is shrinkWrapped with NeverScrollableScrollPhysics so direct drags on it
+  // produce framework warnings ("Scroll gesture was ignored because ..."). An earlier
+  // experiment added an enableScrolling flag to make the ListView independently scrollable,
+  // but that introduced multiple layout/semantics regressions (RenderBox not laid out,
+  // overflows, null check issues). Keeping the production layout intact and adapting the
+  // test to scroll the legitimate scrollable ancestor removes the warning without risking
+  // stability. If the layout is ever refactored to a sliver-based structure, this can be
+  // revisited.
+        final scrollFinder = find.byType(SingleChildScrollView);
+        for (var i = 0; i < 6; i++) {
+          await tester.drag(scrollFinder, const Offset(0, -350));
+          await tester.pump(const Duration(milliseconds: 120)); // allow build/layout
+        }
         await tester.pumpAndSettle();
         
         // Check that we have loaded charts further down the list

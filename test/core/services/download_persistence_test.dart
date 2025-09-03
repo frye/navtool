@@ -10,6 +10,7 @@ import 'package:navtool/core/services/download_service_impl.dart';
 import 'package:navtool/core/services/http_client_service.dart';
 import 'package:navtool/core/services/storage_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
+import '../../helpers/verify_helpers.dart';
 import 'package:navtool/core/error/error_handler.dart';
 import 'package:navtool/core/state/download_state.dart';
 import '../../helpers/download_test_utils.dart';
@@ -150,10 +151,7 @@ void main() {
         await downloadService.recoverDownloads([]);
 
         // Assert
-        verify(mockLogger.info(
-          argThat(contains('Download state loaded from disk')),
-          context: 'Download'
-        )).called(1);
+        verifyInfoLogged(mockLogger, 'Download state loaded from disk', expectedContext: 'Download');
 
         // Verify queue is loaded
         final queue = await downloadService.getDetailedQueue();
@@ -177,10 +175,7 @@ void main() {
         await downloadService.recoverDownloads([]);
 
         // Assert
-        verify(mockLogger.debug(
-          argThat(contains('No persistent download state found')),
-          context: 'Download'
-        )).called(1);
+        verify(mockLogger.debug(argThat(contains('No persistent download state found')), context: anyNamed('context'))).called(1); // Keep as direct debug verify (no helper yet for debug)
 
         // Cleanup
           await retryDeleteDirectory(tempDir);
@@ -202,10 +197,7 @@ void main() {
         await downloadService.recoverDownloads([]);
 
         // Assert
-        verify(mockLogger.warning(
-          argThat(contains('Failed to load download state')),
-          context: 'Download'
-        )).called(1);
+        verifyWarningLogged(mockLogger, 'Failed to load download state', expectedContext: 'Download');
 
         // Cleanup
           await retryDeleteDirectory(tempDir);

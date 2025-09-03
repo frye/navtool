@@ -4,6 +4,7 @@ import 'package:mockito/mockito.dart';
 import 'package:navtool/core/models/chart.dart';
 import 'package:navtool/core/models/geographic_bounds.dart';
 import 'package:navtool/core/logging/app_logger.dart';
+import '../../../helpers/verify_helpers.dart';
 import 'package:navtool/core/services/noaa/chart_catalog_service.dart';
 import 'package:navtool/core/services/noaa/noaa_chart_discovery_service.dart';
 import 'package:navtool/core/services/noaa/state_region_mapping_service.dart';
@@ -67,10 +68,10 @@ void main() {
         verify(mockCatalogService.refreshCatalog(force: true)).called(1);
         verify(mockCatalogService.ensureCatalogBootstrapped()).called(1);
         
-        // Verify logging
-        verify(mockLogger.info('Starting chart discovery cache fix for invalid bounds issue')).called(1);
-        verify(mockLogger.warning('Found 3 charts with invalid bounds - clearing and forcing refresh')).called(1);
-        verify(mockLogger.info('Chart discovery cache fix completed: cleared 3 charts, forcing catalog refresh')).called(1);
+  // Verify logging (pattern-based for resilience)
+  verifyInfoLogged(mockLogger, 'Starting chart discovery cache fix for invalid bounds issue');
+  verifyWarningLogged(mockLogger, RegExp(r'Found 3 charts? with invalid bounds'));
+  verifyInfoLogged(mockLogger, RegExp(r'cache fix completed: cleared 3 charts'));
       });
 
       test('should handle clean cache gracefully', () async {
@@ -90,9 +91,9 @@ void main() {
         verifyNever(mockCatalogService.refreshCatalog(force: true));
         verifyNever(mockCatalogService.ensureCatalogBootstrapped());
         
-        // Verify logging
-        verify(mockLogger.info('Starting chart discovery cache fix for invalid bounds issue')).called(1);
-        verify(mockLogger.info('No charts with invalid bounds found - cache is clean')).called(1);
+  // Verify logging (pattern-based)
+  verifyInfoLogged(mockLogger, 'Starting chart discovery cache fix for invalid bounds issue');
+  verifyInfoLogged(mockLogger, RegExp(r'No charts? with invalid bounds'));
       });
 
       test('should handle storage errors gracefully', () async {
@@ -106,8 +107,8 @@ void main() {
           throwsA(isA<Exception>()),
         );
         
-        // Verify error logging
-        verify(mockLogger.error('Failed to fix chart discovery cache', exception: anyNamed('exception'))).called(1);
+  // Verify error logging
+  verifyErrorLogged(mockLogger, 'Failed to fix chart discovery cache');
       });
 
       test('should handle catalog refresh errors gracefully', () async {
