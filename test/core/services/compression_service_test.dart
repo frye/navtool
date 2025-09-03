@@ -9,6 +9,7 @@ import 'package:navtool/core/services/compression_service_impl.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/models/compression_result.dart';
 import 'package:navtool/core/error/app_error.dart';
+import '../../helpers/verify_helpers.dart';
 
 // Generate mocks
 @GenerateMocks([AppLogger])
@@ -74,7 +75,9 @@ void main() {
         expect(result.compressionTime.inMilliseconds, greaterThan(0));
 
         // Verify logging (info called once for compression start and once for completion)
-        verify(mockLogger.info(any, context: anyNamed('context'))).called(2);
+  // Two info logs: start + completion (context 'Compression')
+  verifyInfoLogged(mockLogger, RegExp(r'Compressing chart data:'), expectedContext: 'Compression', times: 1);
+  verifyInfoLogged(mockLogger, RegExp(r'Chart compression completed:'), expectedContext: 'Compression', times: 1);
       });
 
       test('should decompress S-57 chart file data successfully', () async {
@@ -505,7 +508,7 @@ void main() {
         );
 
         // Verify error was logged
-        verify(mockLogger.error(any, exception: anyNamed('exception'))).called(1);
+  verifyErrorLogged(mockLogger, RegExp(r'decompression failed|Failed to decompress'), times: 1);
       });
 
       test('should handle memory limitations for large files', () async {

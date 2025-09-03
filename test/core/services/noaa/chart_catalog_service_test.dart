@@ -12,6 +12,7 @@ import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/app_error.dart';
 import 'package:navtool/core/services/database_storage_service.dart';
 import '../../../helpers/noaa_test_utils.dart';
+import '../../../helpers/verify_helpers.dart';
 
 // Generate mocks for dependencies
 @GenerateMocks([CacheService, AppLogger, NoaaApiClient, DatabaseStorageService])
@@ -95,10 +96,7 @@ void main() {
 
         // Assert
         expect(result, isNull);
-        verify(mockLogger.error(
-          'Failed to get cached chart $chartId',
-          exception: anyNamed('exception'),
-        )).called(1);
+        verifyErrorLogged(mockLogger, 'Failed to get cached chart $chartId');
       });
 
       test('should validate chart ID input', () async {
@@ -135,7 +133,7 @@ void main() {
 
         // Assert
         verify(mockCacheService.store('chart_${chart.id}', any, maxAge: anyNamed('maxAge'))).called(1);
-        verify(mockLogger.info('Cached chart metadata: ${chart.id}')).called(1);
+  verifyInfoLogged(mockLogger, 'Cached chart metadata: ${chart.id}');
       });
 
       test('should handle cache errors', () async {
@@ -393,7 +391,7 @@ void main() {
         // Assert
         expect(result, isTrue);
         verify(mockCacheService.clear()).called(1);
-        verify(mockLogger.info('Chart catalog cache refreshed')).called(1);
+  verifyInfoLogged(mockLogger, 'Chart catalog cache refreshed');
       });
 
       test('should force refresh even if not necessary', () async {
