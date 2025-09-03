@@ -86,78 +86,97 @@ class NoaaApiClientImpl implements NoaaApiClient {
 
   @override
   Future<String> fetchChartCatalog({Map<String, String>? filters}) async {
-    _logger.info('Fetching NOAA chart catalog', context: 'NoaaApiClient', exception: filters);
-    
+    _logger.info('Fetching NOAA chart catalog (paginated)', context: 'NoaaApiClient', exception: filters);
+
     try {
-      // Apply rate limiting before making the request
-      await _rateLimiter.acquire();
+      final List<dynamic> allFeatures = [];
+      int offset = 0;
+      const int pageSize = 1000; // ArcGIS transfer limit per request
+      bool more = true;
+      Map<String, dynamic>? templateResponse; // Keep last response structure
 
-      // Build ArcGIS REST query parameters for chart catalog
-      final queryParams = <String, String>{
-        'where': '1=1', // Return all features
-        'outFields': '*', // Return all fields
-        'f': 'json', // Return JSON format (not GeoJSON for easier parsing)
-        'returnGeometry': 'true', // Include geometry for bounds calculation
-        'resultRecordCount': '1000', // Limit results to avoid timeouts
-      };
+      while (more) {
+        await _rateLimiter.acquire();
+        final queryParams = <String, String>{
+          'where': '1=1',
+          'outFields': '*',
+          'f': 'json',
+          'returnGeometry': 'true',
+          'resultRecordCount': '$pageSize',
+          'resultOffset': '$offset',
+        };
+        if (filters != null) queryParams.addAll(filters);
 
-      // Merge any additional filters provided
-      if (filters != null) {
-        queryParams.addAll(filters);
-      }
-
-      // Make the HTTP request to NOAA services
-      final response = await _httpClient.get(
-        catalogEndpoint,
-        queryParameters: queryParams,
-      );
-
-      if (response.statusCode != 200) {
-        final statusCode = response.statusCode ?? 0;
-        throw NoaaApiException(
-          'Failed to fetch chart catalog: HTTP $statusCode',
-          errorCode: 'CATALOG_FETCH_ERROR',
-          isRetryable: statusCode >= 500,
+        final response = await _httpClient.get(
+          catalogEndpoint,
+          queryParameters: queryParams,
         );
-      }
 
-      // Get the already parsed JSON data from Dio
-      Map<String, dynamic> responseData;
-      if (response.data is String) {
-        // If it's a string, parse it as JSON
-        try {
-          responseData = jsonDecode(response.data as String) as Map<String, dynamic>;
-        } on FormatException catch (e) {
+        if (response.statusCode != 200) {
+          final statusCode = response.statusCode ?? 0;
+            throw NoaaApiException(
+              'Failed to fetch chart catalog page @offset=$offset: HTTP $statusCode',
+              errorCode: 'CATALOG_FETCH_ERROR',
+              isRetryable: statusCode >= 500,
+            );
+        }
+
+        Map<String, dynamic> responseData;
+        if (response.data is String) {
+          try {
+            responseData = jsonDecode(response.data as String) as Map<String, dynamic>;
+          } on FormatException catch (e) {
+            throw NoaaApiException(
+              'Invalid JSON response (offset $offset): ${e.message}',
+              errorCode: 'INVALID_JSON_RESPONSE',
+              isRetryable: false,
+            );
+          }
+        } else if (response.data is Map<String, dynamic>) {
+          responseData = response.data as Map<String, dynamic>;
+        } else {
           throw NoaaApiException(
-            'Invalid JSON response from chart catalog endpoint: ${e.message}',
-            errorCode: 'INVALID_JSON_RESPONSE',
+            'Unexpected response type (offset $offset): ${response.data.runtimeType}',
+            errorCode: 'INVALID_RESPONSE_TYPE',
             isRetryable: false,
           );
         }
-      } else if (response.data is Map<String, dynamic>) {
-        // If it's already a Map, use it directly
-        responseData = response.data as Map<String, dynamic>;
-      } else {
-        throw NoaaApiException(
-          'Unexpected response data type: ${response.data.runtimeType}',
-          errorCode: 'INVALID_RESPONSE_TYPE',
-          isRetryable: false,
-        );
+
+        final features = (responseData['features'] as List<dynamic>?) ?? const [];
+        if (templateResponse == null) {
+          templateResponse = Map<String, dynamic>.from(responseData)..remove('features');
+        }
+        allFeatures.addAll(features);
+
+        final exceeded = responseData['exceededTransferLimit'] == true;
+        _logger.info('Fetched page: offset=$offset features=${features.length} exceeded=$exceeded', context: 'NoaaApiClient');
+
+        if (!exceeded || features.isEmpty) {
+          more = false;
+        } else {
+          offset += features.length;
+        }
+        // Safety break to avoid infinite loop
+        if (offset > 20000) {
+          _logger.warning('Stopping pagination early after 20000 features to avoid runaway loop');
+          more = false;
+        }
       }
-      
-      // Convert the parsed JSON back to string for the interface contract
-      final catalogData = jsonEncode(responseData);
-      
-      _logger.info('Successfully fetched chart catalog', 
-        context: 'NoaaApiClient');
-      
-      return catalogData;
+
+      final merged = <String, dynamic>{
+        ...?templateResponse,
+        'features': allFeatures,
+        'totalFeatures': allFeatures.length,
+      };
+
+      _logger.info('Successfully fetched full catalog: ${allFeatures.length} features', context: 'NoaaApiClient');
+      return jsonEncode(merged);
     } on DioException catch (e) {
       final exception = _convertDioExceptionToNoaaException(e);
-      _logger.error('Failed to fetch chart catalog', context: 'NoaaApiClient', exception: exception);
+      _logger.error('Failed to fetch chart catalog (paginated)', context: 'NoaaApiClient', exception: exception);
       throw exception;
     } catch (e) {
-      _logger.error('Unexpected error fetching chart catalog', context: 'NoaaApiClient', exception: e);
+      _logger.error('Unexpected error during paginated catalog fetch', context: 'NoaaApiClient', exception: e);
       rethrow;
     }
   }

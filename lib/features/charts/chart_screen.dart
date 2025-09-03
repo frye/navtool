@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../core/models/chart.dart';
 import 'dart:math' as math;
 import '../../core/models/chart_models.dart';
 import '../../core/services/chart_rendering_service.dart';
@@ -9,11 +10,13 @@ import 'chart_widget.dart';
 
 /// Screen that displays maritime charts with navigation controls
 class ChartScreen extends StatefulWidget {
-  final String? chartTitle;
-  final LatLng? initialPosition;
+  final Chart? chart; // Real NOAA chart metadata (optional for backward compatibility)
+  final String? chartTitle; // Fallback title if chart not provided
+  final LatLng? initialPosition; // Fallback initial position
 
   const ChartScreen({
     super.key,
+    this.chart,
     this.chartTitle,
     this.initialPosition,
   });
@@ -30,15 +33,22 @@ class _ChartScreenState extends State<ChartScreen> {
   @override
   void initState() {
     super.initState();
-    _currentPosition = widget.initialPosition ?? const LatLng(37.7749, -122.4194);
-    _features = _generateSampleFeatures();
+    if (widget.chart != null) {
+      // Center at chart bounds center
+      final c = widget.chart!.bounds.center;
+      _currentPosition = LatLng(c.latitude, c.longitude);
+      _features = _generateFeaturesFromChart(widget.chart!);
+    } else {
+      _currentPosition = widget.initialPosition ?? const LatLng(37.7749, -122.4194);
+      _features = _generateSampleFeatures(); // fallback for legacy route usage
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.chartTitle ?? 'Marine Chart'),
+  title: Text(widget.chart?.title ?? widget.chartTitle ?? 'Marine Chart'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
@@ -130,7 +140,7 @@ class _ChartScreenState extends State<ChartScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Chart: ${widget.chartTitle ?? 'Demo Chart'}',
+                  'Chart: ${widget.chart?.title ?? widget.chartTitle ?? 'Demo Chart'}',
                   style: Theme.of(context).textTheme.bodySmall,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -192,22 +202,38 @@ class _ChartScreenState extends State<ChartScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Chart Information'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildInfoRow('Chart Title', widget.chartTitle ?? 'Demo Chart'),
-            _buildInfoRow('Current Position', 
-                '${_currentPosition.latitude.toStringAsFixed(6)}, ${_currentPosition.longitude.toStringAsFixed(6)}'),
-            _buildInfoRow('Features Loaded', '${_features.length}'),
-            _buildInfoRow('Display Mode', _displayMode.name),
-            const SizedBox(height: 16),
-            const Text(
-              'This is a demonstration chart showing basic marine features. '
-              'In a production version, real S-57 chart data would be loaded.',
-              style: TextStyle(fontSize: 12),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 400),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildInfoRow('Chart Title', widget.chart?.title ?? widget.chartTitle ?? 'Demo Chart'),
+                if (widget.chart != null) ...[
+                  _buildInfoRow('Chart ID', widget.chart!.id),
+                  _buildInfoRow('Scale', '1:${widget.chart!.scale}'),
+                  _buildInfoRow('Source', widget.chart!.source.displayName),
+                  _buildInfoRow('Bounds',
+                      'N:${widget.chart!.bounds.north.toStringAsFixed(4)} '
+                      'S:${widget.chart!.bounds.south.toStringAsFixed(4)} '
+                      'E:${widget.chart!.bounds.east.toStringAsFixed(4)} '
+                      'W:${widget.chart!.bounds.west.toStringAsFixed(4)}'),
+                ],
+                _buildInfoRow('Current Position', 
+                    '${_currentPosition.latitude.toStringAsFixed(6)}, ${_currentPosition.longitude.toStringAsFixed(6)}'),
+                _buildInfoRow('Features Loaded', '${_features.length}'),
+                _buildInfoRow('Display Mode', _displayMode.name),
+                const SizedBox(height: 16),
+                Text(
+                  widget.chart == null
+                      ? 'Demonstration chart with sample features (no NOAA chart provided).'
+                      : 'Rendering simplified bounding box for real NOAA chart metadata.',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
         actions: [
           TextButton(
@@ -317,7 +343,43 @@ class _ChartScreenState extends State<ChartScreen> {
     );
   }
 
-  /// Generate sample maritime features for demonstration
+  /// Generate minimal real features from a NOAA chart's bounding box
+  List<MaritimeFeature> _generateFeaturesFromChart(Chart chart) {
+    final b = chart.bounds;
+  final c = b.center;
+  final center = LatLng(c.latitude, c.longitude);
+    final polygon = [
+      LatLng(b.north, b.west),
+      LatLng(b.north, b.east),
+      LatLng(b.south, b.east),
+      LatLng(b.south, b.west),
+    ];
+
+    return [
+      AreaFeature(
+        id: 'chart_bounds_${chart.id}',
+        type: MaritimeFeatureType.restrictedArea,
+        position: center,
+        coordinates: [polygon],
+        fillColor: const Color(0x22007AFF),
+        strokeColor: const Color(0xFF007AFF),
+        attributes: {
+          'chartId': chart.id,
+          'scale': chart.scale,
+          'source': chart.source.displayName,
+        },
+      ),
+      PointFeature(
+        id: 'chart_center_${chart.id}',
+        type: MaritimeFeatureType.beacon,
+        position: center,
+        label: chart.id,
+        attributes: {'role': 'center'},
+      ),
+    ];
+  }
+
+  /// Generate sample maritime features for demonstration (legacy fallback)
   List<MaritimeFeature> _generateSampleFeatures() {
     final List<MaritimeFeature> features = [];
 

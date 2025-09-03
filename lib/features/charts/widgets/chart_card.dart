@@ -21,6 +21,7 @@ class ChartCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      key: ValueKey('chart-card-${chart.id}'),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: isSelected ? Theme.of(context).colorScheme.primaryContainer : null,
       child: InkWell(

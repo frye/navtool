@@ -11,7 +11,7 @@ extension NoaaStorageExtensions on DatabaseStorageService {
   
   /// Updates the NOAA chart catalog cache with new data
   Future<void> updateChartCatalog(String catalogData, {String? etag}) async {
-    final db = database!;
+    final db = database ?? await initializeAndGet();
     
     try {
       await db.transaction((txn) async {
@@ -42,7 +42,7 @@ extension NoaaStorageExtensions on DatabaseStorageService {
   
   /// Retrieves cached NOAA catalog data if valid and not expired
   Future<String?> getCachedCatalog() async {
-    final db = database!;
+    final db = database ?? await initializeAndGet();
     
     try {
       final results = await db.query('chart_catalog_cache',
@@ -61,7 +61,7 @@ extension NoaaStorageExtensions on DatabaseStorageService {
   
   /// Clears all cached catalog entries
   Future<void> clearCatalogCache() async {
-    final db = database!;
+    final db = database ?? await initializeAndGet();
     
     try {
       await db.delete('chart_catalog_cache');
@@ -76,7 +76,7 @@ extension NoaaStorageExtensions on DatabaseStorageService {
   
   /// Batch insert/update NOAA charts efficiently
   Future<void> insertNoaaCharts(List<Chart> charts) async {
-    final db = database!;
+    final db = database ?? await initializeAndGet();
     
     try {
       await db.transaction((txn) async {
@@ -96,7 +96,7 @@ extension NoaaStorageExtensions on DatabaseStorageService {
   
   /// Gets charts for a specific state from state-chart mapping
   Future<List<Chart>> getChartsForState(String state) async {
-    final db = database!;
+    final db = database ?? await initializeAndGet();
     
     try {
       final results = await db.rawQuery('''
@@ -145,7 +145,7 @@ extension NoaaStorageExtensions on DatabaseStorageService {
   
   /// Checks if a chart update is available based on edition and update numbers
   Future<bool> isChartUpdateAvailable(String cellName, int edition, int updateNumber) async {
-    final db = database!;
+    final db = database ?? await initializeAndGet();
     
     try {
       final results = await db.query('charts',
@@ -170,7 +170,7 @@ extension NoaaStorageExtensions on DatabaseStorageService {
   /// Records chart update history when detecting changes
   Future<void> recordChartUpdate(String cellName, int oldEdition, int newEdition, 
                                 int oldUpdate, int newUpdate) async {
-    final db = database!;
+    final db = database ?? await initializeAndGet();
     
     try {
       await db.insert('chart_update_history', {
@@ -191,7 +191,7 @@ extension NoaaStorageExtensions on DatabaseStorageService {
   
   /// Gets chart update history for a specific cell
   Future<List<Map<String, dynamic>>> getChartUpdateHistory(String cellName) async {
-    final db = database!;
+    final db = database ?? await initializeAndGet();
     
     try {
       final results = await db.query('chart_update_history',
@@ -210,7 +210,7 @@ extension NoaaStorageExtensions on DatabaseStorageService {
   
   /// Cleans up expired catalog cache entries
   Future<void> cleanupExpiredCache() async {
-    final db = database!;
+    final db = database ?? await initializeAndGet();
     
     try {
       final deletedCount = await db.delete('chart_catalog_cache',
@@ -228,7 +228,7 @@ extension NoaaStorageExtensions on DatabaseStorageService {
   
   /// Gets storage statistics for NOAA operations
   Future<Map<String, dynamic>> getNoaaStorageStats() async {
-    final db = database!;
+    final db = database ?? await initializeAndGet();
     
     try {
       final noaaChartsCount = Sqflite.firstIntValue(
@@ -270,8 +270,21 @@ extension NoaaStorageExtensions on DatabaseStorageService {
   
   /// Converts Chart object to database map
   Map<String, dynamic> _chartToMap(Chart chart) {
+    // Normalize cell name: prefer metadata['cell_name'], else chart.id
+    String cellName = (chart.metadata['cell_name'] as String?) ?? chart.id;
+    cellName = cellName.trim();
+    // Remove edition suffix like .000
+    final dotIndex = cellName.indexOf('.');
+    if (dotIndex > 0 && dotIndex == cellName.length - 4) {
+      final suffix = cellName.substring(dotIndex + 1);
+      if (RegExp(r'^[0-9]{3}').hasMatch(suffix)) {
+        cellName = cellName.substring(0, dotIndex);
+      }
+    }
+
     final chartData = {
-      'id': chart.id,
+      'id': cellName,
+      'cell_name': cellName,
       'title': chart.title,
       'scale': chart.scale,
       'bounds_north': chart.bounds.north,
@@ -289,10 +302,6 @@ extension NoaaStorageExtensions on DatabaseStorageService {
       'status': chart.status.name,
     };
 
-    // Add NOAA-specific metadata if present
-    if (chart.metadata.containsKey('cell_name')) {
-      chartData['cell_name'] = chart.metadata['cell_name'];
-    }
     if (chart.metadata.containsKey('usage_band')) {
       chartData['usage_band'] = chart.metadata['usage_band'];
     }
@@ -325,7 +334,11 @@ extension NoaaStorageExtensions on DatabaseStorageService {
   Chart _mapToChart(Map<String, dynamic> map) {
     // Extract metadata from database fields
     final metadata = <String, dynamic>{};
-    if (map['cell_name'] != null) metadata['cell_name'] = map['cell_name'];
+    if (map['cell_name'] != null) {
+      metadata['cell_name'] = map['cell_name'];
+    } else if (map['id'] != null) {
+      metadata['cell_name'] = map['id'];
+    }
     if (map['usage_band'] != null) metadata['usage_band'] = map['usage_band'];
     if (map['compilation_scale'] != null) metadata['compilation_scale'] = map['compilation_scale'];
     if (map['region'] != null) metadata['region'] = map['region'];

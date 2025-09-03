@@ -13,7 +13,18 @@ class AppRoutes {
   static Map<String, WidgetBuilder> routes = {
     home: (context) => const HomeScreen(),
     about: (context) => const AboutScreen(),
-    chart: (context) => const ChartScreen(),
+    chart: (context) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is Map) {
+        final chart = args['chart'];
+        final chartTitle = args['chartTitle'];
+        if (chart != null) {
+          return ChartScreen(chart: chart, chartTitle: chartTitle);
+        }
+        return ChartScreen(chartTitle: chartTitle as String?);
+      }
+      return const ChartScreen();
+    },
     chartBrowser: (context) => const ChartBrowserScreen(),
   };
 }

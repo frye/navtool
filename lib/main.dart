@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:io';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'app/app.dart';
 import 'core/state/providers.dart';
 
@@ -25,6 +26,11 @@ Future<void> main() async {
       await windowManager.show();
       await windowManager.focus();
     });
+  }
+  // Initialize FFI database factory for desktop (required before opening any databases)
+  if (Platform.isWindows || Platform.isLinux) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
   }
   
   // Create provider container to initialize services

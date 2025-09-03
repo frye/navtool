@@ -309,6 +309,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     }
 
     return ListView.builder(
+      key: const ValueKey('chart-list'),
       shrinkWrap: shrinkWrap,
       physics: shrinkWrap ? const NeverScrollableScrollPhysics() : null,
       itemCount: _filteredCharts.length,
@@ -480,8 +481,8 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
       context,
       '/chart',
       arguments: {
+        'chart': chart,
         'chartTitle': chart.title,
-        'chartId': chart.id,
       },
     );
   }
