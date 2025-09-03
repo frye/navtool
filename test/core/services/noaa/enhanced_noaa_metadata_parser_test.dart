@@ -167,6 +167,7 @@ void main() {
         expect(chart.metadata['region'], equals('West Coast'));
         expect(chart.metadata['compilationScale'], equals('25000'));
         expect(chart.metadata['dtPub'], equals('20240115'));
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should handle different chart statuses correctly', () async {
@@ -210,6 +211,7 @@ void main() {
         expect(chart.status, equals(ChartStatus.superseded));
         expect(chart.edition, equals(9));
         expect(chart.updateNumber, equals(0));
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should provide fallback values for missing optional fields', () async {
@@ -252,6 +254,7 @@ void main() {
         expect(chart.updateNumber, equals(0)); // Default fallback
         expect(chart.status, equals(ChartStatus.current)); // Default fallback
         expect(chart.source, equals(ChartSource.noaa)); // Default fallback
+        expectNoErrorLogs(mockLogger);
       });
     });
 
@@ -289,6 +292,7 @@ void main() {
           expect(chart.metadata, isNotEmpty);
           expect(chart.metadata['cellName'], isNotNull);
         }
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should handle large catalog processing efficiently', () async {
@@ -341,6 +345,7 @@ void main() {
           expect(chart.id, equals('US5CA${i.toString().padLeft(2, '0')}M'));
           expect(chart.metadata['cellName'], isNotNull);
         }
+        expectNoErrorLogs(mockLogger);
       });
     });
 
@@ -423,6 +428,7 @@ void main() {
         expect(bounds.east, greaterThan(-123.0));
         expect(bounds.west, equals(-123.0));
         expect(stopwatch.elapsedMilliseconds, lessThan(100)); // Should be fast
+        expectNoErrorLogs(mockLogger);
       });
     });
 
