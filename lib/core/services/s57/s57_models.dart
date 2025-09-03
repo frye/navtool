@@ -1,6 +1,8 @@
 /// S-57 data models for Electronic Navigational Chart (ENC) parsing
 /// Based on IHO S-57 Edition 3.1 specification
 
+import 's57_spatial_index.dart';
+
 /// S-57 feature types for marine navigation
 enum S57FeatureType {
   // Navigation aids

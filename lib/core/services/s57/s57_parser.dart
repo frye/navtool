@@ -217,21 +217,22 @@ class S57Parser {
 
     // Look for feature records (simplified extraction)
     if (fields.containsKey('FRID') || fields.containsKey('FOID')) {
-      // This is a feature record
-      final feature = _createSampleFeature();
-      features.add(feature);
+      // This is a feature record - create multiple sample features
+      // to better simulate real S-57 data variety
+      final recordFeatures = _createSampleFeatures();
+      features.addAll(recordFeatures);
     }
 
     return features;
   }
 
-  /// Create sample feature for testing (to be enhanced with real parsing)
-  S57Feature _createSampleFeature() {
-    // Create multiple sample features to demonstrate different types
-    final features = [
+  /// Create multiple sample features for testing (to be enhanced with real parsing)
+  List<S57Feature> _createSampleFeatures() {
+    // Create a variety of features to simulate real S-57 chart data
+    final baseFeatures = [
       // Depth contour
       S57Feature(
-        recordId: 1,
+        recordId: 1 + _position,
         featureType: S57FeatureType.depthContour,
         geometryType: S57GeometryType.line,
         coordinates: [
@@ -248,7 +249,7 @@ class S57Parser {
       ),
       // Navigation buoy
       S57Feature(
-        recordId: 2,
+        recordId: 2 + _position,
         featureType: S57FeatureType.buoy,
         geometryType: S57GeometryType.point,
         coordinates: [
@@ -264,7 +265,7 @@ class S57Parser {
       ),
       // Lighthouse
       S57Feature(
-        recordId: 3,
+        recordId: 3 + _position,
         featureType: S57FeatureType.lighthouse,
         geometryType: S57GeometryType.point,
         coordinates: [
@@ -280,7 +281,7 @@ class S57Parser {
       ),
       // Shoreline
       S57Feature(
-        recordId: 4,
+        recordId: 4 + _position,
         featureType: S57FeatureType.shoreline,
         geometryType: S57GeometryType.line,
         coordinates: [
@@ -294,10 +295,26 @@ class S57Parser {
         },
         label: 'Shoreline',
       ),
+      // Beacon
+      S57Feature(
+        recordId: 5 + _position,
+        featureType: S57FeatureType.beacon,
+        geometryType: S57GeometryType.point,
+        coordinates: [
+          const S57Coordinate(latitude: 47.63, longitude: -122.35),
+        ],
+        attributes: {
+          'type': 'starboard',
+          'color': 'green',
+          'shape': 'cylindrical',
+        },
+        label: 'Green Beacon',
+      ),
     ];
 
-    // Return a random feature for variation
-    return features[_position % features.length];
+    // Return 2-3 features per record to simulate realistic feature density
+    final featureCount = 2 + (_position % 2);
+    return baseFeatures.take(featureCount).toList();
   }
 
   /// Calculate bounds from features
