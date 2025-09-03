@@ -175,7 +175,7 @@ void main() {
         await downloadService.recoverDownloads([]);
 
         // Assert
-        verify(mockLogger.debug(argThat(contains('No persistent download state found')), context: anyNamed('context'))).called(1); // Keep as direct debug verify (no helper yet for debug)
+  verifyDebugLogged(mockLogger, 'No persistent download state found');
 
         // Cleanup
           await retryDeleteDirectory(tempDir);

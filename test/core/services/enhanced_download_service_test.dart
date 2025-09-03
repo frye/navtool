@@ -14,6 +14,7 @@ import 'package:navtool/core/error/app_error.dart';
 import '../../helpers/download_test_utils.dart';
 import '../../helpers/progress_matchers.dart';
 import '../../helpers/flakiness_guard.dart';
+import '../../helpers/verify_helpers.dart';
 
 // Generate mocks for the dependencies
 @GenerateMocks([
@@ -310,7 +311,7 @@ void main() {
 
   // Assert - Should log range not satisfiable warning (restart path). Completion log
   // may be emitted by underlying downloadChart flow after restart, but we only require the warning.
-  verify(mockLogger.warning(argThat(contains('Range not satisfiable, restarting download')), context: 'Download')).called(1);
+  verifyWarningLogged(mockLogger, 'Range not satisfiable, restarting download', expectedContext: 'Download');
   // Don't assert completion log to avoid flakiness in resume path sequencing.
 
         // Cleanup
@@ -350,10 +351,7 @@ void main() {
         await downloadService.downloadChart(chartId, url);
 
         // Assert
-        verify(mockLogger.info(
-          argThat(contains('Chart download completed')),
-          context: 'Download'
-        )).called(1);
+        verifyInfoLogged(mockLogger, 'Chart download completed', expectedContext: 'Download');
 
         // Cleanup
         await tempDir.delete(recursive: true);
@@ -385,10 +383,7 @@ void main() {
 
         // Assert
         // Completion log should occur
-        verify(mockLogger.info(
-          argThat(contains('Chart download completed')),
-          context: 'Download'
-        )).called(1);
+        verifyInfoLogged(mockLogger, 'Chart download completed', expectedContext: 'Download');
 
         // Cleanup
         await tempDir.delete(recursive: true);

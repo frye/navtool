@@ -13,6 +13,7 @@ import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/error_handler.dart';
 import 'package:navtool/core/error/app_error.dart';
 import '../../helpers/progress_matchers.dart';
+import '../../helpers/verify_helpers.dart';
 
 // Generate mocks: flutter packages pub run build_runner build
 @GenerateMocks([HttpClientService, StorageService, AppLogger, ErrorHandler])
@@ -90,15 +91,8 @@ void main() {
         await downloadService.downloadChart(chartId, url);
 
         // Assert
-        verify(mockLogger.info(
-          argThat(contains('Starting download for chart: $chartId')),
-          context: 'Download',
-        )).called(1);
-        
-        verify(mockLogger.info(
-          argThat(contains('Chart download completed: $chartId')),
-          context: 'Download',
-        )).called(1);
+        verifyInfoLogged(mockLogger, 'Starting download for chart: $chartId', expectedContext: 'Download');
+        verifyInfoLogged(mockLogger, 'Chart download completed: $chartId', expectedContext: 'Download');
 
         verify(mockHttpClient.downloadFile(
           url,
@@ -128,10 +122,7 @@ void main() {
         );
 
         // Verify the download started (info log should be called)
-        verify(mockLogger.info(
-          'Starting download for chart: $chartId',
-          context: 'Download',
-        )).called(1);
+        verifyInfoLogged(mockLogger, 'Starting download for chart: $chartId', expectedContext: 'Download');
 
         // Verify error handling was called
         verify(mockErrorHandler.handleError(any, any)).called(1);
@@ -237,10 +228,7 @@ void main() {
         }
         
         // Assert
-        verify(mockLogger.info(
-          argThat(contains('Download paused: $chartId')),
-          context: 'Download',
-        )).called(1);
+        verifyInfoLogged(mockLogger, 'Download paused: $chartId', expectedContext: 'Download');
       });
 
     test('should resume download with error message', () async {
@@ -279,10 +267,7 @@ void main() {
         }
 
         // Assert
-        verify(mockLogger.info(
-          argThat(contains('Download cancelled: $chartId')),
-          context: 'Download',
-        )).called(1);
+        verifyInfoLogged(mockLogger, 'Download cancelled: $chartId', expectedContext: 'Download');
       });
     });
 
