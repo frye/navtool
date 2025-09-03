@@ -8,6 +8,7 @@ import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/metadata_parsing_exceptions.dart';
 import 'dart:convert';
 import 'dart:io';
+import '../../../helpers/verify_helpers.dart';
 
 // Generate mocks for dependencies
 @GenerateMocks([AppLogger])
@@ -100,10 +101,7 @@ void main() {
 
         // Assert - Should skip invalid feature and continue
         expect(result, isEmpty);
-        verify(mockLogger.warning(
-          'Failed to parse chart feature',
-          exception: anyNamed('exception'),
-        )).called(1);
+        verifyWarningLogged(mockLogger, 'Failed to parse chart feature');
       });
     });
 
@@ -375,10 +373,7 @@ void main() {
 
         // Assert - Should gracefully handle the error and continue
         expect(result, isEmpty);
-        verify(mockLogger.warning(
-          'Failed to parse chart feature',
-          exception: anyNamed('exception'),
-        )).called(1);
+        verifyWarningLogged(mockLogger, 'Failed to parse chart feature');
       });
 
       test('should handle edge case coordinates gracefully', () {

@@ -7,6 +7,7 @@ import 'package:navtool/core/models/geographic_bounds.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/metadata_parsing_exceptions.dart';
 import 'dart:convert';
+import '../../../helpers/verify_helpers.dart';
 
 // Generate mocks for dependencies
 @GenerateMocks([AppLogger])
@@ -162,9 +163,7 @@ void main() {
         // Assert
         expect(result, hasLength(1));
         expect(result[0].id, equals('US4CA11M'));
-        verify(mockLogger.warning(
-          'Skipping chart feature with missing required properties: US5CA52M'
-        )).called(1);
+        verifyWarningLogged(mockLogger, 'Skipping chart feature with missing required properties: US5CA52M');
       });
 
       test('should handle various chart types from USAGE property', () async {
@@ -246,9 +245,7 @@ void main() {
 
         // Assert
         expect(result, isEmpty);
-        verify(mockLogger.warning(
-          'Skipping chart feature with invalid geometry: US5CA52M'
-        )).called(1);
+        verifyWarningLogged(mockLogger, 'Skipping chart feature with invalid geometry: US5CA52M');
       });
     });
 
