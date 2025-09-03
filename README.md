@@ -102,6 +102,7 @@ lib/
 - 🎨 **Desktop-first UI design** with VS Code-inspired menu bar
 - 📱 **Responsive layout** supporting both desktop and mobile interfaces
 - ⚙️ **Material Design 3** implementation with adaptive theming
+ - 🚀 **Phase 3 Download Manager foundations**: queue-based downloads, unified manager UI, categorized errors, speed & ETA, automatic retry on network recovery, metrics & diagnostics export. See [Download Manager User Guide](docs/download_manager_user_guide.md).
 
 ### Planned Features
 - [ ] Chart data loading and display

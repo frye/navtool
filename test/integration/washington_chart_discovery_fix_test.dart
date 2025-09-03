@@ -55,10 +55,14 @@ void main() {
         north: 49.0, south: 45.5, east: -116.9, west: -124.8
       );
       
-      final foundBefore = await storageService.getChartsInBounds(washingtonBounds);
-  logger.warning('ISSUE CONFIRMED: Found ${foundBefore.length} charts (should be 2, invalid bounds cause 0 results)', context: 'WA.ChartDiscovery');
+    final foundBefore = await storageService.getChartsInBounds(washingtonBounds);
+  logger.warning('ISSUE CONFIRMED: Found ${foundBefore.length} charts. Invalid legacy charts should not be discovered due to zero bounds.', context: 'WA.ChartDiscovery');
       
-      expect(foundBefore.length, equals(0), reason: 'Old cached charts with invalid bounds should not be found');
+    // Instead of asserting total count == 0 (which can break if other charts exist in DB),
+    // assert that the specific invalid charts are NOT present in the discovery results.
+    final foundIdsBefore = foundBefore.map((c) => c.id).toSet();
+    expect(foundIdsBefore.contains('US1WC01M'), isFalse, reason: 'Invalid bounded chart US1WC01M should not be discovered');
+    expect(foundIdsBefore.contains('US1WC04M'), isFalse, reason: 'Invalid bounded chart US1WC04M should not be discovered');
       
       // STEP 3: Apply the cache invalidation fix
   logger.info('APPLYING FIX: Cache invalidation for charts with invalid bounds', context: 'WA.ChartDiscovery');
@@ -102,11 +106,11 @@ void main() {
       // STEP 5: Verify the fix works
   logger.info('VERIFICATION: Searching for charts in Washington state bounds again', context: 'WA.ChartDiscovery');
       
-      final foundAfter = await storageService.getChartsInBounds(washingtonBounds);
-  logger.info('ISSUE RESOLVED: Found ${foundAfter.length} charts (correct result)', context: 'WA.ChartDiscovery');
+    final foundAfter = await storageService.getChartsInBounds(washingtonBounds);
+  logger.info('ISSUE RESOLVED: Found ${foundAfter.length} charts after re-caching', context: 'WA.ChartDiscovery');
       
-      expect(foundAfter.length, equals(2), reason: 'After cache invalidation and correction, both Washington charts should be found');
-      expect(foundAfter.map((c) => c.id).toSet(), equals({'US1WC01M', 'US1WC04M'}));
+    final foundIdsAfter = foundAfter.map((c) => c.id).toSet();
+    expect(foundIdsAfter.containsAll({'US1WC01M', 'US1WC04M'}), isTrue, reason: 'Both corrected Washington charts should now be discovered');
       
       // STEP 6: Verify cache is now clean
       final remainingInvalidCount = await storageService.countChartsWithInvalidBounds();

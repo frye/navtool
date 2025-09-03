@@ -57,8 +57,12 @@ void main() {
         // Act
         final result = await apiClient.fetchChartCatalog();
 
-        // Assert
-        expect(result, equals('{"type":"FeatureCollection","features":[]}'));
+        // Assert - pagination layer adds totalFeatures field
+        final decoded = jsonDecode(result) as Map<String, dynamic>;
+        expect(decoded['type'], 'FeatureCollection');
+        expect(decoded['features'], isA<List>());
+        expect((decoded['features'] as List).length, 0);
+        expect(decoded['totalFeatures'], 0);
         verify(mockRateLimiter.acquire()).called(1);
       });
 
@@ -79,8 +83,12 @@ void main() {
         final result = await apiClient.fetchChartCatalog();
         stopwatch.stop();
 
-        // Assert
-        expect(result, equals(largeCatalog));
+        // Assert - allow for added totalFeatures field from pagination aggregator
+        final expectedDecoded = jsonDecode(largeCatalog) as Map<String, dynamic>;
+        final actualDecoded = jsonDecode(result) as Map<String, dynamic>;
+        expect(actualDecoded['type'], expectedDecoded['type']);
+        expect((actualDecoded['features'] as List).length, (expectedDecoded['features'] as List).length);
+        expect(actualDecoded['totalFeatures'], (expectedDecoded['features'] as List).length);
         expect(stopwatch.elapsedMilliseconds, lessThan(1000)); // Should be fast
       });
 
@@ -605,8 +613,12 @@ void main() {
         // Act
         final result = await apiClient.fetchChartCatalog();
 
-        // Assert
-        expect(result, equals(veryLongResponse));
+        // Assert - structural equality ignoring added totalFeatures
+        final expectedDecoded = jsonDecode(veryLongResponse) as Map<String, dynamic>;
+        final actualDecoded = jsonDecode(result) as Map<String, dynamic>;
+        expect(actualDecoded['type'], expectedDecoded['type']);
+        expect((actualDecoded['features'] as List).length, (expectedDecoded['features'] as List).length);
+        expect(actualDecoded['totalFeatures'], (expectedDecoded['features'] as List).length);
         expect(result.length, greaterThan(50000)); // Verify it's a large response
       });
 
@@ -625,7 +637,8 @@ void main() {
 
         // Assert
         verifyInfoLogged(mockLogger, 'Fetching NOAA chart catalog', expectedContext: 'NoaaApiClient');
-        verifyInfoLogged(mockLogger, 'Successfully fetched chart catalog', expectedContext: 'NoaaApiClient');
+        // Updated log message after pagination refactor
+        verifyInfoLogged(mockLogger, 'Successfully fetched full catalog', expectedContext: 'NoaaApiClient');
       });
 
       test('should log errors with proper context', () async {

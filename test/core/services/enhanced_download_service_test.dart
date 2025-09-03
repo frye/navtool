@@ -432,14 +432,13 @@ void main() {
           });
 
   final captured = <double>[];
-  // Start download (don't await yet)
-  final future = downloadService.downloadChart(chartId, url);
-  // Small microtask delay to ensure controller created and initial 0 emitted
-  await Future<void>.delayed(const Duration(milliseconds: 2));
-  downloadService.getDownloadProgress(chartId).listen(captured.add);
-  await future;
-
+  // Subscribe FIRST so we don't miss early 0.0 emission created inside downloadChart
+  final sub = downloadService.getDownloadProgress(chartId).listen(captured.add);
+  // Start download
+  await downloadService.downloadChart(chartId, url);
   expect(captured, isNotEmpty, reason: 'Progress emissions should be captured');
+  // First emission should be 0.0 (seed) unless download is trivially instantaneous; allow slight float tolerance.
+  expect(captured.first, closeTo(0.0, 1e-9), reason: 'First progress emission should be the seeded 0.0');
         // Range check
         for (final v in captured) {
           expect(v >= 0 && v <= 1, isTrue, reason: 'Progress value $v out of [0,1] range');
@@ -450,7 +449,21 @@ void main() {
         }
         expect(captured.last, closeTo(1.0, 1e-9), reason: 'Final progress should be 1.0');
 
-        await tempDir.delete(recursive: true);
+        // Dispose resources & subscription BEFORE deleting directory to release file handles (Windows)
+        await sub.cancel();
+        downloadService.dispose();
+        // Retry delete if transient sharing violation occurs
+        for (int i = 0; i < 3; i++) {
+          try {
+            if (tempDir.existsSync()) {
+              await tempDir.delete(recursive: true);
+            }
+            break; // success
+          } on FileSystemException {
+            if (i == 2) rethrow;
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+          }
+        }
       });
     });
 

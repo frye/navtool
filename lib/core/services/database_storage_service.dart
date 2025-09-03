@@ -29,6 +29,10 @@ class DatabaseStorageService implements StorageService {
 
   /// Initialize the database
   Future<void> initialize() async {
+    // Guard against multiple initialization attempts
+    if (_database != null) {
+      return;
+    }
     if (_testDatabase != null) {
       _database = _testDatabase;
       await _createTables(_database!);
@@ -322,6 +326,40 @@ class DatabaseStorageService implements StorageService {
     _logger.info('Database migration to version 2 completed');
   }
 
+  // ---------------------------------------------------------------------------
+  // NOAA Diagnostics Helpers
+  // ---------------------------------------------------------------------------
+
+  /// Returns the number of NOAA charts currently stored in the charts table.
+  Future<int> getNoaaChartCount() async {
+    final db = _database ?? _testDatabase;
+    if (db == null) return 0;
+    try {
+      final result = await db.rawQuery('SELECT COUNT(*) as c FROM charts WHERE source = ?', ['noaa']);
+      return (result.first['c'] as int?) ?? 0;
+    } catch (e) {
+      _logger.warning('Failed to count NOAA charts: $e');
+      return 0;
+    }
+  }
+
+  /// Returns a small sample of NOAA chart IDs (up to [limit]) for debugging.
+  Future<List<String>> getSampleNoaaChartIds({int limit = 5}) async {
+    final db = _database ?? _testDatabase;
+    if (db == null) return const [];
+    try {
+      final result = await db.query('charts',
+          columns: ['id'],
+          where: 'source = ?',
+          whereArgs: ['noaa'],
+          limit: limit);
+      return result.map((r) => r['id'] as String).toList();
+    } catch (e) {
+      _logger.warning('Failed to get sample NOAA chart IDs: $e');
+      return const [];
+    }
+  }
+
   /// Get database version
   Future<int> getDatabaseVersion() async {
     return _database?.getVersion() ?? 0;
@@ -333,14 +371,24 @@ class DatabaseStorageService implements StorageService {
   /// Protected access to logger for extensions  
   AppLogger get logger => _logger;
 
+  /// Ensures the database is initialized before use
+  Future<Database> _getDb() async {
+    if (_database == null) {
+      await initialize();
+    }
+    return _database!;
+  }
+
+  /// Public helper for extensions that cannot access private _getDb
+  Future<Database> initializeAndGet() async => _getDb();
+
   // Chart Operations
   @override
   Future<void> storeChart(Chart chart, List<int> data) async {
     if (data.isEmpty) {
       throw ArgumentError('Chart data cannot be empty');
     }
-
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       await db.transaction((txn) async {
@@ -411,7 +459,7 @@ class DatabaseStorageService implements StorageService {
 
   @override
   Future<List<int>?> loadChart(String chartId) async {
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       final result = await db.query(
@@ -433,7 +481,7 @@ class DatabaseStorageService implements StorageService {
 
   @override
   Future<void> deleteChart(String chartId) async {
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       await db.transaction((txn) async {
@@ -452,7 +500,7 @@ class DatabaseStorageService implements StorageService {
 
   /// Get chart metadata without the binary data (not part of interface)
   Future<Chart?> getChartMetadata(String chartId) async {
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       final result = await db.query(
@@ -472,7 +520,7 @@ class DatabaseStorageService implements StorageService {
 
   /// Update chart metadata (not part of interface)
   Future<void> updateChartMetadata(Chart chart) async {
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       await db.update(
@@ -502,7 +550,7 @@ class DatabaseStorageService implements StorageService {
   /// Get charts within geographic bounds
   @override
   Future<List<Chart>> getChartsInBounds(GeographicBounds bounds) async {
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       // Debug logging
@@ -543,7 +591,7 @@ class DatabaseStorageService implements StorageService {
   /// Counts charts with invalid bounds (typically 0,0,0,0 from old cache)
   @override
   Future<int> countChartsWithInvalidBounds() async {
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       final result = await db.rawQuery(
@@ -560,7 +608,7 @@ class DatabaseStorageService implements StorageService {
   /// Clears charts with invalid bounds (cache invalidation for old chart data)
   @override
   Future<int> clearChartsWithInvalidBounds() async {
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       _logger.info('Clearing charts with invalid bounds to force cache refresh');
@@ -580,7 +628,7 @@ class DatabaseStorageService implements StorageService {
 
   /// Get charts by scale range (helper, not part of StorageService interface)
   Future<List<Chart>> getChartsByScaleRange(int minScale, int maxScale) async {
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       final result = await db.query(
@@ -600,7 +648,7 @@ class DatabaseStorageService implements StorageService {
   /// Store a navigation route
   @override
   Future<void> storeRoute(NavigationRoute route) async {
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       await db.transaction((txn) async {
@@ -641,7 +689,7 @@ class DatabaseStorageService implements StorageService {
 
   /// Get a navigation route by ID (helper, prefer loadRoute for interface compliance)
   Future<NavigationRoute?> getRoute(String routeId) async {
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       final routeResult = await db.query(
@@ -670,7 +718,7 @@ class DatabaseStorageService implements StorageService {
 
   /// Update a navigation route (helper, not part of interface)
   Future<void> updateRoute(NavigationRoute route) async {
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       await db.update(
@@ -695,7 +743,7 @@ class DatabaseStorageService implements StorageService {
   /// Delete a navigation route
   @override
   Future<void> deleteRoute(String routeId) async {
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       final deletedCount = await db.delete('routes', where: 'id = ?', whereArgs: [routeId]);
@@ -710,7 +758,7 @@ class DatabaseStorageService implements StorageService {
   /// Get all navigation routes
   @override
   Future<List<NavigationRoute>> getAllRoutes() async {
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       final routesResult = await db.query('routes', orderBy: 'created_at DESC');
@@ -740,7 +788,7 @@ class DatabaseStorageService implements StorageService {
   /// Store a standalone waypoint
   @override
   Future<void> storeWaypoint(Waypoint waypoint) async {
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       await db.insert('waypoints', {
@@ -765,7 +813,7 @@ class DatabaseStorageService implements StorageService {
 
   /// Get a waypoint by ID (helper, prefer loadWaypoint for interface compliance)
   Future<Waypoint?> getWaypoint(String waypointId) async {
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       final result = await db.query(
@@ -785,7 +833,7 @@ class DatabaseStorageService implements StorageService {
   /// Delete a waypoint
   @override
   Future<void> deleteWaypoint(String waypointId) async {
-    final db = _database!;
+    final db = await _getDb();
     
     try {
       final deletedCount = await db.delete('waypoints', where: 'id = ?', whereArgs: [waypointId]);

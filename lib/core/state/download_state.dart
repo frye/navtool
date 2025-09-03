@@ -28,6 +28,11 @@ class DownloadProgress {
   final int? totalBytes;
   final int? downloadedBytes;
   final String? errorMessage;
+  // Categorized error (timeout, checksum, disk, network, cancelled, unknown)
+  final String? errorCategory; // Phase 3 addition
+  // Precomputed instantaneous speed (bytes/sec) & ETA (secs) to avoid recomputation churn in UI build
+  final double? bytesPerSecond;
+  final int? etaSeconds;
   final DateTime lastUpdated;
 
   /// Default timestamp for downloads
@@ -40,6 +45,9 @@ class DownloadProgress {
     this.totalBytes,
     this.downloadedBytes,
     this.errorMessage,
+    this.errorCategory,
+    this.bytesPerSecond,
+    this.etaSeconds,
     required this.lastUpdated,
   });
 
@@ -51,6 +59,9 @@ class DownloadProgress {
     this.totalBytes,
     this.downloadedBytes,
     this.errorMessage,
+    this.errorCategory,
+    this.bytesPerSecond,
+    this.etaSeconds,
     DateTime? lastUpdated,
   }) : lastUpdated = lastUpdated ?? _defaultTime;
 
@@ -61,6 +72,9 @@ class DownloadProgress {
     int? totalBytes,
     int? downloadedBytes,
     String? errorMessage,
+    String? errorCategory,
+    double? bytesPerSecond,
+    int? etaSeconds,
     DateTime? lastUpdated,
   }) {
     return DownloadProgress(
@@ -70,6 +84,9 @@ class DownloadProgress {
       totalBytes: totalBytes ?? this.totalBytes,
       downloadedBytes: downloadedBytes ?? this.downloadedBytes,
       errorMessage: errorMessage ?? this.errorMessage,
+      errorCategory: errorCategory ?? this.errorCategory,
+      bytesPerSecond: bytesPerSecond ?? this.bytesPerSecond,
+      etaSeconds: etaSeconds ?? this.etaSeconds,
       lastUpdated: lastUpdated ?? DateTime.now(),
     );
   }
@@ -101,7 +118,10 @@ class DownloadProgress {
           progress == other.progress &&
           totalBytes == other.totalBytes &&
           downloadedBytes == other.downloadedBytes &&
-          errorMessage == other.errorMessage;
+      errorMessage == other.errorMessage &&
+      errorCategory == other.errorCategory &&
+      bytesPerSecond == other.bytesPerSecond &&
+      etaSeconds == other.etaSeconds;
 
   @override
   int get hashCode =>
@@ -110,7 +130,10 @@ class DownloadProgress {
       progress.hashCode ^
       totalBytes.hashCode ^
       downloadedBytes.hashCode ^
-      errorMessage.hashCode;
+  errorMessage.hashCode ^
+  (errorCategory?.hashCode ?? 0) ^
+  (bytesPerSecond?.hashCode ?? 0) ^
+  (etaSeconds?.hashCode ?? 0);
 
   @override
   String toString() {

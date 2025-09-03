@@ -304,40 +304,47 @@ class ChartCatalogServiceImpl implements ChartCatalogService {
             continue;
           }
           
-          // Extract chart information from NOAA ENC coverage attributes
-          final cellName = properties['DSNM'] as String? ?? properties['CELL_NAME'] as String?;
-          final title = properties['TITLE'] as String? ?? properties['INFORM'] as String? ?? 'Unknown Chart';
-          final lastUpdateStr = properties['DATE_UPD'] as String? ?? properties['SORDAT'] as String?;
-          
-          // For NOAA ENC data, we parse chart type from dataset name (DSNM)
-          final usageStr = _parseUsageFromDSNM(cellName ?? '');
-          final scaleStr = properties['SCALE'] as String?;
-          
-          if (cellName == null || cellName.isEmpty) {
+          // Extract & normalize cell name
+          String? cellName = (properties['DSNM'] ?? properties['CELL_NAME'] ?? properties['CELLNAME'] ?? properties['name']) as String?;
+          if (cellName == null || cellName.trim().isEmpty) {
             _logger.debug('Skipping feature with missing cell name');
             continue;
           }
-          
-          // Parse scale from string (e.g., "1:80000" -> 80000) or estimate from dataset name
-          int scale = _parseScaleFromDSNM(cellName);
-          if (scaleStr != null && scaleStr.contains(':')) {
-            final scaleParts = scaleStr.split(':');
-            if (scaleParts.length > 1) {
-              scale = int.tryParse(scaleParts[1]) ?? scale;
+          cellName = cellName.trim();
+          final editionSuffixIndex = cellName.indexOf('.');
+          if (editionSuffixIndex > 0 && editionSuffixIndex == cellName.length - 4) {
+            final suffix = cellName.substring(editionSuffixIndex + 1);
+            if (RegExp(r'^[0-9]{3}').hasMatch(suffix)) {
+              cellName = cellName.substring(0, editionSuffixIndex);
             }
           }
-          
+
+          final title = properties['TITLE'] as String? ?? properties['INFORM'] as String? ?? 'Unknown Chart';
+          final lastUpdateStr = properties['DATE_UPD'] as String? ?? properties['SORDAT'] as String?;
+          final usageStr = _parseUsageFromDSNM(cellName);
+          final scaleStr = properties['SCALE'] as String?;
+
+          // Parse scale from string (e.g., "1:80000" -> 80000) or estimate from dataset name
+          int scale = _parseScaleFromDSNM(cellName);
+            if (scaleStr != null && scaleStr.contains(':')) {
+              final scaleParts = scaleStr.split(':');
+              if (scaleParts.length > 1) {
+                scale = int.tryParse(scaleParts[1]) ?? scale;
+              }
+            }
+
           // Determine chart type from usage
           ChartType chartType = ChartType.general;
-          if (usageStr.toLowerCase().contains('harbor')) {
+          final usageLower = usageStr.toLowerCase();
+          if (usageLower.contains('harbor')) {
             chartType = ChartType.harbor;
-          } else if (usageStr.toLowerCase().contains('approach')) {
+          } else if (usageLower.contains('approach')) {
             chartType = ChartType.approach;
-          } else if (usageStr.toLowerCase().contains('coastal')) {
+          } else if (usageLower.contains('coastal')) {
             chartType = ChartType.coastal;
-          } else if (usageStr.toLowerCase().contains('overview')) {
+          } else if (usageLower.contains('overview')) {
             chartType = ChartType.overview;
-          } else if (usageStr.toLowerCase().contains('berthing')) {
+          } else if (usageLower.contains('berthing')) {
             chartType = ChartType.berthing;
           }
           
@@ -457,7 +464,7 @@ class ChartCatalogServiceImpl implements ChartCatalogService {
           
           // Create Chart object from GeoJSON feature
           final chart = Chart(
-            id: cellName,
+            id: cellName!,
             title: title,
             scale: scale,
             bounds: bounds,

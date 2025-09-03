@@ -6,6 +6,7 @@ import '../../core/models/chart.dart';
 import '../../core/providers/noaa_providers.dart';
 import '../../core/state/providers.dart';
 import 'widgets/chart_card.dart';
+import 'widgets/download_manager_panel.dart';
 
 /// Main screen for browsing and discovering NOAA charts by US state
 class ChartBrowserScreen extends ConsumerStatefulWidget {
@@ -121,6 +122,11 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                 foregroundColor: Theme.of(context).colorScheme.onPrimary,
               ),
             ),
+          IconButton(
+            tooltip: 'Open Download Manager',
+            icon: const Icon(Icons.cloud_download),
+            onPressed: _showDownloadManager,
+          ),
         ],
       ),
       body: LayoutBuilder(
@@ -303,6 +309,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     }
 
     return ListView.builder(
+      key: const ValueKey('chart-list'),
       shrinkWrap: shrinkWrap,
       physics: shrinkWrap ? const NeverScrollableScrollPhysics() : null,
       itemCount: _filteredCharts.length,
@@ -474,8 +481,8 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
       context,
       '/chart',
       arguments: {
+        'chart': chart,
         'chartTitle': chart.title,
-        'chartId': chart.id,
       },
     );
   }
@@ -642,35 +649,20 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     try {
       final downloadService = ref.read(downloadServiceProvider);
       final selectedCharts = _charts.where((chart) => _selectedChartIds.contains(chart.id)).toList();
-      
-      // Show initial feedback
+      // Enqueue without awaiting sequentially
+      for (final chart in selectedCharts) {
+        final downloadUrl = 'https://charts.noaa.gov/ENCs/${chart.id}.zip';
+        // Use queue to avoid blocking UI thread
+        // ignore: discarded_futures
+        downloadService.addToQueue(chart.id, downloadUrl);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Starting download of ${selectedCharts.length} charts...'),
+          content: Text('Queued ${selectedCharts.length} chart downloads'),
           duration: const Duration(seconds: 2),
         ),
       );
-
-      // Start downloading each selected chart
-      for (final chart in selectedCharts) {
-        final downloadUrl = 'https://charts.noaa.gov/ENCs/${chart.id}.zip';
-        await downloadService.downloadChart(chart.id, downloadUrl);
-      }
-
-      // Clear selection after successful downloads
-      setState(() {
-        _selectedChartIds.clear();
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Successfully started download of ${selectedCharts.length} charts'),
-            duration: const Duration(seconds: 3),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
+      setState(() => _selectedChartIds.clear());
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -682,6 +674,19 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
         );
       }
     }
+  }
+
+  void _showDownloadManager() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return const SizedBox(
+          height: 500,
+          child: DownloadManagerPanel(),
+        );
+      },
+    );
   }
 
   void _showChartDetails(Chart chart) {

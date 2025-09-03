@@ -206,6 +206,15 @@ abstract class DownloadService {
   /// Gets resume data for a chart
   Future<ResumeData?> getResumeData(String chartId);
 
+  /// Pauses all active downloads (Phase 3 global action)
+  Future<void> pauseAllDownloads();
+
+  /// Resumes all paused downloads (Phase 3 global action)
+  Future<void> resumeAllDownloads();
+
+  /// Exports a JSON diagnostics snapshot of recent download session metrics/state
+  Future<String> exportDiagnostics();
+
   /// Cleans up resources on disposal
   void dispose();
 }

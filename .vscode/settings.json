@@ -1,3 +1,5 @@
 {
-    "chat.tools.autoApprove": true
+    "chat.tools.autoApprove": true,
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "python-envs.pythonProjects": []
 }
