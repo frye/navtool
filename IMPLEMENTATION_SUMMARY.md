@@ -251,3 +251,27 @@ This implementation successfully addresses all requirements of GitHub Issue #91:
 - ✅ **Marine Focus**: Specialized testing for maritime navigation requirements
 
 The testing framework is now robust, comprehensive, and specifically designed for the unique challenges of marine navigation applications with satellite internet connectivity and NOAA chart integration.
+
+---
+
+## Section C: Progress Normalization Update (September 2025)
+
+### Rationale
+Historic tests tolerated both normalized (0.0–1.0) and percentage (0–100) progress representations. This dual-mode acceptance risked masking regressions and added ambiguity for downstream UI components and batch calculations.
+
+### Changes Implemented
+1. Enforced normalized progress (0.0–1.0) across the download pipeline.
+2. Added defensive logging + assertion in `DownloadServiceImpl._updateProgress` to surface any out-of-range values (with clamping for resilience in release builds).
+3. Updated test helper (`test/helpers/download_test_utils.dart`) documentation to codify the normalization contract.
+4. Audited progress-related tests to ensure they only assert normalized values (no percentage fallbacks remain).
+
+### Effects
+* Increases determinism & clarity of progress semantics.
+* Simplifies UI binding logic (no need to branch on >1 values).
+* Provides early detection of future regressions via assertion + warning log.
+
+### Follow-Up (Optional)
+* Add brief note to `TEST_STRATEGY.md` summarizing the invariant (if broader visibility desired).
+* Consider a lightweight integration guard in widget layer to assert normalized progress before rendering progress indicators.
+
+---

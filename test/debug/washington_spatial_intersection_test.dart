@@ -1,3 +1,4 @@
+@Skip('Excluded from CI: exploratory debug analysis test')
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/models/chart.dart';
 import 'package:navtool/core/models/geographic_bounds.dart';

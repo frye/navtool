@@ -5,20 +5,26 @@ import 'package:navtool/core/logging/app_logger.dart';
 
 // Simple test logger
 class TestLogger implements AppLogger {
+  final List<String> messages = [];
+
+  void _add(String level, String message) {
+    messages.add('[$level] $message');
+  }
+
   @override
-  void debug(String message, {String? context, Object? exception}) => print('[DEBUG] $message');
-  
+  void debug(String message, {String? context, Object? exception}) => _add('DEBUG', message);
+
   @override
-  void info(String message, {String? context, Object? exception}) => print('[INFO] $message');
-  
+  void info(String message, {String? context, Object? exception}) => _add('INFO', message);
+
   @override
-  void warning(String message, {String? context, Object? exception}) => print('[WARNING] $message');
-  
+  void warning(String message, {String? context, Object? exception}) => _add('WARNING', message);
+
   @override
-  void error(String message, {String? context, Object? exception}) => print('[ERROR] $message');
-  
+  void error(String message, {String? context, Object? exception}) => _add('ERROR', message);
+
   @override
-  void logError(error) => print('[ERROR] $error');
+  void logError(error) => _add('ERROR', error.toString());
 }
 
 /// Test-driven development for fixing NOAA URL construction issue
@@ -183,7 +189,7 @@ void main() {
         expect(capturedUrls.first, startsWith(noaaCatalogEndpoint));
         expect(capturedUrls.first, isNot(contains('charts.noaa.govhttps://')));
         
-        print('✅ URL Fixed: ${capturedUrls.first}');
+  testLogger.debug('URL Fixed: ${capturedUrls.first}');
       });
 
       test('should work with chart download URLs', () async {
@@ -255,8 +261,8 @@ void main() {
         final correctUrl = isFullUrl ? catalogEndpoint : baseUrl + catalogEndpoint;
         expect(correctUrl, equals(catalogEndpoint));
         
-        print('🚨 Broken URL: $brokenUrl');
-        print('✅ Fixed URL: $correctUrl');
+  testLogger.debug('Broken URL: $brokenUrl');
+  testLogger.debug('Fixed URL: $correctUrl');
       });
     });
   });

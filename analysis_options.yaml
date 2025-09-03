@@ -17,6 +17,13 @@ analyzer:
     # Exclude build outputs
     - build/**
     - .dart_tool/**
+    # Exclude exploratory debug tests and legacy experimental files that are not part of
+    # the maintained test suite (they are intentionally verbose / use prints / partial code).
+    - test/debug/**
+    # Legacy route test file kept for reference (API no longer matches current services)
+    - test/features/routes/routes_test_old.dart
+    # Network scratch test (references packages not in deps intentionally)
+    - test_network.dart
 
 linter:
   # The lint rules applied to this project can be customized in the
@@ -30,7 +37,7 @@ linter:
   # `// ignore_for_file: name_of_lint` syntax on the line or in the file
   # producing the lint.
   rules:
-    # avoid_print: false  # Uncomment to disable the `avoid_print` rule
+    avoid_print: true  # Enforce replacing print with logger / debugPrint (prints remain only in excluded debug files)
     # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
 
 # Additional information about this file can be found at

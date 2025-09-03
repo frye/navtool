@@ -1,3 +1,4 @@
+@Skip('Excluded from CI: exploratory debug analysis test')
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/services/noaa/noaa_api_client_impl.dart';
 import 'package:navtool/core/services/http_client_service.dart';
@@ -59,6 +60,22 @@ class EndpointTestHttpClient implements HttpClientService {
     CancelToken? cancelToken,
   }) async {
     return await _dio.post(path, data: data, queryParameters: queryParameters, options: options, cancelToken: cancelToken);
+  }
+
+  @override
+  Future<Response> head(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+    CancelToken? cancelToken,
+  }) async {
+    // Simple passthrough for endpoint verification tests
+    return await _dio.head(
+      path,
+      queryParameters: queryParameters,
+      options: options,
+      cancelToken: cancelToken,
+    );
   }
   
   @override

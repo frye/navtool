@@ -10,30 +10,53 @@ class GeographicBounds {
   final double west;
 
   GeographicBounds({
-    required this.north,
-    required this.south,
-    required this.east,
-    required this.west,
-  }) {
-    if (north < south) {
-      throw ArgumentError('North must be greater than or equal to south');
+    required double north,
+    required double south,
+    required double east,
+    required double west,
+  })  : north = north,
+        south = south,
+        east = east,
+        west = west {
+    // Structural relationship validations (must be a non-empty box)
+    if (north <= south) {
+      throw ArgumentError('North must be greater than south');
     }
-    if (east < west) {
-      throw ArgumentError('East must be greater than or equal to west');
+    if (east <= west) {
+      throw ArgumentError('East must be greater than west');
     }
-    if (north < -90 || north > 90) {
+
+    // Validate ranges
+    if (this.north < -90 || this.north > 90) {
       throw ArgumentError('North must be between -90 and 90');
     }
-    if (south < -90 || south > 90) {
+    if (this.south < -90 || this.south > 90) {
       throw ArgumentError('South must be between -90 and 90');
     }
-    if (east < -180 || east > 180) {
+    if (this.east < -180 || this.east > 180) {
       throw ArgumentError('East must be between -180 and 180');
     }
-    if (west < -180 || west > 180) {
+    if (this.west < -180 || this.west > 180) {
       throw ArgumentError('West must be between -180 and 180');
     }
   }
+
+  // Internal raw constructor bypassing validation (used by unvalidated factory)
+  GeographicBounds._raw(this.north, this.south, this.east, this.west);
+
+  /// Test-only factory to construct bounds without validation.
+  ///
+  /// WARNING: This should only be used in tests that need to simulate
+  /// legacy/invalid cached data (e.g., 0,0,0,0 bounds) for migration
+  /// or cache invalidation scenarios. Production code should always
+  /// rely on the validated default constructor.
+  @visibleForTesting
+  factory GeographicBounds.unvalidated({
+    required double north,
+    required double south,
+    required double east,
+    required double west,
+  }) => GeographicBounds._raw(north, south, east, west);
 
   /// Calculates the center point of the bounds
   ({double latitude, double longitude}) get center => (

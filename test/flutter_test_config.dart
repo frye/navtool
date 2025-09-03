@@ -23,6 +23,11 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
 
 /// Sets up method channel mocks for platform plugins
 void setupMethodChannelMocks() {
+  // NOTE: Avoid overriding Flutter foundation debug variables (like debugPrint) globally.
+  // Earlier attempt to silence logs by reassigning debugPrint triggered the framework invariant
+  // "The value of a foundation debug variable was changed by the test" across many widget tests.
+  // If log noise reduction is desired, prefer injecting a NoOp/AppLogger override per test via
+  // Riverpod's provider overrides instead of mutating global foundation state here.
   // Mock shared_preferences
   const MethodChannel('plugins.flutter.io/shared_preferences')
       .setMockMethodCallHandler((MethodCall methodCall) async {

@@ -259,12 +259,14 @@ class DownloadQueueNotifier extends StateNotifier<DownloadQueueState> {
   }) {
     try {
       final currentProgress = state.downloads[chartId];
-      if (currentProgress == null) {
-        _logger.warning('Attempted to update progress for unknown download: $chartId');
-        return;
-      }
+      // If progress entry doesn't exist (e.g., service initiated download directly), create one
+      final baseProgress = currentProgress ?? DownloadProgress.withDefaults(
+        chartId: chartId,
+        status: status ?? DownloadStatus.downloading,
+        progress: progress ?? 0.0,
+      );
 
-      final updatedProgress = currentProgress.copyWith(
+      final updatedProgress = baseProgress.copyWith(
         status: status,
         progress: progress,
         totalBytes: totalBytes,

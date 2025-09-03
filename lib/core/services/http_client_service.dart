@@ -204,7 +204,6 @@ class HttpClientService {
         );
       
       case DioExceptionType.unknown:
-      default:
         return AppError.network(
           'An unexpected network error occurred: ${error.message ?? 'Unknown error'}',
           originalError: error,
@@ -308,6 +307,26 @@ class HttpClientService {
       final effectivePath = _resolveUrl(path);
       
       return await _dio.get(
+        effectivePath,
+        queryParameters: queryParameters,
+        options: options,
+        cancelToken: cancelToken,
+      );
+    } on DioException catch (e) {
+      throw _convertDioErrorToAppError(e);
+    }
+  }
+
+  /// Make a HEAD request (used for preflight size / range checks)
+  Future<Response> head(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final effectivePath = _resolveUrl(path);
+      return await _dio.head(
         effectivePath,
         queryParameters: queryParameters,
         options: options,

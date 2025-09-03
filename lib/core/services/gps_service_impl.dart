@@ -526,6 +526,7 @@ class GpsServiceImpl implements GpsService {
   /// - Real GPS position if available and permission granted
   /// - Seattle fallback coordinates if location services disabled/denied
   /// - Never returns null (always provides a usable location)
+  @override
   Future<GpsPosition?> getCurrentPositionWithFallback() async {
     try {
       _logger.debug('Attempting to get current position with Seattle fallback');

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:navtool/core/models/chart.dart';
 
-/// Individual chart card widget for displaying chart metadata and actions
+/// Individual chart card widget for displaying chart metadata and actions.
 class ChartCard extends StatelessWidget {
   final Chart chart;
   final bool isSelected;
@@ -32,7 +32,6 @@ class ChartCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header row with title and selection
                 Row(
                   children: [
                     if (onSelectionChanged != null) ...[
@@ -40,7 +39,11 @@ class ChartCard extends StatelessWidget {
                         label: 'Select chart ${chart.title}',
                         child: Checkbox(
                           value: isSelected,
-                          onChanged: onSelectionChanged,
+                          onChanged: (v) {
+                            if (onSelectionChanged != null) {
+                              onSelectionChanged!(v);
+                            }
+                          },
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -52,8 +55,8 @@ class ChartCard extends StatelessWidget {
                           Text(
                             chart.title,
                             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                                  fontWeight: FontWeight.w600,
+                                ),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -61,8 +64,11 @@ class ChartCard extends StatelessWidget {
                           Text(
                             chart.id,
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                            ),
+                  color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.6),
+                                ),
                           ),
                         ],
                       ),
@@ -77,13 +83,9 @@ class ChartCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                
                 const SizedBox(height: 12),
-                
-                // Chart metadata row
                 Row(
                   children: [
-                    // Chart type badge
                     Chip(
                       label: Text(
                         chart.type.displayName,
@@ -96,10 +98,7 @@ class ChartCard extends StatelessWidget {
                       backgroundColor: _getChartTypeBackgroundColor(chart.type),
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    
                     const SizedBox(width: 12),
-                    
-                    // Scale
                     Expanded(
                       child: Text(
                         'Scale: 1:${_formatNumber(chart.scale)}',
@@ -107,38 +106,35 @@ class ChartCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    
                     const SizedBox(width: 8),
-                    
-                    // Download status
                     Icon(
                       chart.isDownloaded ? Icons.download_done : Icons.cloud_download,
                       size: 16,
-                      color: chart.isDownloaded 
-                          ? Colors.green 
+                      color: chart.isDownloaded
+                          ? Colors.green
                           : Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(width: 4),
                     Text(
                       chart.isDownloaded ? 'Downloaded' : 'Available',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: chart.isDownloaded 
-                            ? Colors.green 
-                            : Theme.of(context).colorScheme.primary,
-                      ),
+                            color: chart.isDownloaded
+                                ? Colors.green
+                                : Theme.of(context).colorScheme.primary,
+                          ),
                     ),
                   ],
                 ),
-                
                 const SizedBox(height: 8),
-                
-                // Chart bounds and file size
                 Row(
                   children: [
                     Icon(
                       Icons.place,
                       size: 14,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+            color: Theme.of(context)
+              .colorScheme
+              .onSurface
+              .withValues(alpha: 0.6),
                     ),
                     const SizedBox(width: 4),
                     Expanded(
@@ -146,30 +142,45 @@ class ChartCard extends StatelessWidget {
                         '${chart.bounds.south.toStringAsFixed(1)}° - ${chart.bounds.north.toStringAsFixed(1)}°N, '
                         '${chart.bounds.east.abs().toStringAsFixed(1)}° - ${chart.bounds.west.abs().toStringAsFixed(1)}°W',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                        ),
+                color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.6),
+                            ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    
                     const SizedBox(width: 12),
-                    
-                    // File size
                     Icon(
                       Icons.storage,
                       size: 14,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+            color: Theme.of(context)
+              .colorScheme
+              .onSurface
+              .withValues(alpha: 0.6),
                     ),
                     const SizedBox(width: 4),
-                    Text(
-                      chart.fileSize != null 
-                          ? _formatFileSize(chart.fileSize!)
-                          : 'Size unknown',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    if (chart.fileSize != null && chart.fileSize! > 1024 * 1024)
+                      Text(
+                        _formatFileSize(chart.fileSize!),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.6),
+                            ),
                       ),
-                    ),
+                    if (chart.fileSize == null)
+                      Text(
+                        'Size unknown',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.6),
+                            ),
+                      ),
                   ],
                 ),
               ],
@@ -180,7 +191,6 @@ class ChartCard extends StatelessWidget {
     );
   }
 
-  /// Get chart type display color
   Color _getChartTypeColor(ChartType type) {
     switch (type) {
       case ChartType.harbor:
@@ -198,7 +208,6 @@ class ChartCard extends StatelessWidget {
     }
   }
 
-  /// Get chart type background color
   Color _getChartTypeBackgroundColor(ChartType type) {
     switch (type) {
       case ChartType.harbor:
@@ -216,7 +225,6 @@ class ChartCard extends StatelessWidget {
     }
   }
 
-  /// Format number with thousands separators
   String _formatNumber(int number) {
     return number.toString().replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
@@ -224,7 +232,6 @@ class ChartCard extends StatelessWidget {
     );
   }
 
-  /// Format file size in human readable format
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';

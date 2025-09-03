@@ -30,7 +30,7 @@ void main() {
       mockGpsService = MockGpsService();
     });
 
-    Widget createTestWidget({bool withNavigation = false}) {
+  Widget createTestWidget({bool withNavigation = false}) {
       return ProviderScope(
         overrides: [
           noaaChartDiscoveryServiceProvider.overrideWithValue(mockDiscoveryService),
@@ -81,6 +81,33 @@ void main() {
           fileSize: 23068672, // 22MB
         ),
       ];
+    }
+
+    Chart createTestChart({
+      String id = 'TEST_CHART',
+      String title = 'Test Chart',
+      int scale = 25000,
+      String state = 'California',
+      ChartType type = ChartType.harbor,
+      String? description,
+      int? fileSize,
+    }) {
+      return Chart(
+        id: id,
+        title: title,
+        scale: scale,
+        bounds: GeographicBounds(
+          north: 37.9,
+          south: 37.7,
+          east: -122.3,
+          west: -122.5,
+        ),
+        lastUpdate: DateTime.now(),
+        state: state,
+        type: type,
+        description: description,
+        fileSize: fileSize,
+      );
     }
 
     group('Screen Structure and Layout', () {
@@ -556,8 +583,22 @@ void main() {
         expect(find.byType(ListView), findsOneWidget);
         expect(find.text('Test Chart 0'), findsOneWidget);
         
-        // Scroll to load more items and check that more charts are available
-        await tester.drag(find.byType(ListView), const Offset(0, -2000));
+  // Scroll incrementally to avoid off-screen drag warnings and trigger lazy list build.
+  // NOTE:
+  // We deliberately scroll the outer SingleChildScrollView instead of the inner ListView.
+  // The ListView is shrinkWrapped with NeverScrollableScrollPhysics so direct drags on it
+  // produce framework warnings ("Scroll gesture was ignored because ..."). An earlier
+  // experiment added an enableScrolling flag to make the ListView independently scrollable,
+  // but that introduced multiple layout/semantics regressions (RenderBox not laid out,
+  // overflows, null check issues). Keeping the production layout intact and adapting the
+  // test to scroll the legitimate scrollable ancestor removes the warning without risking
+  // stability. If the layout is ever refactored to a sliver-based structure, this can be
+  // revisited.
+        final scrollFinder = find.byType(SingleChildScrollView);
+        for (var i = 0; i < 6; i++) {
+          await tester.drag(scrollFinder, const Offset(0, -350));
+          await tester.pump(const Duration(milliseconds: 120)); // allow build/layout
+        }
         await tester.pumpAndSettle();
         
         // Check that we have loaded charts further down the list
@@ -713,6 +754,157 @@ void main() {
         expect(find.byType(DropdownButton<String>), findsOneWidget);
         expect(find.text('Select State'), findsOneWidget);
         expect(find.text('Location discovery failed. Please select a state manually.'), findsOneWidget);
+      });
+    });
+
+    group('Enhanced Filtering Tests', () {
+      testWidgets('should show scale filtering controls when enabled', (WidgetTester tester) async {
+        // Arrange
+        final testCharts = createTestCharts();
+        when(mockDiscoveryService.discoverChartsByState('California'))
+            .thenAnswer((_) async => testCharts);
+
+        // Act
+        await tester.pumpWidget(createTestWidget());
+        await tester.pumpAndSettle();
+
+        // Select California to load charts
+        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('California'));
+        await tester.pumpAndSettle();
+
+        // Enable scale filtering
+        await tester.tap(find.text('Filter by Scale Range'));
+        await tester.pumpAndSettle();
+
+        // Assert
+        expect(find.text('Scale: 1:1,000 - 1:10,000,000'), findsOneWidget);
+        expect(find.byType(Slider), findsNWidgets(2)); // Min and max sliders
+      });
+
+      testWidgets('should show date filtering controls when enabled', (WidgetTester tester) async {
+        // Arrange
+        final testCharts = createTestCharts();
+        when(mockDiscoveryService.discoverChartsByState('California'))
+            .thenAnswer((_) async => testCharts);
+
+        // Act
+        await tester.pumpWidget(createTestWidget());
+        await tester.pumpAndSettle();
+
+        // Select California to load charts
+        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('California'));
+        await tester.pumpAndSettle();
+
+        // Enable date filtering
+        await tester.tap(find.text('Filter by Update Date'));
+        await tester.pumpAndSettle();
+
+        // Assert
+        expect(find.text('Start Date'), findsOneWidget);
+        expect(find.text('End Date'), findsOneWidget);
+      });
+
+      testWidgets('should filter charts by scale range', (WidgetTester tester) async {
+        // Arrange
+        final testCharts = [
+          createTestChart(id: 'US5CA52M', title: 'Small Scale', scale: 50000),
+          createTestChart(id: 'US4CA11M', title: 'Large Scale', scale: 500000),
+        ];
+        when(mockDiscoveryService.discoverChartsByState('California'))
+            .thenAnswer((_) async => testCharts);
+
+        // Act
+        await tester.pumpWidget(createTestWidget());
+        await tester.pumpAndSettle();
+
+        // Select California to load charts
+        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('California'));
+        await tester.pumpAndSettle();
+
+        // Verify both charts are shown initially
+        expect(find.text('Small Scale'), findsOneWidget);
+        expect(find.text('Large Scale'), findsOneWidget);
+
+        // Enable scale filtering and set range to exclude large scale
+        await tester.tap(find.text('Filter by Scale Range'));
+        await tester.pumpAndSettle();
+
+        // Assert filtering UI is shown
+        expect(find.byType(Slider), findsNWidgets(2));
+      });
+
+      testWidgets('should reset filters when state changes', (WidgetTester tester) async {
+        // Arrange
+        final californiaCharts = createTestCharts();
+        final floridaCharts = [createTestChart(id: 'US4FL11M', title: 'Florida Chart')];
+        
+        when(mockDiscoveryService.discoverChartsByState('California'))
+            .thenAnswer((_) async => californiaCharts);
+        when(mockDiscoveryService.discoverChartsByState('Florida'))
+            .thenAnswer((_) async => floridaCharts);
+
+        // Act
+        await tester.pumpWidget(createTestWidget());
+        await tester.pumpAndSettle();
+
+        // Select California and enable filters
+        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('California'));
+        await tester.pumpAndSettle();
+
+        // Enable scale filter
+        await tester.tap(find.text('Filter by Scale Range'));
+        await tester.pumpAndSettle();
+
+        // Change to Florida
+        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Florida'));
+        await tester.pumpAndSettle();
+
+        // Scale filter UI should not be visible (filter was reset)
+        expect(find.byType(Slider), findsNothing);
+      });
+    });
+
+    group('Enhanced Chart Preview Tests', () {
+      testWidgets('should show enhanced chart details dialog', (WidgetTester tester) async {
+        // Arrange
+        final testChart = createTestChart(
+          description: 'Detailed chart description',
+          fileSize: 1024 * 1024, // 1 MB
+        );
+        when(mockDiscoveryService.discoverChartsByState('California'))
+            .thenAnswer((_) async => [testChart]);
+
+        // Act
+        await tester.pumpWidget(createTestWidget());
+        await tester.pumpAndSettle();
+
+        // Load charts
+        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('California'));
+        await tester.pumpAndSettle();
+
+        // Tap info button
+        await tester.tap(find.byIcon(Icons.info_outline));
+        await tester.pumpAndSettle();
+
+        // Assert enhanced details are shown
+        expect(find.text('Chart Details'), findsOneWidget);
+        expect(find.text('Type:'), findsOneWidget);
+        expect(find.text('Scale:'), findsOneWidget);
+        expect(find.text('Coverage Area'), findsOneWidget);
+        expect(find.text('Source:'), findsOneWidget);
+        expect(find.text('1.0 MB'), findsOneWidget);
       });
     });
   });

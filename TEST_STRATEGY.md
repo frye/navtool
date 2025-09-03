@@ -152,6 +152,33 @@ flutter test integration_test/noaa_real_endpoint_test.dart
    - End-to-end workflows
    - API contract verification
 
+### Download Progress Semantics
+
+All download progress values emitted by services and observed in tests are normalized fractions in the inclusive range [0.0, 1.0].
+
+Rationale:
+- Simplifies UI bindings (direct percentage = fraction * 100).
+- Avoids historic ambiguity where some mocks emitted 0–100 values.
+- Enables consistent mathematical treatment (easing aggregation / averaging).
+
+Guidelines:
+- When simulating progress in tests, call progress callbacks with (receivedBytes, totalBytes) so the service normalizes internally.
+- Never emit raw percentage integers (e.g., 25, 50, 100) into progress streams—use fractions if constructing synthetic streams directly.
+- Assertions should enforce 0 ≤ p ≤ 1 and use helper `expectProgressCloseTo` for approximate comparisons.
+- If a future regression introduces values >1, tests SHOULD fail loudly rather than auto-normalize silently.
+
+Example (correct):
+```
+onReceiveProgress: (received, total) {
+   // received: 50, total: 100  -> progress stream emits 0.5
+}
+```
+
+Example (incorrect – do not use):
+```
+progressController.add(50); // 50 interpreted incorrectly as 50x completion
+```
+
 ### Updating Test Data
 
 - **Mock Data**: Update `test/utils/test_fixtures.dart`
@@ -175,3 +202,41 @@ flutter test integration_test/noaa_real_endpoint_test.dart
 - Clean and rebuild: `flutter clean && flutter pub get`
 
 This dual strategy ensures reliable testing while maintaining the ability to validate real-world scenarios critical for marine navigation applications.
+
+## Flakiness Guard & Deterministic Waits
+
+Intermittent timing-based failures were eliminated by replacing arbitrary delays with a diagnostic wait helper `waitForCondition` (see `test/helpers/flakiness_guard.dart`).
+
+Key properties:
+- Supplier + predicate pattern; supports any value type.
+- Adaptive polling (short initial interval, mild backoff) for fast pass cases.
+- Structured failure diagnostics via optional `diagnosticSnapshot` lambda.
+- Explicit timeout keeps tests bounded; failures surface actionable context.
+
+Usage pattern:
+```
+await waitForCondition<int>(
+   () async => downloadStarts,
+   predicate: (v) => v > 0,
+   timeout: const Duration(milliseconds: 600),
+   reason: 'Download did not start automatically',
+   diagnosticSnapshot: () async => 'downloadStarts=$downloadStarts',
+);
+```
+
+Legacy helper `waitForPredicate` remains for simple synchronous polling but is deprecated for new tests.
+
+## Filesystem Mitigation Testing
+
+Atomic file finalization on Windows can fail due to transient locks or path collisions (e.g., directory at the file path). Two internal helpers ensure robustness:
+1. `_prepareFinalPath` removes any existing file or directory at the target.
+2. `_safeRename` retries a few rename attempts, then falls back to copy+delete.
+
+Test Coverage:
+- Overwrite existing file (`filesystem_mitigation_test.dart`).
+- Remove blocking directory (`filesystem_mitigation_test.dart`).
+- Retry rename then succeed with injected failures (`filesystem_safe_rename_fallback_test.dart`).
+- Force persistent failures to exercise copy fallback (`filesystem_safe_rename_fallback_test.dart`).
+- Checksum mismatch ensures temp file cleanup without leaving corrupt final files (`download_checksum_mismatch_test.dart`).
+
+When adding new download scenarios, prefer writing to a temp `.part` file and let the service finalize to validate these safety nets implicitly.

@@ -145,10 +145,6 @@ class CircuitBreaker {
   /// Throws [CircuitBreakerOpenException] if circuit is open
   /// Propagates the original exception if operation fails
   Future<T> execute<T>(Future<T> Function() operation) async {
-    if (operation == null) {
-      throw ArgumentError('Operation cannot be null');
-    }
-
     // Check if we should transition from open to half-open
     _updateStateIfNeeded();
     

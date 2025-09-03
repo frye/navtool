@@ -14,7 +14,10 @@ class StatusBar extends ConsumerWidget {
     return Container(
       height: statusBarHeight,
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface.withOpacity(0.9),
+    color: Theme.of(context)
+      .colorScheme
+      .surface
+      .withValues(alpha: 0.9),
         border: Border(
           top: BorderSide(
             color: Theme.of(context).dividerColor,
@@ -225,7 +228,9 @@ class _StatusSegmentState extends State<_StatusSegment> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: _isHovered ? Colors.grey.withOpacity(0.1) : Colors.transparent,
+      color: _isHovered
+  ? Colors.grey.withValues(alpha: 0.1)
+        : Colors.transparent,
             borderRadius: BorderRadius.circular(4),
           ),
           child: Row(

@@ -10,6 +10,7 @@ import 'package:navtool/core/models/chart.dart';
 import 'package:dio/dio.dart';
 import 'dart:convert';
 import '../../../utils/test_fixtures.dart';
+import '../../../helpers/verify_helpers.dart';
 
 // Generate mocks for dependencies
 @GenerateMocks([
@@ -623,15 +624,8 @@ void main() {
         await apiClient.fetchChartCatalog();
 
         // Assert
-        verify(mockLogger.info(
-          'Fetching NOAA chart catalog',
-          context: 'NoaaApiClient',
-        )).called(1);
-        
-        verify(mockLogger.info(
-          'Successfully fetched chart catalog',
-          context: 'NoaaApiClient',
-        )).called(1);
+        verifyInfoLogged(mockLogger, 'Fetching NOAA chart catalog', expectedContext: 'NoaaApiClient');
+        verifyInfoLogged(mockLogger, 'Successfully fetched chart catalog', expectedContext: 'NoaaApiClient');
       });
 
       test('should log errors with proper context', () async {
@@ -650,11 +644,7 @@ void main() {
           // Expected to throw
         }
 
-        verify(mockLogger.error(
-          'Failed to fetch chart catalog',
-          context: 'NoaaApiClient',
-          exception: anyNamed('exception'),
-        )).called(1);
+        verifyErrorLogged(mockLogger, 'Failed to fetch chart catalog', expectedContext: 'NoaaApiClient');
       });
     });
 

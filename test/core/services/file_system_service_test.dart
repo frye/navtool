@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:navtool/core/services/file_system_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
+import '../../helpers/verify_helpers.dart';
 
 import 'file_system_service_test.mocks.dart';
 
@@ -29,7 +30,7 @@ void main() {
         await fileSystemService.initialize();
 
         // Assert
-        verify(mockLogger.info('FileSystemService initialized successfully')).called(1);
+        verifyInfoLogged(mockLogger, 'FileSystemService initialized successfully');
       });
 
       test('should handle initialization errors gracefully', () async {
@@ -344,7 +345,7 @@ void main() {
           // Expected to throw
         }
 
-        verify(mockLogger.error(any, exception: anyNamed('exception'))).called(1);
+        verifyErrorLogged(mockLogger, 'Failed');
       });
     });
 

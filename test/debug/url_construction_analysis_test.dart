@@ -1,3 +1,4 @@
+@Skip('Excluded from CI: exploratory debug analysis test')
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/services/noaa/noaa_api_client_impl.dart';
 

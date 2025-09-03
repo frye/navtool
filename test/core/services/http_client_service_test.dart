@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:navtool/core/services/http_client_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/app_error.dart';
+import '../../helpers/verify_helpers.dart';
 
 // Generate mocks
 @GenerateMocks([AppLogger])
@@ -50,7 +51,7 @@ void main() {
       test('should configure certificate pinning', () {
         // Act & Assert
         expect(() => httpClientService.configureCertificatePinning(), returnsNormally);
-        verify(mockLogger.info('Certificate pinning configured for secure downloads')).called(1);
+        verifyInfoLogged(mockLogger, 'Certificate pinning configured for secure downloads');
       });
     });
 
@@ -109,7 +110,7 @@ void main() {
         httpClientService.dispose();
 
         // Assert
-        verify(mockLogger.debug('HTTP client disposed', context: 'HTTP')).called(1);
+        verifyDebugLogged(mockLogger, 'HTTP client disposed', expectedContext: 'HTTP');
       });
     });
   });

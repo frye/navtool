@@ -291,10 +291,6 @@ class NoaaApiClientImpl implements NoaaApiClient {
       _logger.error('Error checking chart availability', 
         context: 'NoaaApiClient', exception: exception);
       throw exception;
-      // to provide graceful degradation
-      _logger.debug('Chart availability check failed, treating as unavailable', 
-        context: 'NoaaApiClient', exception: e);
-      return false;
     } catch (e) {
       // Handle non-Dio exceptions gracefully
       _logger.debug('Chart availability check error, treating as unavailable', 

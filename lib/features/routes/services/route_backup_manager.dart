@@ -2,7 +2,6 @@ import 'dart:typed_data';
 import '../../../core/services/compression_service.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../core/models/compression_result.dart';
-import '../../../core/models/route.dart';
 
 /// Manager for route backup compression operations
 /// Provides high-level interface for compressing and managing route backups
@@ -154,15 +153,8 @@ class RouteBackupManager {
         routeId: backupId,
       );
       
-      final isValid = true;
-      
-      if (isValid) {
-        _logger.info('Route backup $backupId verification successful');
-      } else {
-        _logger.warning('Route backup $backupId verification failed');
-      }
-      
-      return isValid;
+      _logger.info('Route backup $backupId verification successful');
+      return true;
     } catch (error) {
       _logger.error('Error verifying route backup $backupId', exception: error);
       return false;

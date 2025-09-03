@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
 import 'package:navtool/core/services/noaa/noaa_chart_discovery_service.dart';
+import 'package:navtool/core/services/storage_service.dart';
 import 'package:navtool/core/services/noaa/chart_catalog_service.dart';
 import 'package:navtool/core/services/noaa/state_region_mapping_service.dart';
 import 'package:navtool/core/services/noaa/noaa_metadata_parser.dart';
@@ -11,6 +12,7 @@ import 'package:navtool/core/models/geographic_bounds.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'dart:convert';
 import 'dart:io';
+import '../../../helpers/noaa_test_utils.dart';
 
 // Generate mocks for dependencies
 @GenerateMocks([
@@ -27,7 +29,8 @@ import 'noaa_performance_test.mocks.dart';
 /// for critical operations that will be used in marine environments.
 void main() {
   group('NOAA Performance Tests', () {
-    late NoaaChartDiscoveryServiceImpl discoveryService;
+  late NoaaChartDiscoveryServiceImpl discoveryService;
+  late StorageService storageService;
     late NoaaMetadataParserImpl metadataParser;
     late MockChartCatalogService mockCatalogService;
     late MockStateRegionMappingService mockMappingService;
@@ -39,10 +42,13 @@ void main() {
       mockMappingService = MockStateRegionMappingService();
       mockApiClient = MockNoaaApiClient();
       mockLogger = MockAppLogger();
+  configureNoaaApiClientMock(mockApiClient);
       
-      discoveryService = NoaaChartDiscoveryServiceImpl(
+      storageService = InMemoryStorageServiceFake();
+      discoveryService = createDiscoveryService(
         catalogService: mockCatalogService,
         mappingService: mockMappingService,
+        storageService: storageService,
         logger: mockLogger,
       );
       
@@ -97,7 +103,7 @@ void main() {
         expect(result[0].id, equals('US5TEST000M'));
         expect(result[999].id, equals('US5TEST999M'));
         
-        print('Parsed ${result.length} charts in ${stopwatch.elapsedMilliseconds}ms');
+  mockLogger.info('Parsed ${result.length} charts in ${stopwatch.elapsedMilliseconds}ms', context: 'Performance.CatalogParsing');
       });
 
       test('should handle complex geometry parsing efficiently', () async {
@@ -158,7 +164,7 @@ void main() {
           expect(chart.bounds != null, isTrue);
         }
         
-        print('Parsed ${result.length} complex geometries in ${stopwatch.elapsedMilliseconds}ms');
+  mockLogger.info('Parsed ${result.length} complex geometries in ${stopwatch.elapsedMilliseconds}ms', context: 'Performance.Geometry');
       });
 
       test('should demonstrate memory efficiency with large datasets', () async {
@@ -202,7 +208,7 @@ void main() {
         expect(memoryIncrease, lessThan(100 * 1024 * 1024)); // 100MB limit
         expect(result, hasLength(5000));
         
-        print('Memory increase: ${(memoryIncrease / 1024 / 1024).toStringAsFixed(2)}MB for ${result.length} charts');
+  mockLogger.info('Memory increase: ${(memoryIncrease / 1024 / 1024).toStringAsFixed(2)}MB for ${result.length} charts', context: 'Performance.Memory');
       });
     });
 
@@ -241,7 +247,7 @@ void main() {
         expect(stopwatch.elapsedMilliseconds, lessThan(2000));
         expect(result, isNotEmpty);
         
-        print('State mapping completed in ${stopwatch.elapsedMilliseconds}ms for ${result.length} charts');
+  mockLogger.info('State mapping completed in ${stopwatch.elapsedMilliseconds}ms for ${result.length} charts', context: 'Performance.StateMapping');
       });
 
       test('should handle concurrent state queries efficiently', () async {
@@ -267,7 +273,7 @@ void main() {
         expect(results, hasLength(5));
         expect(results.every((charts) => charts.length == 100), isTrue);
         
-        print('Concurrent state queries completed in ${stopwatch.elapsedMilliseconds}ms');
+  mockLogger.info('Concurrent state queries completed in ${stopwatch.elapsedMilliseconds}ms', context: 'Performance.StateMapping');
       });
     });
 
@@ -308,7 +314,7 @@ void main() {
         expect(stopwatch.elapsedMilliseconds, lessThan(2000));
         expect(result, hasLength(500));
         
-        print('Chart discovery completed in ${stopwatch.elapsedMilliseconds}ms for ${result.length} charts');
+  mockLogger.info('Chart discovery completed in ${stopwatch.elapsedMilliseconds}ms for ${result.length} charts', context: 'Performance.Discovery');
       });
 
       test('should handle search queries with large result sets efficiently', () async {
@@ -340,7 +346,7 @@ void main() {
         expect(stopwatch.elapsedMilliseconds, lessThan(1000));
         expect(result, hasLength(1000));
         
-        print('Chart search completed in ${stopwatch.elapsedMilliseconds}ms for ${result.length} results');
+  mockLogger.info('Chart search completed in ${stopwatch.elapsedMilliseconds}ms for ${result.length} results', context: 'Performance.Search');
       });
     });
 
@@ -373,7 +379,7 @@ void main() {
         expect(stopwatch.elapsedMilliseconds, lessThan(1000));
         expect(result, hasLength(2000));
         
-        print('Database query completed in ${stopwatch.elapsedMilliseconds}ms for ${result.length} charts');
+  mockLogger.info('Database query completed in ${stopwatch.elapsedMilliseconds}ms for ${result.length} charts', context: 'Performance.Database');
       });
     });
 
@@ -410,9 +416,9 @@ void main() {
           expect(stopwatch.elapsedMilliseconds, lessThan(3000));
           expect(result.length, equals(500)); // 5 original * 100 replications
           
-          print('Processed large API response in ${stopwatch.elapsedMilliseconds}ms for ${result.length} charts');
+          mockLogger.info('Processed large API response in ${stopwatch.elapsedMilliseconds}ms for ${result.length} charts', context: 'Performance.Network');
         } else {
-          print('Skipping network performance test - sample catalog file not found');
+          mockLogger.info('Skipping network performance test - sample catalog file not found', context: 'Performance.Network');
         }
       });
 
@@ -456,7 +462,7 @@ void main() {
         // Assert - Memory usage should be reasonable for multiple API responses
         expect(memoryIncrease, lessThan(50 * 1024 * 1024)); // 50MB limit
         
-        print('Memory increase after processing 10 API responses: ${(memoryIncrease / 1024 / 1024).toStringAsFixed(2)}MB');
+        mockLogger.info('Memory increase after processing 10 API responses: ${(memoryIncrease / 1024 / 1024).toStringAsFixed(2)}MB', context: 'Performance.NetworkMemory');
       });
     });
 
@@ -479,7 +485,7 @@ void main() {
         stopwatch.stop();
 
         // Assert - Should handle slow connections gracefully
-        print('Slow connection simulation completed in ${stopwatch.elapsedMilliseconds}ms');
+        mockLogger.info('Slow connection simulation completed in ${stopwatch.elapsedMilliseconds}ms', context: 'Performance.Marine');
         // Test passes regardless of timeout - demonstrates handling
       });
 
@@ -513,7 +519,7 @@ void main() {
 
           // Assert - Should handle memory pressure gracefully
           expect(totalCharts, equals(5000));
-          print('Processed ${totalCharts} charts under memory pressure in ${stopwatch.elapsedMilliseconds}ms');
+          mockLogger.info('Processed ${totalCharts} charts under memory pressure in ${stopwatch.elapsedMilliseconds}ms', context: 'Performance.MemoryPressure');
           
         } finally {
           // Clean up memory

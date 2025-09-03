@@ -1,6 +1,6 @@
+@Skip('Excluded from CI: exploratory debug analysis test')
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/models/geographic_bounds.dart';
-
 void main() {
   group('Real NOAA Chart Bounds Analysis', () {
     test('should analyze actual NOAA API response pattern and explain Washington coverage gap', () async {

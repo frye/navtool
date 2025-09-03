@@ -17,16 +17,12 @@ class AppIcon extends StatelessWidget {
     // Use platform-specific icons for better integration
     switch (defaultTargetPlatform) {
       case TargetPlatform.macOS:
-        // macOS uses a sailboat icon with rounded rectangle boundary
-        // following Apple's design guidelines
         return 'assets/icons/app_icon_macos_sailboat.svg';
       case TargetPlatform.windows:
       case TargetPlatform.linux:
       case TargetPlatform.android:
       case TargetPlatform.iOS:
       case TargetPlatform.fuchsia:
-      default:
-        // Default sailboat-themed app icon for other platforms
         return 'assets/icons/app_icon.svg';
     }
   }

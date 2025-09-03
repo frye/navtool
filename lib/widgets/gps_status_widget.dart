@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/state/providers.dart';
-import '../../core/models/gps_position.dart';
 
 /// Widget to display current GPS status and position
 class GpsStatusWidget extends ConsumerWidget {

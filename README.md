@@ -10,6 +10,7 @@ NavTool is a modern Electronic Chart Display and Information System (ECDIS) desi
 
 ### Navigation & Charts
 - **Electronic Chart Display and Information System (ECDIS)**
+### Focused Remediation Groups (Phase 2)  
 - **Advanced Route Planning and Optimization**
 - **Weather Routing with GRIB Data Integration**
 - **Real-time GPS Position and Tracking**
@@ -31,6 +32,7 @@ NavTool is a modern Electronic Chart Display and Information System (ECDIS) desi
 ## Technical Stack
 
 - **Framework**: Flutter 3.8.1+
+### Skipped Debug / Exploratory Test Rationale
 - **Language**: Dart
 - **UI Components**: Material Design 3
 - **Icons**: Custom SVG with flutter_svg
@@ -169,6 +171,20 @@ flutter build windows --release
 # macOS
 flutter build macos --release
 ```
+
+## Download System Refactor (Phase 1 Complete)
+
+The first phase of the chart download reliability overhaul has been completed. Highlights:
+
+- Unified progress model: all progress values now normalized (0.0–1.0) across service + state notifier.
+- Atomic file writes: downloads stream into `<filename>.part` then rename after optional checksum validation to avoid partial/corrupt final files.
+- Pause/Resume improvements: pause captures partial size and persists resume metadata explicitly; resume continues from existing `.part` file.
+- Notifier integration: `DownloadServiceImpl` pushes progress/status directly into `DownloadQueueNotifier` (auto-creates entries if not pre-queued).
+- Network suitability gate stub: hook in place for future adaptive deferral (currently always allows start, with logging scaffolding).
+- Persistent resume data: saved periodically during transfer and on pause for recovery.
+- New tests: `test/download/download_service_phase1_test.dart` validates normalization, atomic rename, and pause persistence.
+
+Upcoming phases will introduce segmented/ranged downloads, adaptive concurrency, richer UI feedback, integrity verification pipelines, and metrics.
 
 ## Contributing
 

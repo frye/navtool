@@ -10,6 +10,7 @@ import 'package:navtool/core/services/compression_service.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/app_error.dart';
 import 'package:navtool/core/models/compression_result.dart';
+import '../../helpers/verify_helpers.dart';
 
 // Generate mocks for dependencies
 @GenerateMocks([AppLogger, FileSystemService, CompressionService])
@@ -58,7 +59,9 @@ void main() {
         // Assert
         verify(mockFileSystem.getCacheDirectory()).called(1);
         verify(mockCompression.compressCacheData(data, cacheKey: cacheKey)).called(1);
-        verify(mockLogger.debug(any, context: anyNamed('context'))).called(greaterThan(0));
+  // Verify storing and stored debug logs occurred
+  verifyDebugLogged(mockLogger, 'Storing cache data:');
+  verifyDebugLogged(mockLogger, 'Cache data stored:');
       });
 
       test('should retrieve cached data by key', () async {
@@ -103,7 +106,7 @@ void main() {
 
         // Assert
         verify(mockFileSystem.getCacheDirectory()).called(1);
-        verify(mockLogger.info(any)).called(1);
+  verifyInfoLogged(mockLogger, 'Cache entry removed:');
       });
     });
 
@@ -118,7 +121,7 @@ void main() {
         // Assert
         expect(cleared, isTrue);
         verify(mockFileSystem.clearCache()).called(1);
-        verify(mockLogger.info(any)).called(1);
+  verifyInfoLogged(mockLogger, 'All cache data cleared');
       });
 
       test('should get total cache size', () async {
@@ -145,7 +148,7 @@ void main() {
         // Assert
         expect(cleanedCount, isA<int>());
         verify(mockFileSystem.getCacheDirectory()).called(1);
-        verify(mockLogger.info(any)).called(greaterThan(0));
+  verifyInfoLogged(mockLogger, 'Cleaned up');
       });
 
       test('should get cache statistics', () async {
@@ -211,7 +214,7 @@ void main() {
           () async => await cacheService.store(cacheKey, data),
           throwsA(isA<AppError>()),
         );
-        verify(mockLogger.error(any, exception: anyNamed('exception'))).called(1);
+        verifyErrorLogged(mockLogger, 'Failed');
       });
 
       test('should handle compression errors gracefully', () async {

@@ -47,6 +47,7 @@ abstract class StateRegionMappingService {
 class StateRegionMappingServiceImpl implements StateRegionMappingService {
   final AppLogger _logger;
   final CacheService _cacheService;
+  // ignore: unused_field, remove once remote boundary refresh implemented in Phase 2
   final HttpClientService _httpClient;
   final StorageService _storageService;
   final Map<String, List<LatLng>> _stateBoundariesCache = {};
@@ -83,26 +84,53 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
   Future<List<String>> getChartCellsForState(String stateName) async {
     try {
       _logger.debug('Getting chart cells for state: $stateName');
-      
-      // Force refresh for testing new geometry extraction
-      // TODO: Remove this force refresh after verifying spatial intersection works
-      _logger.info('Force refreshing state-chart mapping to test new chart bounds for $stateName');
 
-      // Compute mapping using spatial intersection
-      final chartCells = await _computeChartCellsForState(stateName);
-      
-      // Cache the result in memory and database
       final cacheKey = 'state_cells_$stateName';
+
+      // 1. Try in‑memory cache first
+      try {
+        final cached = await _cacheService.get(cacheKey);
+        if (cached != null) {
+          final decoded = jsonDecode(String.fromCharCodes(cached));
+            if (decoded is List) {
+              return List<String>.from(decoded);
+            }
+        }
+      } catch (e) {
+        _logger.warning('Failed to read state cell cache for $stateName: $e');
+      }
+
+      // 2. Try persistent storage
+      try {
+        final stored = await _storageService.getStateCellMapping(stateName);
+        if (stored != null) {
+          // Rehydrate into memory cache (best effort)
+          try {
+            final encodedData = jsonEncode(stored);
+            final encodedBytes = Uint8List.fromList(utf8.encode(encodedData));
+            await _cacheService.store(cacheKey, encodedBytes, maxAge: Duration(hours: 24));
+          } catch (e) {
+            _logger.warning('Failed to backfill cache for $stateName: $e');
+          }
+          return stored;
+        }
+      } catch (e) {
+        _logger.warning('Failed to read stored mapping for $stateName: $e');
+      }
+
+      // 3. Compute mapping using spatial intersection
+      final chartCells = await _computeChartCellsForState(stateName);
+
+      // 4. Persist results (best effort for cache)
       final encodedData = jsonEncode(chartCells);
       final encodedBytes = Uint8List.fromList(utf8.encode(encodedData));
       try {
         await _cacheService.store(cacheKey, encodedBytes, maxAge: Duration(hours: 24));
       } catch (e) {
         _logger.warning('Failed to store in cache, continuing: $e');
-        // Continue even if cache storage fails
       }
       await _storageService.storeStateCellMapping(stateName, chartCells);
-      
+
       return chartCells;
     } catch (e) {
       _logger.error('Failed to get chart cells for state: $stateName', exception: e);

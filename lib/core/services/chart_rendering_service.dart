@@ -623,8 +623,9 @@ class ChartRenderingService {
   void renderLightCharacteristics(PointFeature lighthouse) {
     // Enhanced light rendering would show light sectors, ranges, etc.
     // For now, we'll simulate this for testing
-    final characteristics = lighthouse.attributes['character'] as String?;
-    final range = lighthouse.attributes['range'] as int?;
+  // Access attributes to signal planned use in future enhanced rendering without storing
+  lighthouse.attributes['character'];
+  lighthouse.attributes['range'];
     
     // Implementation would draw light sectors and range circles
   }

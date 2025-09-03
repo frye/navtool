@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../logging/app_logger.dart';
 import '../error/error_handler.dart';
 import '../models/gps_position.dart';
@@ -73,12 +72,14 @@ final httpClientServiceProvider = Provider<HttpClientService>((ref) {
 });
 
 final downloadServiceProvider = Provider<DownloadService>((ref) {
-  return DownloadServiceImpl(
+  final service = DownloadServiceImpl(
     httpClient: ref.read(httpClientServiceProvider),
     storageService: ref.read(storageServiceProvider),
     logger: ref.read(loggerProvider),
     errorHandler: ref.read(errorHandlerProvider),
+    queueNotifier: ref.read(downloadQueueProvider.notifier),
   );
+  return service;
 });
 
 // Storage service (placeholder - should be implemented)

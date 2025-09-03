@@ -8,9 +8,11 @@ import 'package:navtool/core/models/chart.dart';
 import 'package:navtool/core/models/geographic_bounds.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/app_error.dart';
+import 'package:navtool/core/services/storage_service.dart';
+import '../../../helpers/noaa_test_utils.dart';
 
 // Generate mocks for dependencies
-@GenerateMocks([ChartCatalogService, StateRegionMappingService, AppLogger])
+@GenerateMocks([ChartCatalogService, StateRegionMappingService, AppLogger, StorageService])
 import 'noaa_chart_discovery_service_test.mocks.dart';
 
 void main() {
@@ -18,16 +20,19 @@ void main() {
     late NoaaChartDiscoveryServiceImpl discoveryService;
     late MockChartCatalogService mockCatalogService;
     late MockStateRegionMappingService mockMappingService;
-    late MockAppLogger mockLogger;
+  late MockAppLogger mockLogger;
+  late MockStorageService mockStorageService;
 
     setUp(() {
       mockCatalogService = MockChartCatalogService();
       mockMappingService = MockStateRegionMappingService();
-      mockLogger = MockAppLogger();
+  mockLogger = MockAppLogger();
+  mockStorageService = MockStorageService();
       
-      discoveryService = NoaaChartDiscoveryServiceImpl(
+      discoveryService = createDiscoveryService(
         catalogService: mockCatalogService,
         mappingService: mockMappingService,
+        storageService: mockStorageService,
         logger: mockLogger,
       );
     });

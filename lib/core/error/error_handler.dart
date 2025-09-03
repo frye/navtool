@@ -75,8 +75,8 @@ class ErrorRecoveryStrategy {
       case AppErrorType.validation:
       case AppErrorType.parsing:
       case AppErrorType.unknown:
-      default:
-        return ErrorRecoveryStrategy(
+        // Fall through to default behavior
+        return const ErrorRecoveryStrategy(
           shouldRetry: false,
           maxRetries: 0,
           delayBetweenRetries: Duration.zero,
@@ -129,7 +129,6 @@ class ErrorHandler {
       case AppErrorType.parsing:
         return 'Unable to process the data. The file may be corrupted.';
       case AppErrorType.unknown:
-      default:
         return 'An unexpected error occurred. Please try again.';
     }
   }

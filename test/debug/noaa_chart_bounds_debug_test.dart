@@ -1,3 +1,4 @@
+@Skip('Excluded from CI: exploratory debug analysis test')
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/services/noaa/noaa_chart_discovery_service.dart';
 import 'package:navtool/core/services/noaa/chart_catalog_service.dart';
@@ -8,7 +9,6 @@ import 'package:navtool/core/models/gps_position.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 
 import '../../utils/test_mocks.dart';
-
 void main() {
   group('NOAA Chart Bounds Debug Tests', () {
     late NoaaChartDiscoveryServiceImpl discoveryService;

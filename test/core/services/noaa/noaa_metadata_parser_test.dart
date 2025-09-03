@@ -7,6 +7,7 @@ import 'package:navtool/core/models/geographic_bounds.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/metadata_parsing_exceptions.dart';
 import 'dart:convert';
+import '../../../helpers/verify_helpers.dart';
 
 // Generate mocks for dependencies
 @GenerateMocks([AppLogger])
@@ -93,6 +94,8 @@ void main() {
         final chart2 = result[1];
         expect(chart2.id, equals('US4CA11M'));
         expect(chart2.title, equals('Los Angeles Harbor'));
+        // No error logs expected on successful full parse
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should handle empty GeoJSON feature collection', () async {
@@ -107,6 +110,8 @@ void main() {
 
         // Assert
         expect(result, isEmpty);
+        // Empty collection is a valid case; no errors should be logged
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should skip invalid features with missing required properties', () async {
@@ -162,9 +167,7 @@ void main() {
         // Assert
         expect(result, hasLength(1));
         expect(result[0].id, equals('US4CA11M'));
-        verify(mockLogger.warning(
-          'Skipping chart feature with missing required properties: US5CA52M'
-        )).called(1);
+        verifyWarningLogged(mockLogger, 'Skipping chart feature with missing required properties: US5CA52M');
       });
 
       test('should handle various chart types from USAGE property', () async {
@@ -202,6 +205,7 @@ void main() {
         // Assert
         expect(result, hasLength(1));
         expect(result[0].type, equals(ChartType.overview));
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should throw MetadataParsingException for invalid GeoJSON structure', () async {
@@ -246,9 +250,7 @@ void main() {
 
         // Assert
         expect(result, isEmpty);
-        verify(mockLogger.warning(
-          'Skipping chart feature with invalid geometry: US5CA52M'
-        )).called(1);
+        verifyWarningLogged(mockLogger, 'Skipping chart feature with invalid geometry: US5CA52M');
       });
     });
 
@@ -261,6 +263,7 @@ void main() {
         expect(parser.parseChartUsageToType('General'), equals(ChartType.general));
         expect(parser.parseChartUsageToType('Overview'), equals(ChartType.overview));
         expect(parser.parseChartUsageToType('Berthing'), equals(ChartType.berthing));
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should handle case-insensitive usage strings', () {
@@ -268,6 +271,7 @@ void main() {
         expect(parser.parseChartUsageToType('harbor'), equals(ChartType.harbor));
         expect(parser.parseChartUsageToType('HARBOR'), equals(ChartType.harbor));
         expect(parser.parseChartUsageToType('HaRbOr'), equals(ChartType.harbor));
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should default to harbor for unknown usage strings', () {
@@ -275,6 +279,7 @@ void main() {
         expect(parser.parseChartUsageToType('Unknown'), equals(ChartType.harbor));
         expect(parser.parseChartUsageToType(''), equals(ChartType.harbor));
         expect(parser.parseChartUsageToType('invalid'), equals(ChartType.harbor));
+        expectNoErrorLogs(mockLogger);
       });
     });
 
@@ -300,6 +305,7 @@ void main() {
         expect(bounds.south, equals(37.0));
         expect(bounds.east, equals(-122.0));
         expect(bounds.west, equals(-123.0));
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should extract bounds from multi-polygon geometry', () {
@@ -332,6 +338,7 @@ void main() {
         expect(bounds.south, equals(36.0));
         expect(bounds.east, equals(-120.0));
         expect(bounds.west, equals(-123.0));
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should throw InvalidGeometryException for unsupported geometry types', () {
@@ -384,6 +391,7 @@ void main() {
 
         // Assert
         expect(result, isTrue);
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should return false for missing required properties', () {
