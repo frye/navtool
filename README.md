@@ -32,11 +32,11 @@ NavTool is a modern Electronic Chart Display and Information System (ECDIS) desi
 ## Technical Stack
 
 - **Framework**: Flutter 3.8.1+
-### Skipped Debug / Exploratory Test Rationale
 - **Language**: Dart
 - **UI Components**: Material Design 3
 - **Icons**: Custom SVG with flutter_svg
 - **Package Info**: package_info_plus for version management
+- **Chart Data**: NOAA ENC S-57 format support
 
 ## Project Structure
 
@@ -186,6 +186,21 @@ The first phase of the chart download reliability overhaul has been completed. H
 - New tests: `test/download/download_service_phase1_test.dart` validates normalization, atomic rename, and pause persistence.
 
 Upcoming phases will introduce segmented/ranged downloads, adaptive concurrency, richer UI feedback, integrity verification pipelines, and metrics.
+
+## Test Chart Data
+
+NavTool includes NOAA ENC test data for development and testing:
+
+**Location**: `test/fixtures/charts/noaa_enc/`
+
+- **US5WA50M** - Elliott Bay harbor-scale chart (143.9 KB)
+- **US3WA01M** - Puget Sound coastal-scale chart (625.3 KB)
+
+**⚠️ Important**: These are point-in-time copies from September 2025 for testing only. **NOT suitable for navigation.** 
+
+For current official charts visit: https://nauticalcharts.noaa.gov/
+
+See [`docs/chart_test_data_inventory.md`](docs/chart_test_data_inventory.md) for complete documentation.
 
 ## Contributing
 
