@@ -10,6 +10,7 @@ NavTool is a modern Electronic Chart Display and Information System (ECDIS) desi
 
 ### Navigation & Charts
 - **Electronic Chart Display and Information System (ECDIS)**
+### Focused Remediation Groups (Phase 2)  
 - **Advanced Route Planning and Optimization**
 - **Weather Routing with GRIB Data Integration**
 - **Real-time GPS Position and Tracking**
@@ -31,6 +32,7 @@ NavTool is a modern Electronic Chart Display and Information System (ECDIS) desi
 ## Technical Stack
 
 - **Framework**: Flutter 3.8.1+
+### Skipped Debug / Exploratory Test Rationale
 - **Language**: Dart
 - **UI Components**: Material Design 3
 - **Icons**: Custom SVG with flutter_svg
