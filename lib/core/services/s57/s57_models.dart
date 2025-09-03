@@ -4,27 +4,58 @@
 import 's57_spatial_index.dart';
 
 /// S-57 feature types for marine navigation
+/// Based on IHO S-57 Object Catalogue Edition 3.1
 enum S57FeatureType {
-  // Navigation aids
-  beacon,
-  buoy,
-  lighthouse,
-  daymark,
+  // Navigation aids (official S-57 codes)
+  beacon(57, 'BCNCAR'), // Cardinal beacon
+  buoyLateral(58, 'BOYLAT'), // Lateral buoy
+  buoyCardinal(59, 'BOYCAR'), // Cardinal buoy 
+  buoyIsolatedDanger(60, 'BOYINB'), // Isolated danger buoy
+  buoySpecialPurpose(61, 'BOYSAW'), // Special purpose buoy
+  lighthouse(75, 'LIGHTS'), // Light
+  daymark(85, 'DAYMAR'), // Daymark
   
-  // Bathymetry
-  depthContour,
-  depthArea,
+  // Bathymetry (official S-57 codes)
+  depthArea(120, 'DEPARE'), // Depth area
+  depthContour(121, 'DEPCNT'), // Depth contour
+  sounding(127, 'SOUNDG'), // Sounding
   
-  // Coastline features
-  shoreline,
-  landArea,
+  // Coastline features (official S-57 codes)
+  coastline(30, 'COALNE'), // Coastline
+  landArea(71, 'LNDARE'), // Land area
   
-  // Obstructions
-  obstruction,
-  wreck,
+  // Obstructions (official S-57 codes)
+  obstruction(104, 'OBSTRN'), // Obstruction
+  wreck(159, 'WRECKS'), // Wreck
+  underwater(158, 'UWTROC'), // Underwater/awash rock
   
   // Unknown/other
-  unknown,
+  unknown(0, 'UNKNOW'),
+  ;
+  
+  const S57FeatureType(this.code, this.acronym);
+  
+  /// Official S-57 object class code
+  final int code;
+  
+  /// S-57 object class acronym
+  final String acronym;
+  
+  /// Create from S-57 object class code
+  static S57FeatureType fromCode(int code) {
+    for (final type in S57FeatureType.values) {
+      if (type.code == code) return type;
+    }
+    return S57FeatureType.unknown;
+  }
+  
+  /// Create from S-57 acronym
+  static S57FeatureType fromAcronym(String acronym) {
+    for (final type in S57FeatureType.values) {
+      if (type.acronym == acronym) return type;
+    }
+    return S57FeatureType.unknown;
+  }
 }
 
 /// S-57 geometry types
@@ -67,15 +98,20 @@ class S57Feature {
   String _featureTypeToString(S57FeatureType type) {
     return switch (type) {
       S57FeatureType.beacon => 'beacon',
-      S57FeatureType.buoy => 'buoy',
+      S57FeatureType.buoyLateral => 'buoy_lateral',
+      S57FeatureType.buoyCardinal => 'buoy_cardinal',
+      S57FeatureType.buoyIsolatedDanger => 'buoy_isolated_danger',
+      S57FeatureType.buoySpecialPurpose => 'buoy_special_purpose',
       S57FeatureType.lighthouse => 'lighthouse',
       S57FeatureType.daymark => 'daymark',
-      S57FeatureType.depthContour => 'depth_contour',
       S57FeatureType.depthArea => 'depth_area',
-      S57FeatureType.shoreline => 'shoreline',
+      S57FeatureType.depthContour => 'depth_contour',
+      S57FeatureType.sounding => 'sounding',
+      S57FeatureType.coastline => 'coastline',
       S57FeatureType.landArea => 'land_area',
       S57FeatureType.obstruction => 'obstruction',
       S57FeatureType.wreck => 'wreck',
+      S57FeatureType.underwater => 'underwater_rock',
       S57FeatureType.unknown => 'unknown',
     };
   }

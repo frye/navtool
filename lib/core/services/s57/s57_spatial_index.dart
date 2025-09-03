@@ -65,7 +65,10 @@ class S57SpatialIndex {
     final results = <S57Feature>[];
     
     final navTypes = [
-      S57FeatureType.buoy,
+      S57FeatureType.buoyLateral,
+      S57FeatureType.buoyCardinal,
+      S57FeatureType.buoyIsolatedDanger,
+      S57FeatureType.buoySpecialPurpose,
       S57FeatureType.beacon,
       S57FeatureType.lighthouse,
       S57FeatureType.daymark,
@@ -78,13 +81,14 @@ class S57SpatialIndex {
     return results;
   }
 
-  /// Query depth-related features (contours, areas)
+  /// Query depth-related features (contours, areas, soundings)
   List<S57Feature> queryDepthFeatures() {
     final results = <S57Feature>[];
     
     final depthTypes = [
       S57FeatureType.depthContour,
       S57FeatureType.depthArea,
+      S57FeatureType.sounding,
     ];
     
     for (final type in depthTypes) {

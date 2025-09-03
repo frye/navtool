@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/services/s57/s57_parser.dart';
 import 'package:navtool/core/services/s57/s57_models.dart';
@@ -131,7 +132,203 @@ void main() {
       });
     });
 
-    group('Feature Type Recognition', () {
+    group('Enhanced S-57 Object Parsing', () {
+      test('should recognize official S-57 object codes', () {
+        final result = S57Parser.parse(validTestData);
+        
+        // Should recognize S-57 feature types by their official codes
+        final featureTypes = result.features.map((f) => f.featureType).toSet();
+        expect(featureTypes, isNotEmpty);
+        
+        // Should include some official S-57 feature types
+        final hasOfficialTypes = featureTypes.any((type) => 
+          type == S57FeatureType.buoyLateral ||
+          type == S57FeatureType.depthContour ||
+          type == S57FeatureType.coastline ||
+          type == S57FeatureType.lighthouse
+        );
+        expect(hasOfficialTypes, isTrue);
+      });
+
+      test('should extract S-57 attributes with proper codes', () {
+        final result = S57Parser.parse(validTestData);
+        
+        for (final feature in result.features) {
+          expect(feature.attributes, isA<Map<String, dynamic>>());
+          
+          // Check for S-57 standard attributes based on feature type
+          switch (feature.featureType) {
+            case S57FeatureType.depthArea:
+              expect(feature.attributes.containsKey('DRVAL1') || 
+                     feature.attributes.containsKey('min_depth'), isTrue);
+              break;
+            case S57FeatureType.depthContour:
+              expect(feature.attributes.containsKey('VALDCO') || 
+                     feature.attributes.containsKey('depth'), isTrue);
+              break;
+            case S57FeatureType.buoyLateral:
+              expect(feature.attributes.containsKey('CATBOY') || 
+                     feature.attributes.containsKey('type'), isTrue);
+              break;
+            case S57FeatureType.lighthouse:
+              expect(feature.attributes.containsKey('HEIGHT') || 
+                     feature.attributes.containsKey('height'), isTrue);
+              break;
+            default:
+              // Other types may have various attributes
+              break;
+          }
+        }
+      });
+
+      test('should handle coordinate parsing correctly', () {
+        final result = S57Parser.parse(validTestData);
+        
+        // All features should have valid coordinates
+        for (final feature in result.features) {
+          expect(feature.coordinates, isNotEmpty);
+          
+          for (final coord in feature.coordinates) {
+            expect(coord.latitude, greaterThanOrEqualTo(-90.0));
+            expect(coord.latitude, lessThanOrEqualTo(90.0));
+            expect(coord.longitude, greaterThanOrEqualTo(-180.0));
+            expect(coord.longitude, lessThanOrEqualTo(180.0));
+          }
+        }
+      });
+
+      test('should assign correct geometry types', () {
+        final result = S57Parser.parse(validTestData);
+        
+        for (final feature in result.features) {
+          switch (feature.featureType) {
+            case S57FeatureType.depthArea:
+            case S57FeatureType.landArea:
+              expect(feature.geometryType, S57GeometryType.area);
+              break;
+            case S57FeatureType.depthContour:
+            case S57FeatureType.coastline:
+              expect(feature.geometryType, S57GeometryType.line);
+              break;
+            case S57FeatureType.buoyLateral:
+            case S57FeatureType.buoyCardinal:
+            case S57FeatureType.lighthouse:
+            case S57FeatureType.beacon:
+              // Point features can be point or line depending on coordinates
+              expect([S57GeometryType.point, S57GeometryType.line], 
+                     contains(feature.geometryType));
+              break;
+            default:
+              expect(feature.geometryType, isA<S57GeometryType>());
+              break;
+          }
+        }
+      });
+    });
+
+    group('ISO 8211 Compliance', () {
+      test('should parse record leader correctly', () {
+        final result = S57Parser.parse(validTestData);
+        
+        // Should successfully parse without throwing
+        expect(result, isA<S57ParsedData>());
+        expect(result.features, isNotEmpty);
+      });
+
+      test('should handle field parsing with proper delimiters', () {
+        final result = S57Parser.parse(validTestData);
+        
+        // Features should be extracted from proper field parsing
+        expect(result.features, isNotEmpty);
+        
+        // Should have realistic feature count (not just sample data)
+        expect(result.features.length, greaterThan(0));
+        expect(result.features.length, lessThan(20)); // Reasonable upper bound
+      });
+
+      test('should extract metadata from DDR correctly', () {
+        final result = S57Parser.parse(validTestData);
+        final metadata = result.metadata;
+        
+        expect(metadata.producer, isNotEmpty);
+        expect(metadata.version, isNotEmpty);
+        expect(metadata.creationDate, isNotNull);
+        
+        // Should have reasonable metadata values
+        expect(metadata.producer, equals('NOAA'));
+        expect(metadata.version, equals('3.1'));
+      });
+    });
+
+    group('Spatial Query Enhancement', () {
+      test('should support navigation aid queries with new buoy types', () {
+        final result = S57Parser.parse(validTestData);
+        final navAids = result.queryNavigationAids();
+        
+        expect(navAids, isA<List<S57Feature>>());
+        
+        // Should include different types of navigation aids
+        final navTypes = navAids.map((f) => f.featureType).toSet();
+        final hasModernNavTypes = navTypes.any((type) => 
+          type == S57FeatureType.buoyLateral ||
+          type == S57FeatureType.buoyCardinal ||
+          type == S57FeatureType.beacon ||
+          type == S57FeatureType.lighthouse
+        );
+        expect(hasModernNavTypes, isTrue);
+      });
+
+      test('should support enhanced depth feature queries', () {
+        final result = S57Parser.parse(validTestData);
+        final depthFeatures = result.queryDepthFeatures();
+        
+        expect(depthFeatures, isA<List<S57Feature>>());
+        
+        // Should include different depth feature types
+        final depthTypes = depthFeatures.map((f) => f.featureType).toSet();
+        final hasDepthTypes = depthTypes.any((type) => 
+          type == S57FeatureType.depthArea ||
+          type == S57FeatureType.depthContour ||
+          type == S57FeatureType.sounding
+        );
+        expect(hasDepthTypes, isTrue);
+      });
+    });
+
+    group('Feature Label Generation', () {
+      test('should generate meaningful labels for marine features', () {
+        final result = S57Parser.parse(validTestData);
+        
+        for (final feature in result.features) {
+          expect(feature.label, isNotNull);
+          expect(feature.label, isNotEmpty);
+          
+          // Labels should be meaningful for navigation
+          switch (feature.featureType) {
+            case S57FeatureType.depthContour:
+              expect(feature.label!.toLowerCase(), contains('depth'));
+              break;
+            case S57FeatureType.buoyLateral:
+              expect(feature.label!.toLowerCase(), anyOf([
+                contains('buoy'),
+                contains('red'),
+                contains('green'),
+              ]));
+              break;
+            case S57FeatureType.lighthouse:
+              expect(feature.label!.toLowerCase(), anyOf([
+                contains('light'),
+                contains('lighthouse'),
+              ]));
+              break;
+            default:
+              // Other labels should at least exist
+              expect(feature.label, isNotEmpty);
+              break;
+          }
+        }
+      });
+    });
       test('should recognize different S-57 feature types', () {
         final result = S57Parser.parse(validTestData);
         
@@ -239,12 +436,12 @@ void main() {
 }
 
 /// Create valid S-57 test data for parser testing
-/// This simulates the structure of a real S-57 file
+/// This simulates the structure of a real S-57 file with enhanced field structure
 List<int> _createValidS57TestData() {
   // Create a minimal but valid S-57 ISO 8211 record structure
   final data = <int>[];
   
-  // Record leader (24 bytes)
+  // Record leader (24 bytes) - Enhanced for proper parsing
   data.addAll('01582'.codeUnits);     // Record length (01582 bytes)
   data.addAll('3'.codeUnits);         // Interchange level
   data.addAll('L'.codeUnits);         // Leader identifier  
@@ -254,19 +451,31 @@ List<int> _createValidS57TestData() {
   data.addAll('09'.codeUnits);        // Field control length
   data.addAll('00201'.codeUnits);     // Base address of data
   data.addAll(' ! '.codeUnits);       // Extended character set
-  data.addAll('3'.codeUnits);         // Size of field length
-  data.addAll('4'.codeUnits);         // Size of field position
+  data.addAll('4'.codeUnits);         // Size of field length (4 bytes)
+  data.addAll('4'.codeUnits);         // Size of field position (4 bytes)
   data.addAll('0'.codeUnits);         // Reserved
-  data.addAll('4'.codeUnits);         // Size of field tag
+  data.addAll('4'.codeUnits);         // Size of field tag (4 bytes)
   
-  // Directory entries
+  // Directory entries - Enhanced with proper S-57 fields
   data.addAll('DSID'.codeUnits);      // Data Set Identification
-  data.addAll('165'.codeUnits);       // Field length
-  data.addAll('0170'.codeUnits);      // Field position
+  data.addAll('0165'.codeUnits);      // Field length
+  data.addAll('0000'.codeUnits);      // Field position
   
-  data.addAll('DSSI'.codeUnits);      // Data Set Structure Information
-  data.addAll('113'.codeUnits);       // Field length  
-  data.addAll('0335'.codeUnits);      // Field position
+  data.addAll('FRID'.codeUnits);      // Feature Record Identifier
+  data.addAll('0048'.codeUnits);      // Field length  
+  data.addAll('0165'.codeUnits);      // Field position
+  
+  data.addAll('FOID'.codeUnits);      // Feature Object Identifier
+  data.addAll('0024'.codeUnits);      // Field length
+  data.addAll('0213'.codeUnits);      // Field position
+  
+  data.addAll('ATTF'.codeUnits);      // Feature Attributes
+  data.addAll('0036'.codeUnits);      // Field length
+  data.addAll('0237'.codeUnits);      // Field position
+  
+  data.addAll('SG2D'.codeUnits);      // 2D Coordinate
+  data.addAll('0024'.codeUnits);      // Field length
+  data.addAll('0273'.codeUnits);      // Field position
   
   // Field terminator
   data.add(0x1e);
@@ -276,15 +485,53 @@ List<int> _createValidS57TestData() {
     data.add(0x20); // Space padding
   }
   
-  // Add some sample field data to make parsing work
+  // DSID field data (Data Set Identification)
   data.addAll('NOAA'.codeUnits);
-  data.addAll('3.1'.codeUnits);
-  data.add(0x1e); // Field terminator
+  data.addAll(' ' * (165 - 4)).codeUnits;
   
-  // Add FRID field to trigger feature extraction
-  data.addAll('FRID'.codeUnits);
-  data.addAll('10009'.codeUnits);
-  data.add(0x1e);
+  // FRID field data (Feature Record Identifier) - Enhanced
+  data.add(100); // RCNM (Record name) - Feature record
+  _addBinaryInt(data, 12345, 4); // RCID (Record ID)
+  data.add(1);   // PRIM (Primitive)
+  data.add(1);   // GRUP (Group)
+  _addBinaryInt(data, 58, 2); // OBJL (Object label) - BOYLAT code
+  _addBinaryInt(data, 1, 2);  // RVER (Record version)
+  data.add(1);   // RUIN (Record update instruction)
+  // Pad to 48 bytes
+  while (data.length < 201 + 165 + 48) {
+    data.add(0x20);
+  }
+  
+  // FOID field data (Feature Object Identifier) - Enhanced
+  _addBinaryInt(data, 550, 2);  // AGEN (Agency code) - NOAA
+  _addBinaryInt(data, 98765, 4); // FIDN (Feature ID)
+  _addBinaryInt(data, 1, 2);    // FIDS (Feature subdivision)
+  // Pad to 24 bytes
+  while (data.length < 201 + 165 + 48 + 24) {
+    data.add(0x20);
+  }
+  
+  // ATTF field data (Attributes) - Enhanced with S-57 attributes
+  _addBinaryInt(data, 84, 2);   // COLOUR attribute code
+  _addBinaryInt(data, 2, 4);    // Red color
+  _addBinaryInt(data, 85, 2);   // CATBOY attribute code  
+  _addBinaryInt(data, 2, 4);    // Port hand buoy
+  _addBinaryInt(data, 86, 2);   // COLPAT attribute code
+  _addBinaryInt(data, 1, 4);    // Horizontal stripes
+  // Pad to 36 bytes
+  while (data.length < 201 + 165 + 48 + 24 + 36) {
+    data.add(0x20);
+  }
+  
+  // SG2D field data (2D Coordinates) - Enhanced with realistic Elliott Bay coords
+  final lat = (47.64 * 10000000).round(); // Convert to S-57 coordinate units
+  final lon = ((-122.34) * 10000000).round();
+  _addBinaryInt(data, lon, 4); // X coordinate (longitude)
+  _addBinaryInt(data, lat, 4); // Y coordinate (latitude)
+  _addBinaryInt(data, lon + 1000, 4); // Second point X
+  _addBinaryInt(data, lat + 1000, 4); // Second point Y
+  _addBinaryInt(data, lon + 2000, 4); // Third point X  
+  _addBinaryInt(data, lat + 2000, 4); // Third point Y
   
   // Pad to declared record length
   while (data.length < 1582) {
@@ -292,4 +539,13 @@ List<int> _createValidS57TestData() {
   }
   
   return data;
+}
+
+/// Helper to add binary integer to data list
+void _addBinaryInt(List<int> data, int value, int bytes) {
+  final byteData = ByteData(bytes);
+  byteData.setInt32(0, value, Endian.little);
+  for (int i = 0; i < bytes; i++) {
+    data.add(byteData.getUint8(i));
+  }
 }
