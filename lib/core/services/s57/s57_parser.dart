@@ -17,12 +17,9 @@ import '../../error/app_error.dart';
 class S57Parser {
   static const int _minFileSize = 24;
   static const int _leaderSize = 24;
-  static const int _directoryEntrySize = 12;
   
   // ISO 8211 delimiters
   static const int _fieldTerminator = 0x1e;
-  static const int _unitTerminator = 0x1f;
-  static const int _recordTerminator = 0x1e;
 
   /// Parse S-57 binary data and extract features and metadata
   static S57ParsedData parse(List<int> data) {
@@ -119,15 +116,15 @@ class S57Parser {
     final recordLength = _parseInt(_readBytes(5));
     final interchangeLevel = _readString(1);
     final leaderIdentifier = _readString(1);
-    final inlineCodeExtension = _readString(1);
+    _readString(1); // inlineCodeExtension - not used
     final versionNumber = _readString(1);
-    final applicationIndicator = _readString(1);
+    _readString(1); // applicationIndicator - not used
     final fieldControlLength = _parseInt(_readBytes(2));
     final baseAddressData = _parseInt(_readBytes(5));
-    final extendedCharacterSet = _readString(3);
+    _readString(3); // extendedCharacterSet - not used
     final sizeOfFieldLength = _parseInt(_readBytes(1));
     final sizeOfFieldPosition = _parseInt(_readBytes(1));
-    final reserved = _readBytes(1);
+    _readBytes(1); // reserved - not used
     final sizeOfFieldTag = _parseInt(_readBytes(1));
 
     // Validate record structure

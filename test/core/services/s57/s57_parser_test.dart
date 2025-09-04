@@ -505,7 +505,6 @@ List<int> _createValidS57TestData() {
   _addBinaryInt(data, 1, 2);  // RVER (Record version)
   data.add(1);   // RUIN (Record update instruction)
   // Pad to exactly 48 bytes
-  final fridStartLength = data.length - (201 + 165);
   while (data.length < 201 + 165 + 48) {
     data.add(0x20);
   }
@@ -515,7 +514,6 @@ List<int> _createValidS57TestData() {
   _addBinaryInt(data, 98765, 4); // FIDN (Feature ID)
   _addBinaryInt(data, 1, 2);    // FIDS (Feature subdivision)
   // Pad to exactly 24 bytes
-  final foidStartLength = data.length - (201 + 165 + 48);
   while (data.length < 201 + 165 + 48 + 24) {
     data.add(0x20);
   }
@@ -528,7 +526,6 @@ List<int> _createValidS57TestData() {
   _addBinaryInt(data, 86, 2);   // COLPAT attribute code
   _addBinaryInt(data, 1, 4);    // Horizontal stripes
   // Pad to exactly 36 bytes
-  final attfStartLength = data.length - (201 + 165 + 48 + 24);
   while (data.length < 201 + 165 + 48 + 24 + 36) {
     data.add(0x20);
   }
