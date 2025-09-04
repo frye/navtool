@@ -142,6 +142,7 @@ void main() {
         
         // Should include some official S-57 feature types
         final hasOfficialTypes = featureTypes.any((type) => 
+          type == S57FeatureType.buoy ||
           type == S57FeatureType.buoyLateral ||
           type == S57FeatureType.depthContour ||
           type == S57FeatureType.coastline ||
@@ -166,6 +167,7 @@ void main() {
               expect(feature.attributes.containsKey('VALDCO') || 
                      feature.attributes.containsKey('depth'), isTrue);
               break;
+            case S57FeatureType.buoy:
             case S57FeatureType.buoyLateral:
               expect(feature.attributes.containsKey('CATBOY') || 
                      feature.attributes.containsKey('type'), isTrue);
@@ -210,6 +212,7 @@ void main() {
             case S57FeatureType.coastline:
               expect(feature.geometryType, S57GeometryType.line);
               break;
+            case S57FeatureType.buoy:
             case S57FeatureType.buoyLateral:
             case S57FeatureType.buoyCardinal:
             case S57FeatureType.lighthouse:
@@ -270,6 +273,7 @@ void main() {
         // Should include different types of navigation aids
         final navTypes = navAids.map((f) => f.featureType).toSet();
         final hasModernNavTypes = navTypes.any((type) => 
+          type == S57FeatureType.buoy ||
           type == S57FeatureType.buoyLateral ||
           type == S57FeatureType.buoyCardinal ||
           type == S57FeatureType.beacon ||
@@ -308,6 +312,7 @@ void main() {
             case S57FeatureType.depthContour:
               expect(feature.label!.toLowerCase(), contains('depth'));
               break;
+            case S57FeatureType.buoy:
             case S57FeatureType.buoyLateral:
               expect(feature.label!.toLowerCase(), anyOf([
                 contains('buoy'),

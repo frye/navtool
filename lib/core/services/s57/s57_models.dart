@@ -8,6 +8,7 @@ import 's57_spatial_index.dart';
 enum S57FeatureType {
   // Navigation aids (official S-57 codes)
   beacon(57, 'BCNCAR'), // Cardinal beacon
+  buoy(58, 'BOYLAT'), // Generic buoy (using lateral buoy code as primary)
   buoyLateral(58, 'BOYLAT'), // Lateral buoy
   buoyCardinal(59, 'BOYCAR'), // Cardinal buoy 
   buoyIsolatedDanger(60, 'BOYINB'), // Isolated danger buoy
@@ -98,6 +99,7 @@ class S57Feature {
   String _featureTypeToString(S57FeatureType type) {
     return switch (type) {
       S57FeatureType.beacon => 'beacon',
+      S57FeatureType.buoy => 'buoy',
       S57FeatureType.buoyLateral => 'buoy_lateral',
       S57FeatureType.buoyCardinal => 'buoy_cardinal',
       S57FeatureType.buoyIsolatedDanger => 'buoy_isolated_danger',

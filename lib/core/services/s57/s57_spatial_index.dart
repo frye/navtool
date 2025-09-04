@@ -65,6 +65,7 @@ class S57SpatialIndex {
     final results = <S57Feature>[];
     
     final navTypes = [
+      S57FeatureType.buoy,  // Include generic buoy type
       S57FeatureType.buoyLateral,
       S57FeatureType.buoyCardinal,
       S57FeatureType.buoyIsolatedDanger,
