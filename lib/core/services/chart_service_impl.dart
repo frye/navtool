@@ -5,6 +5,7 @@ import 'package:navtool/core/models/geographic_bounds.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:navtool/core/error/app_error.dart';
 import 'package:navtool/core/services/storage_service.dart';
+import 'package:navtool/core/services/s57/s57_parser.dart';
 
 /// Implementation of ChartService for S-57 chart management
 /// Handles loading, parsing, validation, and caching of marine charts
@@ -102,36 +103,9 @@ class ChartServiceImpl implements ChartService {
   @override
   Future<Map<String, dynamic>> parseS57Data(List<int> data) async {
     try {
-      // Validate data is not empty
-      if (data.isEmpty) {
-        throw AppError(
-          message: 'Chart data cannot be empty',
-          type: AppErrorType.validation,
-        );
-      }
-      
-      // Validate minimum size for S-57 format
-      if (data.length < 24) {
-        throw AppError(
-          message: 'Invalid S-57 data: insufficient data length',
-          type: AppErrorType.validation,
-        );
-      }
-      
-      // Check for valid S-57 header (simplified check)
-      if (!_isValidS57Header(data)) {
-        throw AppError(
-          message: 'Invalid S-57 data: invalid header',
-          type: AppErrorType.validation,
-        );
-      }
-      
-      // Parse S-57 data (simplified implementation)
-      return {
-        'features': _extractFeatures(data),
-        'metadata': _extractMetadata(data),
-        'bounds': _extractBounds(data),
-      };
+      // Use the proper S-57 parser
+      final parsedData = S57Parser.parse(data);
+      return parsedData.toChartServiceFormat();
     } catch (e) {
       _logger.error('Failed to parse S-57 data', exception: e);
       if (e is AppError) rethrow;
@@ -146,41 +120,12 @@ class ChartServiceImpl implements ChartService {
   @override
   Future<bool> validateChartData(List<int> data) async {
     try {
-      // Check minimum length
-      if (data.length < 24) {
+      // Use the S-57 parser to validate
+      final parsedData = S57Parser.parse(data);
+      
+      // Validate bounds
+      if (!parsedData.bounds.isValid) {
         return false;
-      }
-      
-      // Validate S-57 header
-      if (!_isValidS57Header(data)) {
-        return false;
-      }
-      
-      // Parse and validate bounds
-      final parsedData = await parseS57Data(data);
-      final bounds = parsedData['bounds'] as Map<String, double>?;
-      
-      if (bounds != null) {
-        // Validate marine navigation bounds
-        final north = bounds['north'] ?? 0.0;
-        final south = bounds['south'] ?? 0.0;
-        final east = bounds['east'] ?? 0.0;
-        final west = bounds['west'] ?? 0.0;
-        
-        // Check valid latitude range
-        if (north < -90 || north > 90 || south < -90 || south > 90) {
-          return false;
-        }
-        
-        // Check valid longitude range
-        if (east < -180 || east > 180 || west < -180 || west > 180) {
-          return false;
-        }
-        
-        // Check logical bounds relationship
-        if (north <= south || east <= west) {
-          return false;
-        }
       }
       
       return true;
@@ -188,44 +133,6 @@ class ChartServiceImpl implements ChartService {
       _logger.error('Error validating chart data', exception: e);
       return false;
     }
-  }
-
-  /// Helper method to check if data has valid S-57 header
-  bool _isValidS57Header(List<int> data) {
-    if (data.length < 4) return false;
-    
-    // Check for basic S-57 structure markers
-    // This is a simplified check - real S-57 validation would be more complex
-    return data[0] == 0x30 && data[1] == 0x30;
-  }
-
-  /// Extract features from S-57 data (simplified)
-  List<Map<String, dynamic>> _extractFeatures(List<int> data) {
-    // Simplified feature extraction
-    return [
-      {'type': 'depth_contour', 'depth': 10.0},
-      {'type': 'navigation_aid', 'name': 'Buoy 1'},
-    ];
-  }
-
-  /// Extract metadata from S-57 data (simplified)
-  Map<String, dynamic> _extractMetadata(List<int> data) {
-    return {
-      'version': '3.1',
-      'producer': 'NOAA',
-      'creation_date': DateTime.now().toIso8601String(),
-    };
-  }
-
-  /// Extract geographic bounds from S-57 data (simplified)
-  Map<String, double> _extractBounds(List<int> data) {
-    // For test data, return valid marine bounds
-    return {
-      'north': 38.0,
-      'south': 37.0,
-      'east': -122.0,
-      'west': -123.0,
-    };
   }
 
   /// Create Chart object from parsed S-57 data

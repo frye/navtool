@@ -263,6 +263,14 @@ class MockDownloadService extends _i1.Mock implements _i2.DownloadService {
           as _i6.Stream<double>);
 
   @override
+  _i6.Stream<double> progressStream(String? chartId) =>
+      (super.noSuchMethod(
+            Invocation.method(#progressStream, [chartId]),
+            returnValue: _i6.Stream<double>.empty(),
+          )
+          as _i6.Stream<double>);
+
+  @override
   _i6.Future<void> addToQueue(
     String? chartId,
     String? url, {
@@ -447,6 +455,37 @@ class MockDownloadService extends _i1.Mock implements _i2.DownloadService {
             returnValue: _i6.Future<_i2.ResumeData?>.value(),
           )
           as _i6.Future<_i2.ResumeData?>);
+
+  @override
+  _i6.Future<void> pauseAllDownloads() =>
+      (super.noSuchMethod(
+            Invocation.method(#pauseAllDownloads, []),
+            returnValue: _i6.Future<void>.value(),
+            returnValueForMissingStub: _i6.Future<void>.value(),
+          )
+          as _i6.Future<void>);
+
+  @override
+  _i6.Future<void> resumeAllDownloads() =>
+      (super.noSuchMethod(
+            Invocation.method(#resumeAllDownloads, []),
+            returnValue: _i6.Future<void>.value(),
+            returnValueForMissingStub: _i6.Future<void>.value(),
+          )
+          as _i6.Future<void>);
+
+  @override
+  _i6.Future<String> exportDiagnostics() =>
+      (super.noSuchMethod(
+            Invocation.method(#exportDiagnostics, []),
+            returnValue: _i6.Future<String>.value(
+              _i8.dummyValue<String>(
+                this,
+                Invocation.method(#exportDiagnostics, []),
+              ),
+            ),
+          )
+          as _i6.Future<String>);
 
   @override
   void dispose() => super.noSuchMethod(
