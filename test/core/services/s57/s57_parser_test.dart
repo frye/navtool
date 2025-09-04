@@ -329,6 +329,8 @@ void main() {
         }
       });
     });
+
+    group('Feature Type Recognition', () {
       test('should recognize different S-57 feature types', () {
         final result = S57Parser.parse(validTestData);
         
@@ -487,7 +489,7 @@ List<int> _createValidS57TestData() {
   
   // DSID field data (Data Set Identification)
   data.addAll('NOAA'.codeUnits);
-  data.addAll(' ' * (165 - 4)).codeUnits;
+  data.addAll((' ' * (165 - 4)).codeUnits);
   
   // FRID field data (Feature Record Identifier) - Enhanced
   data.add(100); // RCNM (Record name) - Feature record
