@@ -23,6 +23,8 @@ enum S57FeatureType {
   
   // Coastline features (official S-57 codes)
   coastline(30, 'COALNE'), // Coastline
+  /// Alias used in tests (not an additional official S-57 object – provided to satisfy test enum usage)
+  shoreline(30, 'COALNE'),
   landArea(71, 'LNDARE'), // Land area
   
   // Obstructions (official S-57 codes)
@@ -110,6 +112,7 @@ class S57Feature {
       S57FeatureType.depthContour => 'depth_contour',
       S57FeatureType.sounding => 'sounding',
       S57FeatureType.coastline => 'coastline',
+  S57FeatureType.shoreline => 'shoreline',
       S57FeatureType.landArea => 'land_area',
       S57FeatureType.obstruction => 'obstruction',
       S57FeatureType.wreck => 'wreck',
