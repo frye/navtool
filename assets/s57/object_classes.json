@@ -1,0 +1,13 @@
+[
+  {"code": 42, "acronym": "DEPARE", "name": "Depth Area"},
+  {"code": 74, "acronym": "SOUNDG", "name": "Sounding"},
+  {"code": 121, "acronym": "COALNE", "name": "Coastline"},
+  {"code": 38, "acronym": "BOYLAT", "name": "Lateral Buoy"},
+  {"code": 40, "acronym": "BOYISD", "name": "Isolated Danger Buoy"},
+  {"code": 41, "acronym": "BOYSPP", "name": "Special Purpose Buoy"},
+  {"code": 81, "acronym": "LIGHTS", "name": "Light(s)"},
+  {"code": 86, "acronym": "LNDARE", "name": "Land Area"},
+  {"code": 30, "acronym": "OBSTRN", "name": "Obstruction"},
+  {"code": 31, "acronym": "WRECKS", "name": "Wreck"},
+  {"code": 35, "acronym": "UWTROC", "name": "Underwater Rock"}
+]
