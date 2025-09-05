@@ -23,6 +23,7 @@ class Iso8211Reader {
   final Uint8List _data;
   int _position = 0;
   final List<Iso8211Warning> _warnings = [];
+  final Set<String> _warningKeys = {}; // prevent duplicate warnings (runaway memory)
 
   /// Create reader for the given byte data
   Iso8211Reader(List<int> data) : _data = Uint8List.fromList(data);
@@ -37,10 +38,12 @@ class Iso8211Reader {
   Iterable<Iso8211Record> readAll() sync* {
     _position = 0;
     _warnings.clear();
+    _warningKeys.clear();
     
     bool isFirstRecord = true;
     
     while (_position < _data.lengthInBytes) {
+      final startLoopPos = _position;
       try {
         final record = _readSingleRecord(isFirstRecord);
         if (record != null) {
@@ -58,11 +61,23 @@ class Iso8211Reader {
           _skipToNextRecord();
         }
       }
+      // Ensure forward progress to avoid infinite loops on corrupt data
+      if (_position <= startLoopPos) {
+        _position = startLoopPos + 1;
+      }
+      // Safety guard: stop if excessive warnings (corrupt file)
+      if (_warnings.length > 1000) {
+        _addWarning(Iso8211WarningCodes.subfieldParse, 'Aborting parse after 1000 warnings to prevent runaway memory');
+        break;
+      }
     }
   }
 
   /// Read a single ISO 8211 record
   Iso8211Record? _readSingleRecord(bool isDDR) {
+    // Track start of this potential record so we can recover position on failure
+    final recordStart = _position;
+
     if (_position + _leaderSize > _data.lengthInBytes) {
       if (isDDR) {
         throw AppError(
@@ -83,10 +98,18 @@ class Iso8211Reader {
     if (!_validateLeader(leader, isDDR)) {
       if (isDDR) {
         throw AppError(
-          message: 'Invalid DDR leader at position $_position',
+          message: 'Invalid DDR leader at position $recordStart',
           type: AppErrorType.parsing,
         );
       } else {
+        // Attempt to fast-forward by declared record length if plausible to reduce warning spam
+        final remaining = _data.lengthInBytes - recordStart;
+        if (leader.recordLength > _leaderSize && leader.recordLength <= remaining) {
+          _position = recordStart + leader.recordLength;
+        } else {
+          _position = recordStart + 1; // minimal advance
+          _skipToNextRecord();
+        }
         return null; // Warning already added by _validateLeader
       }
     }
@@ -96,10 +119,13 @@ class Iso8211Reader {
     if (directory == null) {
       if (isDDR) {
         throw AppError(
-          message: 'Failed to parse DDR directory at position $_position',
+          message: 'Failed to parse DDR directory at position $recordStart',
           type: AppErrorType.parsing,
         );
       } else {
+        // Advance minimally to avoid reprocessing same bytes
+        _position = recordStart + 1;
+        _skipToNextRecord();
         return null; // Warning already added
       }
     }
@@ -173,9 +199,10 @@ class Iso8211Reader {
   /// Validate leader fields according to ISO 8211 specification
   bool _validateLeader(_LeaderInfo leader, bool isDDR) {
     // Validate record length
-    if (leader.recordLength <= 0 || 
-        leader.recordLength > _data.lengthInBytes - (_position - _leaderSize)) {
-      final msg = 'Invalid record length: ${leader.recordLength} at position ${_position - _leaderSize}';
+    final currentRecordStart = _position - _leaderSize;
+    final remaining = _data.lengthInBytes - currentRecordStart;
+    if (leader.recordLength <= _leaderSize || leader.recordLength > remaining) {
+      final msg = 'Invalid record length: ${leader.recordLength} at position $currentRecordStart (remaining=$remaining)';
       if (isDDR) {
         throw AppError(message: msg, type: AppErrorType.parsing);
       } else {
@@ -185,8 +212,8 @@ class Iso8211Reader {
     }
 
     // Validate base address
-    if (leader.baseAddress < _leaderSize || leader.baseAddress > leader.recordLength) {
-      final msg = 'Invalid base address: ${leader.baseAddress} (must be >= $_leaderSize and <= ${leader.recordLength})';
+    if (leader.baseAddress < _leaderSize || leader.baseAddress >= leader.recordLength) {
+      final msg = 'Invalid base address: ${leader.baseAddress} (must be in [$_leaderSize, ${leader.recordLength - 1}])';
       if (isDDR) {
         throw AppError(message: msg, type: AppErrorType.parsing);
       } else {
@@ -260,12 +287,14 @@ class Iso8211Reader {
         }
         
         // Find actual field end by scanning for field terminator
-        int actualEnd = fieldStart;
-        final maxEnd = fieldStart + entry.length;
+  int actualEnd = fieldStart;
+  // Allow one extra byte beyond declared length to account for implementations
+  // that store length excluding the field terminator (common variance)
+  final maxEnd = fieldStart + entry.length + 1;
         
-        while (actualEnd < maxEnd && 
-               actualEnd < _data.lengthInBytes && 
-               _data[actualEnd] != _fieldTerminator) {
+   while (actualEnd < maxEnd &&
+     actualEnd < _data.lengthInBytes &&
+     _data[actualEnd] != _fieldTerminator) {
           actualEnd++;
         }
         
@@ -318,7 +347,10 @@ class Iso8211Reader {
 
   /// Add warning to collection
   void _addWarning(String code, String message, [Map<String, dynamic>? context]) {
-    _warnings.add(Iso8211Warning(code: code, message: message, context: context));
+    final key = '$code|$message';
+    if (_warningKeys.add(key)) {
+      _warnings.add(Iso8211Warning(code: code, message: message, context: context));
+    }
   }
 
   /// Skip to next record boundary for error recovery
