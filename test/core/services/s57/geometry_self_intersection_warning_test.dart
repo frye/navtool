@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/services/s57/s57_models.dart';
 import 'package:navtool/core/services/s57/s57_geometry_assembler.dart';
 import '../../../utils/s57_geometry_test_fixtures.dart';
+// Import math for trigonometric functions
+import 'dart:math' as math;
 
 void main() {
   group('S57 Geometry Self-Intersection Warning', () {
@@ -251,6 +253,3 @@ void main() {
     });
   });
 }
-
-// Import math for trigonometric functions
-import 'dart:math' as math;

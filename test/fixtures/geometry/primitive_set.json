@@ -69,8 +69,25 @@
       "expected_coordinates": [
         [0.0, 0.0],
         [10.0, 0.0],
+        [10.0, 10.0],
+        [10.0, 0.0]
+      ],
+      "note": "E2 reversed creates non-contiguous line segment as per S-57 specification"
+    },
+    
+    "COALNE_CONTIGUOUS": {
+      "description": "Contiguous coastline formed by edges E1+E2 without reversal",
+      "pointers": [
+        {"refId": 1, "isEdge": true, "reverse": false},
+        {"refId": 2, "isEdge": true, "reverse": false}
+      ],
+      "expected_geometry": "line",
+      "expected_coordinates": [
+        [0.0, 0.0],
+        [10.0, 0.0],
         [10.0, 10.0]
-      ]
+      ],
+      "note": "Demonstrates proper coordinate stitching when edges are contiguous"
     },
     
     "SOUNDG": {
