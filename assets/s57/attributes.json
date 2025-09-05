@@ -1,0 +1,15 @@
+[
+  {"acronym": "DRVAL1", "type": "float", "name": "Minimum depth"},
+  {"acronym": "DRVAL2", "type": "float", "name": "Maximum depth"},
+  {"acronym": "VALSOU", "type": "float", "name": "Sounding depth"},
+  {"acronym": "QUASOU", "type": "enum", "name": "Quality of sounding", "domain": {"1": "depth known", "6": "unreliable"}},
+  {"acronym": "COLOUR", "type": "enum", "name": "Colour", "domain": {"3": "green", "4": "blue", "5": "yellow"}},
+  {"acronym": "CATBOY", "type": "enum", "name": "Buoy category", "domain": {"1": "lateral", "2": "cardinal", "3": "isolated danger"}},
+  {"acronym": "COLPAT", "type": "enum", "name": "Colour pattern", "domain": {"1": "horizontal stripes", "2": "vertical stripes", "3": "chequered"}},
+  {"acronym": "OBJNAM", "type": "string", "name": "Object name"},
+  {"acronym": "HEIGHT", "type": "float", "name": "Height"},
+  {"acronym": "VALNMR", "type": "int", "name": "Numeric value"},
+  {"acronym": "WATLEV", "type": "enum", "name": "Water level effect", "domain": {"1": "always dry", "3": "covers at high water"}},
+  {"acronym": "CATCOA", "type": "enum", "name": "Coastline category", "domain": {"1": "shoreline", "2": "cliff", "3": "beach"}},
+  {"acronym": "CATLMK", "type": "enum", "name": "Landmark category", "domain": {"1": "tower", "3": "church", "6": "windmill"}}
+]
