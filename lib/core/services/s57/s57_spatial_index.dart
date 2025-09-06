@@ -1,9 +1,10 @@
 import 'dart:math';
 import 's57_models.dart';
+import 'spatial_index_interface.dart';
 
 /// Simple spatial indexing for S-57 chart features
 /// Provides efficient queries for marine navigation features
-class S57SpatialIndex {
+class S57SpatialIndex implements SpatialIndex {
   final List<S57Feature> _features = [];
   final Map<S57FeatureType, List<S57Feature>> _featuresByType = {};
   
@@ -58,6 +59,28 @@ class S57SpatialIndex {
   /// Query features by type
   List<S57Feature> queryByType(S57FeatureType featureType) {
     return _featuresByType[featureType] ?? [];
+  }
+
+  /// Query features by types within optional bounds
+  @override
+  List<S57Feature> queryTypes(Set<S57FeatureType> types, {S57Bounds? bounds}) {
+    final results = <S57Feature>[];
+    
+    for (final type in types) {
+      final typedFeatures = queryByType(type);
+      if (bounds != null) {
+        // Filter by bounds
+        for (final feature in typedFeatures) {
+          if (_featureIntersectsBounds(feature, bounds)) {
+            results.add(feature);
+          }
+        }
+      } else {
+        results.addAll(typedFeatures);
+      }
+    }
+    
+    return results;
   }
 
   /// Query navigation aids (buoys, beacons, lighthouses)
