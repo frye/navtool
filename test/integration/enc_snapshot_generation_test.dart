@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import '../utils/enc_test_utilities.dart';
 
+@Tags(['integration'])
 void main() {
   group('ENC Snapshot Generation Tests', () {
     testWidgets('should demonstrate snapshot generation workflow', (tester) async {

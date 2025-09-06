@@ -3,6 +3,7 @@ import 'package:navtool/core/services/s57/s57_parser.dart';
 import '../utils/enc_test_utilities.dart';
 import '../utils/test_fixtures.dart';
 
+@Tags(['integration'])
 void main() {
   group('ENC Parse Presence Tests', () {
     late FixtureDiscoveryResult fixtures;

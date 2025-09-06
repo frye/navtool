@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import '../utils/enc_test_utilities.dart';
 
+@Tags(['integration'])
 void main() {
   group('ENC Skip When Missing Tests', () {
     testWidgets('should detect missing fixtures directory', (tester) async {

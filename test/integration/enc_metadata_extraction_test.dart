@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import '../utils/enc_test_utilities.dart';
 
+@Tags(['integration'])
 void main() {
   group('ENC Metadata Extraction Tests', () {
     late FixtureDiscoveryResult fixtures;

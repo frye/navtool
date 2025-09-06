@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/services/s57/s57_models.dart';
 import '../utils/enc_test_utilities.dart';
 
+@Tags(['integration'])
 void main() {
   group('ENC Depth Sanity Tests', () {
     testWidgets('should validate depth range checking logic', (tester) async {

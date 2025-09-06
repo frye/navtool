@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import '../utils/enc_test_utilities.dart';
 
+@Tags(['integration'])
 void main() {
   group('ENC Snapshot Regression Tests', () {
     testWidgets('should demonstrate snapshot loading and comparison', (tester) async {
