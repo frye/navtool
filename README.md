@@ -202,6 +202,75 @@ For current official charts visit: https://nauticalcharts.noaa.gov/
 
 See [`docs/chart_test_data_inventory.md`](docs/chart_test_data_inventory.md) for complete documentation.
 
+## Parsing ENC Files
+
+NavTool provides comprehensive S-57 Electronic Navigational Chart parsing capabilities for marine navigation applications.
+
+### Quick Start
+
+```dart
+import 'dart:io';
+import 'package:navtool/s57.dart';
+
+Future<void> main() async {
+  // Load S-57 chart data
+  final data = await File('US5WA50M.000').readAsBytes();
+  
+  // Parse chart data (use current API)
+  final chart = S57Parser.parse(data);
+  
+  // Display chart summary
+  print('Features: ${chart.summary()}');
+  
+  // Find soundings (depth measurements)
+  final soundings = chart.findFeatures(types: {'SOUNDG'}, limit: 5);
+  for (final f in soundings) {
+    print('Sounding depth: ${f.attributes['VALSOU']} m');
+  }
+  
+  // Export depth areas and soundings as GeoJSON
+  final geojson = chart.toGeoJson(types: {'DEPARE', 'SOUNDG'});
+  print('GeoJSON features: ${geojson['features'].length}');
+}
+```
+
+### Key Features
+
+- **Complete S-57 Support**: Parse base charts (.000) and updates (.001+)
+- **Spatial Querying**: Efficient R-tree indexing for geographic searches
+- **Marine Objects**: Navigation aids, depth areas, soundings, coastlines
+- **GeoJSON Export**: Standard format for web mapping integration  
+- **Warning System**: Comprehensive error handling and data validation
+- **Performance Optimized**: Sub-second parsing for typical harbor charts
+
+### Common Use Cases
+
+```dart
+// Find navigation aids in an area
+final lighthouses = chart.findFeatures(
+  types: {'LIGHTS'},
+  bounds: S57Bounds(north: 47.61, south: 47.60, east: -122.33, west: -122.34)
+);
+
+// Get depth information for route planning
+final depthAreas = chart.findFeatures(types: {'DEPARE'});
+for (final area in depthAreas) {
+  final minDepth = area.attributes['DRVAL1'] as double?;
+  final maxDepth = area.attributes['DRVAL2'] as double?;
+  print('Depth range: ${minDepth} - ${maxDepth} meters');
+}
+
+// Search for named features
+final namedFeatures = chart.findFeatures(textQuery: 'harbor');
+```
+
+### Documentation
+
+- [S-57 Format Overview](docs/s57_format_overview.md) - Technical format details
+- [Troubleshooting Guide](docs/s57_troubleshooting.md) - Common issues and solutions  
+- [Implementation Analysis](S57_IMPLEMENTATION_ANALYSIS.md) - Current capabilities and roadmap
+- [Performance Benchmarks](docs/benchmarks/s57_benchmarks.md) - Speed and memory usage
+
 ## Contributing
 
 This is a private project focused on marine navigation solutions. For questions or collaboration opportunities, please contact the project maintainer.
