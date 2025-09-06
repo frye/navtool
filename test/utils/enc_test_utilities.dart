@@ -114,7 +114,9 @@ class EncTestUtilities {
       );
       
       // Parse with timeout to prevent hanging
-      return S57Parser.parse(chartFile.data).timeout(
+      return Future(() {
+        return S57Parser.parse(chartFile.data);
+      }).timeout(
         const Duration(seconds: 30),
         onTimeout: () => throw TimeoutException('S57 parsing timed out', const Duration(seconds: 30)),
       );
