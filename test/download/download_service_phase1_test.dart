@@ -20,13 +20,17 @@ class TestLogger implements AppLogger {
   final List<String> messages = [];
   void _add(String level, String msg) => messages.add('[$level] $msg');
   @override
-  void debug(String message, {String? context, Object? exception}) => _add('D', message);
+  void debug(String message, {String? context, Object? exception}) =>
+      _add('D', message);
   @override
-  void info(String message, {String? context, Object? exception}) => _add('I', message);
+  void info(String message, {String? context, Object? exception}) =>
+      _add('I', message);
   @override
-  void warning(String message, {String? context, Object? exception}) => _add('W', message);
+  void warning(String message, {String? context, Object? exception}) =>
+      _add('W', message);
   @override
-  void error(String message, {String? context, Object? exception}) => _add('E', message);
+  void error(String message, {String? context, Object? exception}) =>
+      _add('E', message);
   @override
   void logError(error) => _add('E', error.toString());
 }
@@ -36,7 +40,11 @@ class FakeStorageService implements StorageService {
   final Directory root;
   FakeStorageService(this.root);
   Directory get chartsDir => Directory(p.join(root.path, 'charts'));
-  Future<Directory> _ensureCharts() async { if(!await chartsDir.exists()) await chartsDir.create(recursive: true); return chartsDir; }
+  Future<Directory> _ensureCharts() async {
+    if (!await chartsDir.exists()) await chartsDir.create(recursive: true);
+    return chartsDir;
+  }
+
   @override
   Future<Directory> getChartsDirectory() async => _ensureCharts();
   // The following methods are not needed for Phase 1 tests and throw if used unexpectedly
@@ -56,33 +64,41 @@ class FakeStorageService implements StorageService {
   Future<void> storeRoute(route) async => throw UnimplementedError();
   @override
   @override
-  Future<NavigationRoute?> loadRoute(String routeId) async => throw UnimplementedError();
+  Future<NavigationRoute?> loadRoute(String routeId) async =>
+      throw UnimplementedError();
   @override
   Future<void> deleteRoute(String routeId) async => throw UnimplementedError();
   @override
   @override
-  Future<List<NavigationRoute>> getAllRoutes() async => throw UnimplementedError();
+  Future<List<NavigationRoute>> getAllRoutes() async =>
+      throw UnimplementedError();
   @override
   Future<void> storeWaypoint(waypoint) async => throw UnimplementedError();
   @override
   @override
-  Future<Waypoint?> loadWaypoint(String waypointId) async => throw UnimplementedError();
+  Future<Waypoint?> loadWaypoint(String waypointId) async =>
+      throw UnimplementedError();
   @override
   Future<void> updateWaypoint(waypoint) async => throw UnimplementedError();
   @override
-  Future<void> deleteWaypoint(String waypointId) async => throw UnimplementedError();
+  Future<void> deleteWaypoint(String waypointId) async =>
+      throw UnimplementedError();
   @override
   @override
   Future<List<Waypoint>> getAllWaypoints() async => throw UnimplementedError();
   @override
-  Future<void> storeStateCellMapping(String stateName, List<String> chartCells) async => throw UnimplementedError();
+  Future<void> storeStateCellMapping(
+    String stateName,
+    List<String> chartCells,
+  ) async => throw UnimplementedError();
   @override
   Future<List<String>?> getStateCellMapping(String stateName) async => null;
   @override
   Future<void> clearAllStateCellMappings() async => throw UnimplementedError();
   @override
   @override
-  Future<List<Chart>> getChartsInBounds(GeographicBounds bounds) async => throw UnimplementedError();
+  Future<List<Chart>> getChartsInBounds(GeographicBounds bounds) async =>
+      throw UnimplementedError();
   @override
   Future<int> countChartsWithInvalidBounds() async => 0;
   @override
@@ -93,10 +109,21 @@ class FakeStorageService implements StorageService {
 class FakeHttpClientService extends HttpClientService {
   final List<int> data; // bytes representing the chart
   int artificialLatencyMs;
-  FakeHttpClientService({required AppLogger logger, required this.data, this.artificialLatencyMs = 0}) : super(logger: logger, testDio: Dio());
+  FakeHttpClientService({
+    required AppLogger logger,
+    required this.data,
+    this.artificialLatencyMs = 0,
+  }) : super(logger: logger, testDio: Dio());
 
   @override
-  Future<void> downloadFile(String url, String savePath, {ProgressCallback? onReceiveProgress, CancelToken? cancelToken, Map<String, dynamic>? queryParameters, int? resumeFrom}) async {
+  Future<void> downloadFile(
+    String url,
+    String savePath, {
+    ProgressCallback? onReceiveProgress,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? queryParameters,
+    int? resumeFrom,
+  }) async {
     final file = File(savePath);
     final existing = resumeFrom ?? 0;
     final total = data.length;
@@ -107,13 +134,18 @@ class FakeHttpClientService extends HttpClientService {
     final raf = await file.open(mode: FileMode.append);
     try {
       while (offset < total) {
-        if (cancelToken?.isCancelled == true) throw DioException(requestOptions: RequestOptions(path: url), error: 'cancelled');
+        if (cancelToken?.isCancelled == true)
+          throw DioException(
+            requestOptions: RequestOptions(path: url),
+            error: 'cancelled',
+          );
         final end = (offset + chunkSize).clamp(0, total);
         final chunk = data.sublist(offset, end);
         await raf.writeFrom(chunk);
         offset = end;
         onReceiveProgress?.call(offset, total);
-        if (artificialLatencyMs > 0) await Future.delayed(Duration(milliseconds: artificialLatencyMs));
+        if (artificialLatencyMs > 0)
+          await Future.delayed(Duration(milliseconds: artificialLatencyMs));
       }
     } finally {
       await raf.close();
@@ -133,10 +165,22 @@ void main() {
     setUp(() async {
       logger = TestLogger();
       errorHandler = ErrorHandler(logger: logger);
-      storage = FakeStorageService(Directory.systemTemp.createTempSync('navtool_test'));    
-      final bytes = List<int>.generate(10 * 1024, (i) => i % 256); // 10KB pseudo data
-      http = FakeHttpClientService(logger: logger, data: bytes, artificialLatencyMs: 1);
-      notifier = DownloadQueueNotifier(logger: logger, errorHandler: errorHandler);
+      storage = FakeStorageService(
+        Directory.systemTemp.createTempSync('navtool_test'),
+      );
+      final bytes = List<int>.generate(
+        10 * 1024,
+        (i) => i % 256,
+      ); // 10KB pseudo data
+      http = FakeHttpClientService(
+        logger: logger,
+        data: bytes,
+        artificialLatencyMs: 1,
+      );
+      notifier = DownloadQueueNotifier(
+        logger: logger,
+        errorHandler: errorHandler,
+      );
       service = DownloadServiceImpl(
         httpClient: http,
         storageService: storage,
@@ -159,7 +203,10 @@ void main() {
     test('atomic .part file is renamed to final name', () async {
       await service.downloadChart('chartB', 'https://example.com/chartB.zip');
       final dir = await storage.getChartsDirectory();
-      final finalFile = Directory(dir.path).listSync().whereType<File>().firstWhere((f) => f.path.endsWith('chartB.zip'));
+      final finalFile = Directory(dir.path)
+          .listSync()
+          .whereType<File>()
+          .firstWhere((f) => f.path.endsWith('chartB.zip'));
       expect(await finalFile.exists(), isTrue);
       final partExists = File(finalFile.path + '.part').existsSync();
       expect(partExists, isFalse, reason: '.part file should be renamed away');
@@ -167,7 +214,10 @@ void main() {
 
     test('pause persists resume data with partial bytes', () async {
       // Start download in a separate future so we can pause mid-way
-      final downloadFuture = service.downloadChart('chartC', 'https://example.com/chartC.zip');
+      final downloadFuture = service.downloadChart(
+        'chartC',
+        'https://example.com/chartC.zip',
+      );
       // wait a moment for some progress
       await Future.delayed(const Duration(milliseconds: 10));
       await service.pauseDownload('chartC');
@@ -176,12 +226,16 @@ void main() {
       expect(resume, isNotNull);
       expect(resume!.downloadedBytes, greaterThan(0));
       // Ensure progress status is paused in internal + notifier state
-      final internal = (await service.getPersistedDownloadState()).firstWhere((p) => p.chartId == 'chartC');
+      final internal = (await service.getPersistedDownloadState()).firstWhere(
+        (p) => p.chartId == 'chartC',
+      );
       expect(internal.status, DownloadStatus.paused);
       final notifierEntry = notifier.state.downloads['chartC'];
       expect(notifierEntry?.status, DownloadStatus.paused);
       // Cancel underlying future if still running
-      try { await downloadFuture; } catch (_) {}
+      try {
+        await downloadFuture;
+      } catch (_) {}
     });
 
     test('concurrency ordering respects max slots', () async {
@@ -197,7 +251,15 @@ void main() {
       final start = DateTime.now();
       while (true) {
         final states = await service.getPersistedDownloadState();
-        if (states.where((d) => d.chartId.startsWith('q') && d.status == DownloadStatus.completed).length == 3) break;
+        if (states
+                .where(
+                  (d) =>
+                      d.chartId.startsWith('q') &&
+                      d.status == DownloadStatus.completed,
+                )
+                .length ==
+            3)
+          break;
         if (DateTime.now().difference(start) > const Duration(seconds: 10)) {
           fail('Timeout waiting for queued downloads to finish');
         }
@@ -205,7 +267,9 @@ void main() {
       }
       // Assert ordering by completion cannot strictly guarantee queue order, but ensure never more than one active at a time
       // (use notifier snapshot history by scanning logs for simultaneous 'downloading')
-      final overlapping = logger.messages.where((m) => m.contains('Download completed: q')).length;
+      final overlapping = logger.messages
+          .where((m) => m.contains('Download completed: q'))
+          .length;
       expect(overlapping, 3);
     });
 
@@ -221,13 +285,18 @@ void main() {
         networkSuitabilityProbe: () async => allow,
       );
       // Start download future (will defer)
-      final future = service.downloadChart('net1', 'https://example.com/net1.zip');
+      final future = service.downloadChart(
+        'net1',
+        'https://example.com/net1.zip',
+      );
       await Future.delayed(const Duration(milliseconds: 50));
       // Ensure not started (no completion log yet)
       expect(logger.messages.any((m) => m.contains('net1.zip')), isFalse);
       allow = true; // Flip probe
       await future; // Should now complete
-      final state = (await service.getPersistedDownloadState()).firstWhere((p) => p.chartId == 'net1');
+      final state = (await service.getPersistedDownloadState()).firstWhere(
+        (p) => p.chartId == 'net1',
+      );
       expect(state.status, DownloadStatus.completed);
     });
   });

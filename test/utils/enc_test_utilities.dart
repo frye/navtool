@@ -18,17 +18,23 @@ class _TestLoggerAdapter implements AppLogger {
 
   @override
   void debug(String message, {String? context, Object? exception}) {
-    _logger.debug('${context != null ? '[$context] ' : ''}$message${exception != null ? ' | $exception' : ''}');
+    _logger.debug(
+      '${context != null ? '[$context] ' : ''}$message${exception != null ? ' | $exception' : ''}',
+    );
   }
 
   @override
   void info(String message, {String? context, Object? exception}) {
-    _logger.info('${context != null ? '[$context] ' : ''}$message${exception != null ? ' | $exception' : ''}');
+    _logger.info(
+      '${context != null ? '[$context] ' : ''}$message${exception != null ? ' | $exception' : ''}',
+    );
   }
 
   @override
   void warning(String message, {String? context, Object? exception}) {
-    _logger.warn('${context != null ? '[$context] ' : ''}$message${exception != null ? ' | $exception' : ''}');
+    _logger.warn(
+      '${context != null ? '[$context] ' : ''}$message${exception != null ? ' | $exception' : ''}',
+    );
   }
 
   @override
@@ -43,7 +49,7 @@ class _TestLoggerAdapter implements AppLogger {
 }
 
 /// Utilities for NOAA ENC integration testing
-/// 
+///
 /// Handles fixture discovery, metadata extraction, snapshot generation,
 /// and regression testing for real NOAA ENC files.
 class EncTestUtilities {
@@ -51,92 +57,107 @@ class EncTestUtilities {
   static const String _defaultFixturesPath = 'test/fixtures/charts/noaa_enc';
   static const String _goldenSnapshotsPath = 'test/fixtures/golden';
   static const String _allowSnapshotGenEnvVar = 'ALLOW_SNAPSHOT_GEN';
-  
+
   /// Primary test chart (Harbor usage band 5)
   static const String primaryChartId = 'US5WA50M';
   static const String primaryChartFile = 'US5WA50M_harbor_elliott_bay.zip';
-  
+
   /// Secondary test chart (Coastal usage band 3)
   static const String secondaryChartId = 'US3WA01M';
   static const String secondaryChartFile = 'US3WA01M_coastal_puget_sound.zip';
-  
+
   final CompressionService _compressionService;
-  
+
   EncTestUtilities({CompressionService? compressionService})
-      : _compressionService = compressionService ?? 
+    : _compressionService =
+          compressionService ??
           CompressionServiceImpl(logger: _TestLoggerAdapter());
 
   /// Discover NOAA ENC fixture files
   static FixtureDiscoveryResult discoverFixtures() {
-    final fixturesPath = Platform.environment[_defaultFixturesEnvVar] ?? _defaultFixturesPath;
+    final fixturesPath =
+        Platform.environment[_defaultFixturesEnvVar] ?? _defaultFixturesPath;
     final fixturesDir = Directory(fixturesPath);
-    
+
     if (!fixturesDir.existsSync()) {
       return FixtureDiscoveryResult.notFound(fixturesPath);
     }
-    
+
     final primaryFile = File('$fixturesPath/$primaryChartFile');
     final secondaryFile = File('$fixturesPath/$secondaryChartFile');
-    
+
     return FixtureDiscoveryResult(
       fixturesPath: fixturesPath,
       primaryChartAvailable: primaryFile.existsSync(),
       secondaryChartAvailable: secondaryFile.existsSync(),
       primaryChartPath: primaryFile.existsSync() ? primaryFile.path : null,
-      secondaryChartPath: secondaryFile.existsSync() ? secondaryFile.path : null,
+      secondaryChartPath: secondaryFile.existsSync()
+          ? secondaryFile.path
+          : null,
     );
   }
-  
+
   /// Extract S-57 chart data from ZIP archive with timeout
   Future<S57ParsedData> extractAndParseChart(String zipFilePath) async {
     final zipFile = File(zipFilePath);
     if (!zipFile.existsSync()) {
       throw FileSystemException('Chart file not found', zipFilePath);
     }
-    
+
     final zipData = await zipFile.readAsBytes();
     final chartId = _extractChartIdFromFilename(zipFilePath);
-    
+
     try {
       // Extract with timeout to prevent hanging
-      final extractedFiles = await _compressionService.extractChartArchive(
-        zipData,
-        chartId: chartId,
-      ).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => throw TimeoutException('ZIP extraction timed out', const Duration(seconds: 30)),
-      );
-      
+      final extractedFiles = await _compressionService
+          .extractChartArchive(zipData, chartId: chartId)
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () => throw TimeoutException(
+              'ZIP extraction timed out',
+              const Duration(seconds: 30),
+            ),
+          );
+
       // Find the primary chart file (.000 extension)
       final chartFile = extractedFiles.firstWhere(
         (file) => file.fileName.endsWith('.000'),
-        orElse: () => throw StateError('No S-57 chart file (.000) found in archive'),
+        orElse: () =>
+            throw StateError('No S-57 chart file (.000) found in archive'),
       );
-      
+
       // Parse with timeout to prevent hanging
       return Future(() {
         return S57Parser.parse(chartFile.data);
       }).timeout(
         const Duration(seconds: 30),
-        onTimeout: () => throw TimeoutException('S57 parsing timed out', const Duration(seconds: 30)),
+        onTimeout: () => throw TimeoutException(
+          'S57 parsing timed out',
+          const Duration(seconds: 30),
+        ),
       );
     } catch (e) {
       if (e is TimeoutException) {
-        testLogger.warn('Chart parsing timed out for $chartId - this is a known performance limitation');
+        testLogger.warn(
+          'Chart parsing timed out for $chartId - this is a known performance limitation',
+        );
         rethrow;
       }
       throw Exception('Failed to extract/parse chart $chartId: $e');
     }
   }
-  
+
   /// Extract enhanced metadata from parsed S-57 data
-  static EncMetadata extractMetadata(S57ParsedData parsedData, String chartFilePath) {
+  static EncMetadata extractMetadata(
+    S57ParsedData parsedData,
+    String chartFilePath,
+  ) {
     final chartId = _extractChartIdFromFilename(chartFilePath);
     final usageBand = _extractUsageBandFromFilename(chartFilePath);
-    
+
     // Extract additional metadata from the raw S-57 data if available
     final metadata = parsedData.metadata;
-    
+
     return EncMetadata(
       cellId: chartId,
       editionNumber: _extractEditionNumber(metadata),
@@ -151,27 +172,29 @@ class EncTestUtilities {
       soundingDatum: _extractSoundingDatum(metadata),
     );
   }
-  
+
   /// Build feature frequency map for snapshot comparison
   static Map<String, int> buildFeatureFrequencyMap(S57ParsedData parsedData) {
     final frequencies = <String, int>{};
-    
+
     for (final feature in parsedData.features) {
       final acronym = feature.featureType.acronym;
       frequencies[acronym] = (frequencies[acronym] ?? 0) + 1;
     }
-    
+
     return frequencies;
   }
-  
+
   /// Load snapshot from golden file
   static Future<EncSnapshot?> loadSnapshot(String chartId) async {
-    final snapshotFile = File('$_goldenSnapshotsPath/${chartId.toLowerCase()}_freq.json');
-    
+    final snapshotFile = File(
+      '$_goldenSnapshotsPath/${chartId.toLowerCase()}_freq.json',
+    );
+
     if (!snapshotFile.existsSync()) {
       return null;
     }
-    
+
     try {
       final jsonString = await snapshotFile.readAsString();
       final jsonData = jsonDecode(jsonString) as Map<String, dynamic>;
@@ -181,27 +204,32 @@ class EncTestUtilities {
       return null;
     }
   }
-  
+
   /// Generate and save snapshot
-  static Future<void> generateSnapshot(String chartId, EncMetadata metadata, 
-                                      Map<String, int> featureFrequency) async {
+  static Future<void> generateSnapshot(
+    String chartId,
+    EncMetadata metadata,
+    Map<String, int> featureFrequency,
+  ) async {
     final snapshot = EncSnapshot(
       cellId: chartId,
       edition: metadata.editionNumber,
       update: metadata.updateNumber,
       featureFrequency: featureFrequency,
     );
-    
-    final snapshotFile = File('$_goldenSnapshotsPath/${chartId.toLowerCase()}_freq.json');
+
+    final snapshotFile = File(
+      '$_goldenSnapshotsPath/${chartId.toLowerCase()}_freq.json',
+    );
     await snapshotFile.parent.create(recursive: true);
-    
+
     const encoder = JsonEncoder.withIndent('  ');
     final jsonString = encoder.convert(snapshot.toJson());
     await snapshotFile.writeAsString(jsonString);
-    
+
     testLogger.info('Generated snapshot for $chartId: ${snapshotFile.path}');
   }
-  
+
   /// Compare feature frequencies with tolerance
   static SnapshotComparisonResult compareWithSnapshot(
     Map<String, int> currentFrequencies,
@@ -211,19 +239,19 @@ class EncTestUtilities {
     final results = <String, FeatureComparisonResult>{};
     final warnings = <String>[];
     var hasFailures = false;
-    
+
     // Check features present in snapshot
     for (final entry in snapshot.featureFrequency.entries) {
       final featureType = entry.key;
       final expectedCount = entry.value;
       final actualCount = currentFrequencies[featureType] ?? 0;
-      
-      final deltaPercent = expectedCount > 0 
+
+      final deltaPercent = expectedCount > 0
           ? ((actualCount - expectedCount) / expectedCount * 100.0)
           : (actualCount > 0 ? 100.0 : 0.0);
-      
+
       final isWithinTolerance = deltaPercent.abs() <= tolerancePercent;
-      
+
       results[featureType] = FeatureComparisonResult(
         featureType: featureType,
         expectedCount: expectedCount,
@@ -231,32 +259,37 @@ class EncTestUtilities {
         deltaPercent: deltaPercent,
         isWithinTolerance: isWithinTolerance,
       );
-      
+
       if (!isWithinTolerance) {
         hasFailures = true;
       }
     }
-    
+
     // Check for new features not in snapshot
-    final totalCurrentFeatures = currentFrequencies.values.fold(0, (sum, count) => sum + count);
+    final totalCurrentFeatures = currentFrequencies.values.fold(
+      0,
+      (sum, count) => sum + count,
+    );
     for (final entry in currentFrequencies.entries) {
       final featureType = entry.key;
       final actualCount = entry.value;
-      
+
       if (!snapshot.featureFrequency.containsKey(featureType)) {
-        final percentOfTotal = totalCurrentFeatures > 0 
+        final percentOfTotal = totalCurrentFeatures > 0
             ? (actualCount / totalCurrentFeatures * 100.0)
             : 0.0;
-        
-        warnings.add('New feature type: $featureType (count: $actualCount, ${percentOfTotal.toStringAsFixed(1)}% of total)');
-        
+
+        warnings.add(
+          'New feature type: $featureType (count: $actualCount, ${percentOfTotal.toStringAsFixed(1)}% of total)',
+        );
+
         // Consider it a failure if new feature represents >1% of total features
         if (percentOfTotal > 1.0) {
           hasFailures = true;
         }
       }
     }
-    
+
     return SnapshotComparisonResult(
       results: results,
       warnings: warnings,
@@ -264,42 +297,63 @@ class EncTestUtilities {
       tolerancePercent: tolerancePercent,
     );
   }
-  
+
   /// Validate depth values in parsed data
   static DepthValidationResult validateDepthRanges(S57ParsedData parsedData) {
     final warnings = <String>[];
     var totalDepthFeatures = 0;
     var outOfRangeCount = 0;
-    
+
     const minDepth = -20.0; // 20m above sea level
     const maxDepth = 120.0; // 120m below sea level
-    
+
     for (final feature in parsedData.features) {
       if (feature.featureType == S57FeatureType.depthArea) {
         totalDepthFeatures++;
-        final drval1 = _parseNumericDepth(feature.attributes['DRVAL1'], 'DEPARE DRVAL1', feature.recordId, warnings);
-        final drval2 = _parseNumericDepth(feature.attributes['DRVAL2'], 'DEPARE DRVAL2', feature.recordId, warnings);
-        
+        final drval1 = _parseNumericDepth(
+          feature.attributes['DRVAL1'],
+          'DEPARE DRVAL1',
+          feature.recordId,
+          warnings,
+        );
+        final drval2 = _parseNumericDepth(
+          feature.attributes['DRVAL2'],
+          'DEPARE DRVAL2',
+          feature.recordId,
+          warnings,
+        );
+
         if (drval1 != null && (drval1 < minDepth || drval1 > maxDepth)) {
-          warnings.add('DEPARE DRVAL1 out of range: ${drval1}m (feature ${feature.recordId})');
+          warnings.add(
+            'DEPARE DRVAL1 out of range: ${drval1}m (feature ${feature.recordId})',
+          );
           outOfRangeCount++;
         }
-        
+
         if (drval2 != null && (drval2 < minDepth || drval2 > maxDepth)) {
-          warnings.add('DEPARE DRVAL2 out of range: ${drval2}m (feature ${feature.recordId})');
+          warnings.add(
+            'DEPARE DRVAL2 out of range: ${drval2}m (feature ${feature.recordId})',
+          );
           outOfRangeCount++;
         }
       } else if (feature.featureType == S57FeatureType.sounding) {
         totalDepthFeatures++;
-        final valsou = _parseNumericDepth(feature.attributes['VALSOU'], 'SOUNDG VALSOU', feature.recordId, warnings);
-        
+        final valsou = _parseNumericDepth(
+          feature.attributes['VALSOU'],
+          'SOUNDG VALSOU',
+          feature.recordId,
+          warnings,
+        );
+
         if (valsou != null && (valsou < minDepth || valsou > maxDepth)) {
-          warnings.add('SOUNDG VALSOU out of range: ${valsou}m (feature ${feature.recordId})');
+          warnings.add(
+            'SOUNDG VALSOU out of range: ${valsou}m (feature ${feature.recordId})',
+          );
           outOfRangeCount++;
         }
       }
     }
-    
+
     return DepthValidationResult(
       totalDepthFeatures: totalDepthFeatures,
       outOfRangeCount: outOfRangeCount,
@@ -311,7 +365,12 @@ class EncTestUtilities {
 
   /// Attempt to parse a depth-related numeric attribute. Accepts int, double, or numeric strings.
   /// Returns null for missing or unparseable values and records a warning for invalid formats.
-  static double? _parseNumericDepth(Object? raw, String label, int recordId, List<String> warnings) {
+  static double? _parseNumericDepth(
+    Object? raw,
+    String label,
+    int recordId,
+    List<String> warnings,
+  ) {
     if (raw == null) {
       return null; // missing is acceptable
     }
@@ -325,10 +384,12 @@ class EncTestUtilities {
       warnings.add('$label has non-numeric value "$raw" (feature $recordId)');
       return null;
     }
-    warnings.add('$label has unsupported value type ${raw.runtimeType} (feature $recordId)');
+    warnings.add(
+      '$label has unsupported value type ${raw.runtimeType} (feature $recordId)',
+    );
     return null;
   }
-  
+
   /// Check if snapshot generation is allowed
   static bool get isSnapshotGenerationAllowed {
     final envValue = Platform.environment[_allowSnapshotGenEnvVar];
@@ -340,7 +401,7 @@ class EncTestUtilities {
     if (!isSnapshotGenerationAllowed) {
       return;
     }
-    
+
     // Example snapshot for primary chart (US5WA50M - Harbor)
     final primaryMetadata = EncMetadata(
       cellId: primaryChartId,
@@ -354,19 +415,19 @@ class EncTestUtilities {
       verticalDatum: 'MLLW',
       soundingDatum: 'MLLW',
     );
-    
+
     final primaryFrequencies = {
-      'DEPARE': 180,    // Depth areas typical for harbor chart
-      'SOUNDG': 9500,   // Many soundings in harbor
-      'COALNE': 12,     // Coastline segments
-      'LIGHTS': 4,      // Navigation lights
-      'WRECKS': 3,      // Underwater obstacles
-      'BCNCAR': 2,      // Cardinal beacons
-      'BOYLAT': 6,      // Lateral buoys
+      'DEPARE': 180, // Depth areas typical for harbor chart
+      'SOUNDG': 9500, // Many soundings in harbor
+      'COALNE': 12, // Coastline segments
+      'LIGHTS': 4, // Navigation lights
+      'WRECKS': 3, // Underwater obstacles
+      'BCNCAR': 2, // Cardinal beacons
+      'BOYLAT': 6, // Lateral buoys
     };
-    
+
     await generateSnapshot(primaryChartId, primaryMetadata, primaryFrequencies);
-    
+
     // Example snapshot for secondary chart (US3WA01M - Coastal)
     final secondaryMetadata = EncMetadata(
       cellId: secondaryChartId,
@@ -380,30 +441,36 @@ class EncTestUtilities {
       verticalDatum: 'MLLW',
       soundingDatum: 'MLLW',
     );
-    
+
     final secondaryFrequencies = {
-      'DEPARE': 450,    // More depth areas in coastal chart
-      'SOUNDG': 15000,  // More soundings over larger area
-      'COALNE': 25,     // More coastline segments
-      'LIGHTS': 8,      // More navigation aids
-      'WRECKS': 5,      // More obstacles
-      'BCNCAR': 4,      // Cardinal beacons
-      'BOYLAT': 12,     // Lateral buoys
-      'OBSTRN': 3,      // Obstructions
+      'DEPARE': 450, // More depth areas in coastal chart
+      'SOUNDG': 15000, // More soundings over larger area
+      'COALNE': 25, // More coastline segments
+      'LIGHTS': 8, // More navigation aids
+      'WRECKS': 5, // More obstacles
+      'BCNCAR': 4, // Cardinal beacons
+      'BOYLAT': 12, // Lateral buoys
+      'OBSTRN': 3, // Obstructions
     };
-    
-    await generateSnapshot(secondaryChartId, secondaryMetadata, secondaryFrequencies);
-    
-    testLogger.info('Example golden snapshots created for ${primaryChartId} and ${secondaryChartId}');
+
+    await generateSnapshot(
+      secondaryChartId,
+      secondaryMetadata,
+      secondaryFrequencies,
+    );
+
+    testLogger.info(
+      'Example golden snapshots created for ${primaryChartId} and ${secondaryChartId}',
+    );
   }
-  
+
   /// Extract chart ID from filename
   static String _extractChartIdFromFilename(String filePath) {
     final fileName = filePath.split('/').last;
     final parts = fileName.split('_');
     return parts.isNotEmpty ? parts[0] : fileName.split('.')[0];
   }
-  
+
   /// Extract usage band from filename (digit after US)
   static int _extractUsageBandFromFilename(String filePath) {
     final chartId = _extractChartIdFromFilename(filePath);
@@ -413,60 +480,66 @@ class EncTestUtilities {
     }
     return 0;
   }
-  
+
   // Metadata extraction helpers - Enhanced to extract actual DSID/DSPM fields
   static int _extractEditionNumber(S57ChartMetadata metadata) {
     // Extract from metadata title or use parsing logic for DSID
     final title = metadata.title ?? '';
-    final editionMatch = RegExp(r'Edition\s*(\d+)', caseSensitive: false).firstMatch(title);
+    final editionMatch = RegExp(
+      r'Edition\s*(\d+)',
+      caseSensitive: false,
+    ).firstMatch(title);
     if (editionMatch != null) {
       return int.tryParse(editionMatch.group(1)!) ?? 0;
     }
     return 0;
   }
-  
+
   static int _extractUpdateNumber(S57ChartMetadata metadata) {
     // Extract from metadata or use parsing logic for DSID
     final title = metadata.title ?? '';
-    final updateMatch = RegExp(r'Update\s*(\d+)', caseSensitive: false).firstMatch(title);
+    final updateMatch = RegExp(
+      r'Update\s*(\d+)',
+      caseSensitive: false,
+    ).firstMatch(title);
     if (updateMatch != null) {
       return int.tryParse(updateMatch.group(1)!) ?? 0;
     }
     return 0;
   }
-  
+
   static DateTime? _extractIssueDate(S57ChartMetadata metadata) {
     // Use creation date as fallback, or implement DSID issue date parsing
     return metadata.creationDate ?? metadata.updateDate;
   }
-  
+
   static int? _extractCompilationScale(S57ChartMetadata metadata) {
     // Use existing scale or implement DSPM compilation scale extraction
     return metadata.scale;
   }
-  
+
   static double? _extractComf(S57ChartMetadata metadata) {
     // DSPM coordinate multiplication factor - typical value for ENC
     // Default to 10,000,000 for degree-based coordinates
     return 10000000.0;
   }
-  
+
   static double? _extractSomf(S57ChartMetadata metadata) {
     // DSPM sounding multiplication factor - typical value
     // Default to 10.0 for meter-based soundings
     return 10.0;
   }
-  
+
   static String? _extractHorizontalDatum(S57ChartMetadata metadata) {
     // Default to WGS84 for NOAA charts, or implement DSPM parsing
     return 'WGS84';
   }
-  
+
   static String? _extractVerticalDatum(S57ChartMetadata metadata) {
     // Default to MLLW for NOAA charts, or implement DSPM parsing
     return 'MLLW';
   }
-  
+
   static String? _extractSoundingDatum(S57ChartMetadata metadata) {
     // Default to MLLW for NOAA charts, or implement DSPM parsing
     return 'MLLW';
@@ -481,7 +554,7 @@ class FixtureDiscoveryResult {
   final String? primaryChartPath;
   final String? secondaryChartPath;
   final bool found;
-  
+
   FixtureDiscoveryResult({
     required this.fixturesPath,
     required this.primaryChartAvailable,
@@ -489,7 +562,7 @@ class FixtureDiscoveryResult {
     this.primaryChartPath,
     this.secondaryChartPath,
   }) : found = primaryChartAvailable || secondaryChartAvailable;
-  
+
   factory FixtureDiscoveryResult.notFound(String path) {
     return FixtureDiscoveryResult(
       fixturesPath: path,
@@ -497,7 +570,7 @@ class FixtureDiscoveryResult {
       secondaryChartAvailable: false,
     );
   }
-  
+
   bool get hasAnyFixtures => found;
   bool get hasPrimaryChart => primaryChartAvailable;
   bool get hasSecondaryChart => secondaryChartAvailable;
@@ -516,7 +589,7 @@ class EncMetadata {
   final String? horizontalDatum;
   final String? verticalDatum;
   final String? soundingDatum;
-  
+
   const EncMetadata({
     required this.cellId,
     required this.editionNumber,
@@ -538,14 +611,14 @@ class EncSnapshot {
   final int edition;
   final int update;
   final Map<String, int> featureFrequency;
-  
+
   const EncSnapshot({
     required this.cellId,
     required this.edition,
     required this.update,
     required this.featureFrequency,
   });
-  
+
   factory EncSnapshot.fromJson(Map<String, dynamic> json) {
     return EncSnapshot(
       cellId: json['cellId'] as String,
@@ -554,7 +627,7 @@ class EncSnapshot {
       featureFrequency: Map<String, int>.from(json['featureFrequency'] as Map),
     );
   }
-  
+
   Map<String, dynamic> toJson() {
     return {
       'cellId': cellId,
@@ -571,17 +644,18 @@ class SnapshotComparisonResult {
   final List<String> warnings;
   final bool hasFailures;
   final double tolerancePercent;
-  
+
   const SnapshotComparisonResult({
     required this.results,
     required this.warnings,
     required this.hasFailures,
     required this.tolerancePercent,
   });
-  
+
   bool get isSuccess => !hasFailures;
   int get totalFeaturesChecked => results.length;
-  int get featuresOutOfTolerance => results.values.where((r) => !r.isWithinTolerance).length;
+  int get featuresOutOfTolerance =>
+      results.values.where((r) => !r.isWithinTolerance).length;
 }
 
 /// Result of comparing a single feature type
@@ -591,7 +665,7 @@ class FeatureComparisonResult {
   final int actualCount;
   final double deltaPercent;
   final bool isWithinTolerance;
-  
+
   const FeatureComparisonResult({
     required this.featureType,
     required this.expectedCount,
@@ -599,7 +673,7 @@ class FeatureComparisonResult {
     required this.deltaPercent,
     required this.isWithinTolerance,
   });
-  
+
   int get deltaCount => actualCount - expectedCount;
 }
 
@@ -610,7 +684,7 @@ class DepthValidationResult {
   final List<String> warnings;
   final double minDepth;
   final double maxDepth;
-  
+
   const DepthValidationResult({
     required this.totalDepthFeatures,
     required this.outOfRangeCount,
@@ -618,9 +692,9 @@ class DepthValidationResult {
     required this.minDepth,
     required this.maxDepth,
   });
-  
+
   bool get isValid => outOfRangeCount == 0;
-  double get outOfRangePercent => totalDepthFeatures > 0 
-      ? (outOfRangeCount / totalDepthFeatures * 100.0) 
+  double get outOfRangePercent => totalDepthFeatures > 0
+      ? (outOfRangeCount / totalDepthFeatures * 100.0)
       : 0.0;
 }

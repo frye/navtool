@@ -1,5 +1,5 @@
 /// Synthetic S-57 Update File Generator
-/// 
+///
 /// Creates test fixtures for sequential update file processing tests
 /// Generates binary S-57 files with RUIN operations
 
@@ -49,7 +49,7 @@ class S57UpdateFixtureGenerator {
   /// Generate all test fixtures
   static Future<void> generateAllFixtures(String directory) async {
     await Directory(directory).create(recursive: true);
-    
+
     await generateBaseFile(directory);
     await generateUpdate001(directory);
     await generateUpdate002(directory);
@@ -63,8 +63,10 @@ class S57UpdateFixtureGenerator {
 
     // Create minimal ISO 8211 structure for base file
     // Record leader (24 bytes) - must be valid
-    data.addAll('00256 D     '.codeUnits); // Record length: 256, interchange level: D
-    data.addAll('L'.codeUnits); // Leader identifier  
+    data.addAll(
+      '00256 D     '.codeUnits,
+    ); // Record length: 256, interchange level: D
+    data.addAll('L'.codeUnits); // Leader identifier
     data.addAll(' '.codeUnits); // Inline code extension
     data.addAll('1'.codeUnits); // Version number
     data.addAll(' '.codeUnits); // Application indicator
@@ -72,7 +74,7 @@ class S57UpdateFixtureGenerator {
     data.addAll('00024'.codeUnits); // Base address: 24 (start after leader)
     data.addAll('   '.codeUnits); // Extended character set
     data.addAll('4'.codeUnits); // Size of field length indicator
-    data.addAll('4'.codeUnits); // Size of field position indicator  
+    data.addAll('4'.codeUnits); // Size of field position indicator
     data.addAll(' '.codeUnits); // Reserved
     data.addAll('4'.codeUnits); // Size of field tag
 
@@ -81,39 +83,39 @@ class S57UpdateFixtureGenerator {
     while (data.length < 24) {
       data.add(0x20);
     }
-    
+
     // Simple data area with just chart name
     data.addAll('SAMPLE'.codeUnits);
     data.add(0x1e); // Field terminator
-    
+
     // Pad to record length (256)
     while (data.length < 256) {
       data.add(0x20);
     }
-    
+
     return data;
   }
 
   /// Create update data for .001 (delete F2)
   static List<int> _createUpdateData001() {
     final data = <int>[];
-    
+
     // Simplified update record with RUIN delete operation
     data.addAll('00200 D00000'.codeUnits); // Record header
     data.addAll('000000'.codeUnits);
     data.addAll('0025000'.codeUnits);
     data.addAll(' !'.codeUnits);
-    
+
     // Directory
     data.addAll('FRID00060000'.codeUnits); // Feature Record ID
     data.addAll('FOID00080006'.codeUnits); // Feature Object ID
     data.addAll('0001'.codeUnits);
-    
+
     // Pad to base address
     while (data.length < 25) {
       data.add(0x20);
     }
-    
+
     // FRID - Feature Record Identifier
     data.add(100); // RCNM
     _addBinaryInt(data, 2, 4); // RCID (F2)
@@ -123,43 +125,43 @@ class S57UpdateFixtureGenerator {
     _addBinaryInt(data, 1, 2); // RVER
     data.add(2); // RUIN = Delete
     data.add(0x1e); // Field terminator
-    
+
     // FOID - Feature Object Identifier
     _addBinaryInt(data, 550, 2); // AGEN
     _addBinaryInt(data, 2, 4); // FIDN (F2)
     _addBinaryInt(data, 1, 2); // FIDS
     data.add(0x1e); // Field terminator
-    
+
     // Pad to total length
     while (data.length < 200) {
       data.add(0x20);
     }
-    
+
     return data;
   }
 
   /// Create update data for .002 (modify F1 DRVAL1)
   static List<int> _createUpdateData002() {
     final data = <int>[];
-    
+
     // Update record with RUIN modify operation
     data.addAll('00250 D00000'.codeUnits);
     data.addAll('000000'.codeUnits);
     data.addAll('0025000'.codeUnits);
     data.addAll(' !'.codeUnits);
-    
+
     // Directory
     data.addAll('FRID00060000'.codeUnits);
     data.addAll('FOID00080006'.codeUnits);
     data.addAll('ATTF00100014'.codeUnits); // Attributes
     data.addAll('0001'.codeUnits);
-    
+
     // Pad to base address
     while (data.length < 25) {
       data.add(0x20);
     }
-    
-    // FRID - Feature Record Identifier  
+
+    // FRID - Feature Record Identifier
     data.add(100); // RCNM
     _addBinaryInt(data, 1, 4); // RCID (F1)
     data.add(1); // PRIM
@@ -168,48 +170,48 @@ class S57UpdateFixtureGenerator {
     _addBinaryInt(data, 2, 2); // RVER
     data.add(3); // RUIN = Modify
     data.add(0x1e);
-    
+
     // FOID
     _addBinaryInt(data, 550, 2); // AGEN
     _addBinaryInt(data, 1, 4); // FIDN (F1)
     _addBinaryInt(data, 1, 2); // FIDS
     data.add(0x1e);
-    
+
     // ATTF - Modified attributes (change DRVAL1 from 10.0 to 5.0)
     _addBinaryInt(data, 55, 2); // DRVAL1 attribute code
     _addBinaryInt(data, 500, 4); // New value (5.0 * 100 for fixed point)
     data.add(0x1e);
-    
+
     // Pad to total length
     while (data.length < 250) {
       data.add(0x20);
     }
-    
+
     return data;
   }
 
   /// Create update data for .003 (insert F4 obstruction)
   static List<int> _createUpdateData003() {
     final data = <int>[];
-    
+
     // Update record with RUIN insert operation
     data.addAll('00300 D00000'.codeUnits);
     data.addAll('000000'.codeUnits);
     data.addAll('0025000'.codeUnits);
     data.addAll(' !'.codeUnits);
-    
+
     // Directory (more complex for insert with coordinates)
     data.addAll('FRID00060000'.codeUnits);
     data.addAll('FOID00080006'.codeUnits);
     data.addAll('ATTF00080014'.codeUnits);
     data.addAll('SG2D00080022'.codeUnits); // 2D coordinates
     data.addAll('0001'.codeUnits);
-    
+
     // Pad to base address
     while (data.length < 25) {
       data.add(0x20);
     }
-    
+
     // FRID - Feature Record Identifier
     data.add(100); // RCNM
     _addBinaryInt(data, 4, 4); // RCID (F4)
@@ -219,28 +221,28 @@ class S57UpdateFixtureGenerator {
     _addBinaryInt(data, 3, 2); // RVER
     data.add(1); // RUIN = Insert
     data.add(0x1e);
-    
+
     // FOID
     _addBinaryInt(data, 550, 2); // AGEN
     _addBinaryInt(data, 4, 4); // FIDN (F4)
     _addBinaryInt(data, 1, 2); // FIDS
     data.add(0x1e);
-    
+
     // ATTF - Obstruction attributes
     _addBinaryInt(data, 86, 2); // CATOBS attribute
     _addBinaryInt(data, 1, 4); // Obstruction category
     data.add(0x1e);
-    
+
     // SG2D - 2D coordinates (single point)
     _addBinaryInt(data, -1223400000, 4); // X (longitude * 10^7)
     _addBinaryInt(data, 476500000, 4); // Y (latitude * 10^7)
     data.add(0x1e);
-    
+
     // Pad to total length
     while (data.length < 300) {
       data.add(0x20);
     }
-    
+
     return data;
   }
 
@@ -266,9 +268,9 @@ class S57UpdateFixtureGenerator {
 void main() async {
   final directory = 'test/fixtures/updates';
   print('Generating S-57 update test fixtures in $directory...');
-  
+
   await S57UpdateFixtureGenerator.generateAllFixtures(directory);
-  
+
   print('Generated fixtures:');
   print('  - SAMPLE.000 (base file)');
   print('  - SAMPLE.001 (delete F2)');

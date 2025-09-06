@@ -8,10 +8,10 @@ void main() {
       test('should detect online status', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
         final isOnline = await networkResilience.isOnline();
-        
+
         // Assert
         expect(isOnline, isA<bool>());
       });
@@ -19,10 +19,10 @@ void main() {
       test('should get current network status', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
         final status = await networkResilience.getNetworkStatus();
-        
+
         // Assert
         expect(status, isA<NetworkStatus>());
       });
@@ -31,19 +31,21 @@ void main() {
         // Arrange
         final networkResilience = NetworkResilience();
         final statusChanges = <NetworkStatus>[];
-        
+
         // Act
-        final subscription = networkResilience.networkStatusStream.listen((status) {
+        final subscription = networkResilience.networkStatusStream.listen((
+          status,
+        ) {
           statusChanges.add(status);
         });
-        
+
         // Trigger a status check (this may not change status in test environment)
         await networkResilience.checkNetworkStatus();
-        
+
         // Assert
         await Future.delayed(const Duration(milliseconds: 100));
         subscription.cancel();
-        
+
         // Should have received at least one status update
         expect(statusChanges, isNotEmpty);
       });
@@ -51,22 +53,22 @@ void main() {
       test('should wait for connection with timeout', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act & Assert
         // This should either complete quickly (if online) or timeout
         final result = networkResilience.waitForConnection(
           timeout: const Duration(milliseconds: 100),
         );
-        
+
         expect(result, isA<Future<void>>());
-        
+
         // Don't wait for completion as it depends on actual network state
       });
 
       test('should handle connection timeout gracefully', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act & Assert
         expect(
           () => networkResilience.waitForConnection(
@@ -82,10 +84,10 @@ void main() {
       test('should assess connection quality', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
         final quality = await networkResilience.assessConnectionQuality();
-        
+
         // Assert
         expect(quality, isA<ConnectionQuality>());
       });
@@ -93,10 +95,10 @@ void main() {
       test('should measure connection speed', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
         final speedMbps = await networkResilience.measureConnectionSpeed();
-        
+
         // Assert
         expect(speedMbps, isA<double>());
         expect(speedMbps, greaterThanOrEqualTo(0.0));
@@ -105,10 +107,10 @@ void main() {
       test('should measure connection latency', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
         final latency = await networkResilience.measureLatency();
-        
+
         // Assert
         expect(latency, isA<Duration>());
         expect(latency.inMilliseconds, greaterThanOrEqualTo(0));
@@ -117,10 +119,10 @@ void main() {
       test('should detect connection type', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
         final connectionType = await networkResilience.getConnectionType();
-        
+
         // Assert
         expect(connectionType, isA<ConnectionType>());
       });
@@ -128,10 +130,10 @@ void main() {
       test('should provide connection stability assessment', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
         final stability = await networkResilience.assessConnectionStability();
-        
+
         // Assert
         expect(stability, isA<ConnectionStability>());
       });
@@ -141,10 +143,10 @@ void main() {
       test('should detect satellite internet connection', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
         final isSatellite = await networkResilience.isSatelliteConnection();
-        
+
         // Assert
         expect(isSatellite, isA<bool>());
       });
@@ -152,10 +154,11 @@ void main() {
       test('should assess marine network conditions', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
-        final conditions = await networkResilience.assessMarineNetworkConditions();
-        
+        final conditions = await networkResilience
+            .assessMarineNetworkConditions();
+
         // Assert
         expect(conditions.connectionQuality, isA<ConnectionQuality>());
         expect(conditions.isSuitableForChartDownload, isA<bool>());
@@ -166,10 +169,11 @@ void main() {
       test('should provide marine-specific timeout recommendations', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
-        final timeouts = await networkResilience.getMarineTimeoutRecommendations();
-        
+        final timeouts = await networkResilience
+            .getMarineTimeoutRecommendations();
+
         // Assert
         expect(timeouts.connectionTimeout, isA<Duration>());
         expect(timeouts.readTimeout, isA<Duration>());
@@ -182,10 +186,11 @@ void main() {
       test('should handle poor weather conditions assessment', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
-        final weatherImpact = await networkResilience.assessWeatherImpactOnConnection();
-        
+        final weatherImpact = await networkResilience
+            .assessWeatherImpactOnConnection();
+
         // Assert
         expect(weatherImpact.severity, isA<WeatherImpactSeverity>());
         expect(weatherImpact.affectedServices, isA<List<String>>());
@@ -197,10 +202,10 @@ void main() {
       test('should detect offline mode capability', () {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
         final supportsOffline = networkResilience.supportsOfflineMode();
-        
+
         // Assert
         expect(supportsOffline, isA<bool>());
       });
@@ -208,10 +213,11 @@ void main() {
       test('should provide offline fallback strategies', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
-        final strategies = await networkResilience.getOfflineFallbackStrategies();
-        
+        final strategies = await networkResilience
+            .getOfflineFallbackStrategies();
+
         // Assert
         expect(strategies, isA<List<OfflineFallbackStrategy>>());
         expect(strategies, isNotEmpty);
@@ -220,12 +226,12 @@ void main() {
       test('should handle graceful degradation', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
         final degradationPlan = await networkResilience.createDegradationPlan(
           ConnectionQuality.poor,
         );
-        
+
         // Assert
         expect(degradationPlan.disabledFeatures, isA<List<String>>());
         expect(degradationPlan.reducedFunctionality, isA<List<String>>());
@@ -237,15 +243,15 @@ void main() {
       test('should start connection monitoring', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
         await networkResilience.startMonitoring(
           interval: const Duration(seconds: 1),
         );
-        
+
         // Assert
         expect(networkResilience.isMonitoring, isTrue);
-        
+
         // Cleanup
         await networkResilience.stopMonitoring();
       });
@@ -254,10 +260,10 @@ void main() {
         // Arrange
         final networkResilience = NetworkResilience();
         await networkResilience.startMonitoring();
-        
+
         // Act
         await networkResilience.stopMonitoring();
-        
+
         // Assert
         expect(networkResilience.isMonitoring, isFalse);
       });
@@ -266,21 +272,21 @@ void main() {
         // Arrange
         final networkResilience = NetworkResilience();
         final events = <NetworkMonitoringEvent>[];
-        
+
         final subscription = networkResilience.monitoringEvents.listen((event) {
           events.add(event);
         });
-        
+
         // Act
         await networkResilience.startMonitoring(
           interval: const Duration(milliseconds: 100),
         );
-        
+
         await Future.delayed(const Duration(milliseconds: 250));
-        
+
         await networkResilience.stopMonitoring();
         subscription.cancel();
-        
+
         // Assert
         expect(events, isNotEmpty);
         expect(events.first.type, isA<MonitoringEventType>());
@@ -290,22 +296,24 @@ void main() {
         // Arrange
         final networkResilience = NetworkResilience();
         final interruptions = <ConnectionInterruption>[];
-        
-        final subscription = networkResilience.connectionInterruptions.listen((interruption) {
+
+        final subscription = networkResilience.connectionInterruptions.listen((
+          interruption,
+        ) {
           interruptions.add(interruption);
         });
-        
+
         // Act
         await networkResilience.startMonitoring(
           interval: const Duration(milliseconds: 50),
         );
-        
+
         // Simulate checking for interruptions
         await Future.delayed(const Duration(milliseconds: 150));
-        
+
         await networkResilience.stopMonitoring();
         subscription.cancel();
-        
+
         // Assert - in a test environment, we might not get actual interruptions
         expect(interruptions, isA<List<ConnectionInterruption>>());
       });
@@ -322,7 +330,7 @@ void main() {
             marineOptimizations: true,
           ),
         );
-        
+
         // Assert
         expect(networkResilience.config, isNotNull);
         expect(networkResilience.config.marineOptimizations, isTrue);
@@ -335,16 +343,19 @@ void main() {
       test('should use default configuration when none provided', () {
         // Arrange & Act
         final networkResilience = NetworkResilience();
-        
+
         // Assert
         expect(networkResilience.config, isNotNull);
-        expect(networkResilience.config.marineOptimizations, isTrue); // Default for marine app
+        expect(
+          networkResilience.config.marineOptimizations,
+          isTrue,
+        ); // Default for marine app
       });
 
       test('should allow runtime configuration updates', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
         await networkResilience.updateConfiguration(
           NetworkResilienceConfig(
@@ -354,7 +365,7 @@ void main() {
             marineOptimizations: false,
           ),
         );
-        
+
         // Assert
         expect(
           networkResilience.config.connectionTimeoutThreshold,
@@ -368,7 +379,7 @@ void main() {
       test('should handle network interface unavailable', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act & Assert
         expect(
           () => networkResilience.assessConnectionQuality(),
@@ -379,12 +390,12 @@ void main() {
       test('should handle DNS resolution failures', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
         final latency = await networkResilience.measureLatency(
           testHost: 'non-existent-host-12345.invalid',
         );
-        
+
         // Assert
         expect(latency, isA<Duration>());
         // Should return a very high latency or max duration for failed DNS
@@ -393,14 +404,17 @@ void main() {
       test('should handle concurrent monitoring requests', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act
-        final futures = List.generate(5, (_) => networkResilience.startMonitoring());
+        final futures = List.generate(
+          5,
+          (_) => networkResilience.startMonitoring(),
+        );
         await Future.wait(futures);
-        
+
         // Assert
         expect(networkResilience.isMonitoring, isTrue);
-        
+
         // Cleanup
         await networkResilience.stopMonitoring();
       });
@@ -408,12 +422,9 @@ void main() {
       test('should handle monitoring when already stopped', () async {
         // Arrange
         final networkResilience = NetworkResilience();
-        
+
         // Act & Assert
-        expect(
-          () => networkResilience.stopMonitoring(),
-          returnsNormally,
-        );
+        expect(() => networkResilience.stopMonitoring(), returnsNormally);
       });
     });
   });

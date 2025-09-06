@@ -44,11 +44,13 @@ void main() {
       mockChartsDirectory = MockDirectory();
 
       // Setup default storage service behavior
-      when(mockStorageService.getChartsDirectory())
-          .thenAnswer((_) async => mockChartsDirectory);
+      when(
+        mockStorageService.getChartsDirectory(),
+      ).thenAnswer((_) async => mockChartsDirectory);
       when(mockChartsDirectory.path).thenReturn('/test/charts');
-      when(mockChartsDirectory.create(recursive: true))
-          .thenAnswer((_) async => mockChartsDirectory);
+      when(
+        mockChartsDirectory.create(recursive: true),
+      ).thenAnswer((_) async => mockChartsDirectory);
 
       downloadService = DownloadServiceImpl(
         httpClient: mockHttpClient,
@@ -72,36 +74,58 @@ void main() {
         final tempDir = Directory.systemTemp.createTempSync('download_test_');
         // Centralized mock will create the file; we pre-stage expected bytes via override
         // Override downloadFile to write .part then rename path logic will move to final
-        when(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          resumeFrom: anyNamed('resumeFrom'))).thenAnswer((invocation) async {
-            final savePath = invocation.positionalArguments[1] as String; // tempFilePath (.part)
-            final tempFile = File(savePath);
-            await tempFile.parent.create(recursive: true);
-            await tempFile.writeAsBytes(testBytes, flush: true);
-            // Also create the final file path in case service branch skips rename
-            if (savePath.endsWith('.part')) {
-              final finalPath = savePath.substring(0, savePath.length - 5);
-              final finalFile = File(finalPath);
-              await finalFile.writeAsBytes(testBytes, flush: true);
-            }
-            final onProgress = invocation.namedArguments[#onReceiveProgress] as void Function(int,int)?;
-            onProgress?.call(testBytes.length, testBytes.length);
-          });
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+            resumeFrom: anyNamed('resumeFrom'),
+          ),
+        ).thenAnswer((invocation) async {
+          final savePath =
+              invocation.positionalArguments[1]
+                  as String; // tempFilePath (.part)
+          final tempFile = File(savePath);
+          await tempFile.parent.create(recursive: true);
+          await tempFile.writeAsBytes(testBytes, flush: true);
+          // Also create the final file path in case service branch skips rename
+          if (savePath.endsWith('.part')) {
+            final finalPath = savePath.substring(0, savePath.length - 5);
+            final finalFile = File(finalPath);
+            await finalFile.writeAsBytes(testBytes, flush: true);
+          }
+          final onProgress =
+              invocation.namedArguments[#onReceiveProgress]
+                  as void Function(int, int)?;
+          onProgress?.call(testBytes.length, testBytes.length);
+        });
 
         // Override the charts directory to point to our temp directory
-        when(mockStorageService.getChartsDirectory())
-            .thenAnswer((_) async => tempDir);
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenAnswer((_) async => tempDir);
 
         // (Removed redundant stub that overrode file-writing behavior)
 
         // Act
-        await downloadService.downloadChart(chartId, url, expectedChecksum: expectedChecksum);
+        await downloadService.downloadChart(
+          chartId,
+          url,
+          expectedChecksum: expectedChecksum,
+        );
 
         // Assert
-        verifyInfoLogged(mockLogger, 'Checksum verification passed', expectedContext: 'Download');
-        verifyInfoLogged(mockLogger, 'Chart download completed', expectedContext: 'Download');
+        verifyInfoLogged(
+          mockLogger,
+          'Checksum verification passed',
+          expectedContext: 'Download',
+        );
+        verifyInfoLogged(
+          mockLogger,
+          'Chart download completed',
+          expectedContext: 'Download',
+        );
 
         // Cleanup
         await retryDeleteDirectory(tempDir);
@@ -117,33 +141,51 @@ void main() {
 
         // Create a real temporary file for this test
         final tempDir = Directory.systemTemp.createTempSync('download_test_');
-        when(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          resumeFrom: anyNamed('resumeFrom'))).thenAnswer((invocation) async {
-            final savePath = invocation.positionalArguments[1] as String;
-            final tempFile = File(savePath);
-            await tempFile.parent.create(recursive: true);
-            await tempFile.writeAsBytes(testBytes, flush: true);
-            if (savePath.endsWith('.part')) {
-              final finalPath = savePath.substring(0, savePath.length - 5);
-              final finalFile = File(finalPath);
-              await finalFile.writeAsBytes(testBytes, flush: true);
-            }
-            final onProgress = invocation.namedArguments[#onReceiveProgress] as void Function(int,int)?;
-            onProgress?.call(testBytes.length, testBytes.length);
-          });
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+            resumeFrom: anyNamed('resumeFrom'),
+          ),
+        ).thenAnswer((invocation) async {
+          final savePath = invocation.positionalArguments[1] as String;
+          final tempFile = File(savePath);
+          await tempFile.parent.create(recursive: true);
+          await tempFile.writeAsBytes(testBytes, flush: true);
+          if (savePath.endsWith('.part')) {
+            final finalPath = savePath.substring(0, savePath.length - 5);
+            final finalFile = File(finalPath);
+            await finalFile.writeAsBytes(testBytes, flush: true);
+          }
+          final onProgress =
+              invocation.namedArguments[#onReceiveProgress]
+                  as void Function(int, int)?;
+          onProgress?.call(testBytes.length, testBytes.length);
+        });
 
         // Override the charts directory to point to our temp directory
-        when(mockStorageService.getChartsDirectory())
-            .thenAnswer((_) async => tempDir);
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenAnswer((_) async => tempDir);
 
         // (Removed redundant stub that overrode file-writing behavior)
 
         // Act & Assert
         await expectLater(
-          downloadService.downloadChart(chartId, url, expectedChecksum: wrongChecksum),
-          throwsA(isA<AppError>().having((e) => e.message, 'message', contains('checksum verification'))),
+          downloadService.downloadChart(
+            chartId,
+            url,
+            expectedChecksum: wrongChecksum,
+          ),
+          throwsA(
+            isA<AppError>().having(
+              (e) => e.message,
+              'message',
+              contains('checksum verification'),
+            ),
+          ),
         );
 
         // Cleanup
@@ -160,17 +202,26 @@ void main() {
         final tempDir = Directory.systemTemp.createTempSync('download_test_');
 
         // Override the charts directory to point to our temp directory
-        when(mockStorageService.getChartsDirectory())
-            .thenAnswer((_) async => tempDir);
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenAnswer((_) async => tempDir);
 
-        when(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress')))
-            .thenThrow(Exception('Download failed'));
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenThrow(Exception('Download failed'));
 
         // Act & Assert
         expect(
-          () => downloadService.downloadChart(chartId, url, expectedChecksum: expectedChecksum),
+          () => downloadService.downloadChart(
+            chartId,
+            url,
+            expectedChecksum: expectedChecksum,
+          ),
           throwsException,
         );
 
@@ -187,36 +238,56 @@ void main() {
 
         // Create a real temporary file for this test
         final tempDir = Directory.systemTemp.createTempSync('download_test_');
-        when(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          resumeFrom: anyNamed('resumeFrom'))).thenAnswer((invocation) async {
-            final savePath = invocation.positionalArguments[1] as String;
-            final tempFile = File(savePath);
-            await tempFile.parent.create(recursive: true);
-            await tempFile.writeAsBytes(testBytes, flush: true);
-            if (savePath.endsWith('.part')) {
-              final finalPath = savePath.substring(0, savePath.length - 5);
-              final finalFile = File(finalPath);
-              await finalFile.writeAsBytes(testBytes, flush: true);
-            }
-            final onProgress = invocation.namedArguments[#onReceiveProgress] as void Function(int,int)?;
-            onProgress?.call(testBytes.length, testBytes.length);
-          });
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+            resumeFrom: anyNamed('resumeFrom'),
+          ),
+        ).thenAnswer((invocation) async {
+          final savePath = invocation.positionalArguments[1] as String;
+          final tempFile = File(savePath);
+          await tempFile.parent.create(recursive: true);
+          await tempFile.writeAsBytes(testBytes, flush: true);
+          if (savePath.endsWith('.part')) {
+            final finalPath = savePath.substring(0, savePath.length - 5);
+            final finalFile = File(finalPath);
+            await finalFile.writeAsBytes(testBytes, flush: true);
+          }
+          final onProgress =
+              invocation.namedArguments[#onReceiveProgress]
+                  as void Function(int, int)?;
+          onProgress?.call(testBytes.length, testBytes.length);
+        });
 
         // Override the charts directory to point to our temp directory
-        when(mockStorageService.getChartsDirectory())
-            .thenAnswer((_) async => tempDir);
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenAnswer((_) async => tempDir);
 
         // (Removed redundant stub that overrode file-writing behavior)
 
         // Act
-        await downloadService.downloadChart(chartId, url); // No checksum provided
+        await downloadService.downloadChart(
+          chartId,
+          url,
+        ); // No checksum provided
 
         // Assert - should complete without verification
-        verifyInfoLogged(mockLogger, 'Chart download completed', expectedContext: 'Download');
+        verifyInfoLogged(
+          mockLogger,
+          'Chart download completed',
+          expectedContext: 'Download',
+        );
         // Should NOT call checksum verification (keep explicit negative verify for clarity)
-        verifyNever(mockLogger.info(argThat(contains('Checksum verification passed')), context: anyNamed('context')));
+        verifyNever(
+          mockLogger.info(
+            argThat(contains('Checksum verification passed')),
+            context: anyNamed('context'),
+          ),
+        );
 
         // Cleanup
         await retryDeleteDirectory(tempDir);

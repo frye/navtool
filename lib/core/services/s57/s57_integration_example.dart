@@ -1,5 +1,5 @@
 /// Integration example showing how to use S57GeometryAssembler with existing S57Parser
-/// 
+///
 /// This demonstrates the pattern for integrating the new geometry assembly functionality
 /// with the existing S-57 parsing pipeline without breaking backward compatibility.
 
@@ -11,7 +11,7 @@ class S57FeatureFactory {
   final PrimitiveStore _primitiveStore;
   final S57GeometryAssembler _assembler;
 
-  S57FeatureFactory() 
+  S57FeatureFactory()
     : _primitiveStore = PrimitiveStore(),
       _assembler = S57GeometryAssembler(PrimitiveStore());
 
@@ -25,18 +25,18 @@ class S57FeatureFactory {
   }) {
     // Assemble geometry from spatial pointers
     final assembledGeometry = _assembler.buildGeometry(spatialPointers);
-    
+
     // Convert to legacy coordinate format for backward compatibility
     final coordinates = assembledGeometry.toS57Coordinates();
-    
+
     // Map assembled geometry type to S57GeometryType
     final geometryType = assembledGeometry.type;
-    
+
     // Log any warnings from assembly process
     for (final warning in _primitiveStore.warnings) {
       print('Geometry assembly warning: $warning');
     }
-    
+
     return S57Feature(
       recordId: recordId,
       featureType: featureType,
@@ -70,23 +70,32 @@ class S57FeatureFactory {
 class S57IntegrationExample {
   static void demonstrateIntegration() {
     final factory = S57FeatureFactory();
-    
+
     // Step 1: Add primitives parsed from S-57 vector records
     factory.addNode(const S57Node(id: 1, x: 0.0, y: 0.0));
     factory.addNode(const S57Node(id: 2, x: 10.0, y: 0.0));
     factory.addNode(const S57Node(id: 3, x: 10.0, y: 10.0));
-    
+
     // Step 2: Add edges from spatial records
-    factory.addEdge(const S57Edge(id: 1, nodes: [
-      S57Node(id: 1, x: 0.0, y: 0.0),
-      S57Node(id: 2, x: 10.0, y: 0.0),
-    ]));
-    
+    factory.addEdge(
+      const S57Edge(
+        id: 1,
+        nodes: [
+          S57Node(id: 1, x: 0.0, y: 0.0),
+          S57Node(id: 2, x: 10.0, y: 0.0),
+        ],
+      ),
+    );
+
     // Step 3: Create spatial pointers from FSPT/VRPT field data
     final spatialPointers = [
-      const S57SpatialPointer(refId: 1, isEdge: false, reverse: false), // Point to node 1
+      const S57SpatialPointer(
+        refId: 1,
+        isEdge: false,
+        reverse: false,
+      ), // Point to node 1
     ];
-    
+
     // Step 4: Build feature with assembled geometry
     final feature = factory.buildFeatureWithAssembledGeometry(
       recordId: 12345,
@@ -95,9 +104,11 @@ class S57IntegrationExample {
       spatialPointers: spatialPointers,
       label: 'Sounding 15.2m',
     );
-    
+
     if (feature != null) {
-      print('Created feature: ${feature.featureType} at ${feature.coordinates.first}');
+      print(
+        'Created feature: ${feature.featureType} at ${feature.coordinates.first}',
+      );
       print('Assembly stats: ${factory.assemblyStats}');
     }
   }
@@ -112,21 +123,23 @@ extension S57ParserIntegration on Map<String, dynamic> {
         .map((fspt) => S57SpatialPointer.fromFspt(fspt as Map<String, dynamic>))
         .toList();
   }
-  
-  /// Extract nodes from parsed vector records  
+
+  /// Extract nodes from parsed vector records
   List<S57Node> extractNodes() {
     final sg2dData = this['SG2D'] as List<dynamic>? ?? [];
     final nodes = <S57Node>[];
-    
+
     for (int i = 0; i < sg2dData.length; i++) {
       final coordData = sg2dData[i] as Map<String, dynamic>;
-      nodes.add(S57Node(
-        id: i + 1, // Generate sequential IDs
-        x: (coordData['longitude'] as num).toDouble(),
-        y: (coordData['latitude'] as num).toDouble(),
-      ));
+      nodes.add(
+        S57Node(
+          id: i + 1, // Generate sequential IDs
+          x: (coordData['longitude'] as num).toDouble(),
+          y: (coordData['latitude'] as num).toDouble(),
+        ),
+      );
     }
-    
+
     return nodes;
   }
 }

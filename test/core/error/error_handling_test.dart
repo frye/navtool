@@ -302,15 +302,22 @@ class MockAppLogger implements AppLogger {
     _minimumLevel = level;
   }
 
-  void _log(LogLevel level, String message, String? context, Object? exception) {
+  void _log(
+    LogLevel level,
+    String message,
+    String? context,
+    Object? exception,
+  ) {
     if (level.index >= _minimumLevel.index) {
-      logEntries.add(LogEntry(
-        level: level,
-        message: message,
-        context: context,
-        exception: exception,
-        timestamp: DateTime.now(),
-      ));
+      logEntries.add(
+        LogEntry(
+          level: level,
+          message: message,
+          context: context,
+          exception: exception,
+          timestamp: DateTime.now(),
+        ),
+      );
     }
   }
 }

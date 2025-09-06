@@ -59,27 +59,47 @@ void main() {
       const chartId = 'R1';
       const url = 'http://example.com/R1.bin';
 
-      when(http.head(any,
-        queryParameters: anyNamed('queryParameters'),
-        options: anyNamed('options'),
-        cancelToken: anyNamed('cancelToken'))).thenAnswer((_) async => Response(
-          requestOptions: RequestOptions(path: url), statusCode: 200, headers: Headers.fromMap({'content-length': ['4']})));
+      when(
+        http.head(
+          any,
+          queryParameters: anyNamed('queryParameters'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: url),
+          statusCode: 200,
+          headers: Headers.fromMap({
+            'content-length': ['4'],
+          }),
+        ),
+      );
 
-      when(http.downloadFile(any, any,
-        cancelToken: anyNamed('cancelToken'),
-        onReceiveProgress: anyNamed('onReceiveProgress'),
-        resumeFrom: anyNamed('resumeFrom'))).thenAnswer((invocation) async {
-          final savePath = invocation.positionalArguments[1] as String;
-          final f = File(savePath);
-          await f.create(recursive: true);
-          await f.writeAsBytes([1,2,3,4]);
-        });
+      when(
+        http.downloadFile(
+          any,
+          any,
+          cancelToken: anyNamed('cancelToken'),
+          onReceiveProgress: anyNamed('onReceiveProgress'),
+          resumeFrom: anyNamed('resumeFrom'),
+        ),
+      ).thenAnswer((invocation) async {
+        final savePath = invocation.positionalArguments[1] as String;
+        final f = File(savePath);
+        await f.create(recursive: true);
+        await f.writeAsBytes([1, 2, 3, 4]);
+      });
 
       // Act
       await service.downloadChart(chartId, url);
 
       // Assert
-      expect(renameAttempts.length, 3, reason: 'Should attempt rename thrice before success');
+      expect(
+        renameAttempts.length,
+        3,
+        reason: 'Should attempt rename thrice before success',
+      );
       final finalFile = File('${chartsDir.path}/R1.bin');
       expect(await finalFile.exists(), isTrue);
       expect(await finalFile.length(), 4);
@@ -103,29 +123,53 @@ void main() {
       const chartId = 'R2';
       const url = 'http://example.com/R2.bin';
 
-      when(http.head(any,
-        queryParameters: anyNamed('queryParameters'),
-        options: anyNamed('options'),
-        cancelToken: anyNamed('cancelToken'))).thenAnswer((_) async => Response(
-          requestOptions: RequestOptions(path: url), statusCode: 200, headers: Headers.fromMap({'content-length': ['3']})));
+      when(
+        http.head(
+          any,
+          queryParameters: anyNamed('queryParameters'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: url),
+          statusCode: 200,
+          headers: Headers.fromMap({
+            'content-length': ['3'],
+          }),
+        ),
+      );
 
-      when(http.downloadFile(any, any,
-        cancelToken: anyNamed('cancelToken'),
-        onReceiveProgress: anyNamed('onReceiveProgress'),
-        resumeFrom: anyNamed('resumeFrom'))).thenAnswer((invocation) async {
-          final savePath = invocation.positionalArguments[1] as String;
-          final f = File(savePath);
-          await f.create(recursive: true);
-          await f.writeAsBytes([7,8,9]);
-        });
+      when(
+        http.downloadFile(
+          any,
+          any,
+          cancelToken: anyNamed('cancelToken'),
+          onReceiveProgress: anyNamed('onReceiveProgress'),
+          resumeFrom: anyNamed('resumeFrom'),
+        ),
+      ).thenAnswer((invocation) async {
+        final savePath = invocation.positionalArguments[1] as String;
+        final f = File(savePath);
+        await f.create(recursive: true);
+        await f.writeAsBytes([7, 8, 9]);
+      });
 
       // Act
       await service.downloadChart(chartId, url);
 
       // Assert
-      expect(renameAttempts.length, 3, reason: 'Should attempt configured max attempts before fallback');
+      expect(
+        renameAttempts.length,
+        3,
+        reason: 'Should attempt configured max attempts before fallback',
+      );
       final finalFile = File('${chartsDir.path}/R2.bin');
-      expect(await finalFile.exists(), isTrue, reason: 'Copy fallback should produce final file');
+      expect(
+        await finalFile.exists(),
+        isTrue,
+        reason: 'Copy fallback should produce final file',
+      );
       expect(await finalFile.length(), 3);
     });
   });

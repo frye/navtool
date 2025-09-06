@@ -33,7 +33,7 @@ void main() {
       mockDatabaseStorageService = MockDatabaseStorageService();
       // Provide baseline stubs to avoid MissingStubError from unconfigured API calls
       configureNoaaApiClientMock(mockApiClient);
-      
+
       catalogService = ChartCatalogServiceImpl(
         cacheService: mockCacheService,
         logger: mockLogger,
@@ -50,14 +50,22 @@ void main() {
           id: chartId,
           title: 'San Francisco Bay',
           scale: 25000,
-          bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
+          bounds: GeographicBounds(
+            north: 38.0,
+            south: 37.0,
+            east: -122.0,
+            west: -123.0,
+          ),
           lastUpdate: DateTime(2024, 1, 15),
           state: 'California',
           type: ChartType.harbor,
         );
 
-        when(mockCacheService.get('chart_$chartId'))
-            .thenAnswer((_) async => Uint8List.fromList(utf8.encode(json.encode(expectedChart.toJson()))));
+        when(mockCacheService.get('chart_$chartId')).thenAnswer(
+          (_) async => Uint8List.fromList(
+            utf8.encode(json.encode(expectedChart.toJson())),
+          ),
+        );
 
         // Act
         final result = await catalogService.getCachedChart(chartId);
@@ -73,8 +81,9 @@ void main() {
         // Arrange
         const chartId = 'US5CA52M';
 
-        when(mockCacheService.get('chart_$chartId'))
-            .thenAnswer((_) async => null);
+        when(
+          mockCacheService.get('chart_$chartId'),
+        ).thenAnswer((_) async => null);
 
         // Act
         final result = await catalogService.getCachedChart(chartId);
@@ -88,8 +97,9 @@ void main() {
         // Arrange
         const chartId = 'US5CA52M';
 
-        when(mockCacheService.get('chart_$chartId'))
-            .thenThrow(AppError.storage('Cache error'));
+        when(
+          mockCacheService.get('chart_$chartId'),
+        ).thenThrow(AppError.storage('Cache error'));
 
         // Act
         final result = await catalogService.getCachedChart(chartId);
@@ -115,25 +125,37 @@ void main() {
           id: 'US5CA52M',
           title: 'San Francisco Bay',
           scale: 25000,
-          bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
+          bounds: GeographicBounds(
+            north: 38.0,
+            south: 37.0,
+            east: -122.0,
+            west: -123.0,
+          ),
           lastUpdate: DateTime(2024, 1, 15),
           state: 'California',
           type: ChartType.harbor,
         );
 
-        when(mockCacheService.store(any, any, maxAge: anyNamed('maxAge')))
-            .thenAnswer((_) async {});
-        when(mockCacheService.get('chart_list'))
-            .thenAnswer((_) async => null);
-        when(mockCacheService.store('chart_list', any, maxAge: anyNamed('maxAge')))
-            .thenAnswer((_) async {});
+        when(
+          mockCacheService.store(any, any, maxAge: anyNamed('maxAge')),
+        ).thenAnswer((_) async {});
+        when(mockCacheService.get('chart_list')).thenAnswer((_) async => null);
+        when(
+          mockCacheService.store('chart_list', any, maxAge: anyNamed('maxAge')),
+        ).thenAnswer((_) async {});
 
         // Act
         await catalogService.cacheChart(chart);
 
         // Assert
-        verify(mockCacheService.store('chart_${chart.id}', any, maxAge: anyNamed('maxAge'))).called(1);
-  verifyInfoLogged(mockLogger, 'Cached chart metadata: ${chart.id}');
+        verify(
+          mockCacheService.store(
+            'chart_${chart.id}',
+            any,
+            maxAge: anyNamed('maxAge'),
+          ),
+        ).called(1);
+        verifyInfoLogged(mockLogger, 'Cached chart metadata: ${chart.id}');
       });
 
       test('should handle cache errors', () async {
@@ -142,14 +164,20 @@ void main() {
           id: 'US5CA52M',
           title: 'San Francisco Bay',
           scale: 25000,
-          bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
+          bounds: GeographicBounds(
+            north: 38.0,
+            south: 37.0,
+            east: -122.0,
+            west: -123.0,
+          ),
           lastUpdate: DateTime(2024, 1, 15),
           state: 'California',
           type: ChartType.harbor,
         );
 
-        when(mockCacheService.store(any, any, maxAge: anyNamed('maxAge')))
-            .thenThrow(AppError.storage('Cache write error'));
+        when(
+          mockCacheService.store(any, any, maxAge: anyNamed('maxAge')),
+        ).thenThrow(AppError.storage('Cache write error'));
 
         // Act & Assert
         expect(
@@ -167,14 +195,22 @@ void main() {
           id: chartId,
           title: 'San Francisco Bay',
           scale: 25000,
-          bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
+          bounds: GeographicBounds(
+            north: 38.0,
+            south: 37.0,
+            east: -122.0,
+            west: -123.0,
+          ),
           lastUpdate: DateTime(2024, 1, 15),
           state: 'California',
           type: ChartType.harbor,
         );
 
-        when(mockCacheService.get('chart_$chartId'))
-            .thenAnswer((_) async => Uint8List.fromList(utf8.encode(json.encode(expectedChart.toJson()))));
+        when(mockCacheService.get('chart_$chartId')).thenAnswer(
+          (_) async => Uint8List.fromList(
+            utf8.encode(json.encode(expectedChart.toJson())),
+          ),
+        );
 
         // Act
         final result = await catalogService.getChartById(chartId);
@@ -188,8 +224,9 @@ void main() {
         // Arrange
         const chartId = 'INVALID_ID';
 
-        when(mockCacheService.get('chart_$chartId'))
-            .thenAnswer((_) async => null);
+        when(
+          mockCacheService.get('chart_$chartId'),
+        ).thenAnswer((_) async => null);
 
         // Act
         final result = await catalogService.getChartById(chartId);
@@ -208,7 +245,12 @@ void main() {
             id: 'US5CA52M',
             title: 'San Francisco Bay',
             scale: 25000,
-            bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
+            bounds: GeographicBounds(
+              north: 38.0,
+              south: 37.0,
+              east: -122.0,
+              west: -123.0,
+            ),
             lastUpdate: DateTime(2024, 1, 15),
             state: 'California',
             type: ChartType.harbor,
@@ -217,7 +259,12 @@ void main() {
             id: 'US4CA11M',
             title: 'Los Angeles Harbor',
             scale: 50000,
-            bounds: GeographicBounds(north: 34.0, south: 33.0, east: -118.0, west: -119.0),
+            bounds: GeographicBounds(
+              north: 34.0,
+              south: 33.0,
+              east: -118.0,
+              west: -119.0,
+            ),
             lastUpdate: DateTime(2024, 1, 10),
             state: 'California',
             type: ChartType.harbor,
@@ -227,19 +274,22 @@ void main() {
         // Mock chart list
         final chartListJson = jsonEncode(['US5CA52M', 'US4CA11M']);
         final chartListBytes = Uint8List.fromList(utf8.encode(chartListJson));
-        when(mockCacheService.get('chart_list'))
-            .thenAnswer((_) async => chartListBytes);
-        
+        when(
+          mockCacheService.get('chart_list'),
+        ).thenAnswer((_) async => chartListBytes);
+
         // Mock individual chart retrievals
         final chart1Json = jsonEncode(cachedCharts[0].toJson());
         final chart1Bytes = Uint8List.fromList(utf8.encode(chart1Json));
-        when(mockCacheService.get('chart_US5CA52M'))
-            .thenAnswer((_) async => chart1Bytes);
-            
+        when(
+          mockCacheService.get('chart_US5CA52M'),
+        ).thenAnswer((_) async => chart1Bytes);
+
         final chart2Json = jsonEncode(cachedCharts[1].toJson());
         final chart2Bytes = Uint8List.fromList(utf8.encode(chart2Json));
-        when(mockCacheService.get('chart_US4CA11M'))
-            .thenAnswer((_) async => chart2Bytes);
+        when(
+          mockCacheService.get('chart_US4CA11M'),
+        ).thenAnswer((_) async => chart2Bytes);
 
         // Act
         final result = await catalogService.searchCharts(query);
@@ -257,7 +307,12 @@ void main() {
             id: 'US5CA52M',
             title: 'San Francisco Bay',
             scale: 25000,
-            bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
+            bounds: GeographicBounds(
+              north: 38.0,
+              south: 37.0,
+              east: -122.0,
+              west: -123.0,
+            ),
             lastUpdate: DateTime(2024, 1, 15),
             state: 'California',
             type: ChartType.harbor,
@@ -265,8 +320,7 @@ void main() {
         ];
 
         // Mock empty chart list
-        when(mockCacheService.get('chart_list'))
-            .thenAnswer((_) async => null);
+        when(mockCacheService.get('chart_list')).thenAnswer((_) async => null);
 
         // Act
         final result = await catalogService.searchCharts(query);
@@ -286,7 +340,12 @@ void main() {
             id: 'US5CA52M',
             title: 'San Francisco Bay Harbor',
             scale: 25000,
-            bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
+            bounds: GeographicBounds(
+              north: 38.0,
+              south: 37.0,
+              east: -122.0,
+              west: -123.0,
+            ),
             lastUpdate: DateTime(2024, 1, 15),
             state: 'California',
             type: ChartType.harbor,
@@ -295,7 +354,12 @@ void main() {
             id: 'US4TX11M',
             title: 'Texas Harbor',
             scale: 50000,
-            bounds: GeographicBounds(north: 30.0, south: 29.0, east: -94.0, west: -95.0),
+            bounds: GeographicBounds(
+              north: 30.0,
+              south: 29.0,
+              east: -94.0,
+              west: -95.0,
+            ),
             lastUpdate: DateTime(2024, 1, 10),
             state: 'Texas',
             type: ChartType.harbor,
@@ -305,22 +369,28 @@ void main() {
         // Mock chart list
         final chartListJson = jsonEncode(['US5CA52M', 'US4TX11M']);
         final chartListBytes = Uint8List.fromList(utf8.encode(chartListJson));
-        when(mockCacheService.get('chart_list'))
-            .thenAnswer((_) async => chartListBytes);
-        
+        when(
+          mockCacheService.get('chart_list'),
+        ).thenAnswer((_) async => chartListBytes);
+
         // Mock individual chart retrievals
         final chart1Json = jsonEncode(cachedCharts[0].toJson());
         final chart1Bytes = Uint8List.fromList(utf8.encode(chart1Json));
-        when(mockCacheService.get('chart_US5CA52M'))
-            .thenAnswer((_) async => chart1Bytes);
-            
+        when(
+          mockCacheService.get('chart_US5CA52M'),
+        ).thenAnswer((_) async => chart1Bytes);
+
         final chart2Json = jsonEncode(cachedCharts[1].toJson());
         final chart2Bytes = Uint8List.fromList(utf8.encode(chart2Json));
-        when(mockCacheService.get('chart_US4TX11M'))
-            .thenAnswer((_) async => chart2Bytes);
+        when(
+          mockCacheService.get('chart_US4TX11M'),
+        ).thenAnswer((_) async => chart2Bytes);
 
         // Act
-        final result = await catalogService.searchChartsWithFilters(query, filters);
+        final result = await catalogService.searchChartsWithFilters(
+          query,
+          filters,
+        );
 
         // Assert
         expect(result, hasLength(1));
@@ -337,7 +407,12 @@ void main() {
             id: 'US5CA52M',
             title: 'San Francisco Chart',
             scale: 25000,
-            bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
+            bounds: GeographicBounds(
+              north: 38.0,
+              south: 37.0,
+              east: -122.0,
+              west: -123.0,
+            ),
             lastUpdate: DateTime(2024, 1, 15),
             state: 'California',
             type: ChartType.harbor,
@@ -346,7 +421,12 @@ void main() {
             id: 'US4CA11M',
             title: 'Los Angeles Chart',
             scale: 500000,
-            bounds: GeographicBounds(north: 34.0, south: 33.0, east: -118.0, west: -119.0),
+            bounds: GeographicBounds(
+              north: 34.0,
+              south: 33.0,
+              east: -118.0,
+              west: -119.0,
+            ),
             lastUpdate: DateTime(2024, 1, 10),
             state: 'California',
             type: ChartType.general,
@@ -356,22 +436,28 @@ void main() {
         // Mock chart list
         final chartListJson = jsonEncode(['US5CA52M', 'US4CA11M']);
         final chartListBytes = Uint8List.fromList(utf8.encode(chartListJson));
-        when(mockCacheService.get('chart_list'))
-            .thenAnswer((_) async => chartListBytes);
-        
-        // Mock individual chart retrievals  
+        when(
+          mockCacheService.get('chart_list'),
+        ).thenAnswer((_) async => chartListBytes);
+
+        // Mock individual chart retrievals
         final chart1Json = jsonEncode(cachedCharts[0].toJson());
         final chart1Bytes = Uint8List.fromList(utf8.encode(chart1Json));
-        when(mockCacheService.get('chart_US5CA52M'))
-            .thenAnswer((_) async => chart1Bytes);
-            
+        when(
+          mockCacheService.get('chart_US5CA52M'),
+        ).thenAnswer((_) async => chart1Bytes);
+
         final chart2Json = jsonEncode(cachedCharts[1].toJson());
         final chart2Bytes = Uint8List.fromList(utf8.encode(chart2Json));
-        when(mockCacheService.get('chart_US4CA11M'))
-            .thenAnswer((_) async => chart2Bytes);
+        when(
+          mockCacheService.get('chart_US4CA11M'),
+        ).thenAnswer((_) async => chart2Bytes);
 
         // Act
-        final result = await catalogService.searchChartsWithFilters(query, filters);
+        final result = await catalogService.searchChartsWithFilters(
+          query,
+          filters,
+        );
 
         // Assert
         expect(result, hasLength(1));
@@ -382,8 +468,7 @@ void main() {
     group('refreshCatalog', () {
       test('should refresh catalog cache', () async {
         // Arrange
-        when(mockCacheService.clear())
-            .thenAnswer((_) async => true);
+        when(mockCacheService.clear()).thenAnswer((_) async => true);
 
         // Act
         final result = await catalogService.refreshCatalog();
@@ -391,13 +476,12 @@ void main() {
         // Assert
         expect(result, isTrue);
         verify(mockCacheService.clear()).called(1);
-  verifyInfoLogged(mockLogger, 'Chart catalog cache refreshed');
+        verifyInfoLogged(mockLogger, 'Chart catalog cache refreshed');
       });
 
       test('should force refresh even if not necessary', () async {
         // Arrange
-        when(mockCacheService.clear())
-            .thenAnswer((_) async => true);
+        when(mockCacheService.clear()).thenAnswer((_) async => true);
 
         // Act
         final result = await catalogService.refreshCatalog(force: true);
@@ -409,8 +493,9 @@ void main() {
 
       test('should handle refresh errors', () async {
         // Arrange
-        when(mockCacheService.clear())
-            .thenThrow(AppError.storage('Cache clear error'));
+        when(
+          mockCacheService.clear(),
+        ).thenThrow(AppError.storage('Cache clear error'));
 
         // Act & Assert
         expect(

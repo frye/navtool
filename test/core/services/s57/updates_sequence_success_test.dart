@@ -1,5 +1,5 @@
 /// Test for S-57 Sequential Update File Processing
-/// 
+///
 /// Tests successful application of update sequence (.001 → .003)
 
 import 'dart:io';
@@ -27,10 +27,26 @@ void main() {
       final update002 = File('${fixtureDir.path}/SAMPLE.002');
       final update003 = File('${fixtureDir.path}/SAMPLE.003');
 
-      expect(await baseFile.exists(), isTrue, reason: 'Base file SAMPLE.000 should exist');
-      expect(await update001.exists(), isTrue, reason: 'Update file SAMPLE.001 should exist');
-      expect(await update002.exists(), isTrue, reason: 'Update file SAMPLE.002 should exist');
-      expect(await update003.exists(), isTrue, reason: 'Update file SAMPLE.003 should exist');
+      expect(
+        await baseFile.exists(),
+        isTrue,
+        reason: 'Base file SAMPLE.000 should exist',
+      );
+      expect(
+        await update001.exists(),
+        isTrue,
+        reason: 'Update file SAMPLE.001 should exist',
+      );
+      expect(
+        await update002.exists(),
+        isTrue,
+        reason: 'Update file SAMPLE.002 should exist',
+      );
+      expect(
+        await update003.exists(),
+        isTrue,
+        reason: 'Update file SAMPLE.003 should exist',
+      );
 
       // Parse base file and initialize feature store
       final baseData = await baseFile.readAsBytes();
@@ -57,7 +73,9 @@ void main() {
             recordId: 2,
             featureType: S57FeatureType.sounding,
             geometryType: S57GeometryType.point,
-            coordinates: const [S57Coordinate(latitude: 47.605, longitude: -122.345)],
+            coordinates: const [
+              S57Coordinate(latitude: 47.605, longitude: -122.345),
+            ],
             attributes: const {'VALSOU': 12.3},
             label: 'F2 SOUNDG',
           ),
@@ -65,23 +83,37 @@ void main() {
             recordId: 3,
             featureType: S57FeatureType.lighthouse,
             geometryType: S57GeometryType.point,
-            coordinates: const [S57Coordinate(latitude: 47.61, longitude: -122.34)],
+            coordinates: const [
+              S57Coordinate(latitude: 47.61, longitude: -122.34),
+            ],
             attributes: const {'HEIGHT': 20.0},
             label: 'F3 LIGHTS',
           ),
         ];
         final syntheticParsed = S57ParsedData(
-          metadata: S57ChartMetadata(producer: 'SYNTH', version: '1.0', title: 'Synthetic Base'),
+          metadata: S57ChartMetadata(
+            producer: 'SYNTH',
+            version: '1.0',
+            title: 'Synthetic Base',
+          ),
           features: syntheticFeatures,
-          bounds: const S57Bounds(north: 47.62, south: 47.58, east: -122.33, west: -122.36),
+          bounds: const S57Bounds(
+            north: 47.62,
+            south: 47.58,
+            east: -122.33,
+            west: -122.36,
+          ),
           spatialIndex: S57SpatialIndex()..addFeatures(syntheticFeatures),
         );
         processor.initializeFromBase(syntheticParsed);
       }
 
       // Verify initial state
-      expect(processor.featureStore.count, greaterThan(0), 
-             reason: 'Base file should contain features');
+      expect(
+        processor.featureStore.count,
+        greaterThan(0),
+        reason: 'Base file should contain features',
+      );
 
       // Get initial feature count for comparison
       final initialCount = processor.featureStore.count;
@@ -89,13 +121,19 @@ void main() {
 
       // Apply sequential updates
       final updateFiles = [update001, update002, update003];
-      final summary = await processor.applySequentialUpdates('SAMPLE', updateFiles);
+      final summary = await processor.applySequentialUpdates(
+        'SAMPLE',
+        updateFiles,
+      );
 
       // Verify summary
-      expect(summary.applied.length, equals(3), 
-             reason: 'Should have applied 3 updates');
+      expect(
+        summary.applied.length,
+        equals(3),
+        reason: 'Should have applied 3 updates',
+      );
       expect(summary.applied, contains('SAMPLE.001'));
-      expect(summary.applied, contains('SAMPLE.002')); 
+      expect(summary.applied, contains('SAMPLE.002'));
       expect(summary.applied, contains('SAMPLE.003'));
 
       // Test expectations based on fixture design:
@@ -104,16 +142,28 @@ void main() {
       // .003: Insert F4 (should increase count by 1)
       // Net change: 0 (but we track operations separately)
 
-      expect(summary.deleted, greaterThanOrEqualTo(0), 
-             reason: 'Should track deleted features');
-      expect(summary.modified, greaterThanOrEqualTo(0), 
-             reason: 'Should track modified features');
-      expect(summary.inserted, greaterThanOrEqualTo(0), 
-             reason: 'Should track inserted features');
+      expect(
+        summary.deleted,
+        greaterThanOrEqualTo(0),
+        reason: 'Should track deleted features',
+      );
+      expect(
+        summary.modified,
+        greaterThanOrEqualTo(0),
+        reason: 'Should track modified features',
+      );
+      expect(
+        summary.inserted,
+        greaterThanOrEqualTo(0),
+        reason: 'Should track inserted features',
+      );
 
       // Verify final RVER is from last update
-      expect(summary.finalRver, greaterThan(0), 
-             reason: 'Final RVER should be updated');
+      expect(
+        summary.finalRver,
+        greaterThan(0),
+        reason: 'Final RVER should be updated',
+      );
 
       print('Update summary: $summary');
     });
@@ -121,7 +171,7 @@ void main() {
     test('should handle simple feature operations with synthetic data', () {
       // Test with synthetic data to validate basic RUIN operations
       processor.featureStore.clear();
-      
+
       // Create a simple test feature
       final testFeature = S57Feature(
         recordId: 100,
@@ -132,7 +182,10 @@ void main() {
         label: 'Test Buoy',
       );
 
-      final versionedFeature = FeatureVersioned(feature: testFeature, version: 0);
+      final versionedFeature = FeatureVersioned(
+        feature: testFeature,
+        version: 0,
+      );
       processor.featureStore.put('test_100', versionedFeature);
 
       expect(processor.featureStore.count, equals(1));
@@ -147,7 +200,10 @@ void main() {
           featureType: S57FeatureType.buoy,
           geometryType: S57GeometryType.point,
           coordinates: [S57Coordinate(latitude: 47.61, longitude: -122.31)],
-          attributes: {'COLOUR': 4, 'modified': true}, // Change color and add attribute
+          attributes: {
+            'COLOUR': 4,
+            'modified': true,
+          }, // Change color and add attribute
           label: 'Modified Test Buoy',
         ),
         rawData: {'test': 'modify'},
@@ -162,7 +218,10 @@ void main() {
       expect(modifiedFeature!.version, equals(1));
       expect(modifiedFeature.feature.attributes['COLOUR'], equals(4));
       expect(modifiedFeature.feature.attributes['modified'], equals(true));
-      expect(modifiedFeature.feature.attributes['type'], equals('test')); // Original attribute preserved
+      expect(
+        modifiedFeature.feature.attributes['type'],
+        equals('test'),
+      ); // Original attribute preserved
 
       // Test delete operation
       final deleteRecord = RuinRecord(
@@ -197,16 +256,19 @@ void main() {
       // Verify insertion
       expect(processor.featureStore.contains('test_200'), isTrue);
       expect(processor.featureStore.count, equals(1));
-      
+
       final insertedFeature = processor.featureStore.get('test_200');
       expect(insertedFeature, isNotNull);
       expect(insertedFeature!.version, equals(3));
-      expect(insertedFeature.feature.featureType, equals(S57FeatureType.lighthouse));
+      expect(
+        insertedFeature.feature.featureType,
+        equals(S57FeatureType.lighthouse),
+      );
     });
 
     test('should track summary statistics correctly', () {
       final summary = UpdateSummary();
-      
+
       expect(summary.inserted, equals(0));
       expect(summary.modified, equals(0));
       expect(summary.deleted, equals(0));

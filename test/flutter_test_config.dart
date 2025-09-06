@@ -8,16 +8,16 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 /// This file is automatically loaded by the test runner
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   TestWidgetsFlutterBinding.ensureInitialized();
-  
+
   // Initialize SQLite FFI for desktop platforms (including Raspberry Pi)
   if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }
-  
+
   // Setup method channel mocks for plugins that require platform implementation
   setupMethodChannelMocks();
-  
+
   await testMain();
 }
 
@@ -29,8 +29,9 @@ void setupMethodChannelMocks() {
   // If log noise reduction is desired, prefer injecting a NoOp/AppLogger override per test via
   // Riverpod's provider overrides instead of mutating global foundation state here.
   // Mock shared_preferences
-  const MethodChannel('plugins.flutter.io/shared_preferences')
-      .setMockMethodCallHandler((MethodCall methodCall) async {
+  const MethodChannel(
+    'plugins.flutter.io/shared_preferences',
+  ).setMockMethodCallHandler((MethodCall methodCall) async {
     switch (methodCall.method) {
       case 'getAll':
         return <String, Object>{}; // Return empty preferences
@@ -50,8 +51,9 @@ void setupMethodChannelMocks() {
   });
 
   // Mock path_provider if needed
-  const MethodChannel('plugins.flutter.io/path_provider')
-      .setMockMethodCallHandler((MethodCall methodCall) async {
+  const MethodChannel(
+    'plugins.flutter.io/path_provider',
+  ).setMockMethodCallHandler((MethodCall methodCall) async {
     switch (methodCall.method) {
       case 'getApplicationDocumentsDirectory':
         return '/tmp/flutter_test/documents';
@@ -65,8 +67,9 @@ void setupMethodChannelMocks() {
   });
 
   // Mock device_info_plus if needed
-  const MethodChannel('dev.fluttercommunity.plus/device_info')
-      .setMockMethodCallHandler((MethodCall methodCall) async {
+  const MethodChannel(
+    'dev.fluttercommunity.plus/device_info',
+  ).setMockMethodCallHandler((MethodCall methodCall) async {
     switch (methodCall.method) {
       case 'getDeviceInfo':
         return {
@@ -82,8 +85,9 @@ void setupMethodChannelMocks() {
   });
 
   // Mock package_info_plus if needed
-  const MethodChannel('dev.fluttercommunity.plus/package_info')
-      .setMockMethodCallHandler((MethodCall methodCall) async {
+  const MethodChannel(
+    'dev.fluttercommunity.plus/package_info',
+  ).setMockMethodCallHandler((MethodCall methodCall) async {
     switch (methodCall.method) {
       case 'getAll':
         return {

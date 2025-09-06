@@ -80,7 +80,7 @@ void main() {
       // Arrange
       final bounds = GeographicBounds(north: 1, south: 0, east: 1, west: 0);
       final lastUpdate = DateTime(2024, 1, 15);
-      
+
       final chart1 = Chart(
         id: 'US5CA52M',
         title: 'Test Chart',
@@ -90,7 +90,7 @@ void main() {
         state: 'California',
         type: ChartType.harbor,
       );
-      
+
       final chart2 = Chart(
         id: 'US5CA52M',
         title: 'Test Chart',

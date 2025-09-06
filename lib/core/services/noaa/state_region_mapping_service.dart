@@ -14,7 +14,7 @@ import '../../../core/utils/spatial_operations.dart';
 class StateNotSupportedException implements Exception {
   final String message;
   StateNotSupportedException(this.message);
-  
+
   @override
   String toString() => 'StateNotSupportedException: $message';
 }
@@ -23,22 +23,22 @@ class StateNotSupportedException implements Exception {
 abstract class StateRegionMappingService {
   /// Gets chart cells for a given state
   Future<List<String>> getChartCellsForState(String stateName);
-  
+
   /// Gets geographic bounds for a state
   Future<GeographicBounds?> getStateBounds(String stateName);
-  
+
   /// Gets all supported states
   Future<List<String>> getSupportedStates();
-  
+
   /// Gets the state name for given coordinates
-  /// 
+  ///
   /// Returns the state name if coordinates fall within a supported
   /// coastal state's boundaries, otherwise returns null.
   Future<String?> getStateFromCoordinates(double latitude, double longitude);
-  
+
   /// Updates the state-to-cell mapping for a state
   Future<void> updateStateCellMapping(String stateName, List<String> mapping);
-  
+
   /// Clears all state mappings from cache
   Future<void> clearStateMappings();
 }
@@ -64,20 +64,90 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
 
   /// Predefined state to geographic bounds mapping
   static final Map<String, GeographicBounds> _stateRegions = {
-    'California': GeographicBounds(north: 42.0, south: 32.5, east: -114.1, west: -124.4),
-    'Florida': GeographicBounds(north: 31.0, south: 24.5, east: -80.0, west: -87.6),
-    'Texas': GeographicBounds(north: 36.5, south: 25.8, east: -93.5, west: -106.6),
-    'Washington': GeographicBounds(north: 49.0, south: 45.5, east: -116.9, west: -124.8),
-    'Alaska': GeographicBounds(north: 71.4, south: 54.8, east: -130.0, west: -179.1),
-    'Hawaii': GeographicBounds(north: 28.4, south: 18.9, east: -154.8, west: -178.3),
-    'Maine': GeographicBounds(north: 47.5, south: 43.1, east: -66.9, west: -71.1),
-    'Massachusetts': GeographicBounds(north: 42.9, south: 41.2, east: -69.9, west: -73.5),
-    'New York': GeographicBounds(north: 45.0, south: 40.5, east: -71.9, west: -79.8),
-    'North Carolina': GeographicBounds(north: 36.6, south: 33.8, east: -75.5, west: -84.3),
-    'South Carolina': GeographicBounds(north: 35.2, south: 32.0, east: -78.5, west: -83.4),
-    'Georgia': GeographicBounds(north: 35.0, south: 30.4, east: -80.8, west: -85.6),
-    'Louisiana': GeographicBounds(north: 33.0, south: 28.9, east: -88.8, west: -94.0),
-    'Oregon': GeographicBounds(north: 46.3, south: 42.0, east: -116.5, west: -124.6),
+    'California': GeographicBounds(
+      north: 42.0,
+      south: 32.5,
+      east: -114.1,
+      west: -124.4,
+    ),
+    'Florida': GeographicBounds(
+      north: 31.0,
+      south: 24.5,
+      east: -80.0,
+      west: -87.6,
+    ),
+    'Texas': GeographicBounds(
+      north: 36.5,
+      south: 25.8,
+      east: -93.5,
+      west: -106.6,
+    ),
+    'Washington': GeographicBounds(
+      north: 49.0,
+      south: 45.5,
+      east: -116.9,
+      west: -124.8,
+    ),
+    'Alaska': GeographicBounds(
+      north: 71.4,
+      south: 54.8,
+      east: -130.0,
+      west: -179.1,
+    ),
+    'Hawaii': GeographicBounds(
+      north: 28.4,
+      south: 18.9,
+      east: -154.8,
+      west: -178.3,
+    ),
+    'Maine': GeographicBounds(
+      north: 47.5,
+      south: 43.1,
+      east: -66.9,
+      west: -71.1,
+    ),
+    'Massachusetts': GeographicBounds(
+      north: 42.9,
+      south: 41.2,
+      east: -69.9,
+      west: -73.5,
+    ),
+    'New York': GeographicBounds(
+      north: 45.0,
+      south: 40.5,
+      east: -71.9,
+      west: -79.8,
+    ),
+    'North Carolina': GeographicBounds(
+      north: 36.6,
+      south: 33.8,
+      east: -75.5,
+      west: -84.3,
+    ),
+    'South Carolina': GeographicBounds(
+      north: 35.2,
+      south: 32.0,
+      east: -78.5,
+      west: -83.4,
+    ),
+    'Georgia': GeographicBounds(
+      north: 35.0,
+      south: 30.4,
+      east: -80.8,
+      west: -85.6,
+    ),
+    'Louisiana': GeographicBounds(
+      north: 33.0,
+      south: 28.9,
+      east: -88.8,
+      west: -94.0,
+    ),
+    'Oregon': GeographicBounds(
+      north: 46.3,
+      south: 42.0,
+      east: -116.5,
+      west: -124.6,
+    ),
   };
 
   @override
@@ -92,9 +162,9 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
         final cached = await _cacheService.get(cacheKey);
         if (cached != null) {
           final decoded = jsonDecode(String.fromCharCodes(cached));
-            if (decoded is List) {
-              return List<String>.from(decoded);
-            }
+          if (decoded is List) {
+            return List<String>.from(decoded);
+          }
         }
       } catch (e) {
         _logger.warning('Failed to read state cell cache for $stateName: $e');
@@ -108,7 +178,11 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
           try {
             final encodedData = jsonEncode(stored);
             final encodedBytes = Uint8List.fromList(utf8.encode(encodedData));
-            await _cacheService.store(cacheKey, encodedBytes, maxAge: Duration(hours: 24));
+            await _cacheService.store(
+              cacheKey,
+              encodedBytes,
+              maxAge: Duration(hours: 24),
+            );
           } catch (e) {
             _logger.warning('Failed to backfill cache for $stateName: $e');
           }
@@ -125,7 +199,11 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
       final encodedData = jsonEncode(chartCells);
       final encodedBytes = Uint8List.fromList(utf8.encode(encodedData));
       try {
-        await _cacheService.store(cacheKey, encodedBytes, maxAge: Duration(hours: 24));
+        await _cacheService.store(
+          cacheKey,
+          encodedBytes,
+          maxAge: Duration(hours: 24),
+        );
       } catch (e) {
         _logger.warning('Failed to store in cache, continuing: $e');
       }
@@ -133,9 +211,15 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
 
       return chartCells;
     } catch (e) {
-      _logger.error('Failed to get chart cells for state: $stateName', exception: e);
+      _logger.error(
+        'Failed to get chart cells for state: $stateName',
+        exception: e,
+      );
       if (e is AppError) rethrow;
-      throw AppError.network('Failed to fetch chart cells for state', originalError: e);
+      throw AppError.network(
+        'Failed to fetch chart cells for state',
+        originalError: e,
+      );
     }
   }
 
@@ -144,41 +228,55 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
     // Load state boundary polygon
     final stateBoundary = await _loadStateBoundary(stateName);
     if (stateBoundary == null) {
-      throw StateNotSupportedException('State $stateName not supported or not found');
+      throw StateNotSupportedException(
+        'State $stateName not supported or not found',
+      );
     }
-    
+
     // Get state bounds for efficient chart lookup
     final stateBounds = _stateRegions[stateName];
     if (stateBounds == null) {
       throw StateNotSupportedException('State $stateName not supported');
     }
-    
+
     // Get all charts that might intersect with state (using bounding box)
-    final candidateCharts = await _storageService.getChartsInBounds(stateBounds);
-    
+    final candidateCharts = await _storageService.getChartsInBounds(
+      stateBounds,
+    );
+
     final intersectingCells = <String>[];
     for (final chart in candidateCharts) {
       if (chart.source == ChartSource.noaa) {
         try {
           final chartPolygon = SpatialOperations.boundsToPolygon(chart.bounds);
-          
-          if (SpatialOperations.doPolygonsIntersect(stateBoundary, chartPolygon)) {
-            final coverage = SpatialOperations.calculateCoveragePercentage(stateBoundary, chartPolygon);
-            
+
+          if (SpatialOperations.doPolygonsIntersect(
+            stateBoundary,
+            chartPolygon,
+          )) {
+            final coverage = SpatialOperations.calculateCoveragePercentage(
+              stateBoundary,
+              chartPolygon,
+            );
+
             // Include charts with meaningful coverage (>1%)
             if (coverage > 0.01) {
               intersectingCells.add(chart.id);
             }
           }
         } catch (e) {
-          _logger.warning('Skipping chart ${chart.id} due to invalid bounds: $e');
+          _logger.warning(
+            'Skipping chart ${chart.id} due to invalid bounds: $e',
+          );
           // Continue with next chart instead of failing the entire operation
           continue;
         }
       }
     }
-    
-    _logger.info('Found ${intersectingCells.length} charts for state: $stateName using spatial intersection');
+
+    _logger.info(
+      'Found ${intersectingCells.length} charts for state: $stateName using spatial intersection',
+    );
     return intersectingCells;
   }
 
@@ -188,7 +286,7 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
     if (_stateBoundariesCache.containsKey(stateName)) {
       return _stateBoundariesCache[stateName];
     }
-    
+
     // Get from predefined state bounds and convert to polygon
     final bounds = _stateRegions[stateName];
     if (bounds != null) {
@@ -196,7 +294,7 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
       _stateBoundariesCache[stateName] = polygon;
       return polygon;
     }
-    
+
     return null;
   }
 
@@ -204,7 +302,7 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
   Future<GeographicBounds?> getStateBounds(String stateName) async {
     try {
       _logger.debug('Getting bounds for state: $stateName');
-      
+
       // Check cache first
       final cacheKey = 'state_bounds_$stateName';
       final cached = await _cacheService.get(cacheKey);
@@ -232,7 +330,11 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
           'west': bounds.west,
         });
         final encodedBytes = Uint8List.fromList(utf8.encode(encodedData));
-        await _cacheService.store(cacheKey, encodedBytes, maxAge: Duration(hours: 24));
+        await _cacheService.store(
+          cacheKey,
+          encodedBytes,
+          maxAge: Duration(hours: 24),
+        );
       }
 
       return bounds;
@@ -247,7 +349,7 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
   Future<List<String>> getSupportedStates() async {
     try {
       _logger.debug('Getting supported states');
-      
+
       // Check cache first
       const cacheKey = 'supported_states';
       final cached = await _cacheService.get(cacheKey);
@@ -261,39 +363,59 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
 
       // Return predefined states
       final states = _stateRegions.keys.toList();
-      
+
       // Cache the result
       final encodedData = jsonEncode(states);
       final encodedBytes = Uint8List.fromList(utf8.encode(encodedData));
-      await _cacheService.store(cacheKey, encodedBytes, maxAge: Duration(hours: 24));
-      
+      await _cacheService.store(
+        cacheKey,
+        encodedBytes,
+        maxAge: Duration(hours: 24),
+      );
+
       return states;
     } catch (e) {
       _logger.error('Failed to get supported states', exception: e);
       if (e is AppError) rethrow;
-      throw AppError.network('Failed to fetch supported states', originalError: e);
+      throw AppError.network(
+        'Failed to fetch supported states',
+        originalError: e,
+      );
     }
   }
 
   @override
-  Future<void> updateStateCellMapping(String stateName, List<String> mapping) async {
+  Future<void> updateStateCellMapping(
+    String stateName,
+    List<String> mapping,
+  ) async {
     try {
       _logger.debug('Updating state cell mapping for: $stateName');
-      
+
       // Store in database
       await _storageService.storeStateCellMapping(stateName, mapping);
-      
+
       // Cache the updated mapping
       final cacheKey = 'state_cells_$stateName';
       final encodedData = jsonEncode(mapping);
       final encodedBytes = Uint8List.fromList(utf8.encode(encodedData));
-      await _cacheService.store(cacheKey, encodedBytes, maxAge: Duration(hours: 24));
-      
+      await _cacheService.store(
+        cacheKey,
+        encodedBytes,
+        maxAge: Duration(hours: 24),
+      );
+
       _logger.info('Updated state cell mapping for: $stateName');
     } catch (e) {
-      _logger.error('Failed to update state cell mapping for: $stateName', exception: e);
+      _logger.error(
+        'Failed to update state cell mapping for: $stateName',
+        exception: e,
+      );
       if (e is AppError) rethrow;
-      throw AppError.storage('Failed to update state cell mapping', originalError: e);
+      throw AppError.storage(
+        'Failed to update state cell mapping',
+        originalError: e,
+      );
     }
   }
 
@@ -301,46 +423,56 @@ class StateRegionMappingServiceImpl implements StateRegionMappingService {
   Future<void> clearStateMappings() async {
     try {
       _logger.debug('Clearing all state mappings');
-      
+
       // Clear database mappings
       await _storageService.clearAllStateCellMappings();
-      
+
       // Clear cache entries
       await _cacheService.clear();
-      
+
       // Clear memory cache
       _stateBoundariesCache.clear();
-      
+
       _logger.info('Cleared all state mappings');
     } catch (e) {
       _logger.error('Failed to clear state mappings', exception: e);
       if (e is AppError) rethrow;
-      throw AppError.storage('Failed to clear state mappings', originalError: e);
+      throw AppError.storage(
+        'Failed to clear state mappings',
+        originalError: e,
+      );
     }
   }
 
   @override
-  Future<String?> getStateFromCoordinates(double latitude, double longitude) async {
+  Future<String?> getStateFromCoordinates(
+    double latitude,
+    double longitude,
+  ) async {
     try {
       _logger.debug('Determining state for coordinates: $latitude, $longitude');
-      
+
       // Check each state's bounds to find which one contains the coordinates
       for (final entry in _stateRegions.entries) {
         final stateName = entry.key;
         final bounds = entry.value;
-        
+
         if (bounds.contains(latitude, longitude)) {
           _logger.debug('Coordinates fall within $stateName bounds');
           return stateName;
         }
       }
-      
-      _logger.debug('Coordinates do not fall within any supported state bounds');
+
+      _logger.debug(
+        'Coordinates do not fall within any supported state bounds',
+      );
       return null;
     } catch (e) {
-      _logger.error('Failed to determine state from coordinates: $latitude, $longitude', exception: e);
+      _logger.error(
+        'Failed to determine state from coordinates: $latitude, $longitude',
+        exception: e,
+      );
       rethrow;
     }
   }
-
 }

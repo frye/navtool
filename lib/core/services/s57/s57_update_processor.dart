@@ -1,6 +1,6 @@
 /// S-57 Update Processor
-/// 
-/// Processes sequential S-57 update files (.001, .002, etc.) applying 
+///
+/// Processes sequential S-57 update files (.001, .002, etc.) applying
 /// RUIN (Insert/Delete/Modify) operations to a base ENC dataset
 
 import 'dart:io';
@@ -88,8 +88,9 @@ class S57UpdateProcessor {
 
   /// Apply a single RUIN record
   @visibleForTesting
-  void applyRuinRecord(RuinRecord record, int updateRver) => _applyRuinRecord(record, updateRver);
-  
+  void applyRuinRecord(RuinRecord record, int updateRver) =>
+      _applyRuinRecord(record, updateRver);
+
   void _applyRuinRecord(RuinRecord record, int updateRver) {
     switch (record.operation) {
       case RuinOperation.insert:
@@ -107,12 +108,16 @@ class S57UpdateProcessor {
   /// Handle Insert operation
   void _handleInsert(RuinRecord record, int updateRver) {
     if (_featureStore.contains(record.foid)) {
-      _summary.addWarning('INSERT_EXISTS: Feature ${record.foid} already exists');
+      _summary.addWarning(
+        'INSERT_EXISTS: Feature ${record.foid} already exists',
+      );
       return;
     }
 
     if (record.feature == null) {
-      _summary.addWarning('INSERT_MISSING_FEATURE: No feature data for insert ${record.foid}');
+      _summary.addWarning(
+        'INSERT_MISSING_FEATURE: No feature data for insert ${record.foid}',
+      );
       return;
     }
 
@@ -124,14 +129,18 @@ class S57UpdateProcessor {
     if (_featureStore.insert(record.foid, versionedFeature)) {
       _summary.inserted++;
     } else {
-      _summary.addWarning('INSERT_FAILED: Could not insert feature ${record.foid}');
+      _summary.addWarning(
+        'INSERT_FAILED: Could not insert feature ${record.foid}',
+      );
     }
   }
 
   /// Handle Delete operation
   void _handleDelete(RuinRecord record) {
     if (!_featureStore.remove(record.foid)) {
-      _summary.addWarning('DELETE_MISSING: Feature ${record.foid} not found for deletion');
+      _summary.addWarning(
+        'DELETE_MISSING: Feature ${record.foid} not found for deletion',
+      );
     } else {
       _summary.deleted++;
     }
@@ -141,12 +150,16 @@ class S57UpdateProcessor {
   void _handleModify(RuinRecord record, int updateRver) {
     final existingVersioned = _featureStore.get(record.foid);
     if (existingVersioned == null) {
-      _summary.addWarning('MODIFY_MISSING: Feature ${record.foid} not found for modification');
+      _summary.addWarning(
+        'MODIFY_MISSING: Feature ${record.foid} not found for modification',
+      );
       return;
     }
 
     if (record.feature == null) {
-      _summary.addWarning('MODIFY_MISSING_FEATURE: No feature data for modify ${record.foid}');
+      _summary.addWarning(
+        'MODIFY_MISSING_FEATURE: No feature data for modify ${record.foid}',
+      );
       return;
     }
 
@@ -157,15 +170,15 @@ class S57UpdateProcessor {
     };
 
     // Use new geometry if provided, otherwise keep existing
-    final coordinates = record.feature!.coordinates.isNotEmpty 
-        ? record.feature!.coordinates 
+    final coordinates = record.feature!.coordinates.isNotEmpty
+        ? record.feature!.coordinates
         : existingVersioned.feature.coordinates;
 
     // Create updated feature
     final updatedFeature = S57Feature(
       recordId: existingVersioned.feature.recordId,
-      featureType: record.feature!.featureType != S57FeatureType.unknown 
-          ? record.feature!.featureType 
+      featureType: record.feature!.featureType != S57FeatureType.unknown
+          ? record.feature!.featureType
           : existingVersioned.feature.featureType,
       geometryType: record.feature!.geometryType,
       coordinates: coordinates,
@@ -192,7 +205,8 @@ class S57UpdateProcessor {
         final extension = parts.last;
         try {
           final seqNum = int.parse(extension);
-          return seqNum > 0 && seqNum < 1000; // Reasonable range for update sequences
+          return seqNum > 0 &&
+              seqNum < 1000; // Reasonable range for update sequences
         } catch (e) {
           return false;
         }
@@ -225,7 +239,10 @@ class S57UpdateProcessor {
   }
 
   /// Validate update sequence for gaps and base cell match
-  void _validateUpdateSequence(List<File> sortedUpdates, String expectedBaseCellName) {
+  void _validateUpdateSequence(
+    List<File> sortedUpdates,
+    String expectedBaseCellName,
+  ) {
     if (sortedUpdates.isEmpty) return;
 
     // Check for gaps in sequence
@@ -234,7 +251,8 @@ class S57UpdateProcessor {
       final actualSeq = _getSequenceNumber(file);
       if (actualSeq != expectedSeq) {
         throw AppError(
-          message: 'Gap in update sequence: expected .${expectedSeq.toString().padLeft(3, '0')} but found .${actualSeq.toString().padLeft(3, '0')}',
+          message:
+              'Gap in update sequence: expected .${expectedSeq.toString().padLeft(3, '0')} but found .${actualSeq.toString().padLeft(3, '0')}',
           type: AppErrorType.validation,
         );
       }
@@ -254,27 +272,30 @@ class S57UpdateProcessor {
       // Detect synthetic update fixtures (very small, or leader with base address < 24)
       if (data.length >= 12) {
         try {
-            final baseAddrStr = String.fromCharCodes(data.sublist(12, 17));
-            final baseAddr = int.tryParse(baseAddrStr.trim()) ?? 0;
-            if (baseAddr < 24) {
-              // Build deterministic synthetic RUIN operations based on extension to
-              // allow tests to validate sequence summary without full ISO8211 parsing.
-              final ext = filename.split('.').last;
-              final records = <RuinRecord>[];
-              int rver = 1;
-              switch (ext) {
-                case '001':
-                  // Delete F2
-                  records.add(RuinRecord(
+          final baseAddrStr = String.fromCharCodes(data.sublist(12, 17));
+          final baseAddr = int.tryParse(baseAddrStr.trim()) ?? 0;
+          if (baseAddr < 24) {
+            // Build deterministic synthetic RUIN operations based on extension to
+            // allow tests to validate sequence summary without full ISO8211 parsing.
+            final ext = filename.split('.').last;
+            final records = <RuinRecord>[];
+            int rver = 1;
+            switch (ext) {
+              case '001':
+                // Delete F2
+                records.add(
+                  RuinRecord(
                     foid: '2',
                     operation: RuinOperation.delete,
                     rawData: const {},
-                  ));
-                  rver = 1;
-                  break;
-                case '002':
-                  // Modify F1 (change an attribute)
-                  records.add(RuinRecord(
+                  ),
+                );
+                rver = 1;
+                break;
+              case '002':
+                // Modify F1 (change an attribute)
+                records.add(
+                  RuinRecord(
                     foid: '1',
                     operation: RuinOperation.modify,
                     feature: S57Feature(
@@ -285,54 +306,60 @@ class S57UpdateProcessor {
                       attributes: const {'DRVAL1': 5.0},
                     ),
                     rawData: const {},
-                  ));
-                  rver = 2;
-                  break;
-                case '003':
-                  // Insert F4 obstruction
-                  records.add(RuinRecord(
+                  ),
+                );
+                rver = 2;
+                break;
+              case '003':
+                // Insert F4 obstruction
+                records.add(
+                  RuinRecord(
                     foid: '4',
                     operation: RuinOperation.insert,
                     feature: S57Feature(
                       recordId: 4,
                       featureType: S57FeatureType.obstruction,
                       geometryType: S57GeometryType.point,
-                      coordinates: const [S57Coordinate(latitude: 47.65, longitude: -122.34)],
+                      coordinates: const [
+                        S57Coordinate(latitude: 47.65, longitude: -122.34),
+                      ],
                       attributes: const {'CATOBS': 1},
                     ),
                     rawData: const {},
-                  ));
-                  rver = 3;
-                  break;
-              }
-              return UpdateDataset(
-                name: filename,
-                rver: rver,
-                baseCellName: null,
-                records: records,
-              );
+                  ),
+                );
+                rver = 3;
+                break;
             }
+            return UpdateDataset(
+              name: filename,
+              rver: rver,
+              baseCellName: null,
+              records: records,
+            );
+          }
         } catch (_) {
           // ignore detection errors and fall through to normal parsing
         }
       }
       // Parse using existing S57Parser
       final parsedData = S57Parser.parse(data);
-      
+
       // Extract RUIN records from parsed data
       final ruinRecords = <RuinRecord>[];
       int fileRver = 1; // Default RVER
       String? baseCellName;
 
       // TODO: Extract RUIN records from parsed records
-      // This is a simplified implementation - in reality would need to parse 
+      // This is a simplified implementation - in reality would need to parse
       // ISO 8211 records with FRID containing RUIN field
       for (final feature in parsedData.features) {
         // For now, create synthetic RUIN records for testing
         final foid = _generateFoidForFeature(feature);
         final record = RuinRecord(
           foid: foid,
-          operation: RuinOperation.insert, // Default to insert for parsed features
+          operation:
+              RuinOperation.insert, // Default to insert for parsed features
           feature: feature,
           rawData: feature.attributes,
         );
@@ -386,7 +413,7 @@ class S57UpdateProcessor {
   /// Get all current features as S57ParsedData
   S57ParsedData getCurrentState() {
     final features = _featureStore.allFeatures.map((vf) => vf.feature).toList();
-    
+
     if (features.isEmpty) {
       return S57ParsedData(
         metadata: S57ChartMetadata(producer: 'NavTool', version: '1.0'),

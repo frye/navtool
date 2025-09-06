@@ -6,7 +6,7 @@ void main() {
     test('should create NoaaApiException with required parameters', () {
       // Arrange & Act
       const exception = NoaaApiException('Test error message');
-      
+
       // Assert
       expect(exception.message, 'Test error message');
       expect(exception.errorCode, isNull);
@@ -17,7 +17,7 @@ void main() {
     test('should create NoaaApiException with all parameters', () {
       // Arrange
       const metadata = {'requestId': '123', 'endpoint': '/catalog'};
-      
+
       // Act
       const exception = NoaaApiException(
         'Detailed error message',
@@ -25,7 +25,7 @@ void main() {
         isRetryable: false,
         metadata: metadata,
       );
-      
+
       // Assert
       expect(exception.message, 'Detailed error message');
       expect(exception.errorCode, 'NOAA_001');
@@ -39,10 +39,10 @@ void main() {
         'Network error',
         errorCode: 'NOAA_NET_001',
       );
-      
+
       // Act
       final stringRep = exception.toString();
-      
+
       // Assert
       expect(stringRep, 'NoaaApiException: Network error (NOAA_NET_001)');
     });
@@ -50,10 +50,10 @@ void main() {
     test('should return simple string representation without error code', () {
       // Arrange
       const exception = NoaaApiException('Simple error');
-      
+
       // Act
       final stringRep = exception.toString();
-      
+
       // Assert
       expect(stringRep, 'NoaaApiException: Simple error');
     });
@@ -63,7 +63,7 @@ void main() {
     test('should create exception with chart cell name', () {
       // Arrange & Act
       final exception = ChartNotAvailableException('US5CA52M');
-      
+
       // Assert
       expect(exception.message, 'Chart US5CA52M is not available from NOAA');
       expect(exception.errorCode, 'CHART_NOT_AVAILABLE');
@@ -74,7 +74,7 @@ void main() {
     test('should be instance of NoaaApiException', () {
       // Arrange & Act
       final exception = ChartNotAvailableException('US1AK90M');
-      
+
       // Assert
       expect(exception, isA<NoaaApiException>());
     });
@@ -82,7 +82,7 @@ void main() {
     test('should include chart cell name in metadata', () {
       // Arrange & Act
       final exception = ChartNotAvailableException('US4FL11M');
-      
+
       // Assert
       expect(exception.metadata, isNotNull);
       expect(exception.metadata!['chartCellName'], 'US4FL11M');
@@ -93,7 +93,7 @@ void main() {
     test('should create exception with default message', () {
       // Arrange & Act
       const exception = NetworkConnectivityException();
-      
+
       // Assert
       expect(exception.message, 'No internet connection available');
       expect(exception.errorCode, 'NETWORK_CONNECTIVITY');
@@ -105,7 +105,7 @@ void main() {
       const exception = NetworkConnectivityException(
         'Satellite connection timeout',
       );
-      
+
       // Assert
       expect(exception.message, 'Satellite connection timeout');
       expect(exception.errorCode, 'NETWORK_CONNECTIVITY');
@@ -115,7 +115,7 @@ void main() {
     test('should be instance of NoaaApiException', () {
       // Arrange & Act
       const exception = NetworkConnectivityException();
-      
+
       // Assert
       expect(exception, isA<NoaaApiException>());
     });
@@ -125,7 +125,7 @@ void main() {
     test('should create exception with default message', () {
       // Arrange & Act
       final exception = RateLimitExceededException();
-      
+
       // Assert
       expect(exception.message, 'Rate limit exceeded for NOAA API requests');
       expect(exception.errorCode, 'RATE_LIMIT_EXCEEDED');
@@ -137,7 +137,7 @@ void main() {
       final exception = RateLimitExceededException(
         retryAfter: Duration(seconds: 30),
       );
-      
+
       // Assert
       expect(exception.retryAfter, const Duration(seconds: 30));
       expect(exception.metadata!['retryAfterSeconds'], 30);
@@ -149,7 +149,7 @@ void main() {
         message: 'Too many catalog requests',
         retryAfter: Duration(minutes: 1),
       );
-      
+
       // Assert
       expect(exception.message, 'Too many catalog requests');
       expect(exception.retryAfter, const Duration(minutes: 1));
@@ -164,7 +164,7 @@ void main() {
         'US5CA52M',
         'Download failed due to server error',
       );
-      
+
       // Assert
       expect(exception.message, 'Download failed due to server error');
       expect(exception.errorCode, 'CHART_DOWNLOAD_FAILED');
@@ -179,7 +179,7 @@ void main() {
         'File corrupted and cannot be downloaded',
         isRetryable: false,
       );
-      
+
       // Assert
       expect(exception.isRetryable, isFalse);
       expect(exception.chartCellName, 'US1AK90M');
@@ -193,7 +193,7 @@ void main() {
         bytesDownloaded: 1024,
         totalBytes: 2048,
       );
-      
+
       // Assert
       expect(exception.metadata!['chartCellName'], 'US4FL11M');
       expect(exception.metadata!['bytesDownloaded'], 1024);
@@ -206,7 +206,7 @@ void main() {
     test('should create exception with default message', () {
       // Arrange & Act
       final exception = NoaaServiceUnavailableException();
-      
+
       // Assert
       expect(exception.message, 'NOAA service is temporarily unavailable');
       expect(exception.errorCode, 'SERVICE_UNAVAILABLE');
@@ -218,7 +218,7 @@ void main() {
       final exception = NoaaServiceUnavailableException(
         'Service under maintenance until 14:00 UTC',
       );
-      
+
       // Assert
       expect(exception.message, 'Service under maintenance until 14:00 UTC');
     });

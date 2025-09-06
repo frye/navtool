@@ -30,28 +30,30 @@ class HttpClientService {
 
   /// Initialize Dio with marine environment configurations
   void _initializeDio() {
-    _dio = Dio(BaseOptions(
-      // Marine environment requires longer timeouts due to:
-      // - Potential satellite internet connections
-      // - Large chart file downloads
-      // - Remote marine locations with poor connectivity
-      connectTimeout: const Duration(seconds: 30),
-      receiveTimeout: const Duration(minutes: 10), // Large chart files
-      sendTimeout: const Duration(minutes: 5),
-      
-      // Default headers for NOAA API compatibility
-      headers: {
-        'User-Agent': 'NavTool/1.0.0 (Marine Navigation App)',
-        'Accept': 'application/octet-stream, application/json, */*',
-      },
-      
-      // Follow redirects for NOAA download URLs
-      followRedirects: true,
-      maxRedirects: 5,
-      
-      // Validate status codes
-      validateStatus: (status) => status != null && status < 500,
-    ));
+    _dio = Dio(
+      BaseOptions(
+        // Marine environment requires longer timeouts due to:
+        // - Potential satellite internet connections
+        // - Large chart file downloads
+        // - Remote marine locations with poor connectivity
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(minutes: 10), // Large chart files
+        sendTimeout: const Duration(minutes: 5),
+
+        // Default headers for NOAA API compatibility
+        headers: {
+          'User-Agent': 'NavTool/1.0.0 (Marine Navigation App)',
+          'Accept': 'application/octet-stream, application/json, */*',
+        },
+
+        // Follow redirects for NOAA download URLs
+        followRedirects: true,
+        maxRedirects: 5,
+
+        // Validate status codes
+        validateStatus: (status) => status != null && status < 500,
+      ),
+    );
 
     // Add interceptors for logging and error handling
     _addInterceptors();
@@ -78,14 +80,16 @@ class HttpClientService {
             exception: error.error,
             context: 'HTTP',
           );
-          
+
           // Continue with the converted error
-          handler.next(DioException(
-            requestOptions: error.requestOptions,
-            error: appError,
-            message: appError.message,
-            type: error.type,
-          ));
+          handler.next(
+            DioException(
+              requestOptions: error.requestOptions,
+              error: appError,
+              message: appError.message,
+              type: error.type,
+            ),
+          );
         },
         onRequest: (options, handler) {
           _logger.debug(
@@ -131,7 +135,7 @@ class HttpClientService {
   void configureNoaaEndpoints() {
     // NOAA Office of Coast Survey ENC Distribution
     _dio.options.baseUrl = 'https://charts.noaa.gov';
-    
+
     _logger.info('Configured HTTP client for NOAA chart services');
   }
 
@@ -140,14 +144,14 @@ class HttpClientService {
     // Add certificate pinning for production NOAA endpoints
     (_dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
       final client = HttpClient();
-      
+
       // Configure certificate validation for NOAA domains
       client.badCertificateCallback = (cert, host, port) {
         // In production, implement proper certificate pinning
         // For now, use default validation
         return false;
       };
-      
+
       return client;
     };
 
@@ -165,14 +169,14 @@ class HttpClientService {
           originalError: error,
           stackTrace: error.stackTrace,
         );
-      
+
       case DioExceptionType.connectionError:
         return AppError.network(
           'Unable to connect to chart services. Please check your internet connection.',
           originalError: error,
           stackTrace: error.stackTrace,
         );
-      
+
       case DioExceptionType.badResponse:
         final statusCode = error.response?.statusCode ?? 0;
         if (statusCode >= 400 && statusCode < 500) {
@@ -188,21 +192,21 @@ class HttpClientService {
             stackTrace: error.stackTrace,
           );
         }
-      
+
       case DioExceptionType.cancel:
         return AppError.network(
           'Request was cancelled.',
           originalError: error,
           stackTrace: error.stackTrace,
         );
-      
+
       case DioExceptionType.badCertificate:
         return AppError.network(
           'SSL certificate error. Unable to establish secure connection.',
           originalError: error,
           stackTrace: error.stackTrace,
         );
-      
+
       case DioExceptionType.unknown:
         return AppError.network(
           'An unexpected network error occurred: ${error.message ?? 'Unknown error'}',
@@ -220,12 +224,12 @@ class HttpClientService {
       case DioExceptionType.receiveTimeout:
       case DioExceptionType.connectionError:
         return true;
-      
+
       case DioExceptionType.badResponse:
         final statusCode = error.response?.statusCode ?? 0;
         // Retry on server errors (5xx) but not client errors (4xx)
         return statusCode >= 500;
-      
+
       default:
         return false;
     }
@@ -235,15 +239,15 @@ class HttpClientService {
   Future<Response> _retryRequest(RequestOptions options) async {
     const maxRetries = 3;
     const baseDelay = Duration(seconds: 2);
-    
+
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       await Future.delayed(Duration(seconds: baseDelay.inSeconds * attempt));
-      
+
       _logger.info(
         'Retrying request to ${options.uri} (attempt $attempt/$maxRetries)',
         context: 'HTTP',
       );
-      
+
       try {
         return await _dio.fetch(options);
       } catch (e) {
@@ -252,7 +256,7 @@ class HttpClientService {
         }
       }
     }
-    
+
     throw DioException(
       requestOptions: options,
       message: 'All retry attempts failed',
@@ -278,14 +282,14 @@ class HttpClientService {
       await _dio.download(
         url,
         savePath,
-        onReceiveProgress: resumeFrom != null 
-          ? (received, total) {
-              // Adjust progress for resumed downloads
-              final adjustedReceived = received + resumeFrom;
-              final adjustedTotal = total > 0 ? total + resumeFrom : total;
-              onReceiveProgress?.call(adjustedReceived, adjustedTotal);
-            }
-          : onReceiveProgress,
+        onReceiveProgress: resumeFrom != null
+            ? (received, total) {
+                // Adjust progress for resumed downloads
+                final adjustedReceived = received + resumeFrom;
+                final adjustedTotal = total > 0 ? total + resumeFrom : total;
+                onReceiveProgress?.call(adjustedReceived, adjustedTotal);
+              }
+            : onReceiveProgress,
         cancelToken: cancelToken,
         queryParameters: queryParameters,
         options: options,
@@ -305,7 +309,7 @@ class HttpClientService {
     try {
       // Handle full URLs vs relative paths intelligently
       final effectivePath = _resolveUrl(path);
-      
+
       return await _dio.get(
         effectivePath,
         queryParameters: queryParameters,
@@ -343,12 +347,12 @@ class HttpClientService {
       // For full URLs, temporarily clear baseUrl to prevent concatenation
       final originalBaseUrl = _dio.options.baseUrl;
       _dio.options.baseUrl = '';
-      
+
       // Schedule restoration of baseUrl for next request
       Future.microtask(() {
         _dio.options.baseUrl = originalBaseUrl;
       });
-      
+
       return path;
     } else {
       // For relative paths, use normal Dio behavior (baseUrl + path)

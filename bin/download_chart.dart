@@ -8,9 +8,11 @@ import 'package:navtool/tools/download_noaa_chart_logic.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  final chartId = const String.fromEnvironment('CHART_ID', defaultValue: '')
-      .trim()
-      .isNotEmpty
+  final chartId =
+      const String.fromEnvironment(
+        'CHART_ID',
+        defaultValue: '',
+      ).trim().isNotEmpty
       ? const String.fromEnvironment('CHART_ID')
       : (args.isNotEmpty ? args.first : 'US5WA11M');
   stdout.writeln('Downloading chart: $chartId');

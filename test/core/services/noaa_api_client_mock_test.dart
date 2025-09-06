@@ -18,7 +18,7 @@ import 'noaa_api_client_mock_test.mocks.dart';
 /// Mock-based unit tests for NOAA API functionality.
 /// These tests use mocked HTTP responses to provide fast feedback during development
 /// without requiring real network connectivity.
-/// 
+///
 /// Tagged as 'unit' for quick CI/development feedback.
 /// For actual API validation, see integration_test/noaa_real_endpoint_test.dart
 void main() {
@@ -32,7 +32,7 @@ void main() {
       mockHttpClient = MockHttpClientService();
       mockLogger = MockAppLogger();
       rateLimiter = RateLimiter(requestsPerSecond: 10); // Faster for unit tests
-      
+
       apiClient = NoaaApiClientImpl(
         httpClient: mockHttpClient,
         rateLimiter: rateLimiter,
@@ -41,37 +41,47 @@ void main() {
     });
 
     group('Chart Catalog Fetching', () {
-      test('should successfully fetch NOAA chart catalog with mock data', () async {
-        // Arrange
-        final mockCatalog = TestFixtures.createTestCatalog(
-          featureCount: 5,
-        );
-        final mockResponse = Response(
-          data: jsonEncode(mockCatalog),
-          statusCode: 200,
-          requestOptions: RequestOptions(path: '/api/charts'),
-        );
+      test(
+        'should successfully fetch NOAA chart catalog with mock data',
+        () async {
+          // Arrange
+          final mockCatalog = TestFixtures.createTestCatalog(featureCount: 5);
+          final mockResponse = Response(
+            data: jsonEncode(mockCatalog),
+            statusCode: 200,
+            requestOptions: RequestOptions(path: '/api/charts'),
+          );
 
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => mockResponse);
+          when(
+            mockHttpClient.get(
+              any,
+              queryParameters: anyNamed('queryParameters'),
+            ),
+          ).thenAnswer((_) async => mockResponse);
 
-        // Act
-        final catalogString = await apiClient.fetchChartCatalog();
+          // Act
+          final catalogString = await apiClient.fetchChartCatalog();
 
-        // Assert
-        expect(catalogString, isNotNull);
-        expect(catalogString, isA<String>());
-        
-        final catalog = jsonDecode(catalogString) as Map<String, dynamic>;
-        expect(catalog.containsKey('type'), isTrue);
-        expect(catalog['type'], equals('FeatureCollection'));
-        expect(catalog.containsKey('features'), isTrue);
-        
-        final features = catalog['features'] as List;
-        expect(features.length, equals(5));
-        
-        verify(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters'))).called(1);
-      });
+          // Assert
+          expect(catalogString, isNotNull);
+          expect(catalogString, isA<String>());
+
+          final catalog = jsonDecode(catalogString) as Map<String, dynamic>;
+          expect(catalog.containsKey('type'), isTrue);
+          expect(catalog['type'], equals('FeatureCollection'));
+          expect(catalog.containsKey('features'), isTrue);
+
+          final features = catalog['features'] as List;
+          expect(features.length, equals(5));
+
+          verify(
+            mockHttpClient.get(
+              any,
+              queryParameters: anyNamed('queryParameters'),
+            ),
+          ).called(1);
+        },
+      );
 
       test('should handle filtered catalog requests with mock data', () async {
         // Arrange
@@ -80,7 +90,13 @@ void main() {
             TestFixtures.createTestGeoJsonFeature(
               cellName: 'US5CA52M',
               title: 'San Francisco Bay',
-              coordinates: [[-122.5, 37.5], [-122.0, 37.5], [-122.0, 38.0], [-122.5, 38.0], [-122.5, 37.5]],
+              coordinates: [
+                [-122.5, 37.5],
+                [-122.0, 37.5],
+                [-122.0, 38.0],
+                [-122.5, 38.0],
+                [-122.5, 37.5],
+              ],
             ),
           ],
         );
@@ -90,8 +106,9 @@ void main() {
           requestOptions: RequestOptions(path: '/api/charts'),
         );
 
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => mockResponse);
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer((_) async => mockResponse);
 
         // Act
         final filteredCatalogString = await apiClient.fetchChartCatalog(
@@ -100,30 +117,36 @@ void main() {
 
         // Assert
         expect(filteredCatalogString, isNotNull);
-        final filteredCatalog = jsonDecode(filteredCatalogString) as Map<String, dynamic>;
+        final filteredCatalog =
+            jsonDecode(filteredCatalogString) as Map<String, dynamic>;
         expect(filteredCatalog['features'], isA<List>());
-        
+
         final features = filteredCatalog['features'] as List;
         expect(features.length, equals(1));
         expect(features.first['properties']['CELL_NAME'], equals('US5CA52M'));
-        
-        verify(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters'))).called(1);
+
+        verify(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).called(1);
       });
 
       test('should handle network errors gracefully with mock', () async {
         // Arrange
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
-              requestOptions: RequestOptions(path: '/api/charts'),
-              type: DioExceptionType.connectionTimeout,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: '/api/charts'),
+            type: DioExceptionType.connectionTimeout,
+          ),
+        );
 
         // Act & Assert
         expect(
           () => apiClient.fetchChartCatalog(),
           throwsA(isA<NetworkConnectivityException>()),
         );
-        
+
         // Note: verify() not needed when exception is thrown
       });
     });
@@ -154,19 +177,20 @@ void main() {
                     [-122.0, 38.0],
                     [-122.5, 38.0],
                     [-122.5, 37.5],
-                  ]
-                ]
-              }
-            }
-          ]
+                  ],
+                ],
+              },
+            },
+          ],
         };
         final mockResponse = Response(
           data: featureCollection,
           statusCode: 200,
           requestOptions: RequestOptions(path: '/api/charts/US5CA52M'),
         );
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((invocation) async => mockResponse);
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer((invocation) async => mockResponse);
 
         // Act
         final chartMetadata = await apiClient.getChartMetadata('US5CA52M');
@@ -180,43 +204,53 @@ void main() {
 
       test('should return null for invalid chart ID', () async {
         // Arrange
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: '/api/charts/INVALID'),
+            response: Response(
+              statusCode: 404,
               requestOptions: RequestOptions(path: '/api/charts/INVALID'),
-              response: Response(
-                statusCode: 404,
-                requestOptions: RequestOptions(path: '/api/charts/INVALID'),
-              ),
-              type: DioExceptionType.badResponse,
-            ));
+            ),
+            type: DioExceptionType.badResponse,
+          ),
+        );
 
         // Act
-        final chartMetadata = await apiClient.getChartMetadata('INVALID_CHART_ID_12345');
+        final chartMetadata = await apiClient.getChartMetadata(
+          'INVALID_CHART_ID_12345',
+        );
 
         // Assert
         expect(chartMetadata, isNull);
-        
-        verify(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters'))).called(1);
+
+        verify(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).called(1);
       });
 
       test('should handle server errors during metadata fetch', () async {
         // Arrange
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: '/api/charts/US5CA52M'),
+            response: Response(
+              statusCode: 500,
               requestOptions: RequestOptions(path: '/api/charts/US5CA52M'),
-              response: Response(
-                statusCode: 500,
-                requestOptions: RequestOptions(path: '/api/charts/US5CA52M'),
-              ),
-              type: DioExceptionType.badResponse,
-            ));
+            ),
+            type: DioExceptionType.badResponse,
+          ),
+        );
 
         // Act & Assert
         expect(
           () => apiClient.getChartMetadata('US5CA52M'),
           throwsA(isA<NoaaServiceUnavailableException>()),
         );
-        
+
         // Note: verify() not needed when exception is thrown
       });
     });
@@ -227,58 +261,85 @@ void main() {
         final mockResponse = Response(
           data: jsonEncode({'available': true}),
           statusCode: 200,
-          requestOptions: RequestOptions(path: '/api/charts/US5CA52M/available'),
+          requestOptions: RequestOptions(
+            path: '/api/charts/US5CA52M/available',
+          ),
         );
 
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => mockResponse);
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer((_) async => mockResponse);
 
         // Act
         final isAvailable = await apiClient.isChartAvailable('US5CA52M');
 
         // Assert
         expect(isAvailable, isTrue);
-        
-        verify(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters'))).called(1);
+
+        verify(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).called(1);
       });
 
       test('should return false for invalid chart availability', () async {
         // Arrange
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
-              requestOptions: RequestOptions(path: '/api/charts/INVALID/available'),
-              response: Response(
-                statusCode: 404,
-                requestOptions: RequestOptions(path: '/api/charts/INVALID/available'),
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(
+              path: '/api/charts/INVALID/available',
+            ),
+            response: Response(
+              statusCode: 404,
+              requestOptions: RequestOptions(
+                path: '/api/charts/INVALID/available',
               ),
-              type: DioExceptionType.badResponse,
-            ));
+            ),
+            type: DioExceptionType.badResponse,
+          ),
+        );
 
         // Act
-        final isAvailable = await apiClient.isChartAvailable('DEFINITELY_INVALID_CHART');
+        final isAvailable = await apiClient.isChartAvailable(
+          'DEFINITELY_INVALID_CHART',
+        );
 
         // Assert
         expect(isAvailable, isFalse);
-        
-        verify(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters'))).called(1);
+
+        verify(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).called(1);
       });
 
-      test('should handle network timeouts during availability check', () async {
-        // Arrange
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
-              requestOptions: RequestOptions(path: '/api/charts/US5CA52M/available'),
+      test(
+        'should handle network timeouts during availability check',
+        () async {
+          // Arrange
+          when(
+            mockHttpClient.get(
+              any,
+              queryParameters: anyNamed('queryParameters'),
+            ),
+          ).thenThrow(
+            DioException(
+              requestOptions: RequestOptions(
+                path: '/api/charts/US5CA52M/available',
+              ),
               type: DioExceptionType.receiveTimeout,
-            ));
+            ),
+          );
 
-        // Act & Assert
-        expect(
-          () => apiClient.isChartAvailable('US5CA52M'),
-          throwsA(isA<NetworkConnectivityException>()),
-        );
-        
-        // Note: verify() not needed when exception is thrown
-      });
+          // Act & Assert
+          expect(
+            () => apiClient.isChartAvailable('US5CA52M'),
+            throwsA(isA<NetworkConnectivityException>()),
+          );
+
+          // Note: verify() not needed when exception is thrown
+        },
+      );
     });
 
     group('Error Handling and Resilience', () {
@@ -294,13 +355,19 @@ void main() {
         for (final errorType in errorTypes) {
           // Reset mock before each iteration
           reset(mockHttpClient);
-          
+
           // Arrange - stub the mock for each test iteration
-          when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-              .thenThrow(DioException(
-                requestOptions: RequestOptions(path: '/api/charts'),
-                type: errorType,
-              ));
+          when(
+            mockHttpClient.get(
+              any,
+              queryParameters: anyNamed('queryParameters'),
+            ),
+          ).thenThrow(
+            DioException(
+              requestOptions: RequestOptions(path: '/api/charts'),
+              type: errorType,
+            ),
+          );
 
           // Act & Assert
           expect(
@@ -308,7 +375,7 @@ void main() {
             throwsA(isA<NetworkConnectivityException>()),
             reason: 'Should handle $errorType correctly',
           );
-          
+
           // Note: verify() not needed when exception is thrown
         }
       });
@@ -318,11 +385,14 @@ void main() {
         final mockResponse = Response(
           data: jsonEncode({'available': true}),
           statusCode: 200,
-          requestOptions: RequestOptions(path: '/api/charts/US5CA52M/available'),
+          requestOptions: RequestOptions(
+            path: '/api/charts/US5CA52M/available',
+          ),
         );
 
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => mockResponse);
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer((_) async => mockResponse);
 
         // Act - Make multiple rapid requests
         final futures = <Future<bool>>[];
@@ -338,11 +408,13 @@ void main() {
         // Assert
         expect(results.length, equals(5));
         expect(results.every((result) => result == true), isTrue);
-        
+
         // With mocks, rate limiting delay may be minimal, but all requests should complete
         expect(duration.inMilliseconds, greaterThanOrEqualTo(0));
-        
-        verify(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters'))).called(5);
+
+        verify(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).called(5);
       });
     });
 
@@ -356,8 +428,8 @@ void main() {
               'type': 'Feature',
               'geometry': null, // Invalid: geometry should not be null
               'properties': {'title': 'Test Chart'},
-            }
-          ]
+            },
+          ],
         };
         final mockResponse = Response(
           data: jsonEncode(invalidCatalog),
@@ -365,8 +437,9 @@ void main() {
           requestOptions: RequestOptions(path: '/api/charts'),
         );
 
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => mockResponse);
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer((_) async => mockResponse);
 
         // Act
         final catalogString = await apiClient.fetchChartCatalog();
@@ -376,8 +449,10 @@ void main() {
         final catalog = jsonDecode(catalogString) as Map<String, dynamic>;
         expect(catalog['type'], equals('FeatureCollection'));
         expect(catalog['features'], isA<List>());
-        
-        verify(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters'))).called(1);
+
+        verify(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).called(1);
       });
 
       test('should handle malformed JSON responses', () async {
@@ -388,19 +463,22 @@ void main() {
           requestOptions: RequestOptions(path: '/api/charts'),
         );
 
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => mockResponse);
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer((_) async => mockResponse);
 
         // Act & Assert
         expect(
           () => apiClient.fetchChartCatalog(),
-          throwsA(isA<NoaaApiException>().having(
-            (e) => e.errorCode,
-            'errorCode',
-            'INVALID_JSON_RESPONSE',
-          )),
+          throwsA(
+            isA<NoaaApiException>().having(
+              (e) => e.errorCode,
+              'errorCode',
+              'INVALID_JSON_RESPONSE',
+            ),
+          ),
         );
-        
+
         // Note: verify() not needed when exception is thrown
       });
 
@@ -426,8 +504,9 @@ void main() {
           requestOptions: RequestOptions(path: '/api/charts'),
         );
 
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => mockResponse);
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer((_) async => mockResponse);
 
         // Act
         final catalogString = await apiClient.fetchChartCatalog();
@@ -435,19 +514,21 @@ void main() {
         // Assert
         final catalog = jsonDecode(catalogString) as Map<String, dynamic>;
         final features = catalog['features'] as List;
-        
+
         for (final feature in features) {
           expect(feature['type'], equals('Feature'));
           expect(feature['geometry'], isNotNull);
           expect(feature['properties'], isNotNull);
-          
+
           final properties = feature['properties'];
           expect(properties['CELL_NAME'], isA<String>());
           expect(properties['TITLE'], isA<String>());
           expect(properties['SCALE'], isA<int>());
         }
-        
-        verify(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters'))).called(1);
+
+        verify(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).called(1);
       });
     });
 
@@ -463,8 +544,9 @@ void main() {
           requestOptions: RequestOptions(path: '/api/charts'),
         );
 
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => mockResponse);
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer((_) async => mockResponse);
 
         // Act
         final startTime = DateTime.now();
@@ -477,26 +559,31 @@ void main() {
         final catalog = jsonDecode(catalogString) as Map<String, dynamic>;
         final features = catalog['features'] as List;
         expect(features.length, equals(1000));
-        
+
         // Should process reasonably quickly (less than 1 second for mocked data)
         expect(processingTime.inMilliseconds, lessThan(1000));
-        
-        verify(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters'))).called(1);
+
+        verify(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).called(1);
       });
 
       test('should cache repeated requests appropriately', () async {
         // Note: This test validates the structure for caching
         // Actual caching implementation would be tested separately
-        
+
         // Arrange
         final mockResponse = Response(
           data: jsonEncode({'available': true}),
           statusCode: 200,
-          requestOptions: RequestOptions(path: '/api/charts/US5CA52M/available'),
+          requestOptions: RequestOptions(
+            path: '/api/charts/US5CA52M/available',
+          ),
         );
 
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => mockResponse);
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer((_) async => mockResponse);
 
         // Act - Make same request multiple times
         final result1 = await apiClient.isChartAvailable('US5CA52M');
@@ -507,9 +594,11 @@ void main() {
         expect(result1, isTrue);
         expect(result2, isTrue);
         expect(result3, isTrue);
-        
+
         // Without caching, each request should hit the HTTP client
-        verify(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters'))).called(3);
+        verify(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).called(3);
       });
     });
   });

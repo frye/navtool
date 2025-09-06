@@ -16,21 +16,21 @@ class ChartCompressionManager {
        _logger = logger;
 
   /// Compress a chart file for storage
-  /// 
+  ///
   /// Example usage:
   /// ```dart
   /// final manager = ChartCompressionManager(
   ///   compressionService: ref.read(compressionServiceProvider),
   ///   logger: ref.read(loggerProvider),
   /// );
-  /// 
+  ///
   /// final chartData = await loadChartData('chart001.000');
   /// final result = await manager.compressChart(
   ///   chartId: 'chart001',
   ///   data: chartData,
   ///   settings: CompressionSettings(level: CompressionLevel.balanced),
   /// );
-  /// 
+  ///
   /// if (result.isSuccess) {
   ///   print('Compressed ${result.originalSize} to ${result.compressedSize} bytes');
   ///   print('Compression ratio: ${result.compressionRatio.toStringAsFixed(2)}');
@@ -43,18 +43,15 @@ class ChartCompressionManager {
   }) async {
     try {
       _logger.info('Starting compression for chart: $chartId');
-      
+
       final result = settings != null
           ? await _compressionService.compressChartDataWithSettings(
               data,
               chartId: chartId,
               settings: settings,
             )
-          : await _compressionService.compressChartData(
-              data,
-              chartId: chartId,
-            );
-      
+          : await _compressionService.compressChartData(data, chartId: chartId);
+
       if (result.isSuccess) {
         _logger.info(
           'Chart $chartId compressed successfully: '
@@ -64,7 +61,7 @@ class ChartCompressionManager {
       } else {
         _logger.warning('Failed to compress chart $chartId: ${result.error}');
       }
-      
+
       return result;
     } catch (error) {
       _logger.error('Error compressing chart $chartId', exception: error);
@@ -76,7 +73,7 @@ class ChartCompressionManager {
   }
 
   /// Decompress a chart file for use
-  /// 
+  ///
   /// Example usage:
   /// ```dart
   /// final compressedData = await loadCompressedChart('chart001');
@@ -84,7 +81,7 @@ class ChartCompressionManager {
   ///   chartId: 'chart001',
   ///   compressedData: compressedData,
   /// );
-  /// 
+  ///
   /// if (result.isSuccess && result.data != null) {
   ///   // Use the decompressed chart data
   ///   await processChartData(result.data!);
@@ -96,12 +93,12 @@ class ChartCompressionManager {
   }) async {
     try {
       _logger.info('Starting decompression for chart: $chartId');
-      
+
       final decompressedData = await _compressionService.decompressChartData(
         compressedData,
         chartId: chartId,
       );
-      
+
       final result = CompressionResult(
         originalSize: decompressedData.length,
         compressedSize: compressedData.length,
@@ -109,7 +106,7 @@ class ChartCompressionManager {
         compressionTime: Duration.zero,
         compressedData: decompressedData,
       );
-      
+
       if (result.isSuccess) {
         _logger.info(
           'Chart $chartId decompressed successfully: '
@@ -118,7 +115,7 @@ class ChartCompressionManager {
       } else {
         _logger.warning('Failed to decompress chart $chartId: ${result.error}');
       }
-      
+
       return result;
     } catch (error) {
       _logger.error('Error decompressing chart $chartId', exception: error);
@@ -130,7 +127,7 @@ class ChartCompressionManager {
   }
 
   /// Get compression statistics for monitoring
-  /// 
+  ///
   /// Example usage:
   /// ```dart
   /// final stats = await manager.getCompressionStatistics();
@@ -148,7 +145,7 @@ class ChartCompressionManager {
   }
 
   /// Clean up temporary compression files
-  /// 
+  ///
   /// Example usage:
   /// ```dart
   /// await manager.cleanupTemporaryFiles();

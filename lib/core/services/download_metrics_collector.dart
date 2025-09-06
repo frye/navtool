@@ -33,7 +33,8 @@ class _DownloadAttemptRecord {
 
   _DownloadAttemptRecord(this.chartId, this.start);
 
-  double get durationSeconds => end == null ? 0 : end!.difference(start).inMilliseconds / 1000.0;
+  double get durationSeconds =>
+      end == null ? 0 : end!.difference(start).inMilliseconds / 1000.0;
 }
 
 /// Service responsible for aggregating lightweight metrics for download operations.
@@ -93,11 +94,19 @@ class DownloadMetricsCollector {
       final cat = f.failureCategory ?? 'unknown';
       failureByCat[cat] = (failureByCat[cat] ?? 0) + 1;
     }
-    final durations = _completed.map((e) => e.durationSeconds).where((d) => d > 0).toList()..sort();
-  final avg = durations.isEmpty ? 0.0 : durations.reduce((a, b) => a + b) / durations.length;
-  final median = durations.isEmpty ? 0.0 : (durations.length.isOdd
-        ? durations[durations.length ~/ 2]
-        : (durations[durations.length ~/ 2 - 1] + durations[durations.length ~/ 2]) / 2);
+    final durations =
+        _completed.map((e) => e.durationSeconds).where((d) => d > 0).toList()
+          ..sort();
+    final avg = durations.isEmpty
+        ? 0.0
+        : durations.reduce((a, b) => a + b) / durations.length;
+    final median = durations.isEmpty
+        ? 0.0
+        : (durations.length.isOdd
+              ? durations[durations.length ~/ 2]
+              : (durations[durations.length ~/ 2 - 1] +
+                        durations[durations.length ~/ 2]) /
+                    2);
     final retries = _completed.fold<int>(0, (sum, r) => sum + r.retries);
     return DownloadMetricsSnapshot(
       successCount: successes.length,

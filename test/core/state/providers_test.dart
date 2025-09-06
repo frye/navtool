@@ -31,11 +31,11 @@ void main() {
       test('should create appStateProvider successfully', () async {
         // Act
         final state = container.read(appStateProvider);
-        
+
         // Wait for initialization
         await Future.delayed(const Duration(milliseconds: 50));
         final initializedState = container.read(appStateProvider);
-        
+
         // Assert
         expect(state, isA<AppState>());
         expect(initializedState.isInitialized, isTrue);
@@ -44,7 +44,7 @@ void main() {
       test('should create appSettingsProvider successfully', () {
         // Act
         final settings = container.read(appSettingsProvider);
-        
+
         // Assert
         expect(settings, isA<AppSettings>());
         expect(settings.themeMode, equals(AppThemeMode.system));
@@ -55,7 +55,7 @@ void main() {
       test('should create downloadQueueProvider successfully', () {
         // Act
         final downloadState = container.read(downloadQueueProvider);
-        
+
         // Assert
         expect(downloadState, isA<DownloadQueueState>());
         expect(downloadState.downloads, isEmpty);
@@ -69,7 +69,7 @@ void main() {
         final appNotifier = container.read(appStateProvider.notifier);
         final settingsNotifier = container.read(appSettingsProvider.notifier);
         final downloadNotifier = container.read(downloadQueueProvider.notifier);
-        
+
         // Assert
         expect(appNotifier, isNotNull);
         expect(settingsNotifier, isNotNull);
@@ -81,10 +81,10 @@ void main() {
       test('should provide isAppInitializedProvider correctly', () async {
         // Arrange
         await Future.delayed(const Duration(milliseconds: 50));
-        
+
         // Act
         final isInitialized = container.read(isAppInitializedProvider);
-        
+
         // Assert
         expect(isInitialized, isTrue);
       });
@@ -92,11 +92,13 @@ void main() {
       test('should provide currentPositionProvider correctly', () {
         // Arrange
         final testPosition = _createTestPosition();
-        container.read(appStateProvider.notifier).updateCurrentPosition(testPosition);
-        
+        container
+            .read(appStateProvider.notifier)
+            .updateCurrentPosition(testPosition);
+
         // Act
         final position = container.read(currentPositionProvider);
-        
+
         // Assert
         expect(position, equals(testPosition));
       });
@@ -107,10 +109,10 @@ void main() {
         final notifier = container.read(appStateProvider.notifier);
         notifier.updateAvailableCharts([testChart]);
         notifier.setCurrentChart(testChart.id);
-        
+
         // Act
         final chart = container.read(currentChartProvider);
-        
+
         // Assert
         expect(chart, equals(testChart));
       });
@@ -118,7 +120,7 @@ void main() {
       test('should handle null currentChartProvider', () {
         // Act
         final chart = container.read(currentChartProvider);
-        
+
         // Assert
         expect(chart, isNull);
       });
@@ -129,11 +131,13 @@ void main() {
           _createTestChart('US5CA52M'),
           _createTestChart('US4CA11M'),
         ];
-        container.read(appStateProvider.notifier).updateAvailableCharts(testCharts);
-        
+        container
+            .read(appStateProvider.notifier)
+            .updateAvailableCharts(testCharts);
+
         // Act
         final charts = container.read(availableChartsProvider);
-        
+
         // Assert
         expect(charts, hasLength(2));
         expect(charts, containsAll(testCharts));
@@ -143,10 +147,10 @@ void main() {
         // Arrange
         final testChart = _createTestChart('US5CA52M');
         container.read(appStateProvider.notifier).addDownloadedChart(testChart);
-        
+
         // Act
         final charts = container.read(downloadedChartsProvider);
-        
+
         // Assert
         expect(charts, hasLength(1));
         expect(charts.first, equals(testChart));
@@ -156,10 +160,10 @@ void main() {
         // Arrange
         final testRoute = _createTestRoute();
         container.read(appStateProvider.notifier).setActiveRoute(testRoute);
-        
+
         // Act
         final route = container.read(activeRouteProvider);
-        
+
         // Assert
         expect(route, equals(testRoute));
       });
@@ -168,10 +172,10 @@ void main() {
         // Arrange
         final testWaypoint = _createTestWaypoint();
         container.read(appStateProvider.notifier).addWaypoint(testWaypoint);
-        
+
         // Act
         final waypoints = container.read(waypointsProvider);
-        
+
         // Assert
         expect(waypoints, hasLength(1));
         expect(waypoints.first, equals(testWaypoint));
@@ -181,11 +185,13 @@ void main() {
     group('Settings Derived Providers', () {
       test('should provide themeProvider correctly', () {
         // Arrange
-        container.read(appSettingsProvider.notifier).setThemeMode(AppThemeMode.dark);
-        
+        container
+            .read(appSettingsProvider.notifier)
+            .setThemeMode(AppThemeMode.dark);
+
         // Act
         final themeMode = container.read(themeProvider);
-        
+
         // Assert
         expect(themeMode, equals(AppThemeMode.dark));
       });
@@ -193,32 +199,36 @@ void main() {
       test('should provide dayModeProvider correctly', () {
         // Arrange
         container.read(appSettingsProvider.notifier).setDayMode(false);
-        
+
         // Act
         final dayMode = container.read(dayModeProvider);
-        
+
         // Assert
         expect(dayMode, isFalse);
       });
 
       test('should provide maxDownloadsProvider correctly', () {
         // Arrange
-        container.read(appSettingsProvider.notifier).setMaxConcurrentDownloads(5);
-        
+        container
+            .read(appSettingsProvider.notifier)
+            .setMaxConcurrentDownloads(5);
+
         // Act
         final maxDownloads = container.read(maxDownloadsProvider);
-        
+
         // Assert
         expect(maxDownloads, equals(5));
       });
 
       test('should provide preferredUnitsProvider correctly', () {
         // Arrange
-        container.read(appSettingsProvider.notifier).setPreferredUnits('imperial');
-        
+        container
+            .read(appSettingsProvider.notifier)
+            .setPreferredUnits('imperial');
+
         // Act
         final units = container.read(preferredUnitsProvider);
-        
+
         // Assert
         expect(units, equals('imperial'));
       });
@@ -229,12 +239,14 @@ void main() {
         // Arrange - Initially no position
         bool hasPosition = container.read(hasPositionProvider);
         expect(hasPosition, isFalse);
-        
+
         // Act - Add position
         final testPosition = _createTestPosition();
-        container.read(appStateProvider.notifier).updateCurrentPosition(testPosition);
+        container
+            .read(appStateProvider.notifier)
+            .updateCurrentPosition(testPosition);
         hasPosition = container.read(hasPositionProvider);
-        
+
         // Assert
         expect(hasPosition, isTrue);
       });
@@ -243,15 +255,17 @@ void main() {
         // Arrange - Initially no charts
         int chartCount = container.read(chartCountProvider);
         expect(chartCount, equals(0));
-        
+
         // Act - Add charts
         final testCharts = [
           _createTestChart('US5CA52M'),
           _createTestChart('US4CA11M'),
         ];
-        container.read(appStateProvider.notifier).updateAvailableCharts(testCharts);
+        container
+            .read(appStateProvider.notifier)
+            .updateAvailableCharts(testCharts);
         chartCount = container.read(chartCountProvider);
-        
+
         // Assert
         expect(chartCount, equals(2));
       });
@@ -260,12 +274,12 @@ void main() {
         // Arrange - Initially no waypoints
         int waypointCount = container.read(waypointCountProvider);
         expect(waypointCount, equals(0));
-        
+
         // Act - Add waypoints
         final testWaypoint = _createTestWaypoint();
         container.read(appStateProvider.notifier).addWaypoint(testWaypoint);
         waypointCount = container.read(waypointCountProvider);
-        
+
         // Assert
         expect(waypointCount, equals(1));
       });
@@ -274,12 +288,12 @@ void main() {
         // Arrange - Initially no downloaded charts
         bool isOfflineCapable = container.read(isOfflineCapableProvider);
         expect(isOfflineCapable, isFalse);
-        
+
         // Act - Add downloaded chart
         final testChart = _createTestChart('US5CA52M');
         container.read(appStateProvider.notifier).addDownloadedChart(testChart);
         isOfflineCapable = container.read(isOfflineCapableProvider);
-        
+
         // Assert
         expect(isOfflineCapable, isTrue);
       });
@@ -288,14 +302,14 @@ void main() {
         // Arrange - Initially no current chart
         int? chartScale = container.read(currentChartScaleProvider);
         expect(chartScale, isNull);
-        
+
         // Act - Set current chart
         final testChart = _createTestChart('US5CA52M');
         final notifier = container.read(appStateProvider.notifier);
         notifier.updateAvailableCharts([testChart]);
         notifier.setCurrentChart(testChart.id);
         chartScale = container.read(currentChartScaleProvider);
-        
+
         // Assert
         expect(chartScale, equals(25000));
       });
@@ -304,12 +318,12 @@ void main() {
         // Arrange - Initially not navigating
         bool isNavigating = container.read(isNavigatingProvider);
         expect(isNavigating, isFalse);
-        
+
         // Act - Set active route with isActive = true
         final testRoute = _createTestRoute().copyWith(isActive: true);
         container.read(appStateProvider.notifier).setActiveRoute(testRoute);
         isNavigating = container.read(isNavigatingProvider);
-        
+
         // Assert
         expect(isNavigating, isTrue);
       });
@@ -320,11 +334,13 @@ void main() {
         // Arrange
         final initialHasPosition = container.read(hasPositionProvider);
         expect(initialHasPosition, isFalse);
-        
+
         // Act
         final testPosition = _createTestPosition();
-        container.read(appStateProvider.notifier).updateCurrentPosition(testPosition);
-        
+        container
+            .read(appStateProvider.notifier)
+            .updateCurrentPosition(testPosition);
+
         // Assert
         final updatedHasPosition = container.read(hasPositionProvider);
         expect(updatedHasPosition, isTrue);
@@ -334,16 +350,16 @@ void main() {
         // Arrange
         final testChart = _createTestChart('US5CA52M');
         final notifier = container.read(appStateProvider.notifier);
-        
+
         // Act
         notifier.updateAvailableCharts([testChart]);
         notifier.setCurrentChart(testChart.id);
-        
+
         // Assert
         final availableCharts = container.read(availableChartsProvider);
         final currentChart = container.read(currentChartProvider);
         final chartCount = container.read(chartCountProvider);
-        
+
         expect(availableCharts, contains(testChart));
         expect(currentChart, equals(testChart));
         expect(chartCount, equals(1));
@@ -353,12 +369,12 @@ void main() {
         // Arrange
         final notifier = container.read(appStateProvider.notifier);
         final charts = List.generate(5, (i) => _createTestChart('CHART_$i'));
-        
+
         // Act - Rapid updates
         for (final chart in charts) {
           notifier.updateAvailableCharts([chart]);
         }
-        
+
         // Assert
         final finalCharts = container.read(availableChartsProvider);
         expect(finalCharts, hasLength(1));
@@ -374,14 +390,14 @@ void main() {
         final testWaypoint = _createTestWaypoint();
         final testRoute = _createTestRoute();
         final notifier = container.read(appStateProvider.notifier);
-        
+
         // Act - Setup complete navigation scenario
         notifier.updateCurrentPosition(testPosition);
         notifier.updateAvailableCharts([testChart]);
         notifier.setCurrentChart(testChart.id);
         notifier.addWaypoint(testWaypoint);
         notifier.setActiveRoute(testRoute.copyWith(isActive: true));
-        
+
         // Assert - All providers reflect navigation state
         expect(container.read(hasPositionProvider), isTrue);
         expect(container.read(currentChartProvider), equals(testChart));
@@ -393,16 +409,16 @@ void main() {
       test('should provide GPS status correctly', () async {
         // Arrange
         final notifier = container.read(appStateProvider.notifier);
-        
+
         // Act
         notifier.setGpsEnabled(true);
         notifier.setLocationPermissionGranted(true);
         final testPosition = _createTestPosition();
         notifier.updateCurrentPosition(testPosition);
-        
+
         // Wait for potential async GPS provider
         await Future.delayed(const Duration(milliseconds: 10));
-        
+
         // Assert
         final appState = container.read(appStateProvider);
         expect(appState.isGpsEnabled, isTrue);
@@ -417,11 +433,11 @@ void main() {
           _createTestChart('US4CA11M'),
         ];
         final notifier = container.read(appStateProvider.notifier);
-        
+
         // Act
         notifier.updateAvailableCharts(charts);
         notifier.setCurrentChart(charts.first.id);
-        
+
         // Assert
         expect(container.read(availableChartsProvider), hasLength(2));
         expect(container.read(currentChartProvider), equals(charts.first));

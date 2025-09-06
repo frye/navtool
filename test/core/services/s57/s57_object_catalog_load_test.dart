@@ -5,15 +5,25 @@ import 'package:navtool/core/services/s57/s57_object_catalog.dart';
 void main() {
   group('S57ObjectCatalog', () {
     group('loadFromAssets', () {
-      test('should load object classes from JSON asset', () async {
-        // Skip this test for now due to Flutter test framework asset mocking issues
-        // TODO: Convert to integration test or find alternative testing approach
-      }, skip: 'Asset mocking not compatible with current Flutter test framework');
+      test(
+        'should load object classes from JSON asset',
+        () async {
+          // Skip this test for now due to Flutter test framework asset mocking issues
+          // TODO: Convert to integration test or find alternative testing approach
+        },
+        skip:
+            'Asset mocking not compatible with current Flutter test framework',
+      );
 
-      test('should handle empty JSON array', () async {
-        // Skip this test for now due to Flutter test framework asset mocking issues
-        // TODO: Convert to integration test or find alternative testing approach
-      }, skip: 'Asset mocking not compatible with current Flutter test framework');
+      test(
+        'should handle empty JSON array',
+        () async {
+          // Skip this test for now due to Flutter test framework asset mocking issues
+          // TODO: Convert to integration test or find alternative testing approach
+        },
+        skip:
+            'Asset mocking not compatible with current Flutter test framework',
+      );
     });
 
     group('fromObjectClasses', () {
@@ -70,8 +80,11 @@ void main() {
         // Test warning behavior by checking that repeated calls don't trigger multiple warnings
         // We verify this indirectly by ensuring the catalog continues to work correctly
         expect(catalog.byCode(999), isNull);
-        expect(catalog.byCode(999), isNull); // Second call - should not cause issues
-        
+        expect(
+          catalog.byCode(999),
+          isNull,
+        ); // Second call - should not cause issues
+
         // Known codes should still work after unknown lookups
         expect(catalog.byCode(42)?.acronym, equals('DEPARE'));
       });
@@ -80,8 +93,11 @@ void main() {
         // Test warning behavior by checking that repeated calls don't trigger multiple warnings
         // We verify this indirectly by ensuring the catalog continues to work correctly
         expect(catalog.byAcronym('UNKNOWN'), isNull);
-        expect(catalog.byAcronym('UNKNOWN'), isNull); // Second call - should not cause issues
-        
+        expect(
+          catalog.byAcronym('UNKNOWN'),
+          isNull,
+        ); // Second call - should not cause issues
+
         // Known acronyms should still work after unknown lookups
         expect(catalog.byAcronym('DEPARE')?.code, equals(42));
       });
@@ -108,9 +124,21 @@ void main() {
       });
 
       test('should implement equality correctly', () {
-        const obj1 = S57ObjectClass(code: 42, acronym: 'DEPARE', name: 'Depth Area');
-        const obj2 = S57ObjectClass(code: 42, acronym: 'DEPARE', name: 'Depth Area');
-        const obj3 = S57ObjectClass(code: 74, acronym: 'SOUNDG', name: 'Sounding');
+        const obj1 = S57ObjectClass(
+          code: 42,
+          acronym: 'DEPARE',
+          name: 'Depth Area',
+        );
+        const obj2 = S57ObjectClass(
+          code: 42,
+          acronym: 'DEPARE',
+          name: 'Depth Area',
+        );
+        const obj3 = S57ObjectClass(
+          code: 74,
+          acronym: 'SOUNDG',
+          name: 'Sounding',
+        );
 
         expect(obj1, equals(obj2));
         expect(obj1, isNot(equals(obj3)));

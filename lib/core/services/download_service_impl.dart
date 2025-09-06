@@ -17,7 +17,7 @@ import 'download_metrics_collector.dart';
 import '../utils/network_resilience.dart';
 import 'package:meta/meta.dart';
 
-/// Enhanced implementation of DownloadService with queue management, 
+/// Enhanced implementation of DownloadService with queue management,
 /// batch operations, resumption, and background support
 class DownloadServiceImpl implements DownloadService {
   final HttpClientService _httpClient;
@@ -34,15 +34,16 @@ class DownloadServiceImpl implements DownloadService {
   final Map<String, CancelToken> _cancelTokens = {};
   final Map<String, StreamController<double>> _progressControllers = {};
   final Map<String, DownloadProgress> _downloadProgress = {};
-  
+
   // Enhanced queue management with priority
   final List<QueueItem> _downloadQueue = [];
-  
+
   // Batch download management
   final Map<String, BatchDownloadProgress> _batchProgress = {};
-  final Map<String, StreamController<BatchDownloadProgress>> _batchProgressControllers = {};
+  final Map<String, StreamController<BatchDownloadProgress>>
+  _batchProgressControllers = {};
   final Map<String, List<String>> _batchCharts = {};
-  
+
   // Resume and background support
   final Map<String, ResumeData> _resumeData = {};
   final List<DownloadNotification> _pendingNotifications = [];
@@ -63,17 +64,18 @@ class DownloadServiceImpl implements DownloadService {
     required ErrorHandler errorHandler,
     DownloadQueueNotifier? queueNotifier,
     DownloadMetricsCollector? metrics,
-  NetworkResilience? networkResilience,
+    NetworkResilience? networkResilience,
     Future<bool> Function()? networkSuitabilityProbe,
+
     /// Internal/testing hook to override the low-level rename call used by
     /// [_safeRename]. This lets tests simulate transient failures to drive
     /// retry and fallback copy logic without relying on OS-level file locks.
     Future<void> Function(File tempFile, String finalPath)? renameImpl,
-  })  : _httpClient = httpClient,
-        _storageService = storageService,
-        _logger = logger,
-        _errorHandler = errorHandler,
-        _renameImpl = renameImpl {
+  }) : _httpClient = httpClient,
+       _storageService = storageService,
+       _logger = logger,
+       _errorHandler = errorHandler,
+       _renameImpl = renameImpl {
     _queueNotifier = queueNotifier;
     _metrics = metrics;
     _networkResilience = networkResilience;
@@ -98,29 +100,47 @@ class DownloadServiceImpl implements DownloadService {
       try {
         return await _networkSuitabilityProbe!.call();
       } catch (e) {
-        _logger.warning('Network suitability probe failed: $e', context: 'Download');
+        _logger.warning(
+          'Network suitability probe failed: $e',
+          context: 'Download',
+        );
       }
     }
     return true; // Default: assume suitable
   }
 
   @override
-  Future<void> downloadChart(String chartId, String url, {String? expectedChecksum}) async {
+  Future<void> downloadChart(
+    String chartId,
+    String url, {
+    String? expectedChecksum,
+  }) async {
     try {
-      _logger.info('Starting download for chart: $chartId', context: 'Download');
+      _logger.info(
+        'Starting download for chart: $chartId',
+        context: 'Download',
+      );
       _metrics?.start(chartId);
 
       // Phase 2: disk space preflight (best effort)
       if (!await _hasSufficientDiskSpace(url)) {
-        throw AppError.storage('Insufficient disk space for download: $chartId');
+        throw AppError.storage(
+          'Insufficient disk space for download: $chartId',
+        );
       }
 
       // Network suitability gate (Phase 1)
       while (!await _isNetworkSuitable()) {
-        _logger.debug('Network unsuitable; deferring start for $chartId (retry in 1s)', context: 'Download');
+        _logger.debug(
+          'Network unsuitable; deferring start for $chartId (retry in 1s)',
+          context: 'Download',
+        );
         await Future.delayed(const Duration(seconds: 1));
       }
-      _logger.debug('Network suitable; starting download for $chartId', context: 'Download');
+      _logger.debug(
+        'Network suitable; starting download for $chartId',
+        context: 'Download',
+      );
 
       // Check concurrent download limit
       while (_activeDownloads >= _maxConcurrentDownloads) {
@@ -133,7 +153,8 @@ class DownloadServiceImpl implements DownloadService {
       _cancelTokens[chartId] = cancelToken;
 
       // Reuse lazily created controller (early subscriber) or create now
-      final progressController = _progressControllers[chartId] ??= StreamController<double>.broadcast();
+      final progressController = _progressControllers[chartId] ??=
+          StreamController<double>.broadcast();
       if (_downloadProgress[chartId] == null) {
         _updateProgress(chartId, 0, 0, 0.0, DownloadStatus.downloading);
         if (!progressController.isClosed) {
@@ -141,7 +162,7 @@ class DownloadServiceImpl implements DownloadService {
         }
       }
 
-  // Determine final & temp file paths for chart storage (atomic write pattern)
+      // Determine final & temp file paths for chart storage (atomic write pattern)
       final chartDirectory = await _storageService.getChartsDirectory();
       final fileName = _getFileNameFromUrl(url, chartId);
       final filePath = path.join(chartDirectory.path, fileName);
@@ -151,7 +172,14 @@ class DownloadServiceImpl implements DownloadService {
       await chartDirectory.create(recursive: true);
 
       // Attempt download with retry logic
-  await _downloadWithRetry(chartId, url, tempFilePath, cancelToken, progressController, expectedChecksum);
+      await _downloadWithRetry(
+        chartId,
+        url,
+        tempFilePath,
+        cancelToken,
+        progressController,
+        expectedChecksum,
+      );
 
       // Verify downloaded temp file
       final tempFile = File(tempFilePath);
@@ -165,18 +193,20 @@ class DownloadServiceImpl implements DownloadService {
         // Verify checksum if provided BEFORE renaming so we don't leave a bad final file
         if (expectedChecksum != null) {
           final actualChecksum = await _calculateFileChecksum(tempFile);
-            if (actualChecksum != expectedChecksum) {
-              _logger.error(
-                'Checksum verification failed for chart: $chartId. Expected: $expectedChecksum, Actual: $actualChecksum',
-                context: 'Download',
-              );
-              await tempFile.delete();
-              throw AppError.storage('Downloaded file failed checksum verification: $chartId');
-            }
-            _logger.info(
-              'Checksum verification passed for chart: $chartId',
+          if (actualChecksum != expectedChecksum) {
+            _logger.error(
+              'Checksum verification failed for chart: $chartId. Expected: $expectedChecksum, Actual: $actualChecksum',
               context: 'Download',
             );
+            await tempFile.delete();
+            throw AppError.storage(
+              'Downloaded file failed checksum verification: $chartId',
+            );
+          }
+          _logger.info(
+            'Checksum verification passed for chart: $chartId',
+            context: 'Download',
+          );
         }
 
         // If a previous file exists, remove it to allow atomic rename on all platforms (Windows can't overwrite on rename)
@@ -199,13 +229,24 @@ class DownloadServiceImpl implements DownloadService {
         );
 
         // Mark as completed
-  _updateProgress(chartId, fileSize, fileSize, 1.0, DownloadStatus.completed);
-  _metrics?.completeSuccess(chartId);
-  progressController.add(1.0);
+        _updateProgress(
+          chartId,
+          fileSize,
+          fileSize,
+          1.0,
+          DownloadStatus.completed,
+        );
+        _metrics?.completeSuccess(chartId);
+        progressController.add(1.0);
 
         // Add notification if enabled
         if (_backgroundNotificationsEnabled) {
-          _addNotification(chartId, 'Download Complete', 'Chart $chartId downloaded successfully', DownloadStatus.completed);
+          _addNotification(
+            chartId,
+            'Download Complete',
+            'Chart $chartId downloaded successfully',
+            DownloadStatus.completed,
+          );
         }
       } else {
         throw AppError.storage('Downloaded file not found: $filePath');
@@ -213,7 +254,6 @@ class DownloadServiceImpl implements DownloadService {
 
       // Clean up (queue will be processed in finally after concurrency slot released)
       _cleanup(chartId);
-
     } catch (error, stackTrace) {
       _logger.error(
         'Chart download failed: $chartId',
@@ -222,9 +262,17 @@ class DownloadServiceImpl implements DownloadService {
       );
 
       // Mark as failed
-  final category = _deriveErrorCategory(error);
-  _updateProgress(chartId, 0, 0, 0.0, DownloadStatus.failed, errorMessage: error.toString(), errorCategory: category);
-  _metrics?.completeFailure(chartId, category);
+      final category = _deriveErrorCategory(error);
+      _updateProgress(
+        chartId,
+        0,
+        0,
+        0.0,
+        DownloadStatus.failed,
+        errorMessage: error.toString(),
+        errorCategory: category,
+      );
+      _metrics?.completeFailure(chartId, category);
 
       // Save resume data for potential recovery using actual partial bytes if present
       int partialBytes = 0;
@@ -239,27 +287,44 @@ class DownloadServiceImpl implements DownloadService {
       } catch (_) {
         // ignore - fallback to 0
       }
-  final code = _classifyErrorCode(error);
-  _saveResumeDataWithError(chartId, url, partialBytes, code, checksum: expectedChecksum);
+      final code = _classifyErrorCode(error);
+      _saveResumeDataWithError(
+        chartId,
+        url,
+        partialBytes,
+        code,
+        checksum: expectedChecksum,
+      );
 
       // Add failure notification if enabled
       if (_backgroundNotificationsEnabled) {
-        _addNotification(chartId, 'Download Failed', 'Chart $chartId download failed: ${error.toString()}', DownloadStatus.failed);
+        _addNotification(
+          chartId,
+          'Download Failed',
+          'Chart $chartId download failed: ${error.toString()}',
+          DownloadStatus.failed,
+        );
       }
 
       // Handle error and clean up
       _errorHandler.handleError(error, stackTrace);
       _cleanup(chartId);
-      
+
       // Convert to AppError for consistent error handling (preserve existing AppError)
       if (error is AppError) {
         rethrow;
       } else if (error is DioException) {
-        throw AppError.network('Chart download failed: $chartId - ${error.message}');
+        throw AppError.network(
+          'Chart download failed: $chartId - ${error.message}',
+        );
       } else if (error is FileSystemException) {
-        throw AppError.storage('Storage error during download: $chartId - ${error.message}');
+        throw AppError.storage(
+          'Storage error during download: $chartId - ${error.message}',
+        );
       } else {
-        throw AppError.unknown('Unexpected error during download: $chartId - ${error.toString()}');
+        throw AppError.unknown(
+          'Unexpected error during download: $chartId - ${error.toString()}',
+        );
       }
     } finally {
       // Release concurrency slot THEN process queue once
@@ -287,20 +352,29 @@ class DownloadServiceImpl implements DownloadService {
         // Persist resume data explicitly on user pause to guarantee recovery metadata
         final resume = _resumeData[chartId];
         if (resume != null) {
-          _saveResumeData(chartId, resume.originalUrl, downloadedBytes, checksum: resume.checksum);
+          _saveResumeData(
+            chartId,
+            resume.originalUrl,
+            downloadedBytes,
+            checksum: resume.checksum,
+          );
         }
         _logger.info('Download paused: $chartId', context: 'Download');
       }
     } catch (error, stackTrace) {
       _errorHandler.handleError(error, stackTrace);
-      
+
       // Convert to AppError for consistent error handling
       if (error is DioException) {
-        throw AppError.network('Failed to pause download: $chartId - ${error.message}');
+        throw AppError.network(
+          'Failed to pause download: $chartId - ${error.message}',
+        );
       } else if (error is AppError) {
         rethrow;
       } else {
-        throw AppError.unknown('Unexpected error pausing download: $chartId - ${error.toString()}');
+        throw AppError.unknown(
+          'Unexpected error pausing download: $chartId - ${error.toString()}',
+        );
       }
     }
   }
@@ -311,9 +385,11 @@ class DownloadServiceImpl implements DownloadService {
       // Get resume data
       final resumeData = _resumeData[chartId];
       final downloadUrl = url ?? resumeData?.originalUrl;
-      
+
       if (downloadUrl == null) {
-        throw AppError.network('Cannot resume download: missing URL for $chartId');
+        throw AppError.network(
+          'Cannot resume download: missing URL for $chartId',
+        );
       }
 
       _logger.info('Resuming download: $chartId', context: 'Download');
@@ -333,11 +409,17 @@ class DownloadServiceImpl implements DownloadService {
         resumeFrom = await tempFile.length();
         // Validate against stored resume data size if present
         if (resumeData != null && resumeData.downloadedBytes != resumeFrom) {
-          _logger.warning('Partial size mismatch (${resumeData.downloadedBytes} vs $resumeFrom); resetting download: $chartId', context: 'Download');
+          _logger.warning(
+            'Partial size mismatch (${resumeData.downloadedBytes} vs $resumeFrom); resetting download: $chartId',
+            context: 'Download',
+          );
           await tempFile.delete();
           resumeFrom = 0;
         } else {
-          _logger.info('Resuming from byte: $resumeFrom for chart: $chartId', context: 'Download');
+          _logger.info(
+            'Resuming from byte: $resumeFrom for chart: $chartId',
+            context: 'Download',
+          );
         }
       }
 
@@ -346,9 +428,16 @@ class DownloadServiceImpl implements DownloadService {
       _cancelTokens[chartId] = cancelToken;
 
       // Reuse existing (lazy) controller or create new
-      final progressController = _progressControllers[chartId] ??= StreamController<double>.broadcast();
+      final progressController = _progressControllers[chartId] ??=
+          StreamController<double>.broadcast();
       if (_downloadProgress[chartId] == null) {
-        _updateProgress(chartId, resumeFrom, 0, 0.0, DownloadStatus.downloading);
+        _updateProgress(
+          chartId,
+          resumeFrom,
+          0,
+          0.0,
+          DownloadStatus.downloading,
+        );
         if (!progressController.isClosed) {
           progressController.add(0.0);
         }
@@ -358,7 +447,14 @@ class DownloadServiceImpl implements DownloadService {
         // Phase 2: If server supports range (probe), attempt manual streaming append when resuming
         final supportsRange = await _probeRangeSupport(downloadUrl);
         if (resumeFrom > 0 && supportsRange) {
-          await _appendResumeStream(chartId, downloadUrl, tempFilePath, resumeFrom, cancelToken, progressController);
+          await _appendResumeStream(
+            chartId,
+            downloadUrl,
+            tempFilePath,
+            resumeFrom,
+            cancelToken,
+            progressController,
+          );
         } else {
           await _httpClient.downloadFile(
             downloadUrl,
@@ -367,7 +463,13 @@ class DownloadServiceImpl implements DownloadService {
             resumeFrom: resumeFrom > 0 ? resumeFrom : null,
             onReceiveProgress: (received, total) {
               final progressNorm = total > 0 ? (received / total) : 0.0;
-              _updateProgress(chartId, received, total, progressNorm, DownloadStatus.downloading);
+              _updateProgress(
+                chartId,
+                received,
+                total,
+                progressNorm,
+                DownloadStatus.downloading,
+              );
               if (!progressController.isClosed) {
                 progressController.add(progressNorm);
               }
@@ -385,22 +487,30 @@ class DownloadServiceImpl implements DownloadService {
         }
         if (await finalFile.exists()) {
           final fileSize = await finalFile.length();
-          _updateProgress(chartId, fileSize, fileSize, 1.0, DownloadStatus.completed);
+          _updateProgress(
+            chartId,
+            fileSize,
+            fileSize,
+            1.0,
+            DownloadStatus.completed,
+          );
           if (!progressController.isClosed) {
             progressController.add(1.0);
           }
         }
-
       } on DioException catch (e) {
         // Handle range not satisfiable (HTTP 416) by restarting download
         if (e.response?.statusCode == 416) {
-          _logger.warning('Range not satisfiable, restarting download: $chartId', context: 'Download');
-          
+          _logger.warning(
+            'Range not satisfiable, restarting download: $chartId',
+            context: 'Download',
+          );
+
           // Delete corrupted partial file
           if (await file.exists()) {
             await file.delete();
           }
-          
+
           // Restart download from beginning
           await _httpClient.downloadFile(
             downloadUrl,
@@ -408,7 +518,13 @@ class DownloadServiceImpl implements DownloadService {
             cancelToken: cancelToken,
             onReceiveProgress: (received, total) {
               final progressNorm = total > 0 ? (received / total) : 0.0;
-              _updateProgress(chartId, received, total, progressNorm, DownloadStatus.downloading);
+              _updateProgress(
+                chartId,
+                received,
+                total,
+                progressNorm,
+                DownloadStatus.downloading,
+              );
               if (!progressController.isClosed) {
                 progressController.add(progressNorm);
               }
@@ -423,29 +539,43 @@ class DownloadServiceImpl implements DownloadService {
       if (_downloadProgress[chartId]?.status == DownloadStatus.completed) {
         _metrics?.completeSuccess(chartId);
       }
-
     } catch (error, stackTrace) {
       _errorHandler.handleError(error, stackTrace);
-      
+
       // Attempt classification & persistence of error resume data if URL known
       try {
         final resume = _resumeData[chartId];
         final effectiveUrl = url ?? resume?.originalUrl;
         if (effectiveUrl != null) {
-          final partial = await _getPartialBytes(chartId, _downloadProgress[chartId]);
+          final partial = await _getPartialBytes(
+            chartId,
+            _downloadProgress[chartId],
+          );
           final code = _classifyErrorCode(error);
-          _saveResumeDataWithError(chartId, effectiveUrl, partial, code, checksum: resume?.checksum);
+          _saveResumeDataWithError(
+            chartId,
+            effectiveUrl,
+            partial,
+            code,
+            checksum: resume?.checksum,
+          );
         }
       } catch (_) {}
       // Convert to AppError for consistent error handling (preserve existing AppError)
       if (error is AppError) {
         rethrow;
       } else if (error is DioException) {
-        throw AppError.network('Failed to resume download: $chartId - ${error.message}');
+        throw AppError.network(
+          'Failed to resume download: $chartId - ${error.message}',
+        );
       } else if (error is FileSystemException) {
-        throw AppError.storage('Storage error during resume: $chartId - ${error.message}');
+        throw AppError.storage(
+          'Storage error during resume: $chartId - ${error.message}',
+        );
       } else {
-        throw AppError.unknown('Unexpected error resuming download: $chartId - ${error.toString()}');
+        throw AppError.unknown(
+          'Unexpected error resuming download: $chartId - ${error.toString()}',
+        );
       }
     }
   }
@@ -462,7 +592,7 @@ class DownloadServiceImpl implements DownloadService {
 
       // Remove from queue
       _downloadQueue.removeWhere((item) => item.chartId == chartId);
-      
+
       // Clean up partial file if it exists
       try {
         final chartDirectory = await _storageService.getChartsDirectory();
@@ -470,26 +600,38 @@ class DownloadServiceImpl implements DownloadService {
         for (final file in files) {
           if (file is File && file.path.contains(chartId)) {
             await file.delete();
-            _logger.debug('Deleted partial download: ${file.path}', context: 'Download');
+            _logger.debug(
+              'Deleted partial download: ${file.path}',
+              context: 'Download',
+            );
           }
         }
       } catch (e) {
-        _logger.warning('Failed to clean up partial download for: $chartId', context: 'Download');
+        _logger.warning(
+          'Failed to clean up partial download for: $chartId',
+          context: 'Download',
+        );
       }
 
       _cleanup(chartId);
     } catch (error, stackTrace) {
       _errorHandler.handleError(error, stackTrace);
-      
+
       // Convert to AppError for consistent error handling
       if (error is DioException) {
-        throw AppError.network('Failed to cancel download: $chartId - ${error.message}');
+        throw AppError.network(
+          'Failed to cancel download: $chartId - ${error.message}',
+        );
       } else if (error is FileSystemException) {
-        throw AppError.storage('Storage error during cancellation: $chartId - ${error.message}');
+        throw AppError.storage(
+          'Storage error during cancellation: $chartId - ${error.message}',
+        );
       } else if (error is AppError) {
         rethrow;
       } else {
-        throw AppError.unknown('Unexpected error cancelling download: $chartId - ${error.toString()}');
+        throw AppError.unknown(
+          'Unexpected error cancelling download: $chartId - ${error.toString()}',
+        );
       }
     }
   }
@@ -521,7 +663,9 @@ class DownloadServiceImpl implements DownloadService {
   // Enhanced queue management methods
 
   @override
-  Future<void> addToQueue(String chartId, String url, {
+  Future<void> addToQueue(
+    String chartId,
+    String url, {
     DownloadPriority priority = DownloadPriority.normal,
     String? expectedChecksum,
   }) async {
@@ -542,7 +686,10 @@ class DownloadServiceImpl implements DownloadService {
     _downloadQueue.add(queueItem);
     _sortQueueByPriority();
 
-    _logger.info('Added chart to queue: $chartId (priority: $priority)', context: 'Download');
+    _logger.info(
+      'Added chart to queue: $chartId (priority: $priority)',
+      context: 'Download',
+    );
     // Notify external queue notifier (UI state) if attached and not already present
     try {
       if (_queueNotifier != null) {
@@ -555,9 +702,12 @@ class DownloadServiceImpl implements DownloadService {
         }
       }
     } catch (e) {
-      _logger.warning('Failed to notify queue notifier for $chartId: $e', context: 'Download');
+      _logger.warning(
+        'Failed to notify queue notifier for $chartId: $e',
+        context: 'Download',
+      );
     }
-    
+
     // Process queue to start downloads if slots are available
     _processQueue();
   }
@@ -593,22 +743,28 @@ class DownloadServiceImpl implements DownloadService {
       final metrics = _metrics?.snapshot();
       final state = {
         'timestamp': DateTime.now().toIso8601String(),
-        'activeDownloads': _downloadProgress.values.map((d) => {
-          'chartId': d.chartId,
-          'status': d.status.name,
-          'progress': d.progress,
-          'errorCategory': d.errorCategory,
-          'errorMessage': d.errorMessage,
-        }).toList(),
+        'activeDownloads': _downloadProgress.values
+            .map(
+              (d) => {
+                'chartId': d.chartId,
+                'status': d.status.name,
+                'progress': d.progress,
+                'errorCategory': d.errorCategory,
+                'errorMessage': d.errorMessage,
+              },
+            )
+            .toList(),
         'queue': _downloadQueue.map((q) => q.chartId).toList(),
-        'metrics': metrics == null ? null : {
-          'successCount': metrics.successCount,
-          'failureCount': metrics.failureCount,
-          'failureByCategory': metrics.failureByCategory,
-          'averageDurationSeconds': metrics.averageDurationSeconds,
-          'medianDurationSeconds': metrics.medianDurationSeconds,
-          'retryCount': metrics.retryCount,
-        },
+        'metrics': metrics == null
+            ? null
+            : {
+                'successCount': metrics.successCount,
+                'failureCount': metrics.failureCount,
+                'failureByCategory': metrics.failureByCategory,
+                'averageDurationSeconds': metrics.averageDurationSeconds,
+                'medianDurationSeconds': metrics.medianDurationSeconds,
+                'retryCount': metrics.retryCount,
+              },
       };
       return jsonEncode(state);
     } catch (e) {
@@ -637,7 +793,9 @@ class DownloadServiceImpl implements DownloadService {
   // Batch download methods
 
   @override
-  Future<String> startBatchDownload(List<String> chartIds, List<String> urls, {
+  Future<String> startBatchDownload(
+    List<String> chartIds,
+    List<String> urls, {
     DownloadPriority priority = DownloadPriority.normal,
   }) async {
     if (chartIds.length != urls.length) {
@@ -661,7 +819,8 @@ class DownloadServiceImpl implements DownloadService {
     _batchProgress[batchId] = batchProgress;
 
     // Create progress controller
-    final progressController = StreamController<BatchDownloadProgress>.broadcast();
+    final progressController =
+        StreamController<BatchDownloadProgress>.broadcast();
     _batchProgressControllers[batchId] = progressController;
 
     // Add charts to queue
@@ -669,7 +828,10 @@ class DownloadServiceImpl implements DownloadService {
       await addToQueue(chartIds[i], urls[i], priority: priority);
     }
 
-    _logger.info('Started batch download: $batchId (${chartIds.length} charts)', context: 'Download');
+    _logger.info(
+      'Started batch download: $batchId (${chartIds.length} charts)',
+      context: 'Download',
+    );
     return batchId;
   }
 
@@ -702,7 +864,10 @@ class DownloadServiceImpl implements DownloadService {
       try {
         await pauseDownload(chartId);
       } catch (e) {
-        _logger.warning('Failed to pause chart in batch: $chartId', context: 'Download');
+        _logger.warning(
+          'Failed to pause chart in batch: $chartId',
+          context: 'Download',
+        );
       }
     }
 
@@ -752,7 +917,10 @@ class DownloadServiceImpl implements DownloadService {
       try {
         await cancelDownload(chartId);
       } catch (e) {
-        _logger.warning('Failed to cancel chart in batch: $chartId', context: 'Download');
+        _logger.warning(
+          'Failed to cancel chart in batch: $chartId',
+          context: 'Download',
+        );
       }
     }
 
@@ -784,17 +952,22 @@ class DownloadServiceImpl implements DownloadService {
       await _savePersistentState();
       return _downloadProgress.values.toList();
     } catch (e) {
-      _logger.warning('Failed to persist download state: $e', context: 'Download');
+      _logger.warning(
+        'Failed to persist download state: $e',
+        context: 'Download',
+      );
       return _downloadProgress.values.toList();
     }
   }
 
   @override
-  Future<void> recoverDownloads(List<DownloadProgress> persistedDownloads) async {
+  Future<void> recoverDownloads(
+    List<DownloadProgress> persistedDownloads,
+  ) async {
     try {
       // Load persistent state from disk
       await _loadPersistentState();
-      
+
       // Merge with provided downloads
       for (final download in persistedDownloads) {
         if (download.status == DownloadStatus.downloading) {
@@ -802,15 +975,21 @@ class DownloadServiceImpl implements DownloadService {
           try {
             await resumeDownload(download.chartId);
           } catch (e) {
-            _logger.warning('Failed to auto-resume download: ${download.chartId}', context: 'Download');
+            _logger.warning(
+              'Failed to auto-resume download: ${download.chartId}',
+              context: 'Download',
+            );
           }
         } else if (download.status == DownloadStatus.paused) {
           // Add back to queue as paused
           _downloadProgress[download.chartId] = download;
         }
       }
-      
-      _logger.info('Recovered ${persistedDownloads.length} download states', context: 'Download');
+
+      _logger.info(
+        'Recovered ${persistedDownloads.length} download states',
+        context: 'Download',
+      );
     } catch (e) {
       _logger.error('Failed to recover downloads: $e', context: 'Download');
       rethrow;
@@ -836,7 +1015,10 @@ class DownloadServiceImpl implements DownloadService {
   @override
   Future<void> setMaxConcurrentDownloads(int maxConcurrent) async {
     _maxConcurrentDownloads = maxConcurrent;
-    _logger.info('Max concurrent downloads set to: $maxConcurrent', context: 'Download');
+    _logger.info(
+      'Max concurrent downloads set to: $maxConcurrent',
+      context: 'Download',
+    );
   }
 
   @override
@@ -866,9 +1048,20 @@ class DownloadServiceImpl implements DownloadService {
           cancelToken: cancelToken,
           onReceiveProgress: (received, total) {
             final progressNorm = total > 0 ? (received / total) : 0.0;
-            _updateProgress(chartId, received, total, progressNorm, DownloadStatus.downloading);
+            _updateProgress(
+              chartId,
+              received,
+              total,
+              progressNorm,
+              DownloadStatus.downloading,
+            );
             if (total > 0) {
-              _saveResumeData(chartId, url, received, checksum: expectedChecksum);
+              _saveResumeData(
+                chartId,
+                url,
+                received,
+                checksum: expectedChecksum,
+              );
             }
             if (!progressController.isClosed) {
               progressController.add(progressNorm);
@@ -878,7 +1071,6 @@ class DownloadServiceImpl implements DownloadService {
 
         // If we get here, download succeeded
         break;
-
       } catch (e) {
         attempt++;
         if (attempt > 1) {
@@ -893,7 +1085,10 @@ class DownloadServiceImpl implements DownloadService {
         final base = Duration(seconds: pow(2, attempt).toInt());
         final jitterMs = Random().nextInt(500);
         final delay = base + Duration(milliseconds: jitterMs);
-        _logger.warning('Download attempt $attempt failed for $chartId, retrying in ${delay.inSeconds}.${(delay.inMilliseconds%1000).toString().padLeft(3,'0')}s (jitter ${jitterMs}ms)', context: 'Download');
+        _logger.warning(
+          'Download attempt $attempt failed for $chartId, retrying in ${delay.inSeconds}.${(delay.inMilliseconds % 1000).toString().padLeft(3, '0')}s (jitter ${jitterMs}ms)',
+          context: 'Download',
+        );
         await Future.delayed(delay);
       }
     }
@@ -931,11 +1126,13 @@ class DownloadServiceImpl implements DownloadService {
       final existing = _downloadProgress[chartId];
       if (existing != null && existing.downloadedBytes != null) {
         final deltaBytes = downloaded - (existing.downloadedBytes ?? 0);
-        final deltaMs = DateTime.now().difference(existing.lastUpdated).inMilliseconds;
+        final deltaMs = DateTime.now()
+            .difference(existing.lastUpdated)
+            .inMilliseconds;
         if (deltaBytes > 0 && deltaMs > 0) {
           bps = (deltaBytes * 1000) / deltaMs;
           final remaining = total - downloaded;
-            if (bps > 0) eta = (remaining / bps).round();
+          if (bps > 0) eta = (remaining / bps).round();
         }
       }
     }
@@ -953,12 +1150,14 @@ class DownloadServiceImpl implements DownloadService {
     );
 
     // Push to notifier adapter if attached
-    _queueNotifier?.updateProgress(chartId,
-        status: status,
-        progress: progressNormalized,
-        totalBytes: total > 0 ? total : null,
-        downloadedBytes: downloaded > 0 ? downloaded : null,
-        errorMessage: errorMessage);
+    _queueNotifier?.updateProgress(
+      chartId,
+      status: status,
+      progress: progressNormalized,
+      totalBytes: total > 0 ? total : null,
+      downloadedBytes: downloaded > 0 ? downloaded : null,
+      errorMessage: errorMessage,
+    );
   }
 
   /// Sort queue by priority
@@ -967,7 +1166,7 @@ class DownloadServiceImpl implements DownloadService {
       // Higher priority first
       final priorityComparison = b.priority.index.compareTo(a.priority.index);
       if (priorityComparison != 0) return priorityComparison;
-      
+
       // Then by add time (FIFO for same priority)
       return a.addedAt.compareTo(b.addedAt);
     });
@@ -982,7 +1181,7 @@ class DownloadServiceImpl implements DownloadService {
   void _updateBatchProgress(String batchId) {
     final controller = _batchProgressControllers[batchId];
     final progress = _batchProgress[batchId];
-    
+
     if (controller != null && progress != null && !controller.isClosed) {
       controller.add(progress);
     }
@@ -991,29 +1190,40 @@ class DownloadServiceImpl implements DownloadService {
   /// Process the download queue automatically
   void _processQueue() {
     final availableSlots = _maxConcurrentDownloads - _activeDownloads;
-    
+
     if (availableSlots <= 0 || _downloadQueue.isEmpty) {
       return;
     }
-    
+
     // Get items to start (up to available slots)
     final toStart = _downloadQueue.take(availableSlots).toList();
-    
+
     for (final item in toStart) {
       // ignore: discarded_futures
       _isNetworkSuitable().then((suitable) {
         if (!suitable) {
-          _logger.debug('Network unsuitable; deferring queued download: ${item.chartId}', context: 'Download');
+          _logger.debug(
+            'Network unsuitable; deferring queued download: ${item.chartId}',
+            context: 'Download',
+          );
           _scheduleNetworkRetry();
           return; // keep item queued
         }
-        _logger.debug('Network suitable; initiating queued download: ${item.chartId}', context: 'Download');
+        _logger.debug(
+          'Network suitable; initiating queued download: ${item.chartId}',
+          context: 'Download',
+        );
         if (_downloadProgress.containsKey(item.chartId) &&
-            _downloadProgress[item.chartId]!.status == DownloadStatus.downloading) {
+            _downloadProgress[item.chartId]!.status ==
+                DownloadStatus.downloading) {
           return;
         }
         _startQueuedDownload(item).catchError((e) {
-          _logger.error('Failed to start queued download: ${item.chartId}', exception: e, context: 'Download');
+          _logger.error(
+            'Failed to start queued download: ${item.chartId}',
+            exception: e,
+            context: 'Download',
+          );
         });
       });
     }
@@ -1022,7 +1232,10 @@ class DownloadServiceImpl implements DownloadService {
   void _scheduleNetworkRetry() {
     if (_networkRetryTimer?.isActive == true) return;
     _networkRetryTimer = Timer(_networkRetryInterval, () {
-      _logger.debug('Retrying deferred downloads after network unsuitability window', context: 'Download');
+      _logger.debug(
+        'Retrying deferred downloads after network unsuitability window',
+        context: 'Download',
+      );
       _processQueue();
     });
   }
@@ -1031,18 +1244,33 @@ class DownloadServiceImpl implements DownloadService {
   Future<void> _startQueuedDownload(QueueItem item) async {
     try {
       // Remove from queue
-      _downloadQueue.removeWhere((queueItem) => queueItem.chartId == item.chartId);
-      
+      _downloadQueue.removeWhere(
+        (queueItem) => queueItem.chartId == item.chartId,
+      );
+
       // Start the download
-      await downloadChart(item.chartId, item.url, expectedChecksum: item.expectedChecksum);
+      await downloadChart(
+        item.chartId,
+        item.url,
+        expectedChecksum: item.expectedChecksum,
+      );
     } catch (e) {
-      _logger.error('Failed to start queued download: ${item.chartId}', exception: e, context: 'Download');
+      _logger.error(
+        'Failed to start queued download: ${item.chartId}',
+        exception: e,
+        context: 'Download',
+      );
       rethrow;
     }
   }
 
   /// Save resume data
-  void _saveResumeData(String chartId, String url, int downloadedBytes, {String? checksum}) {
+  void _saveResumeData(
+    String chartId,
+    String url,
+    int downloadedBytes, {
+    String? checksum,
+  }) {
     final existing = _resumeData[chartId];
     _resumeData[chartId] = ResumeData(
       chartId: chartId,
@@ -1054,7 +1282,7 @@ class DownloadServiceImpl implements DownloadService {
       attempts: (existing?.attempts ?? 0) + 1,
       lastErrorCode: existing?.lastErrorCode,
     );
-    
+
     // Persist to disk for background recovery
     _savePersistentState().catchError((e) {
       _logger.warning('Failed to persist resume data: $e', context: 'Download');
@@ -1062,7 +1290,13 @@ class DownloadServiceImpl implements DownloadService {
   }
 
   /// Save resume data and explicitly set an error code (used on failures)
-  void _saveResumeDataWithError(String chartId, String url, int downloadedBytes, int errorCode, {String? checksum}) {
+  void _saveResumeDataWithError(
+    String chartId,
+    String url,
+    int downloadedBytes,
+    int errorCode, {
+    String? checksum,
+  }) {
     final existing = _resumeData[chartId];
     _resumeData[chartId] = ResumeData(
       chartId: chartId,
@@ -1075,7 +1309,10 @@ class DownloadServiceImpl implements DownloadService {
       lastErrorCode: errorCode,
     );
     _savePersistentState().catchError((e) {
-      _logger.warning('Failed to persist resume data (error variant): $e', context: 'Download');
+      _logger.warning(
+        'Failed to persist resume data (error variant): $e',
+        context: 'Download',
+      );
     });
   }
 
@@ -1083,7 +1320,8 @@ class DownloadServiceImpl implements DownloadService {
     if (error is AppError) {
       final msg = error.message.toLowerCase();
       if (msg.contains('checksum')) return DownloadErrorCode.checksumMismatch;
-      if (msg.contains('insufficient disk space')) return DownloadErrorCode.insufficientDiskSpace;
+      if (msg.contains('insufficient disk space'))
+        return DownloadErrorCode.insufficientDiskSpace;
       if (msg.contains('timeout')) return DownloadErrorCode.networkTimeout;
       switch (error.type) {
         case AppErrorType.network:
@@ -1111,14 +1349,21 @@ class DownloadServiceImpl implements DownloadService {
   }
 
   /// Add notification
-  void _addNotification(String chartId, String title, String message, DownloadStatus status) {
-    _pendingNotifications.add(DownloadNotification(
-      chartId: chartId,
-      title: title,
-      message: message,
-      status: status,
-      timestamp: DateTime.now(),
-    ));
+  void _addNotification(
+    String chartId,
+    String title,
+    String message,
+    DownloadStatus status,
+  ) {
+    _pendingNotifications.add(
+      DownloadNotification(
+        chartId: chartId,
+        title: title,
+        message: message,
+        status: status,
+        timestamp: DateTime.now(),
+      ),
+    );
   }
 
   /// Clean up resources for a specific download
@@ -1166,7 +1411,10 @@ class DownloadServiceImpl implements DownloadService {
     return 'unknown';
   }
 
-  Future<int> _getPartialBytes(String chartId, DownloadProgress? existing) async {
+  Future<int> _getPartialBytes(
+    String chartId,
+    DownloadProgress? existing,
+  ) async {
     try {
       final chartDirectory = await _storageService.getChartsDirectory();
       // Attempt to reconstruct filename from existing progress or resumeData
@@ -1190,7 +1438,7 @@ class DownloadServiceImpl implements DownloadService {
     try {
       final uri = Uri.parse(url);
       final pathSegments = uri.pathSegments;
-      
+
       if (pathSegments.isNotEmpty) {
         final fileName = pathSegments.last;
         if (fileName.isNotEmpty && fileName.contains('.')) {
@@ -1198,7 +1446,10 @@ class DownloadServiceImpl implements DownloadService {
         }
       }
     } catch (e) {
-      _logger.warning('Failed to extract filename from URL: $url', context: 'Download');
+      _logger.warning(
+        'Failed to extract filename from URL: $url',
+        context: 'Download',
+      );
     }
 
     return '$chartId.zip';
@@ -1208,7 +1459,8 @@ class DownloadServiceImpl implements DownloadService {
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (bytes < 1024 * 1024 * 1024)
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
@@ -1219,7 +1471,11 @@ class DownloadServiceImpl implements DownloadService {
       final digest = sha256.convert(bytes);
       return digest.toString();
     } catch (e) {
-      _logger.error('Failed to calculate checksum for file: ${file.path}', exception: e, context: 'Download');
+      _logger.error(
+        'Failed to calculate checksum for file: ${file.path}',
+        exception: e,
+        context: 'Download',
+      );
       rethrow;
     }
   }
@@ -1231,7 +1487,8 @@ class DownloadServiceImpl implements DownloadService {
   Future<bool> _hasSufficientDiskSpace(String url) async {
     try {
       final headResponse = await _httpClient.head(url);
-      final contentLengthHeader = headResponse.headers['content-length']?.firstOrNull;
+      final contentLengthHeader =
+          headResponse.headers['content-length']?.firstOrNull;
       if (contentLengthHeader == null) return true; // can't determine size
       final totalBytes = int.tryParse(contentLengthHeader) ?? 0;
       if (totalBytes <= 0) return true;
@@ -1241,19 +1498,25 @@ class DownloadServiceImpl implements DownloadService {
       int partialBytes = 0;
       await for (final entity in dir.list()) {
         if (entity is File && entity.path.endsWith('.part')) {
-          try { partialBytes += await entity.length(); } catch (_) {}
+          try {
+            partialBytes += await entity.length();
+          } catch (_) {}
         }
       }
 
       // We lack a cross-platform free disk space API in pure Dart (without FFI); accept download
       // if size is < 2GB and partial + new total < arbitrary 5GB safety threshold.
-      final projected = partialBytes + totalBytes + 5 * 1024 * 1024; // add 5MB buffer
+      final projected =
+          partialBytes + totalBytes + 5 * 1024 * 1024; // add 5MB buffer
       if (projected < 5 * 1024 * 1024 * 1024) {
         return true;
       }
       return false; // Extremely large aggregate; reject
     } catch (e) {
-      _logger.warning('Disk space preflight fallback (allow) due to error: $e', context: 'Download');
+      _logger.warning(
+        'Disk space preflight fallback (allow) due to error: $e',
+        context: 'Download',
+      );
       return true; // fail open to avoid false negatives
     }
   }
@@ -1265,15 +1528,19 @@ class DownloadServiceImpl implements DownloadService {
       final response = await _httpClient.get(
         url,
         options: Options(
-          headers: { 'Range': 'bytes=0-0' },
+          headers: {'Range': 'bytes=0-0'},
           responseType: ResponseType.stream,
           followRedirects: true,
           validateStatus: (code) => code != null && code >= 200 && code < 400,
         ),
       );
-      final accepts = response.statusCode == 206 || response.headers['content-range'] != null;
+      final accepts =
+          response.statusCode == 206 ||
+          response.headers['content-range'] != null;
       // Persist support flag on any associated resume entry
-      final entry = _resumeData.values.firstWhereOrNull((r) => r.originalUrl == url);
+      final entry = _resumeData.values.firstWhereOrNull(
+        (r) => r.originalUrl == url,
+      );
       if (entry != null && entry.supportsRange != accepts) {
         _resumeData[entry.chartId] = ResumeData(
           chartId: entry.chartId,
@@ -1290,7 +1557,10 @@ class DownloadServiceImpl implements DownloadService {
       }
       return accepts;
     } catch (e) {
-      _logger.warning('Range probe failed (treat as not supported): $e', context: 'Download');
+      _logger.warning(
+        'Range probe failed (treat as not supported): $e',
+        context: 'Download',
+      );
       return false;
     }
   }
@@ -1310,7 +1580,7 @@ class DownloadServiceImpl implements DownloadService {
       final response = await _httpClient.get(
         url,
         options: Options(
-          headers: { 'Range': 'bytes=$resumeFrom-' },
+          headers: {'Range': 'bytes=$resumeFrom-'},
           responseType: ResponseType.stream,
           followRedirects: true,
           validateStatus: (code) => code != null && code >= 200 && code < 500,
@@ -1323,7 +1593,10 @@ class DownloadServiceImpl implements DownloadService {
         await sink.close();
         await file.writeAsBytes([]); // truncate
         resumeFrom = 0;
-        _logger.warning('Server returned 200 for ranged request; restarting full download for $chartId', context: 'Download');
+        _logger.warning(
+          'Server returned 200 for ranged request; restarting full download for $chartId',
+          context: 'Download',
+        );
       } else if (response.statusCode == 206) {
         // Parse total size from Content-Range: bytes start-end/total
         int? totalBytes;
@@ -1344,7 +1617,13 @@ class DownloadServiceImpl implements DownloadService {
           final progressNorm = (totalBytes != null && totalBytes > 0)
               ? downloaded / totalBytes
               : 0.0;
-          _updateProgress(chartId, downloaded, totalBytes ?? 0, progressNorm, DownloadStatus.downloading);
+          _updateProgress(
+            chartId,
+            downloaded,
+            totalBytes ?? 0,
+            progressNorm,
+            DownloadStatus.downloading,
+          );
           if (!progressController.isClosed) {
             progressController.add(progressNorm);
           }
@@ -1362,7 +1641,13 @@ class DownloadServiceImpl implements DownloadService {
         cancelToken: cancelToken,
         onReceiveProgress: (received, total) {
           final progressNorm = total > 0 ? (received / total) : 0.0;
-          _updateProgress(chartId, received, total, progressNorm, DownloadStatus.downloading);
+          _updateProgress(
+            chartId,
+            received,
+            total,
+            progressNorm,
+            DownloadStatus.downloading,
+          );
           if (total > 0) {
             _saveResumeData(chartId, url, received);
           }
@@ -1381,36 +1666,46 @@ class DownloadServiceImpl implements DownloadService {
   Future<void> _savePersistentState() async {
     try {
       final storageDir = await _storageService.getChartsDirectory();
-      final stateFile = File(path.join(storageDir.path, '.download_state.json'));
-      
+      final stateFile = File(
+        path.join(storageDir.path, '.download_state.json'),
+      );
+
       final state = {
-        'downloads': _downloadProgress.map((key, value) => MapEntry(key, {
-          'chartId': value.chartId,
-          'status': value.status.name,
-          'progress': value.progress,
-          'totalBytes': value.totalBytes,
-          'downloadedBytes': value.downloadedBytes,
-          'lastUpdated': value.lastUpdated.toIso8601String(),
-        })),
-        'resumeData': _resumeData.map((key, value) => MapEntry(key, {
-          'chartId': value.chartId,
-          'originalUrl': value.originalUrl,
-          'downloadedBytes': value.downloadedBytes,
-          'lastAttempt': value.lastAttempt.toIso8601String(),
-          'checksum': value.checksum,
-          'supportsRange': value.supportsRange,
-          'attempts': value.attempts,
-          'lastErrorCode': value.lastErrorCode,
-        })),
-        'queue': _downloadQueue.map((item) => {
-          'chartId': item.chartId,
-          'url': item.url,
-          'priority': item.priority.name,
-          'addedAt': item.addedAt.toIso8601String(),
-          'expectedChecksum': item.expectedChecksum,
-        }).toList(),
+        'downloads': _downloadProgress.map(
+          (key, value) => MapEntry(key, {
+            'chartId': value.chartId,
+            'status': value.status.name,
+            'progress': value.progress,
+            'totalBytes': value.totalBytes,
+            'downloadedBytes': value.downloadedBytes,
+            'lastUpdated': value.lastUpdated.toIso8601String(),
+          }),
+        ),
+        'resumeData': _resumeData.map(
+          (key, value) => MapEntry(key, {
+            'chartId': value.chartId,
+            'originalUrl': value.originalUrl,
+            'downloadedBytes': value.downloadedBytes,
+            'lastAttempt': value.lastAttempt.toIso8601String(),
+            'checksum': value.checksum,
+            'supportsRange': value.supportsRange,
+            'attempts': value.attempts,
+            'lastErrorCode': value.lastErrorCode,
+          }),
+        ),
+        'queue': _downloadQueue
+            .map(
+              (item) => {
+                'chartId': item.chartId,
+                'url': item.url,
+                'priority': item.priority.name,
+                'addedAt': item.addedAt.toIso8601String(),
+                'expectedChecksum': item.expectedChecksum,
+              },
+            )
+            .toList(),
       };
-      
+
       await stateFile.writeAsString(jsonEncode(state));
       _logger.debug('Download state saved to disk', context: 'Download');
     } catch (e) {
@@ -1422,16 +1717,21 @@ class DownloadServiceImpl implements DownloadService {
   Future<void> _loadPersistentState() async {
     try {
       final storageDir = await _storageService.getChartsDirectory();
-      final stateFile = File(path.join(storageDir.path, '.download_state.json'));
-      
+      final stateFile = File(
+        path.join(storageDir.path, '.download_state.json'),
+      );
+
       if (!await stateFile.exists()) {
-        _logger.debug('No persistent download state found', context: 'Download');
+        _logger.debug(
+          'No persistent download state found',
+          context: 'Download',
+        );
         return;
       }
-      
+
       final stateJson = await stateFile.readAsString();
       final state = jsonDecode(stateJson) as Map<String, dynamic>;
-      
+
       // Restore download progress
       if (state.containsKey('downloads')) {
         final downloads = state['downloads'] as Map<String, dynamic>;
@@ -1439,7 +1739,9 @@ class DownloadServiceImpl implements DownloadService {
           final data = entry.value as Map<String, dynamic>;
           _downloadProgress[entry.key] = DownloadProgress(
             chartId: data['chartId'],
-            status: DownloadStatus.values.firstWhere((s) => s.name == data['status']),
+            status: DownloadStatus.values.firstWhere(
+              (s) => s.name == data['status'],
+            ),
             progress: data['progress'],
             totalBytes: data['totalBytes'],
             downloadedBytes: data['downloadedBytes'],
@@ -1447,7 +1749,7 @@ class DownloadServiceImpl implements DownloadService {
           );
         }
       }
-      
+
       // Restore resume data
       if (state.containsKey('resumeData')) {
         final resumeData = state['resumeData'] as Map<String, dynamic>;
@@ -1465,24 +1767,31 @@ class DownloadServiceImpl implements DownloadService {
           );
         }
       }
-      
+
       // Restore queue
       if (state.containsKey('queue')) {
         final queue = state['queue'] as List<dynamic>;
         _downloadQueue.clear();
         for (final item in queue) {
           final data = item as Map<String, dynamic>;
-          _downloadQueue.add(QueueItem(
-            chartId: data['chartId'],
-            url: data['url'],
-            priority: DownloadPriority.values.firstWhere((p) => p.name == data['priority']),
-            addedAt: DateTime.parse(data['addedAt']),
-            expectedChecksum: data['expectedChecksum'],
-          ));
+          _downloadQueue.add(
+            QueueItem(
+              chartId: data['chartId'],
+              url: data['url'],
+              priority: DownloadPriority.values.firstWhere(
+                (p) => p.name == data['priority'],
+              ),
+              addedAt: DateTime.parse(data['addedAt']),
+              expectedChecksum: data['expectedChecksum'],
+            ),
+          );
         }
       }
-      
-      _logger.info('Download state loaded from disk: ${_downloadProgress.length} downloads, ${_resumeData.length} resume entries, ${_downloadQueue.length} queued', context: 'Download');
+
+      _logger.info(
+        'Download state loaded from disk: ${_downloadProgress.length} downloads, ${_resumeData.length} resume entries, ${_downloadQueue.length} queued',
+        context: 'Download',
+      );
 
       // Phase 2 follow-up: stale resume sweep (remove entries with no corresponding .part or with completed final file)
       await _sweepStaleResumeEntries(storageDir);
@@ -1508,7 +1817,7 @@ class DownloadServiceImpl implements DownloadService {
         final finalExists = await finalFile.exists();
         if (!partExists && !finalExists) {
           // Nothing on disk -> stale
-            toRemove.add(entry.chartId);
+          toRemove.add(entry.chartId);
           continue;
         }
         if (finalExists) {
@@ -1524,7 +1833,9 @@ class DownloadServiceImpl implements DownloadService {
           if (partLen == 0 && entry.downloadedBytes > 0) {
             // Corrupt partial; remove metadata and delete empty file
             toRemove.add(entry.chartId);
-            try { await partFile.delete(); } catch (_) {}
+            try {
+              await partFile.delete();
+            } catch (_) {}
             continue;
           }
           if (partLen != entry.downloadedBytes) {
@@ -1543,15 +1854,23 @@ class DownloadServiceImpl implements DownloadService {
           }
         }
       } catch (e) {
-        _logger.warning('Resume sweep error for ${entry.chartId}: $e', context: 'Download');
+        _logger.warning(
+          'Resume sweep error for ${entry.chartId}: $e',
+          context: 'Download',
+        );
       }
     }
     if (toRemove.isNotEmpty) {
-      for (final id in toRemove) { _resumeData.remove(id); }
+      for (final id in toRemove) {
+        _resumeData.remove(id);
+      }
       mutated = true;
     }
     if (mutated) {
-      _logger.info('Stale resume sweep removed ${toRemove.length} entries; ${_resumeData.length} remain', context: 'Download');
+      _logger.info(
+        'Stale resume sweep removed ${toRemove.length} entries; ${_resumeData.length} remain',
+        context: 'Download',
+      );
       // Persist updated state (fire and forget)
       _savePersistentState();
     }
@@ -1598,7 +1917,9 @@ class DownloadServiceImpl implements DownloadService {
 
   void _initNetworkListener() {
     if (_networkResilience == null) return;
-    _netStatusSub = _networkResilience!.networkStatusStream.listen(_handleNetworkStatusChange);
+    _netStatusSub = _networkResilience!.networkStatusStream.listen(
+      _handleNetworkStatusChange,
+    );
   }
 
   bool _isTransientCategory(String? category) {
@@ -1610,7 +1931,8 @@ class DownloadServiceImpl implements DownloadService {
     if (status == NetworkStatus.connected || status == NetworkStatus.limited) {
       for (final entry in _downloadProgress.entries) {
         final prog = entry.value;
-        if (prog.status == DownloadStatus.failed && _isTransientCategory(prog.errorCategory)) {
+        if (prog.status == DownloadStatus.failed &&
+            _isTransientCategory(prog.errorCategory)) {
           final resume = _resumeData[prog.chartId];
           final url = resume?.originalUrl;
           if (url != null) {
@@ -1624,14 +1946,20 @@ class DownloadServiceImpl implements DownloadService {
 
   // ---------------- Testing Hooks ----------------
   @visibleForTesting
-  Map<String, DownloadProgress> get debugProgressMap => Map.unmodifiable(_downloadProgress);
+  Map<String, DownloadProgress> get debugProgressMap =>
+      Map.unmodifiable(_downloadProgress);
 
   @visibleForTesting
-  List<String> get debugQueueIds => _downloadQueue.map((e) => e.chartId).toList(growable: false);
+  List<String> get debugQueueIds =>
+      _downloadQueue.map((e) => e.chartId).toList(growable: false);
 
   /// Inject a failed download state for auto-retry tests
   @visibleForTesting
-  void injectFailedDownload(String chartId, String url, {String category = 'network'}) {
+  void injectFailedDownload(
+    String chartId,
+    String url, {
+    String category = 'network',
+  }) {
     _downloadProgress[chartId] = DownloadProgress(
       chartId: chartId,
       status: DownloadStatus.failed,
@@ -1665,7 +1993,10 @@ class DownloadServiceImpl implements DownloadService {
       try {
         if (entityType == FileSystemEntityType.directory) {
           // Unexpected: a directory where a file should be.
-          _logger.warning('Directory exists at target file path; removing: $pathStr', context: 'Download');
+          _logger.warning(
+            'Directory exists at target file path; removing: $pathStr',
+            context: 'Download',
+          );
           final dir = Directory(pathStr);
           if (await dir.exists()) await dir.delete(recursive: true);
         } else if (entityType == FileSystemEntityType.file) {
@@ -1675,14 +2006,21 @@ class DownloadServiceImpl implements DownloadService {
           // Symlink or other: attempt generic delete.
           final fse = FileSystemEntity.typeSync(pathStr);
           if (fse != FileSystemEntityType.notFound) {
-            try { await File(pathStr).delete(); } catch (_) {}
-            try { await Directory(pathStr).delete(recursive: true); } catch (_) {}
+            try {
+              await File(pathStr).delete();
+            } catch (_) {}
+            try {
+              await Directory(pathStr).delete(recursive: true);
+            } catch (_) {}
           }
         }
         return; // success or path gone
       } catch (e) {
         if (attempt == 2) {
-          _logger.warning('Failed to clear existing target path after retries: $pathStr', context: 'Download');
+          _logger.warning(
+            'Failed to clear existing target path after retries: $pathStr',
+            context: 'Download',
+          );
           rethrow;
         }
         final backoff = Duration(milliseconds: 30 * (attempt + 1));
@@ -1704,14 +2042,24 @@ class DownloadServiceImpl implements DownloadService {
         return;
       } catch (e) {
         if (attempt == maxAttempts - 1) {
-          _logger.warning('Rename failed after retries; attempting copy fallback for $finalPath', context: 'Download');
+          _logger.warning(
+            'Rename failed after retries; attempting copy fallback for $finalPath',
+            context: 'Download',
+          );
           try {
             final target = File(finalPath);
-            await target.writeAsBytes(await tempFile.readAsBytes(), flush: true);
+            await target.writeAsBytes(
+              await tempFile.readAsBytes(),
+              flush: true,
+            );
             await tempFile.delete();
             return;
           } catch (copyError) {
-            _logger.error('Copy fallback failed for $finalPath', exception: copyError, context: 'Download');
+            _logger.error(
+              'Copy fallback failed for $finalPath',
+              exception: copyError,
+              context: 'Download',
+            );
             rethrow;
           }
         } else {

@@ -34,7 +34,7 @@ class _ChartWidgetState extends State<ChartWidget> {
   late LatLng _center;
   late double _zoom;
   late ChartDisplayMode _displayMode;
-  
+
   // Scale gesture state
   double? _lastScaleValue;
   Offset? _lastFocalPoint;
@@ -116,11 +116,13 @@ class _ChartWidgetState extends State<ChartWidget> {
           Card(
             child: IconButton(
               onPressed: _toggleDisplayMode,
-              icon: Icon(_displayMode == ChartDisplayMode.dayMode 
-                  ? Icons.dark_mode 
-                  : Icons.light_mode),
-              tooltip: _displayMode == ChartDisplayMode.dayMode 
-                  ? 'Switch to Night Mode' 
+              icon: Icon(
+                _displayMode == ChartDisplayMode.dayMode
+                    ? Icons.dark_mode
+                    : Icons.light_mode,
+              ),
+              tooltip: _displayMode == ChartDisplayMode.dayMode
+                  ? 'Switch to Night Mode'
                   : 'Switch to Day Mode',
             ),
           ),
@@ -143,7 +145,10 @@ class _ChartWidgetState extends State<ChartWidget> {
     final transform = CoordinateTransform(
       zoom: _zoom,
       center: _center,
-      screenSize: Size(MediaQuery.of(context).size.width, MediaQuery.of(context).size.height),
+      screenSize: Size(
+        MediaQuery.of(context).size.width,
+        MediaQuery.of(context).size.height,
+      ),
     );
 
     return Positioned(
@@ -157,7 +162,10 @@ class _ChartWidgetState extends State<ChartWidget> {
             children: [
               Text(
                 'Position: ${CoordinateUtils.formatLatitude(_center.latitude)}, ${CoordinateUtils.formatLongitude(_center.longitude)}',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               const SizedBox(height: 4),
               Text(
@@ -190,7 +198,10 @@ class _ChartWidgetState extends State<ChartWidget> {
     final transform = CoordinateTransform(
       zoom: _zoom,
       center: _center,
-      screenSize: Size(MediaQuery.of(context).size.width, MediaQuery.of(context).size.height),
+      screenSize: Size(
+        MediaQuery.of(context).size.width,
+        MediaQuery.of(context).size.height,
+      ),
     );
 
     setState(() {
@@ -198,7 +209,7 @@ class _ChartWidgetState extends State<ChartWidget> {
       if ((details.scale - 1.0).abs() < 0.01) {
         // This is primarily a pan gesture
         final delta = details.localFocalPoint - _lastFocalPoint!;
-        
+
         // Convert screen delta to geographic delta
         final deltaLng = -delta.dx / transform.pixelsPerDegree;
         final deltaLat = delta.dy / transform.pixelsPerDegree;
@@ -210,7 +221,7 @@ class _ChartWidgetState extends State<ChartWidget> {
       } else {
         // Handle zooming
         final scaleChange = details.scale / _lastScaleValue!;
-        
+
         // Update zoom level
         _zoom = (_zoom + math.log(scaleChange) / math.ln2).clamp(2.0, 18.0);
 
@@ -224,8 +235,10 @@ class _ChartWidgetState extends State<ChartWidget> {
           final focalDelta = _scaleCenter! - screenCenter;
           final scaleFactor = (scaleChange - 1.0) * 0.1;
 
-          final deltaLng = -focalDelta.dx * scaleFactor / transform.pixelsPerDegree;
-          final deltaLat = focalDelta.dy * scaleFactor / transform.pixelsPerDegree;
+          final deltaLng =
+              -focalDelta.dx * scaleFactor / transform.pixelsPerDegree;
+          final deltaLat =
+              focalDelta.dy * scaleFactor / transform.pixelsPerDegree;
 
           _center = LatLng(
             (_center.latitude + deltaLat).clamp(-85.0, 85.0),
@@ -279,7 +292,9 @@ class _ChartWidgetState extends State<ChartWidget> {
       // For now, just show a message indicating GPS integration is in progress
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('GPS service implemented - integration with chart display coming soon'),
+          content: Text(
+            'GPS service implemented - integration with chart display coming soon',
+          ),
           duration: Duration(seconds: 2),
         ),
       );
@@ -313,7 +328,10 @@ class _ChartWidgetState extends State<ChartWidget> {
     final transform = CoordinateTransform(
       zoom: _zoom,
       center: _center,
-      screenSize: Size(MediaQuery.of(context).size.width, MediaQuery.of(context).size.height),
+      screenSize: Size(
+        MediaQuery.of(context).size.width,
+        MediaQuery.of(context).size.height,
+      ),
     );
     return transform.visibleBounds;
   }

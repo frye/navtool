@@ -35,7 +35,14 @@ class _MockHttpClient extends HttpClientService {
   _MockHttpClient() : super(logger: _TestLogger());
   int attempts = 0;
   @override
-  Future<void> downloadFile(String url, String savePath, {CancelToken? cancelToken, ProgressCallback? onReceiveProgress, int? resumeFrom, Map<String, dynamic>? queryParameters}) async {
+  Future<void> downloadFile(
+    String url,
+    String savePath, {
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+    int? resumeFrom,
+    Map<String, dynamic>? queryParameters,
+  }) async {
     attempts++;
     // simulate small file progress in two chunks
     onReceiveProgress?.call(50, 100);
@@ -44,13 +51,21 @@ class _MockHttpClient extends HttpClientService {
     final file = File(savePath);
     await file.writeAsBytes(List<int>.filled(10, 1));
   }
+
   @override
-  Future<Response> head(String url, {Map<String, dynamic>? queryParameters, Options? options, CancelToken? cancelToken}) async {
+  Future<Response> head(
+    String url, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+    CancelToken? cancelToken,
+  }) async {
     return Response(
       requestOptions: RequestOptions(path: url),
       data: null,
       statusCode: 200,
-      headers: Headers.fromMap({'content-length': ['100']}),
+      headers: Headers.fromMap({
+        'content-length': ['100'],
+      }),
     );
   }
 }
@@ -72,58 +87,83 @@ class _InMemoryStorage extends StorageService {
   Future<List<int>?> loadChart(String chartId) async => _chartData[chartId];
 
   @override
-  Future<void> deleteChart(String chartId) async { _chartData.remove(chartId); }
+  Future<void> deleteChart(String chartId) async {
+    _chartData.remove(chartId);
+  }
 
   @override
-  Future<Map<String, dynamic>> getStorageInfo() async => {'charts': _chartData.length};
+  Future<Map<String, dynamic>> getStorageInfo() async => {
+    'charts': _chartData.length,
+  };
 
   @override
   Future<void> cleanupOldData() async {}
 
   @override
-  Future<int> getStorageUsage() async => _chartData.values.fold<int>(0, (p, e) => p + e.length);
+  Future<int> getStorageUsage() async =>
+      _chartData.values.fold<int>(0, (p, e) => p + e.length);
 
   @override
   Future<Directory> getChartsDirectory() async => dir;
 
   @override
-  Future<void> storeRoute(NavigationRoute route) async { _routes[route.id] = route; }
+  Future<void> storeRoute(NavigationRoute route) async {
+    _routes[route.id] = route;
+  }
 
   @override
   Future<NavigationRoute?> loadRoute(String routeId) async => _routes[routeId];
 
   @override
-  Future<void> deleteRoute(String routeId) async { _routes.remove(routeId); }
+  Future<void> deleteRoute(String routeId) async {
+    _routes.remove(routeId);
+  }
 
   @override
   Future<List<NavigationRoute>> getAllRoutes() async => _routes.values.toList();
 
   @override
-  Future<void> storeWaypoint(Waypoint waypoint) async { _waypoints[waypoint.id] = waypoint; }
+  Future<void> storeWaypoint(Waypoint waypoint) async {
+    _waypoints[waypoint.id] = waypoint;
+  }
 
   @override
-  Future<Waypoint?> loadWaypoint(String waypointId) async => _waypoints[waypointId];
+  Future<Waypoint?> loadWaypoint(String waypointId) async =>
+      _waypoints[waypointId];
 
   @override
-  Future<void> updateWaypoint(Waypoint waypoint) async { _waypoints[waypoint.id] = waypoint; }
+  Future<void> updateWaypoint(Waypoint waypoint) async {
+    _waypoints[waypoint.id] = waypoint;
+  }
 
   @override
-  Future<void> deleteWaypoint(String waypointId) async { _waypoints.remove(waypointId); }
+  Future<void> deleteWaypoint(String waypointId) async {
+    _waypoints.remove(waypointId);
+  }
 
   @override
   Future<List<Waypoint>> getAllWaypoints() async => _waypoints.values.toList();
 
   @override
-  Future<void> storeStateCellMapping(String stateName, List<String> chartCells) async { _stateCells[stateName] = chartCells; }
+  Future<void> storeStateCellMapping(
+    String stateName,
+    List<String> chartCells,
+  ) async {
+    _stateCells[stateName] = chartCells;
+  }
 
   @override
-  Future<List<String>?> getStateCellMapping(String stateName) async => _stateCells[stateName];
+  Future<List<String>?> getStateCellMapping(String stateName) async =>
+      _stateCells[stateName];
 
   @override
-  Future<void> clearAllStateCellMappings() async { _stateCells.clear(); }
+  Future<void> clearAllStateCellMappings() async {
+    _stateCells.clear();
+  }
 
   @override
-  Future<List<Chart>> getChartsInBounds(GeographicBounds bounds) async => const [];
+  Future<List<Chart>> getChartsInBounds(GeographicBounds bounds) async =>
+      const [];
 
   @override
   Future<int> countChartsWithInvalidBounds() async => 0;
@@ -156,8 +196,17 @@ void main() {
     });
 
     test('requeues failed transient downloads when network recovers', () async {
-      service.attachQueueNotifier(DownloadQueueNotifier(logger: _TestLogger(), errorHandler: ErrorHandler(logger: _TestLogger())));
-      service.injectFailedDownload('CHT123', 'https://example.com/CHT123.zip', category: 'network');
+      service.attachQueueNotifier(
+        DownloadQueueNotifier(
+          logger: _TestLogger(),
+          errorHandler: ErrorHandler(logger: _TestLogger()),
+        ),
+      );
+      service.injectFailedDownload(
+        'CHT123',
+        'https://example.com/CHT123.zip',
+        category: 'network',
+      );
       expect(service.debugProgressMap['CHT123']?.status, DownloadStatus.failed);
       service.simulateNetworkStatus(NetworkStatus.connected);
       // After network recovery, chart should be queued (removed from failed map or at least in queue ids)

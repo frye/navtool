@@ -40,27 +40,58 @@ void main() {
     tearDown(() async {
       service.dispose();
       if (await tempDir.exists()) {
-        try { await tempDir.delete(recursive: true); } catch (_) {}
+        try {
+          await tempDir.delete(recursive: true);
+        } catch (_) {}
       }
     });
 
     test('classifies checksum mismatch', () async {
       const chartId = 'EC_CHKSUM';
       const url = 'https://example.com/chk.zip';
-      when(mockHttpClient.head(any, queryParameters: anyNamed('queryParameters'), options: anyNamed('options'), cancelToken: anyNamed('cancelToken'))) 
-        .thenAnswer((_) async => Response(requestOptions: RequestOptions(path: url), statusCode: 200, headers: Headers.fromMap({'content-length': ['32']})));
-      when(mockHttpClient.downloadFile(any, any, cancelToken: anyNamed('cancelToken'), onReceiveProgress: anyNamed('onReceiveProgress')))
-        .thenAnswer((invocation) async {
-          final savePath = invocation.positionalArguments[1] as String;
-          final f = File(savePath);
-          await f.create(recursive: true);
-          await f.writeAsBytes(Uint8List.fromList(List<int>.generate(32, (i)=>i)));
-          final cb = invocation.namedArguments[#onReceiveProgress] as void Function(int,int)?;
-          cb?.call(32, 32);
-        });
+      when(
+        mockHttpClient.head(
+          any,
+          queryParameters: anyNamed('queryParameters'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: url),
+          statusCode: 200,
+          headers: Headers.fromMap({
+            'content-length': ['32'],
+          }),
+        ),
+      );
+      when(
+        mockHttpClient.downloadFile(
+          any,
+          any,
+          cancelToken: anyNamed('cancelToken'),
+          onReceiveProgress: anyNamed('onReceiveProgress'),
+        ),
+      ).thenAnswer((invocation) async {
+        final savePath = invocation.positionalArguments[1] as String;
+        final f = File(savePath);
+        await f.create(recursive: true);
+        await f.writeAsBytes(
+          Uint8List.fromList(List<int>.generate(32, (i) => i)),
+        );
+        final cb =
+            invocation.namedArguments[#onReceiveProgress]
+                as void Function(int, int)?;
+        cb?.call(32, 32);
+      });
       // Wrong checksum triggers mismatch
       try {
-        await service.downloadChart(chartId, url, expectedChecksum: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+        await service.downloadChart(
+          chartId,
+          url,
+          expectedChecksum:
+              'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        );
         fail('Should throw AppError for checksum mismatch');
       } catch (_) {}
       final resume = await service.getResumeData(chartId);
@@ -72,26 +103,67 @@ void main() {
       const chartId = 'EC_DISK';
       const url = 'https://example.com/big.zip';
       // HEAD returns huge size > heuristic threshold to trigger storage AppError
-      when(mockHttpClient.head(any, queryParameters: anyNamed('queryParameters'), options: anyNamed('options'), cancelToken: anyNamed('cancelToken'))) 
-        .thenAnswer((_) async => Response(requestOptions: RequestOptions(path: url), statusCode: 200, headers: Headers.fromMap({'content-length': ['6442450944']}))); // 6GB
+      when(
+        mockHttpClient.head(
+          any,
+          queryParameters: anyNamed('queryParameters'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: url),
+          statusCode: 200,
+          headers: Headers.fromMap({
+            'content-length': ['6442450944'],
+          }),
+        ),
+      ); // 6GB
       try {
         await service.downloadChart(chartId, url);
         fail('Expected insufficient disk space error');
       } catch (_) {}
       final resume = await service.getResumeData(chartId);
       expect(resume, isNotNull);
-      expect(resume!.lastErrorCode, equals(DownloadErrorCode.insufficientDiskSpace));
+      expect(
+        resume!.lastErrorCode,
+        equals(DownloadErrorCode.insufficientDiskSpace),
+      );
     });
 
     test('classifies network timeout', () async {
       const chartId = 'EC_TIMEOUT';
       const url = 'https://example.com/timeout.zip';
       // HEAD small size success
-      when(mockHttpClient.head(any, queryParameters: anyNamed('queryParameters'), options: anyNamed('options'), cancelToken: anyNamed('cancelToken'))) 
-        .thenAnswer((_) async => Response(requestOptions: RequestOptions(path: url), statusCode: 200, headers: Headers.fromMap({'content-length': ['16']})));
+      when(
+        mockHttpClient.head(
+          any,
+          queryParameters: anyNamed('queryParameters'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: url),
+          statusCode: 200,
+          headers: Headers.fromMap({
+            'content-length': ['16'],
+          }),
+        ),
+      );
       // Force downloadFile to throw a timeout AppError
-      when(mockHttpClient.downloadFile(any, any, cancelToken: anyNamed('cancelToken'), onReceiveProgress: anyNamed('onReceiveProgress')))
-        .thenThrow(AppError.network('Network timeout occurred. Please check your connection.'));
+      when(
+        mockHttpClient.downloadFile(
+          any,
+          any,
+          cancelToken: anyNamed('cancelToken'),
+          onReceiveProgress: anyNamed('onReceiveProgress'),
+        ),
+      ).thenThrow(
+        AppError.network(
+          'Network timeout occurred. Please check your connection.',
+        ),
+      );
       try {
         await service.downloadChart(chartId, url);
         fail('Expected timeout error');
@@ -104,11 +176,34 @@ void main() {
     test('classifies generic network error', () async {
       const chartId = 'EC_NET';
       const url = 'https://example.com/net.zip';
-      when(mockHttpClient.head(any, queryParameters: anyNamed('queryParameters'), options: anyNamed('options'), cancelToken: anyNamed('cancelToken'))) 
-        .thenAnswer((_) async => Response(requestOptions: RequestOptions(path: url), statusCode: 200, headers: Headers.fromMap({'content-length': ['10']})));
-      when(mockHttpClient.downloadFile(any, any, cancelToken: anyNamed('cancelToken'), onReceiveProgress: anyNamed('onReceiveProgress')))
-        .thenThrow(AppError.network('Some transient network failure'));
-      try { await service.downloadChart(chartId, url); fail('expected network error'); } catch (_) {}
+      when(
+        mockHttpClient.head(
+          any,
+          queryParameters: anyNamed('queryParameters'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: url),
+          statusCode: 200,
+          headers: Headers.fromMap({
+            'content-length': ['10'],
+          }),
+        ),
+      );
+      when(
+        mockHttpClient.downloadFile(
+          any,
+          any,
+          cancelToken: anyNamed('cancelToken'),
+          onReceiveProgress: anyNamed('onReceiveProgress'),
+        ),
+      ).thenThrow(AppError.network('Some transient network failure'));
+      try {
+        await service.downloadChart(chartId, url);
+        fail('expected network error');
+      } catch (_) {}
       final resume = await service.getResumeData(chartId);
       expect(resume, isNotNull);
       expect(resume!.lastErrorCode, equals(DownloadErrorCode.network));

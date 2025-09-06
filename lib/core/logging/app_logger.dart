@@ -87,47 +87,50 @@ class ConsoleLogger implements AppLogger {
 
   @override
   void logError(AppError error) {
-    _log(
-      LogLevel.error,
-      error.message,
-      error.type.name,
-      error.originalError,
-    );
+    _log(LogLevel.error, error.message, error.type.name, error.originalError);
   }
 
-  void _log(LogLevel level, String message, String? context, Object? exception) {
+  void _log(
+    LogLevel level,
+    String message,
+    String? context,
+    Object? exception,
+  ) {
     // Check if we should log this level
     if (level.index < minimumLevel.index) return;
-    
+
     // Skip debug logs in production unless explicitly enabled
-    if (!kDebugMode && level == LogLevel.debug && !level.showInProduction) return;
+    if (!kDebugMode && level == LogLevel.debug && !level.showInProduction)
+      return;
 
     final buffer = StringBuffer();
-    
+
     // Add timestamp
     if (showTimestamp) {
       final now = DateTime.now();
-      buffer.write('[${now.hour.toString().padLeft(2, '0')}:'
-                   '${now.minute.toString().padLeft(2, '0')}:'
-                   '${now.second.toString().padLeft(2, '0')}] ');
+      buffer.write(
+        '[${now.hour.toString().padLeft(2, '0')}:'
+        '${now.minute.toString().padLeft(2, '0')}:'
+        '${now.second.toString().padLeft(2, '0')}] ',
+      );
     }
-    
+
     // Add level
     buffer.write('[${level.displayName}] ');
-    
+
     // Add context
     if (showContext && context != null) {
       buffer.write('[$context] ');
     }
-    
+
     // Add message
     buffer.write(message);
-    
+
     // Add exception if present
     if (exception != null) {
       buffer.write(' | Exception: $exception');
     }
-    
+
     // Print to console (this will only show in debug mode or when logging is enabled)
     debugPrint(buffer.toString());
   }

@@ -24,13 +24,13 @@ import '../../../helpers/noaa_test_utils.dart';
 import 'noaa_performance_test.mocks.dart';
 
 /// Performance tests for NOAA integration components
-/// 
+///
 /// These tests validate acceptable response times and memory usage
 /// for critical operations that will be used in marine environments.
 void main() {
   group('NOAA Performance Tests', () {
-  late NoaaChartDiscoveryServiceImpl discoveryService;
-  late StorageService storageService;
+    late NoaaChartDiscoveryServiceImpl discoveryService;
+    late StorageService storageService;
     late NoaaMetadataParserImpl metadataParser;
     late MockChartCatalogService mockCatalogService;
     late MockStateRegionMappingService mockMappingService;
@@ -42,8 +42,8 @@ void main() {
       mockMappingService = MockStateRegionMappingService();
       mockApiClient = MockNoaaApiClient();
       mockLogger = MockAppLogger();
-  configureNoaaApiClientMock(mockApiClient);
-      
+      configureNoaaApiClientMock(mockApiClient);
+
       storageService = InMemoryStorageServiceFake();
       discoveryService = createDiscoveryService(
         catalogService: mockCatalogService,
@@ -51,7 +51,7 @@ void main() {
         storageService: storageService,
         logger: mockLogger,
       );
-      
+
       metadataParser = NoaaMetadataParserImpl(logger: mockLogger);
     });
 
@@ -64,13 +64,15 @@ void main() {
             'type': 'Feature',
             'geometry': {
               'type': 'Polygon',
-              'coordinates': [[
-                [-123.0 + (i % 10) * 0.1, 37.0 + (i % 10) * 0.1],
-                [-122.0 + (i % 10) * 0.1, 37.0 + (i % 10) * 0.1],
-                [-122.0 + (i % 10) * 0.1, 38.0 + (i % 10) * 0.1],
-                [-123.0 + (i % 10) * 0.1, 38.0 + (i % 10) * 0.1],
-                [-123.0 + (i % 10) * 0.1, 37.0 + (i % 10) * 0.1]
-              ]]
+              'coordinates': [
+                [
+                  [-123.0 + (i % 10) * 0.1, 37.0 + (i % 10) * 0.1],
+                  [-122.0 + (i % 10) * 0.1, 37.0 + (i % 10) * 0.1],
+                  [-122.0 + (i % 10) * 0.1, 38.0 + (i % 10) * 0.1],
+                  [-123.0 + (i % 10) * 0.1, 38.0 + (i % 10) * 0.1],
+                  [-123.0 + (i % 10) * 0.1, 37.0 + (i % 10) * 0.1],
+                ],
+              ],
             },
             'properties': {
               'CHART': 'US5TEST${i.toString().padLeft(3, '0')}M',
@@ -80,30 +82,35 @@ void main() {
               'STATE': ['California', 'Florida', 'New York', 'Texas'][i % 4],
               'USAGE': ['Harbor', 'Approach', 'Coastal'][i % 3],
               'EDITION_NUM': '${(i % 20) + 1}',
-              'UPDATE_NUM': '${i % 5}'
-            }
+              'UPDATE_NUM': '${i % 5}',
+            },
           });
         }
 
         final largeCatalogData = {
           'type': 'FeatureCollection',
-          'features': largeFeatures
+          'features': largeFeatures,
         };
 
         // Act
         final stopwatch = Stopwatch()..start();
-        final result = await metadataParser.parseGeoJsonToCharts(largeCatalogData);
+        final result = await metadataParser.parseGeoJsonToCharts(
+          largeCatalogData,
+        );
         stopwatch.stop();
 
         // Assert - Should complete within 5 seconds for 1000 charts
         expect(stopwatch.elapsedMilliseconds, lessThan(5000));
         expect(result, hasLength(1000));
-        
+
         // Verify parsing accuracy on sample charts
         expect(result[0].id, equals('US5TEST000M'));
         expect(result[999].id, equals('US5TEST999M'));
-        
-  mockLogger.info('Parsed ${result.length} charts in ${stopwatch.elapsedMilliseconds}ms', context: 'Performance.CatalogParsing');
+
+        mockLogger.info(
+          'Parsed ${result.length} charts in ${stopwatch.elapsedMilliseconds}ms',
+          context: 'Performance.CatalogParsing',
+        );
       });
 
       test('should handle complex geometry parsing efficiently', () async {
@@ -129,7 +136,7 @@ void main() {
             'type': 'Feature',
             'geometry': {
               'type': 'MultiPolygon',
-              'coordinates': multiPolygonCoords
+              'coordinates': multiPolygonCoords,
             },
             'properties': {
               'CHART': 'US5COMPLEX${i.toString().padLeft(2, '0')}M',
@@ -139,65 +146,74 @@ void main() {
               'STATE': 'California',
               'USAGE': 'Harbor',
               'EDITION_NUM': '1',
-              'UPDATE_NUM': '0'
-            }
+              'UPDATE_NUM': '0',
+            },
           });
         }
 
         final complexCatalogData = {
           'type': 'FeatureCollection',
-          'features': complexFeatures
+          'features': complexFeatures,
         };
 
         // Act
         final stopwatch = Stopwatch()..start();
-        final result = await metadataParser.parseGeoJsonToCharts(complexCatalogData);
+        final result = await metadataParser.parseGeoJsonToCharts(
+          complexCatalogData,
+        );
         stopwatch.stop();
 
         // Assert - Complex geometry should still parse within 3 seconds
         expect(stopwatch.elapsedMilliseconds, lessThan(3000));
         expect(result, hasLength(100));
-        
+
         // Verify bounds calculation worked for complex geometries
         for (final chart in result) {
           expect(chart.bounds, isNotNull);
           expect(chart.bounds != null, isTrue);
         }
-        
-  mockLogger.info('Parsed ${result.length} complex geometries in ${stopwatch.elapsedMilliseconds}ms', context: 'Performance.Geometry');
+
+        mockLogger.info(
+          'Parsed ${result.length} complex geometries in ${stopwatch.elapsedMilliseconds}ms',
+          context: 'Performance.Geometry',
+        );
       });
 
       test('should demonstrate memory efficiency with large datasets', () async {
         // Arrange - Monitor memory usage during parsing
         final initialMemory = ProcessInfo.currentRss;
-        
-        // Create very large catalog (5000 charts)
-        final features = List.generate(5000, (i) => {
-          'type': 'Feature',
-          'geometry': {
-            'type': 'Polygon',
-            'coordinates': [[
-              [-123.0, 37.0], [-122.0, 37.0],
-              [-122.0, 38.0], [-123.0, 38.0],
-              [-123.0, 37.0]
-            ]]
-          },
-          'properties': {
-            'CHART': 'US5MEM${i.toString().padLeft(4, '0')}M',
-            'TITLE': 'Memory Test Chart $i',
-            'SCALE': 25000,
-            'LAST_UPDATE': '2024-01-15T00:00:00Z',
-            'STATE': 'California',
-            'USAGE': 'Harbor',
-            'EDITION_NUM': '1',
-            'UPDATE_NUM': '0'
-          }
-        });
 
-        final catalogData = {
-          'type': 'FeatureCollection',
-          'features': features
-        };
+        // Create very large catalog (5000 charts)
+        final features = List.generate(
+          5000,
+          (i) => {
+            'type': 'Feature',
+            'geometry': {
+              'type': 'Polygon',
+              'coordinates': [
+                [
+                  [-123.0, 37.0],
+                  [-122.0, 37.0],
+                  [-122.0, 38.0],
+                  [-123.0, 38.0],
+                  [-123.0, 37.0],
+                ],
+              ],
+            },
+            'properties': {
+              'CHART': 'US5MEM${i.toString().padLeft(4, '0')}M',
+              'TITLE': 'Memory Test Chart $i',
+              'SCALE': 25000,
+              'LAST_UPDATE': '2024-01-15T00:00:00Z',
+              'STATE': 'California',
+              'USAGE': 'Harbor',
+              'EDITION_NUM': '1',
+              'UPDATE_NUM': '0',
+            },
+          },
+        );
+
+        final catalogData = {'type': 'FeatureCollection', 'features': features};
 
         // Act
         final result = await metadataParser.parseGeoJsonToCharts(catalogData);
@@ -207,180 +223,275 @@ void main() {
         // Assert - Memory usage should be reasonable (<100MB for 5000 charts)
         expect(memoryIncrease, lessThan(100 * 1024 * 1024)); // 100MB limit
         expect(result, hasLength(5000));
-        
-  mockLogger.info('Memory increase: ${(memoryIncrease / 1024 / 1024).toStringAsFixed(2)}MB for ${result.length} charts', context: 'Performance.Memory');
+
+        mockLogger.info(
+          'Memory increase: ${(memoryIncrease / 1024 / 1024).toStringAsFixed(2)}MB for ${result.length} charts',
+          context: 'Performance.Memory',
+        );
       });
     });
 
     group('State Mapping Performance', () {
       test('should perform state-chart mapping within time limits', () async {
         // Arrange - Create large set of charts across multiple states
-        final chartCells = List.generate(1000, (i) => 'US5TEST${i.toString().padLeft(3, '0')}M');
-        final charts = chartCells.map((cellName) => Chart(
-          id: cellName,
-          title: 'Test Chart for $cellName',
-          scale: 25000,
-          bounds: GeographicBounds(
-            north: 25.0 + (cellName.hashCode % 100) * 0.01,
-            south: 24.0 + (cellName.hashCode % 100) * 0.01,
-            east: -80.0 + (cellName.hashCode % 100) * 0.01,
-            west: -81.0 + (cellName.hashCode % 100) * 0.01,
-          ),
-          lastUpdate: DateTime.now(),
-          state: ['Florida', 'California', 'New York', 'Texas'][cellName.hashCode % 4],
-          type: ChartType.harbor,
-          source: ChartSource.noaa,
-        )).toList();
+        final chartCells = List.generate(
+          1000,
+          (i) => 'US5TEST${i.toString().padLeft(3, '0')}M',
+        );
+        final charts = chartCells
+            .map(
+              (cellName) => Chart(
+                id: cellName,
+                title: 'Test Chart for $cellName',
+                scale: 25000,
+                bounds: GeographicBounds(
+                  north: 25.0 + (cellName.hashCode % 100) * 0.01,
+                  south: 24.0 + (cellName.hashCode % 100) * 0.01,
+                  east: -80.0 + (cellName.hashCode % 100) * 0.01,
+                  west: -81.0 + (cellName.hashCode % 100) * 0.01,
+                ),
+                lastUpdate: DateTime.now(),
+                state: [
+                  'Florida',
+                  'California',
+                  'New York',
+                  'Texas',
+                ][cellName.hashCode % 4],
+                type: ChartType.harbor,
+                source: ChartSource.noaa,
+              ),
+            )
+            .toList();
 
-        when(mockMappingService.getChartCellsForState('Florida'))
-            .thenAnswer((_) async {
-          await Future.delayed(const Duration(milliseconds: 10)); // Simulate processing
+        when(mockMappingService.getChartCellsForState('Florida')).thenAnswer((
+          _,
+        ) async {
+          await Future.delayed(
+            const Duration(milliseconds: 10),
+          ); // Simulate processing
           return chartCells.where((cell) => cell.hashCode % 4 == 0).toList();
         });
 
         // Act
         final stopwatch = Stopwatch()..start();
-        final result = await mockMappingService.getChartCellsForState('Florida');
+        final result = await mockMappingService.getChartCellsForState(
+          'Florida',
+        );
         stopwatch.stop();
 
         // Assert - State mapping should complete within 2 seconds
         expect(stopwatch.elapsedMilliseconds, lessThan(2000));
         expect(result, isNotEmpty);
-        
-  mockLogger.info('State mapping completed in ${stopwatch.elapsedMilliseconds}ms for ${result.length} charts', context: 'Performance.StateMapping');
+
+        mockLogger.info(
+          'State mapping completed in ${stopwatch.elapsedMilliseconds}ms for ${result.length} charts',
+          context: 'Performance.StateMapping',
+        );
       });
 
       test('should handle concurrent state queries efficiently', () async {
         // Arrange
-        final states = ['Florida', 'California', 'New York', 'Texas', 'Washington'];
-        
+        final states = [
+          'Florida',
+          'California',
+          'New York',
+          'Texas',
+          'Washington',
+        ];
+
         for (final state in states) {
-          when(mockMappingService.getChartCellsForState(state))
-              .thenAnswer((_) async {
+          when(mockMappingService.getChartCellsForState(state)).thenAnswer((
+            _,
+          ) async {
             await Future.delayed(const Duration(milliseconds: 50));
-            return List.generate(100, (i) => 'US5${state.substring(0, 2).toUpperCase()}${i.toString().padLeft(2, '0')}M');
+            return List.generate(
+              100,
+              (i) =>
+                  'US5${state.substring(0, 2).toUpperCase()}${i.toString().padLeft(2, '0')}M',
+            );
           });
         }
 
         // Act - Query multiple states concurrently
         final stopwatch = Stopwatch()..start();
-        final futures = states.map((state) => mockMappingService.getChartCellsForState(state));
+        final futures = states.map(
+          (state) => mockMappingService.getChartCellsForState(state),
+        );
         final results = await Future.wait(futures.cast<Future<dynamic>>());
         stopwatch.stop();
 
         // Assert - Concurrent queries should be faster than sequential
-        expect(stopwatch.elapsedMilliseconds, lessThan(200)); // Should be ~50ms (concurrent) not 250ms (sequential)
+        expect(
+          stopwatch.elapsedMilliseconds,
+          lessThan(200),
+        ); // Should be ~50ms (concurrent) not 250ms (sequential)
         expect(results, hasLength(5));
         expect(results.every((charts) => charts.length == 100), isTrue);
-        
-  mockLogger.info('Concurrent state queries completed in ${stopwatch.elapsedMilliseconds}ms', context: 'Performance.StateMapping');
+
+        mockLogger.info(
+          'Concurrent state queries completed in ${stopwatch.elapsedMilliseconds}ms',
+          context: 'Performance.StateMapping',
+        );
       });
     });
 
     group('Chart Discovery Performance', () {
-      test('should discover charts by state within performance requirements', () async {
-        // Arrange
-        const stateName = 'California';
-        final chartCells = List.generate(500, (i) => 'US5CA${i.toString().padLeft(3, '0')}M');
-        final charts = chartCells.map((cellName) => Chart(
-          id: cellName,
-          title: 'California Chart $cellName',
-          scale: 25000,
-          bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
-          lastUpdate: DateTime.now(),
-          state: stateName,
-          type: ChartType.harbor,
-          source: ChartSource.noaa,
-        )).toList();
+      test(
+        'should discover charts by state within performance requirements',
+        () async {
+          // Arrange
+          const stateName = 'California';
+          final chartCells = List.generate(
+            500,
+            (i) => 'US5CA${i.toString().padLeft(3, '0')}M',
+          );
+          final charts = chartCells
+              .map(
+                (cellName) => Chart(
+                  id: cellName,
+                  title: 'California Chart $cellName',
+                  scale: 25000,
+                  bounds: GeographicBounds(
+                    north: 38.0,
+                    south: 37.0,
+                    east: -122.0,
+                    west: -123.0,
+                  ),
+                  lastUpdate: DateTime.now(),
+                  state: stateName,
+                  type: ChartType.harbor,
+                  source: ChartSource.noaa,
+                ),
+              )
+              .toList();
 
-        // Mock bootstrap method
-        when(mockCatalogService.ensureCatalogBootstrapped())
-            .thenAnswer((_) async {});
+          // Mock bootstrap method
+          when(
+            mockCatalogService.ensureCatalogBootstrapped(),
+          ).thenAnswer((_) async {});
 
-        when(mockMappingService.getChartCellsForState(stateName))
-            .thenAnswer((_) async => chartCells);
-        
-        for (int i = 0; i < chartCells.length; i++) {
-          when(mockCatalogService.getCachedChart(chartCells[i]))
-              .thenAnswer((_) async => charts[i]);
-        }
+          when(
+            mockMappingService.getChartCellsForState(stateName),
+          ).thenAnswer((_) async => chartCells);
 
-        // Act
-        final stopwatch = Stopwatch()..start();
-        final result = await discoveryService.discoverChartsByState(stateName);
-        stopwatch.stop();
+          for (int i = 0; i < chartCells.length; i++) {
+            when(
+              mockCatalogService.getCachedChart(chartCells[i]),
+            ).thenAnswer((_) async => charts[i]);
+          }
 
-        // Assert - Discovery should complete within 2 seconds for 500 charts
-        expect(stopwatch.elapsedMilliseconds, lessThan(2000));
-        expect(result, hasLength(500));
-        
-  mockLogger.info('Chart discovery completed in ${stopwatch.elapsedMilliseconds}ms for ${result.length} charts', context: 'Performance.Discovery');
-      });
+          // Act
+          final stopwatch = Stopwatch()..start();
+          final result = await discoveryService.discoverChartsByState(
+            stateName,
+          );
+          stopwatch.stop();
 
-      test('should handle search queries with large result sets efficiently', () async {
-        // Arrange
-        const query = 'Harbor';
-        final searchResults = List.generate(1000, (i) => Chart(
-          id: 'US5SEARCH${i.toString().padLeft(3, '0')}M',
-          title: 'Harbor Chart $i',
-          scale: 25000,
-          bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
-          lastUpdate: DateTime.now(),
-          state: 'California',
-          type: ChartType.harbor,
-          source: ChartSource.noaa,
-        ));
+          // Assert - Discovery should complete within 2 seconds for 500 charts
+          expect(stopwatch.elapsedMilliseconds, lessThan(2000));
+          expect(result, hasLength(500));
 
-        when(mockCatalogService.searchCharts(query))
-            .thenAnswer((_) async {
-          await Future.delayed(const Duration(milliseconds: 100)); // Simulate search processing
-          return searchResults;
-        });
+          mockLogger.info(
+            'Chart discovery completed in ${stopwatch.elapsedMilliseconds}ms for ${result.length} charts',
+            context: 'Performance.Discovery',
+          );
+        },
+      );
 
-        // Act
-        final stopwatch = Stopwatch()..start();
-        final result = await discoveryService.searchCharts(query);
-        stopwatch.stop();
+      test(
+        'should handle search queries with large result sets efficiently',
+        () async {
+          // Arrange
+          const query = 'Harbor';
+          final searchResults = List.generate(
+            1000,
+            (i) => Chart(
+              id: 'US5SEARCH${i.toString().padLeft(3, '0')}M',
+              title: 'Harbor Chart $i',
+              scale: 25000,
+              bounds: GeographicBounds(
+                north: 38.0,
+                south: 37.0,
+                east: -122.0,
+                west: -123.0,
+              ),
+              lastUpdate: DateTime.now(),
+              state: 'California',
+              type: ChartType.harbor,
+              source: ChartSource.noaa,
+            ),
+          );
 
-        // Assert - Search should complete within 1 second
-        expect(stopwatch.elapsedMilliseconds, lessThan(1000));
-        expect(result, hasLength(1000));
-        
-  mockLogger.info('Chart search completed in ${stopwatch.elapsedMilliseconds}ms for ${result.length} results', context: 'Performance.Search');
-      });
+          when(mockCatalogService.searchCharts(query)).thenAnswer((_) async {
+            await Future.delayed(
+              const Duration(milliseconds: 100),
+            ); // Simulate search processing
+            return searchResults;
+          });
+
+          // Act
+          final stopwatch = Stopwatch()..start();
+          final result = await discoveryService.searchCharts(query);
+          stopwatch.stop();
+
+          // Assert - Search should complete within 1 second
+          expect(stopwatch.elapsedMilliseconds, lessThan(1000));
+          expect(result, hasLength(1000));
+
+          mockLogger.info(
+            'Chart search completed in ${stopwatch.elapsedMilliseconds}ms for ${result.length} results',
+            context: 'Performance.Search',
+          );
+        },
+      );
     });
 
     group('Database Query Performance', () {
-      test('should demonstrate acceptable database performance with large datasets', () async {
-        // Arrange - Simulate database queries with large result sets
-        final largeChartSet = List.generate(2000, (i) => Chart(
-          id: 'US5DB${i.toString().padLeft(4, '0')}M',
-          title: 'Database Chart $i',
-          scale: 25000,
-          bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
-          lastUpdate: DateTime.now(),
-          state: 'California',
-          type: ChartType.harbor,
-          source: ChartSource.noaa,
-        ));
+      test(
+        'should demonstrate acceptable database performance with large datasets',
+        () async {
+          // Arrange - Simulate database queries with large result sets
+          final largeChartSet = List.generate(
+            2000,
+            (i) => Chart(
+              id: 'US5DB${i.toString().padLeft(4, '0')}M',
+              title: 'Database Chart $i',
+              scale: 25000,
+              bounds: GeographicBounds(
+                north: 38.0,
+                south: 37.0,
+                east: -122.0,
+                west: -123.0,
+              ),
+              lastUpdate: DateTime.now(),
+              state: 'California',
+              type: ChartType.harbor,
+              source: ChartSource.noaa,
+            ),
+          );
 
-        when(mockCatalogService.searchCharts(any))
-            .thenAnswer((_) async {
-          await Future.delayed(const Duration(milliseconds: 200)); // Simulate DB query
-          return largeChartSet;
-        });
+          when(mockCatalogService.searchCharts(any)).thenAnswer((_) async {
+            await Future.delayed(
+              const Duration(milliseconds: 200),
+            ); // Simulate DB query
+            return largeChartSet;
+          });
 
-        // Act
-        final stopwatch = Stopwatch()..start();
-        final result = await mockCatalogService.searchCharts('test');
-        stopwatch.stop();
+          // Act
+          final stopwatch = Stopwatch()..start();
+          final result = await mockCatalogService.searchCharts('test');
+          stopwatch.stop();
 
-        // Assert - Database queries should complete within 1 second
-        expect(stopwatch.elapsedMilliseconds, lessThan(1000));
-        expect(result, hasLength(2000));
-        
-  mockLogger.info('Database query completed in ${stopwatch.elapsedMilliseconds}ms for ${result.length} charts', context: 'Performance.Database');
-      });
+          // Assert - Database queries should complete within 1 second
+          expect(stopwatch.elapsedMilliseconds, lessThan(1000));
+          expect(result, hasLength(2000));
+
+          mockLogger.info(
+            'Database query completed in ${stopwatch.elapsedMilliseconds}ms for ${result.length} charts',
+            context: 'Performance.Database',
+          );
+        },
+      );
     });
 
     group('Network Performance', () {
@@ -389,22 +500,26 @@ void main() {
         final catalogFile = File('test/fixtures/noaa_catalog_sample.json');
         if (await catalogFile.exists()) {
           final catalogJson = await catalogFile.readAsString();
-          
+
           // Replicate the sample data 100 times to simulate large response
           final catalogData = jsonDecode(catalogJson) as Map<String, dynamic>;
           final originalFeatures = catalogData['features'] as List;
           final largeFeatures = <Map<String, dynamic>>[];
-          
+
           for (int i = 0; i < 100; i++) {
             for (int j = 0; j < originalFeatures.length; j++) {
-              final feature = Map<String, dynamic>.from(originalFeatures[j] as Map<String, dynamic>);
-              final properties = Map<String, dynamic>.from(feature['properties'] as Map<String, dynamic>);
+              final feature = Map<String, dynamic>.from(
+                originalFeatures[j] as Map<String, dynamic>,
+              );
+              final properties = Map<String, dynamic>.from(
+                feature['properties'] as Map<String, dynamic>,
+              );
               properties['CHART'] = '${properties['CHART']}_${i}_$j';
               feature['properties'] = properties;
               largeFeatures.add(feature);
             }
           }
-          
+
           catalogData['features'] = largeFeatures;
 
           // Act
@@ -415,62 +530,80 @@ void main() {
           // Assert - Should process large API response within 3 seconds
           expect(stopwatch.elapsedMilliseconds, lessThan(3000));
           expect(result.length, equals(500)); // 5 original * 100 replications
-          
-          mockLogger.info('Processed large API response in ${stopwatch.elapsedMilliseconds}ms for ${result.length} charts', context: 'Performance.Network');
+
+          mockLogger.info(
+            'Processed large API response in ${stopwatch.elapsedMilliseconds}ms for ${result.length} charts',
+            context: 'Performance.Network',
+          );
         } else {
-          mockLogger.info('Skipping network performance test - sample catalog file not found', context: 'Performance.Network');
+          mockLogger.info(
+            'Skipping network performance test - sample catalog file not found',
+            context: 'Performance.Network',
+          );
         }
       });
 
-      test('should demonstrate acceptable memory usage during API processing', () async {
-        // Arrange - Monitor memory during processing
-        final initialMemory = ProcessInfo.currentRss;
-        
-        // Simulate processing multiple large API responses
-        for (int i = 0; i < 10; i++) {
-          final catalogData = {
-            'type': 'FeatureCollection',
-            'features': List.generate(200, (j) => {
-              'type': 'Feature',
-              'geometry': {
-                'type': 'Polygon',
-                'coordinates': [[
-                  [-123.0, 37.0], [-122.0, 37.0],
-                  [-122.0, 38.0], [-123.0, 38.0],
-                  [-123.0, 37.0]
-                ]]
-              },
-              'properties': {
-                'CHART': 'US5MEM${i}_${j.toString().padLeft(3, '0')}M',
-                'TITLE': 'Memory Test Chart $i-$j',
-                'SCALE': 25000,
-                'LAST_UPDATE': '2024-01-15T00:00:00Z',
-                'STATE': 'California',
-                'USAGE': 'Harbor',
-                'EDITION_NUM': '1',
-                'UPDATE_NUM': '0'
-              }
-            })
-          };
+      test(
+        'should demonstrate acceptable memory usage during API processing',
+        () async {
+          // Arrange - Monitor memory during processing
+          final initialMemory = ProcessInfo.currentRss;
 
-          await metadataParser.parseGeoJsonToCharts(catalogData);
-        }
+          // Simulate processing multiple large API responses
+          for (int i = 0; i < 10; i++) {
+            final catalogData = {
+              'type': 'FeatureCollection',
+              'features': List.generate(
+                200,
+                (j) => {
+                  'type': 'Feature',
+                  'geometry': {
+                    'type': 'Polygon',
+                    'coordinates': [
+                      [
+                        [-123.0, 37.0],
+                        [-122.0, 37.0],
+                        [-122.0, 38.0],
+                        [-123.0, 38.0],
+                        [-123.0, 37.0],
+                      ],
+                    ],
+                  },
+                  'properties': {
+                    'CHART': 'US5MEM${i}_${j.toString().padLeft(3, '0')}M',
+                    'TITLE': 'Memory Test Chart $i-$j',
+                    'SCALE': 25000,
+                    'LAST_UPDATE': '2024-01-15T00:00:00Z',
+                    'STATE': 'California',
+                    'USAGE': 'Harbor',
+                    'EDITION_NUM': '1',
+                    'UPDATE_NUM': '0',
+                  },
+                },
+              ),
+            };
 
-        final finalMemory = ProcessInfo.currentRss;
-        final memoryIncrease = finalMemory - initialMemory;
+            await metadataParser.parseGeoJsonToCharts(catalogData);
+          }
 
-        // Assert - Memory usage should be reasonable for multiple API responses
-        expect(memoryIncrease, lessThan(50 * 1024 * 1024)); // 50MB limit
-        
-        mockLogger.info('Memory increase after processing 10 API responses: ${(memoryIncrease / 1024 / 1024).toStringAsFixed(2)}MB', context: 'Performance.NetworkMemory');
-      });
+          final finalMemory = ProcessInfo.currentRss;
+          final memoryIncrease = finalMemory - initialMemory;
+
+          // Assert - Memory usage should be reasonable for multiple API responses
+          expect(memoryIncrease, lessThan(50 * 1024 * 1024)); // 50MB limit
+
+          mockLogger.info(
+            'Memory increase after processing 10 API responses: ${(memoryIncrease / 1024 / 1024).toStringAsFixed(2)}MB',
+            context: 'Performance.NetworkMemory',
+          );
+        },
+      );
     });
 
     group('Marine Environment Performance', () {
       test('should handle slow connection simulation with timeouts', () async {
         // Arrange - Simulate slow marine internet connection
-        when(mockApiClient.fetchChartCatalog())
-            .thenAnswer((_) async {
+        when(mockApiClient.fetchChartCatalog()).thenAnswer((_) async {
           await Future.delayed(const Duration(seconds: 2)); // Slow connection
           return '{"type":"FeatureCollection","features":[]}';
         });
@@ -485,27 +618,38 @@ void main() {
         stopwatch.stop();
 
         // Assert - Should handle slow connections gracefully
-        mockLogger.info('Slow connection simulation completed in ${stopwatch.elapsedMilliseconds}ms', context: 'Performance.Marine');
+        mockLogger.info(
+          'Slow connection simulation completed in ${stopwatch.elapsedMilliseconds}ms',
+          context: 'Performance.Marine',
+        );
         // Test passes regardless of timeout - demonstrates handling
       });
 
       test('should demonstrate resilience under high memory pressure', () async {
         // Arrange - Create memory pressure scenario
         final memoryIntensiveData = <List<Chart>>[];
-        
+
         try {
           // Create multiple large chart collections
           for (int i = 0; i < 5; i++) {
-            final charts = List.generate(1000, (j) => Chart(
-              id: 'US5PRESSURE${i}_${j.toString().padLeft(3, '0')}M',
-              title: 'Memory Pressure Chart $i-$j',
-              scale: 25000,
-              bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
-              lastUpdate: DateTime.now(),
-              state: 'California',
-              type: ChartType.harbor,
-              source: ChartSource.noaa,
-            ));
+            final charts = List.generate(
+              1000,
+              (j) => Chart(
+                id: 'US5PRESSURE${i}_${j.toString().padLeft(3, '0')}M',
+                title: 'Memory Pressure Chart $i-$j',
+                scale: 25000,
+                bounds: GeographicBounds(
+                  north: 38.0,
+                  south: 37.0,
+                  east: -122.0,
+                  west: -123.0,
+                ),
+                lastUpdate: DateTime.now(),
+                state: 'California',
+                type: ChartType.harbor,
+                source: ChartSource.noaa,
+              ),
+            );
             memoryIntensiveData.add(charts);
           }
 
@@ -519,8 +663,10 @@ void main() {
 
           // Assert - Should handle memory pressure gracefully
           expect(totalCharts, equals(5000));
-          mockLogger.info('Processed ${totalCharts} charts under memory pressure in ${stopwatch.elapsedMilliseconds}ms', context: 'Performance.MemoryPressure');
-          
+          mockLogger.info(
+            'Processed ${totalCharts} charts under memory pressure in ${stopwatch.elapsedMilliseconds}ms',
+            context: 'Performance.MemoryPressure',
+          );
         } finally {
           // Clean up memory
           memoryIntensiveData.clear();
@@ -535,7 +681,8 @@ class ProcessInfo {
   static int get currentRss {
     // This is a simplified approach - in real implementation you might use
     // platform-specific APIs to get actual memory usage
-    return DateTime.now().millisecondsSinceEpoch % 100000000; // Simplified for testing
+    return DateTime.now().millisecondsSinceEpoch %
+        100000000; // Simplified for testing
   }
 }
 
@@ -550,9 +697,11 @@ extension NumMath on double {
     // Simplified cosine for testing - use dart:math in production
     return 1.0 - (this * this) / 2 + (this * this * this * this) / 24;
   }
-  
+
   double sin() {
     // Simplified sine for testing - use dart:math in production
-    return this - (this * this * this) / 6 + (this * this * this * this * this) / 120;
+    return this -
+        (this * this * this) / 6 +
+        (this * this * this * this * this) / 120;
   }
 }

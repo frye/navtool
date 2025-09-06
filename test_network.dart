@@ -2,10 +2,11 @@ import 'package:http/http.dart' as http;
 
 void main() async {
   print('Testing network connectivity to NOAA API endpoints...');
-  
+
   // Test basic connectivity
-  final catalogUrl = 'https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/ENCOnline/MapServer/exts/MaritimeChartService/WMSServer?request=GetCapabilities&service=WMS';
-  
+  final catalogUrl =
+      'https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/ENCOnline/MapServer/exts/MaritimeChartService/WMSServer?request=GetCapabilities&service=WMS';
+
   try {
     print('Testing catalog endpoint: $catalogUrl');
     final response = await http.get(Uri.parse(catalogUrl));
@@ -20,12 +21,12 @@ void main() async {
   } catch (e) {
     print('✗ Error accessing catalog endpoint: $e');
   }
-  
+
   print('\n');
-  
+
   // Test chart download endpoint
   final downloadUrl = 'https://charts.noaa.gov/ENCs/';
-  
+
   try {
     print('Testing download endpoint: $downloadUrl');
     final response = await http.head(Uri.parse(downloadUrl));

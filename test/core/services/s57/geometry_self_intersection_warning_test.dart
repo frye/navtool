@@ -20,7 +20,9 @@ void main() {
       final selfIntersectingCoords = fixtures.createSelfIntersectingPolygon();
 
       // Act
-      final hasSelfIntersection = assembler.detectSelfIntersection(selfIntersectingCoords);
+      final hasSelfIntersection = assembler.detectSelfIntersection(
+        selfIntersectingCoords,
+      );
 
       // Assert
       expect(hasSelfIntersection, isTrue);
@@ -37,7 +39,9 @@ void main() {
       ];
 
       // Act
-      final hasSelfIntersection = assembler.detectSelfIntersection(simpleCoords);
+      final hasSelfIntersection = assembler.detectSelfIntersection(
+        simpleCoords,
+      );
 
       // Assert
       expect(hasSelfIntersection, isFalse);
@@ -56,24 +60,38 @@ void main() {
 
       // Assert
       expect(validationResult.hasWarnings, isTrue);
-      expect(validationResult.warnings.any((w) => w.type == 'self_intersection'), isTrue);
-      expect(validationResult.warnings.any((w) => w.message.contains('Self-intersection detected')), isTrue);
-    });
-
-    test('should not detect self-intersection in valid polygon when enabled', () {
-      // Arrange - Use DEPARE polygon from fixtures
-      final pointers = fixtures.getFeaturePointers('DEPARE');
-      final geometry = assembler.buildGeometry(pointers);
-
-      // Act
-      final validationResult = S57GeometryValidator.validate(
-        geometry,
-        checkSelfIntersection: true,
+      expect(
+        validationResult.warnings.any((w) => w.type == 'self_intersection'),
+        isTrue,
       );
-
-      // Assert
-      expect(validationResult.warnings.any((w) => w.type == 'self_intersection'), isFalse);
+      expect(
+        validationResult.warnings.any(
+          (w) => w.message.contains('Self-intersection detected'),
+        ),
+        isTrue,
+      );
     });
+
+    test(
+      'should not detect self-intersection in valid polygon when enabled',
+      () {
+        // Arrange - Use DEPARE polygon from fixtures
+        final pointers = fixtures.getFeaturePointers('DEPARE');
+        final geometry = assembler.buildGeometry(pointers);
+
+        // Act
+        final validationResult = S57GeometryValidator.validate(
+          geometry,
+          checkSelfIntersection: true,
+        );
+
+        // Assert
+        expect(
+          validationResult.warnings.any((w) => w.type == 'self_intersection'),
+          isFalse,
+        );
+      },
+    );
 
     test('should skip self-intersection check when disabled', () {
       // Arrange
@@ -87,7 +105,10 @@ void main() {
       );
 
       // Assert
-      expect(validationResult.warnings.any((w) => w.type == 'self_intersection'), isFalse);
+      expect(
+        validationResult.warnings.any((w) => w.type == 'self_intersection'),
+        isFalse,
+      );
     });
 
     test('should handle triangle without self-intersection', () {
@@ -100,7 +121,9 @@ void main() {
       ];
 
       // Act
-      final hasSelfIntersection = assembler.detectSelfIntersection(triangleCoords);
+      final hasSelfIntersection = assembler.detectSelfIntersection(
+        triangleCoords,
+      );
 
       // Assert
       expect(hasSelfIntersection, isFalse);
@@ -119,7 +142,9 @@ void main() {
       ];
 
       // Act
-      final hasSelfIntersection = assembler.detectSelfIntersection(figureEightCoords);
+      final hasSelfIntersection = assembler.detectSelfIntersection(
+        figureEightCoords,
+      );
 
       // Assert
       expect(hasSelfIntersection, isTrue);
@@ -133,7 +158,9 @@ void main() {
       ];
 
       // Act
-      final hasSelfIntersection = assembler.detectSelfIntersection(degenerateCoords);
+      final hasSelfIntersection = assembler.detectSelfIntersection(
+        degenerateCoords,
+      );
 
       // Assert
       expect(hasSelfIntersection, isFalse); // Too few points to self-intersect
@@ -153,7 +180,10 @@ void main() {
       final hasSelfIntersection = assembler.detectSelfIntersection(coords);
 
       // Assert
-      expect(hasSelfIntersection, isFalse); // Adjacent segments share endpoints but don't cross
+      expect(
+        hasSelfIntersection,
+        isFalse,
+      ); // Adjacent segments share endpoints but don't cross
     });
 
     test('should validate complex polygon with multiple rings', () {
@@ -165,7 +195,7 @@ void main() {
         const Coordinate(0.0, 4.0),
         const Coordinate(0.0, 0.0),
       ];
-      
+
       final innerRing = [
         const Coordinate(1.0, 1.0),
         const Coordinate(3.0, 1.0),
@@ -183,7 +213,10 @@ void main() {
       );
 
       // Assert
-      expect(validationResult.warnings.any((w) => w.type == 'self_intersection'), isFalse);
+      expect(
+        validationResult.warnings.any((w) => w.type == 'self_intersection'),
+        isFalse,
+      );
     });
 
     test('should provide detailed warning context for self-intersection', () {
@@ -198,9 +231,10 @@ void main() {
       );
 
       // Assert
-      final selfIntersectionWarning = validationResult.warnings
-          .firstWhere((w) => w.type == 'self_intersection');
-      
+      final selfIntersectionWarning = validationResult.warnings.firstWhere(
+        (w) => w.type == 'self_intersection',
+      );
+
       expect(selfIntersectionWarning.context.containsKey('ring'), isTrue);
       expect(selfIntersectionWarning.context['ring'], equals(0));
       expect(selfIntersectionWarning.message, contains('ring 0'));
@@ -218,10 +252,15 @@ void main() {
       ];
 
       // Act
-      final hasSelfIntersection = assembler.detectSelfIntersection(collinearCoords);
+      final hasSelfIntersection = assembler.detectSelfIntersection(
+        collinearCoords,
+      );
 
       // Assert
-      expect(hasSelfIntersection, isFalse); // Collinear points don't constitute intersection
+      expect(
+        hasSelfIntersection,
+        isFalse,
+      ); // Collinear points don't constitute intersection
     });
 
     test('should perform within reasonable time for moderate polygon size', () {
@@ -229,13 +268,18 @@ void main() {
       final coords = <Coordinate>[];
       const numVertices = 20;
       const radius = 10.0;
-      
+
       for (int i = 0; i < numVertices; i++) {
         final angle = 2 * 3.14159 * i / numVertices;
-        coords.add(Coordinate(
-          radius * 1.2 * (i % 2 == 0 ? 1 : 0.8) * math.cos(angle), // Slightly irregular
-          radius * 1.2 * (i % 2 == 0 ? 1 : 0.8) * math.sin(angle),
-        ));
+        coords.add(
+          Coordinate(
+            radius *
+                1.2 *
+                (i % 2 == 0 ? 1 : 0.8) *
+                math.cos(angle), // Slightly irregular
+            radius * 1.2 * (i % 2 == 0 ? 1 : 0.8) * math.sin(angle),
+          ),
+        );
       }
       coords.add(coords.first); // Close polygon
 
@@ -248,8 +292,12 @@ void main() {
 
       // Assert
       expect(hasSelfIntersection, isFalse);
-      expect(stopwatch.elapsedMilliseconds, lessThan(100), 
-             reason: 'Self-intersection check should complete quickly for moderate polygon sizes');
+      expect(
+        stopwatch.elapsedMilliseconds,
+        lessThan(100),
+        reason:
+            'Self-intersection check should complete quickly for moderate polygon sizes',
+      );
     });
   });
 }

@@ -10,13 +10,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:navtool/app/app.dart';
 
 void main() {
-  testWidgets('App loads and shows welcome message', (WidgetTester tester) async {
+  testWidgets('App loads and shows welcome message', (
+    WidgetTester tester,
+  ) async {
     // Build our app with ProviderScope and trigger a frame.
-    await tester.pumpWidget(
-      const ProviderScope(
-        child: MyApp(),
-      ),
-    );
+    await tester.pumpWidget(const ProviderScope(child: MyApp()));
 
     // Verify that our app shows the welcome message.
     expect(find.text('Welcome to NavTool'), findsOneWidget);

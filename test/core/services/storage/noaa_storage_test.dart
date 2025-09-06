@@ -24,7 +24,7 @@ void main() {
 
     setUp(() async {
       mockLogger = MockAppLogger();
-      
+
       // Create in-memory database for testing
       database = await openDatabase(
         inMemoryDatabasePath,
@@ -36,12 +36,12 @@ void main() {
           // This will be implemented by the service
         },
       );
-      
+
       storageService = DatabaseStorageService(
         logger: mockLogger,
         testDatabase: database,
       );
-      
+
       await storageService.initialize();
     });
 
@@ -52,10 +52,8 @@ void main() {
     group('Database Schema Version 2', () {
       test('should create NOAA-specific chart columns', () async {
         // Arrange & Act
-        final columns = await database.rawQuery(
-          "PRAGMA table_info(charts)",
-        );
-        
+        final columns = await database.rawQuery("PRAGMA table_info(charts)");
+
         // Assert
         final columnNames = columns.map((c) => c['name'] as String).toList();
         expect(columnNames, contains('cell_name'));
@@ -76,11 +74,11 @@ void main() {
         final tables = await database.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table'",
         );
-        
+
         // Assert
         final tableNames = tables.map((t) => t['name'] as String).toList();
         expect(tableNames, contains('state_chart_mapping'));
-        
+
         // Check table structure
         final columns = await database.rawQuery(
           "PRAGMA table_info(state_chart_mapping)",
@@ -99,11 +97,11 @@ void main() {
         final tables = await database.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table'",
         );
-        
+
         // Assert
         final tableNames = tables.map((t) => t['name'] as String).toList();
         expect(tableNames, contains('chart_catalog_cache'));
-        
+
         // Check table structure
         final columns = await database.rawQuery(
           "PRAGMA table_info(chart_catalog_cache)",
@@ -124,11 +122,11 @@ void main() {
         final tables = await database.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table'",
         );
-        
+
         // Assert
         final tableNames = tables.map((t) => t['name'] as String).toList();
         expect(tableNames, contains('chart_update_history'));
-        
+
         // Check table structure
         final columns = await database.rawQuery(
           "PRAGMA table_info(chart_update_history)",
@@ -148,7 +146,7 @@ void main() {
         final indexes = await database.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='index'",
         );
-        
+
         // Assert
         final indexNames = indexes.map((i) => i['name'] as String).toList();
         expect(indexNames, contains('idx_charts_cell_name'));
@@ -222,10 +220,13 @@ void main() {
 
       test('should handle batch insert of NOAA charts efficiently', () async {
         // Arrange
-        final charts = List.generate(50, (i) => _createNoaaChart(
-          id: 'chart_$i',
-          cellName: 'US5TX${(22 + i).toString().padLeft(2, '0')}M',
-        ));
+        final charts = List.generate(
+          50,
+          (i) => _createNoaaChart(
+            id: 'chart_$i',
+            cellName: 'US5TX${(22 + i).toString().padLeft(2, '0')}M',
+          ),
+        );
 
         // Act
         final stopwatch = Stopwatch()..start();
@@ -282,7 +283,9 @@ void main() {
         );
 
         expect(result.length, equals(3));
-        final storedCellNames = result.map((r) => r['cell_name'] as String).toList();
+        final storedCellNames = result
+            .map((r) => r['cell_name'] as String)
+            .toList();
         expect(storedCellNames, containsAll(cellNames));
       });
 
@@ -293,7 +296,9 @@ void main() {
         await storageService.storeStateCellMapping(stateName, cellNames);
 
         // Act
-        final retrievedCellNames = await storageService.getStateCellMapping(stateName);
+        final retrievedCellNames = await storageService.getStateCellMapping(
+          stateName,
+        );
 
         // Assert
         expect(retrievedCellNames, isNotNull);
@@ -334,7 +339,9 @@ void main() {
 
       test('should return null for non-existent state mapping', () async {
         // Act
-        final result = await storageService.getStateCellMapping('NonExistentState');
+        final result = await storageService.getStateCellMapping(
+          'NonExistentState',
+        );
 
         // Assert
         expect(result, isNull);
@@ -377,9 +384,16 @@ void main() {
         await storageService.updateChartCatalog(catalogData);
 
         // Manually set expiration to past
-        await database.update('chart_catalog_cache', 
-          {'expires_at': DateTime.now().subtract(const Duration(hours: 1)).toIso8601String()},
-          where: 'catalog_type = ?', whereArgs: ['noaa']);
+        await database.update(
+          'chart_catalog_cache',
+          {
+            'expires_at': DateTime.now()
+                .subtract(const Duration(hours: 1))
+                .toIso8601String(),
+          },
+          where: 'catalog_type = ?',
+          whereArgs: ['noaa'],
+        );
 
         // Act
         final retrievedData = await storageService.getCachedCatalog();
@@ -392,15 +406,19 @@ void main() {
         // Arrange
         const catalogData = '{"type":"FeatureCollection","features":[]}';
         await storageService.updateChartCatalog(catalogData);
-        
+
         // Add expired entry
         await database.insert('chart_catalog_cache', {
           'catalog_type': 'noaa',
           'catalog_data': '{"expired": true}',
           'catalog_hash': 'expired_hash',
-          'last_updated': DateTime.now().subtract(const Duration(days: 2)).toIso8601String(),
+          'last_updated': DateTime.now()
+              .subtract(const Duration(days: 2))
+              .toIso8601String(),
           'is_valid': 1,
-          'expires_at': DateTime.now().subtract(const Duration(hours: 1)).toIso8601String(),
+          'expires_at': DateTime.now()
+              .subtract(const Duration(hours: 1))
+              .toIso8601String(),
         });
 
         // Act
@@ -420,9 +438,21 @@ void main() {
         await storageService.storeChart(chart, List.generate(100, (i) => i));
 
         // Act
-        final updateAvailable1 = await storageService.isChartUpdateAvailable('US5TX22M', 15, 3);
-        final updateAvailable2 = await storageService.isChartUpdateAvailable('US5TX22M', 14, 2);
-        final updateAvailable3 = await storageService.isChartUpdateAvailable('US5TX22M', 13, 5);
+        final updateAvailable1 = await storageService.isChartUpdateAvailable(
+          'US5TX22M',
+          15,
+          3,
+        );
+        final updateAvailable2 = await storageService.isChartUpdateAvailable(
+          'US5TX22M',
+          14,
+          2,
+        );
+        final updateAvailable3 = await storageService.isChartUpdateAvailable(
+          'US5TX22M',
+          13,
+          5,
+        );
 
         // Assert
         expect(updateAvailable1, isTrue); // Higher edition
@@ -454,15 +484,30 @@ void main() {
         final charts = [
           _createNoaaChart(
             id: 'chart1',
-            bounds: GeographicBounds(north: 30.0, south: 29.0, east: -94.0, west: -95.0),
+            bounds: GeographicBounds(
+              north: 30.0,
+              south: 29.0,
+              east: -94.0,
+              west: -95.0,
+            ),
           ),
           _createNoaaChart(
             id: 'chart2',
-            bounds: GeographicBounds(north: 31.0, south: 30.5, east: -93.0, west: -94.0),
+            bounds: GeographicBounds(
+              north: 31.0,
+              south: 30.5,
+              east: -93.0,
+              west: -94.0,
+            ),
           ),
           _createNoaaChart(
             id: 'chart3',
-            bounds: GeographicBounds(north: 26.0, south: 25.0, east: -80.0, west: -81.0),
+            bounds: GeographicBounds(
+              north: 26.0,
+              south: 25.0,
+              east: -80.0,
+              west: -81.0,
+            ),
           ),
         ];
 
@@ -470,7 +515,12 @@ void main() {
           await storageService.storeChart(chart, List.generate(100, (i) => i));
         }
 
-        final searchBounds = GeographicBounds(north: 31.0, south: 29.0, east: -93.0, west: -95.0);
+        final searchBounds = GeographicBounds(
+          north: 31.0,
+          south: 29.0,
+          east: -93.0,
+          west: -95.0,
+        );
 
         // Act
         final result = await storageService.getChartsInBounds(searchBounds);
@@ -487,7 +537,7 @@ void main() {
       test('should migrate from version 1 to version 2', () async {
         // This test will verify the migration process
         // The actual migration logic will be implemented in the service
-        
+
         // Act
         final version = await storageService.getDatabaseVersion();
 
@@ -515,13 +565,16 @@ Chart _createNoaaChart({
   String issueDate = '2023-12-15',
   String sourceDateString = 'Various, see chart',
   String editionDate = '2023-12-01',
-  String boundaryPolygon = '{"type":"Polygon","coordinates":[[[-95.5,29.0],[-94.5,29.0],[-94.5,30.0],[-95.5,30.0],[-95.5,29.0]]]}',
+  String boundaryPolygon =
+      '{"type":"Polygon","coordinates":[[[-95.5,29.0],[-94.5,29.0],[-94.5,30.0],[-95.5,30.0],[-95.5,29.0]]]}',
 }) {
   return Chart(
     id: id,
     title: title,
     scale: scale,
-    bounds: bounds ?? GeographicBounds(north: 30.0, south: 29.0, east: -94.5, west: -95.5),
+    bounds:
+        bounds ??
+        GeographicBounds(north: 30.0, south: 29.0, east: -94.5, west: -95.5),
     lastUpdate: DateTime.now(),
     state: state,
     type: ChartType.coastal,

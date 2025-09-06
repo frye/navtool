@@ -47,9 +47,13 @@ void main(List<String> args) {
 
   if (showDelta && File(snapshotPath).existsSync()) {
     try {
-      previous = jsonDecode(File(snapshotPath).readAsStringSync()) as Map<String, dynamic>;
+      previous =
+          jsonDecode(File(snapshotPath).readAsStringSync())
+              as Map<String, dynamic>;
     } catch (_) {
-      stderr.writeln('Warning: Failed to parse existing $snapshotPath; ignoring delta.');
+      stderr.writeln(
+        'Warning: Failed to parse existing $snapshotPath; ignoring delta.',
+      );
     }
   }
 

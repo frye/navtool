@@ -1,5 +1,5 @@
 /// S-57 Geometry Assembly from Vector Primitives
-/// 
+///
 /// Assembles canonical Point/Line/Polygon geometries for S-57 features using
 /// decoded spatial primitives (nodes, edges) and feature spatial pointers (FSPT).
 /// Handles orientation, polygon ring closure, and robust handling of degenerate primitives.
@@ -17,7 +17,7 @@ class PrimitiveStore {
     _nodes[node.id] = node;
   }
 
-  /// Add edge to store  
+  /// Add edge to store
   void addEdge(S57Edge edge) {
     _edges[edge.id] = edge;
   }
@@ -53,7 +53,9 @@ class PrimitiveStore {
 
   /// Create synthetic fallback coordinate for missing primitives
   Coordinate syntheticFallback() {
-    addWarning('Using synthetic fallback coordinate (0,0) due to missing primitives');
+    addWarning(
+      'Using synthetic fallback coordinate (0,0) due to missing primitives',
+    );
     return const Coordinate(0.0, 0.0);
   }
 
@@ -65,7 +67,8 @@ class PrimitiveStore {
   };
 
   @override
-  String toString() => 'PrimitiveStore(nodes: ${_nodes.length}, edges: ${_edges.length}, warnings: ${_warnings.length})';
+  String toString() =>
+      'PrimitiveStore(nodes: ${_nodes.length}, edges: ${_edges.length}, warnings: ${_warnings.length})';
 }
 
 /// S-57 Geometry Assembler
@@ -80,7 +83,9 @@ class S57GeometryAssembler {
     _store.clearWarnings();
 
     if (pointers.isEmpty) {
-      _store.addWarning('Empty spatial pointer list - using synthetic fallback');
+      _store.addWarning(
+        'Empty spatial pointer list - using synthetic fallback',
+      );
       return S57Geometry.point(_store.syntheticFallback());
     }
 
@@ -88,22 +93,22 @@ class S57GeometryAssembler {
     if (pointers.length == 1 && !pointers.first.isEdge) {
       final nodeId = pointers.first.refId;
       final node = _store.node(nodeId);
-      
+
       if (node == null) {
         _store.addWarning('Missing node $nodeId - using synthetic fallback');
         return S57Geometry.point(_store.syntheticFallback());
       }
-      
+
       return S57Geometry.point(Coordinate(node.x, node.y));
     }
 
     // Collect coordinate chains from pointers
     final coords = <Coordinate>[];
-    
+
     for (final pointer in pointers) {
       final chain = _buildCoordinateChain(pointer);
       if (chain.isEmpty) continue; // Skip invalid/missing primitives
-      
+
       // Stitch: avoid duplicating shared boundary node
       if (coords.isNotEmpty && coords.last == chain.first) {
         coords.addAll(chain.skip(1));
@@ -113,7 +118,9 @@ class S57GeometryAssembler {
     }
 
     if (coords.isEmpty) {
-      _store.addWarning('No valid coordinates found in pointers - using synthetic fallback');
+      _store.addWarning(
+        'No valid coordinates found in pointers - using synthetic fallback',
+      );
       return S57Geometry.point(_store.syntheticFallback());
     }
 
@@ -133,13 +140,17 @@ class S57GeometryAssembler {
       }
 
       if (edge.isDegenerate) {
-        _store.addWarning('Degenerate edge ${pointer.refId} with ${edge.nodes.length} nodes - skipping');
+        _store.addWarning(
+          'Degenerate edge ${pointer.refId} with ${edge.nodes.length} nodes - skipping',
+        );
         return coords;
       }
 
       // Convert edge nodes to coordinates
-      final edgeCoords = edge.nodes.map((node) => Coordinate(node.x, node.y)).toList();
-      
+      final edgeCoords = edge.nodes
+          .map((node) => Coordinate(node.x, node.y))
+          .toList();
+
       // Apply orientation
       if (pointer.reverse) {
         coords.addAll(edgeCoords.reversed);
@@ -153,7 +164,7 @@ class S57GeometryAssembler {
         _store.addWarning('Missing node ${pointer.refId} - skipping pointer');
         return coords;
       }
-      
+
       coords.add(Coordinate(node.x, node.y));
     }
 
@@ -168,7 +179,7 @@ class S57GeometryAssembler {
 
     // Check if coordinates form a closed ring
     final isClosed = coords.length > 2 && coords.first == coords.last;
-    
+
     if (isClosed) {
       // Ensure proper closure
       final closedCoords = ensureClosed(coords);
@@ -176,11 +187,13 @@ class S57GeometryAssembler {
     } else {
       // Check if we should auto-close based on proximity
       if (coords.length > 2 && _isNearClosed(coords)) {
-        _store.addWarning('Auto-closing polygon - first and last coordinates are very close');
+        _store.addWarning(
+          'Auto-closing polygon - first and last coordinates are very close',
+        );
         final closedCoords = ensureClosed(coords);
         return S57Geometry.polygon([closedCoords]);
       }
-      
+
       return S57Geometry.line(coords);
     }
   }
@@ -188,12 +201,12 @@ class S57GeometryAssembler {
   /// Check if coordinates are nearly closed (within tolerance)
   bool _isNearClosed(List<Coordinate> coords, {double tolerance = 1e-6}) {
     if (coords.length < 3) return false;
-    
+
     final first = coords.first;
     final last = coords.last;
     final dx = (first.x - last.x).abs();
     final dy = (first.y - last.y).abs();
-    
+
     return dx < tolerance && dy < tolerance;
   }
 
@@ -224,7 +237,12 @@ class S57GeometryAssembler {
   }
 
   /// Check if two line segments intersect
-  bool _segmentsIntersect(Coordinate p1, Coordinate q1, Coordinate p2, Coordinate q2) {
+  bool _segmentsIntersect(
+    Coordinate p1,
+    Coordinate q1,
+    Coordinate p2,
+    Coordinate q2,
+  ) {
     final o1 = _orientation(p1, q1, p2);
     final o2 = _orientation(p1, q1, q2);
     final o3 = _orientation(p2, q2, p1);
@@ -253,20 +271,20 @@ class S57GeometryAssembler {
   /// Check if point q lies on segment pr
   bool _onSegment(Coordinate p, Coordinate q, Coordinate r) {
     return q.x <= [p.x, r.x].reduce((a, b) => a > b ? a : b) &&
-           q.x >= [p.x, r.x].reduce((a, b) => a < b ? a : b) &&
-           q.y <= [p.y, r.y].reduce((a, b) => a > b ? a : b) &&
-           q.y >= [p.y, r.y].reduce((a, b) => a < b ? a : b);
+        q.x >= [p.x, r.x].reduce((a, b) => a < b ? a : b) &&
+        q.y <= [p.y, r.y].reduce((a, b) => a > b ? a : b) &&
+        q.y >= [p.y, r.y].reduce((a, b) => a < b ? a : b);
   }
 }
 
 /// Polygon closure utility
 List<Coordinate> ensureClosed(List<Coordinate> coords) {
   if (coords.isEmpty) return coords;
-  
+
   if (coords.first != coords.last) {
     return [...coords, coords.first];
   }
-  
+
   return coords;
 }
 
@@ -304,50 +322,65 @@ class GeometryValidationResult {
 /// S-57 Geometry Validator
 class S57GeometryValidator {
   /// Validate assembled geometry and generate warnings
-  static GeometryValidationResult validate(S57Geometry geometry, {bool checkSelfIntersection = false}) {
+  static GeometryValidationResult validate(
+    S57Geometry geometry, {
+    bool checkSelfIntersection = false,
+  }) {
     final warnings = <GeometryWarning>[];
     bool isValid = true;
 
     // Check for empty geometry
-    if (geometry.rings.isEmpty || geometry.rings.every((ring) => ring.isEmpty)) {
-      warnings.add(const GeometryWarning(
-        message: 'Geometry contains no coordinates',
-        type: 'empty_geometry',
-      ));
+    if (geometry.rings.isEmpty ||
+        geometry.rings.every((ring) => ring.isEmpty)) {
+      warnings.add(
+        const GeometryWarning(
+          message: 'Geometry contains no coordinates',
+          type: 'empty_geometry',
+        ),
+      );
       isValid = false;
     }
 
     // Check for degenerate coordinates
     for (int ringIndex = 0; ringIndex < geometry.rings.length; ringIndex++) {
       final ring = geometry.rings[ringIndex];
-      
+
       // Check for duplicate consecutive points
       for (int i = 1; i < ring.length; i++) {
         if (ring[i] == ring[i - 1]) {
-          warnings.add(GeometryWarning(
-            message: 'Duplicate consecutive coordinates at ring $ringIndex, position $i',
-            type: 'duplicate_coordinates',
-            context: {'ring': ringIndex, 'position': i},
-          ));
+          warnings.add(
+            GeometryWarning(
+              message:
+                  'Duplicate consecutive coordinates at ring $ringIndex, position $i',
+              type: 'duplicate_coordinates',
+              context: {'ring': ringIndex, 'position': i},
+            ),
+          );
         }
       }
 
       // Check minimum coordinate requirements
       if (geometry.type == S57GeometryType.line && ring.length < 2) {
-        warnings.add(GeometryWarning(
-          message: 'Line geometry requires at least 2 coordinates, found ${ring.length}',
-          type: 'insufficient_coordinates',
-          context: {'ring': ringIndex, 'count': ring.length},
-        ));
+        warnings.add(
+          GeometryWarning(
+            message:
+                'Line geometry requires at least 2 coordinates, found ${ring.length}',
+            type: 'insufficient_coordinates',
+            context: {'ring': ringIndex, 'count': ring.length},
+          ),
+        );
         isValid = false;
       }
 
       if (geometry.type == S57GeometryType.area && ring.length < 3) {
-        warnings.add(GeometryWarning(
-          message: 'Polygon ring requires at least 3 coordinates, found ${ring.length}',
-          type: 'insufficient_coordinates',
-          context: {'ring': ringIndex, 'count': ring.length},
-        ));
+        warnings.add(
+          GeometryWarning(
+            message:
+                'Polygon ring requires at least 3 coordinates, found ${ring.length}',
+            type: 'insufficient_coordinates',
+            context: {'ring': ringIndex, 'count': ring.length},
+          ),
+        );
         isValid = false;
       }
     }
@@ -358,11 +391,13 @@ class S57GeometryValidator {
       for (int ringIndex = 0; ringIndex < geometry.rings.length; ringIndex++) {
         final ring = geometry.rings[ringIndex];
         if (assembler.detectSelfIntersection(ring)) {
-          warnings.add(GeometryWarning(
-            message: 'Self-intersection detected in polygon ring $ringIndex',
-            type: 'self_intersection',
-            context: {'ring': ringIndex},
-          ));
+          warnings.add(
+            GeometryWarning(
+              message: 'Self-intersection detected in polygon ring $ringIndex',
+              type: 'self_intersection',
+              context: {'ring': ringIndex},
+            ),
+          );
         }
       }
     }

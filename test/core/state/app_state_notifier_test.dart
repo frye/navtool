@@ -67,12 +67,13 @@ class MockErrorHandler implements ErrorHandler {
   String getUserMessage(AppError error) => error.message;
 
   @override
-  ErrorRecoveryStrategy getRecoveryStrategy(AppError error) => ErrorRecoveryStrategy(
-    shouldRetry: false,
-    maxRetries: 0,
-    delayBetweenRetries: Duration.zero,
-    userActions: [],
-  );
+  ErrorRecoveryStrategy getRecoveryStrategy(AppError error) =>
+      ErrorRecoveryStrategy(
+        shouldRetry: false,
+        maxRetries: 0,
+        delayBetweenRetries: Duration.zero,
+        userActions: [],
+      );
 
   @override
   Future<T> handleWithRetry<T>(
@@ -98,13 +99,13 @@ void main() {
     setUp(() {
       mockLogger = MockAppLogger();
       mockErrorHandler = MockErrorHandler();
-      
+
       // Create notifier with mocked dependencies
       notifier = AppStateNotifier(
         logger: mockLogger,
         errorHandler: mockErrorHandler,
       );
-      
+
       // Create provider container for testing
       container = ProviderContainer();
     });
@@ -118,132 +119,164 @@ void main() {
       test('should initialize with default state', () async {
         // Arrange - Wait for initialization
         await Future.delayed(const Duration(milliseconds: 100));
-        
+
         // Act
         final state = notifier.state;
-        
+
         // Assert
         expect(state.isInitialized, isTrue);
         expect(state.currentPosition, isNull);
         expect(state.availableCharts, isEmpty);
         expect(state.isGpsEnabled, isFalse);
-        
+
         // Verify initialization was logged
-        expect(mockLogger.logs, contains('INFO: Initializing application state'));
-        expect(mockLogger.logs, contains('INFO: Application state initialized successfully'));
+        expect(
+          mockLogger.logs,
+          contains('INFO: Initializing application state'),
+        );
+        expect(
+          mockLogger.logs,
+          contains('INFO: Application state initialized successfully'),
+        );
       });
 
       test('should update current position correctly', () {
         // Arrange
         final initialState = notifier.state;
         final testPosition = _createTestPosition();
-        
+
         // Act
         notifier.updateCurrentPosition(testPosition);
-        
+
         // Assert
         expect(notifier.state.currentPosition, equals(testPosition));
         expect(notifier.state, isNot(equals(initialState))); // State changed
-        
+
         // Verify logging
-        expect(mockLogger.logs.any((log) => log.contains('Updated current position')), isTrue);
+        expect(
+          mockLogger.logs.any(
+            (log) => log.contains('Updated current position'),
+          ),
+          isTrue,
+        );
       });
 
       test('should update GPS enabled status', () {
         // Arrange
         final initialState = notifier.state;
-        
+
         // Act
         notifier.setGpsEnabled(true);
-        
+
         // Assert
         expect(notifier.state.isGpsEnabled, isTrue);
         expect(notifier.state, isNot(equals(initialState)));
-        
+
         // Verify logging
-        expect(mockLogger.logs, contains('INFO: GPS enabled status changed: true'));
+        expect(
+          mockLogger.logs,
+          contains('INFO: GPS enabled status changed: true'),
+        );
       });
 
       test('should update location permission status', () {
         // Arrange
         final initialState = notifier.state;
-        
+
         // Act
         notifier.setLocationPermissionGranted(true);
-        
+
         // Assert
         expect(notifier.state.isLocationPermissionGranted, isTrue);
         expect(notifier.state, isNot(equals(initialState)));
-        
+
         // Verify logging
-        expect(mockLogger.logs, contains('INFO: Location permission status changed: true'));
+        expect(
+          mockLogger.logs,
+          contains('INFO: Location permission status changed: true'),
+        );
       });
 
       test('should update available charts', () {
         // Arrange
         final initialState = notifier.state;
-        final testCharts = [_createTestChart('US5CA52M'), _createTestChart('US4CA11M')];
-        
+        final testCharts = [
+          _createTestChart('US5CA52M'),
+          _createTestChart('US4CA11M'),
+        ];
+
         // Act
         notifier.updateAvailableCharts(testCharts);
-        
+
         // Assert
         expect(notifier.state.availableCharts, equals(testCharts));
         expect(notifier.state.availableCharts, hasLength(2));
         expect(notifier.state, isNot(equals(initialState)));
-        
+
         // Verify logging
-        expect(mockLogger.logs, contains('INFO: Updated available charts: 2 charts'));
+        expect(
+          mockLogger.logs,
+          contains('INFO: Updated available charts: 2 charts'),
+        );
       });
 
       test('should add downloaded chart', () {
         // Arrange
         final initialState = notifier.state;
         final testChart = _createTestChart('US5CA52M');
-        
+
         // Act
         notifier.addDownloadedChart(testChart);
-        
+
         // Assert
         expect(notifier.state.downloadedCharts, contains(testChart));
         expect(notifier.state.downloadedCharts, hasLength(1));
         expect(notifier.state, isNot(equals(initialState)));
-        
+
         // Verify logging
-        expect(mockLogger.logs, contains('INFO: Added downloaded chart: ${testChart.id}'));
+        expect(
+          mockLogger.logs,
+          contains('INFO: Added downloaded chart: ${testChart.id}'),
+        );
       });
 
       test('should set active route', () {
         // Arrange
         final initialState = notifier.state;
         final testRoute = _createTestRoute();
-        
+
         // Act
         notifier.setActiveRoute(testRoute);
-        
+
         // Assert
         expect(notifier.state.activeRoute, equals(testRoute));
         expect(notifier.state, isNot(equals(initialState)));
-        
+
         // Verify logging
-        expect(mockLogger.logs, contains('INFO: Active route changed: ${testRoute.id}'));
+        expect(
+          mockLogger.logs,
+          contains('INFO: Active route changed: ${testRoute.id}'),
+        );
       });
 
       test('should add waypoint', () {
         // Arrange
         final initialState = notifier.state;
         final testWaypoint = _createTestWaypoint();
-        
+
         // Act
         notifier.addWaypoint(testWaypoint);
-        
+
         // Assert
         expect(notifier.state.waypoints, contains(testWaypoint));
         expect(notifier.state.waypoints, hasLength(1));
         expect(notifier.state, isNot(equals(initialState)));
-        
+
         // Verify logging
-        expect(mockLogger.logs, contains('INFO: Added waypoint: ${testWaypoint.id}'));
+        expect(
+          mockLogger.logs,
+          contains('INFO: Added waypoint: ${testWaypoint.id}'),
+        );
       });
     });
 
@@ -251,20 +284,22 @@ void main() {
       test('should allow watching state changes through container', () {
         // Arrange
         final testContainer = ProviderContainer();
-        final stateProvider = StateNotifierProvider<AppStateNotifier, AppState>((ref) => 
-          AppStateNotifier(
+        final stateProvider = StateNotifierProvider<AppStateNotifier, AppState>(
+          (ref) => AppStateNotifier(
             logger: MockAppLogger(),
             errorHandler: MockErrorHandler(),
-          )
+          ),
         );
         final testPosition = _createTestPosition();
-        
+
         try {
           // Act
           final initialState = testContainer.read(stateProvider);
-          testContainer.read(stateProvider.notifier).updateCurrentPosition(testPosition);
+          testContainer
+              .read(stateProvider.notifier)
+              .updateCurrentPosition(testPosition);
           final updatedState = testContainer.read(stateProvider);
-          
+
           // Assert
           expect(initialState.currentPosition, isNull);
           expect(updatedState.currentPosition, equals(testPosition));
@@ -276,20 +311,20 @@ void main() {
       test('should support multiple state changes', () {
         // Arrange
         final testContainer = ProviderContainer();
-        final stateProvider = StateNotifierProvider<AppStateNotifier, AppState>((ref) => 
-          AppStateNotifier(
+        final stateProvider = StateNotifierProvider<AppStateNotifier, AppState>(
+          (ref) => AppStateNotifier(
             logger: MockAppLogger(),
             errorHandler: MockErrorHandler(),
-          )
+          ),
         );
-        
+
         try {
           // Act
           final stateNotifier = testContainer.read(stateProvider.notifier);
           stateNotifier.setGpsEnabled(true);
           stateNotifier.setLocationPermissionGranted(true);
           final finalState = testContainer.read(stateProvider);
-          
+
           // Assert
           expect(finalState.isGpsEnabled, isTrue);
           expect(finalState.isLocationPermissionGranted, isTrue);
@@ -303,11 +338,11 @@ void main() {
       test('should handle async state updates correctly', () async {
         // Arrange
         final testPosition = _createTestPosition();
-        
+
         // Act - Simulate async GPS update
         await Future.delayed(const Duration(milliseconds: 10));
         notifier.updateCurrentPosition(testPosition);
-        
+
         // Assert
         expect(notifier.state.currentPosition, equals(testPosition));
       });
@@ -315,21 +350,35 @@ void main() {
       test('should handle rapid sequential updates', () {
         // Arrange
         final positions = [
-          GpsPosition(latitude: 37.7749, longitude: -122.4194, timestamp: DateTime.now()),
-          GpsPosition(latitude: 37.7750, longitude: -122.4195, timestamp: DateTime.now()),
-          GpsPosition(latitude: 37.7751, longitude: -122.4196, timestamp: DateTime.now()),
+          GpsPosition(
+            latitude: 37.7749,
+            longitude: -122.4194,
+            timestamp: DateTime.now(),
+          ),
+          GpsPosition(
+            latitude: 37.7750,
+            longitude: -122.4195,
+            timestamp: DateTime.now(),
+          ),
+          GpsPosition(
+            latitude: 37.7751,
+            longitude: -122.4196,
+            timestamp: DateTime.now(),
+          ),
         ];
-        
+
         // Act - Rapid updates
         for (final position in positions) {
           notifier.updateCurrentPosition(position);
         }
-        
+
         // Assert - Last position should be current
         expect(notifier.state.currentPosition, equals(positions.last));
-        
+
         // Verify all updates were logged
-        final positionUpdateLogs = mockLogger.logs.where((log) => log.contains('Updated current position'));
+        final positionUpdateLogs = mockLogger.logs.where(
+          (log) => log.contains('Updated current position'),
+        );
         expect(positionUpdateLogs.length, equals(3));
       });
 
@@ -337,12 +386,12 @@ void main() {
         // Arrange
         final testChart = _createTestChart('US5CA52M');
         final testPosition = _createTestPosition();
-        
+
         // Act - Concurrent updates
         notifier.addDownloadedChart(testChart);
         notifier.updateCurrentPosition(testPosition);
         notifier.setGpsEnabled(true);
-        
+
         // Assert - All updates applied
         expect(notifier.state.downloadedCharts, contains(testChart));
         expect(notifier.state.currentPosition, equals(testPosition));
@@ -354,10 +403,10 @@ void main() {
       test('should handle position updates without errors', () {
         // Arrange
         final validPosition = _createTestPosition();
-        
+
         // Act
         notifier.updateCurrentPosition(validPosition);
-        
+
         // Assert
         expect(notifier.state.currentPosition, equals(validPosition));
         expect(mockErrorHandler.errors, isEmpty);
@@ -366,26 +415,29 @@ void main() {
       test('should handle chart updates without errors', () {
         // Arrange
         final validChart = _createTestChart('US5CA52M');
-        
+
         // Act
         notifier.addDownloadedChart(validChart);
-        
+
         // Assert
         expect(notifier.state.downloadedCharts, contains(validChart));
         expect(mockErrorHandler.errors, isEmpty);
       });
 
-      test('should handle normal operations without triggering error handler', () {
-        // Arrange
-        final testPosition = _createTestPosition();
-        
-        // Act
-        notifier.updateCurrentPosition(testPosition);
-        notifier.setGpsEnabled(true);
-        
-        // Assert
-        expect(mockErrorHandler.errors, isEmpty);
-      });
+      test(
+        'should handle normal operations without triggering error handler',
+        () {
+          // Arrange
+          final testPosition = _createTestPosition();
+
+          // Act
+          notifier.updateCurrentPosition(testPosition);
+          notifier.setGpsEnabled(true);
+
+          // Assert
+          expect(mockErrorHandler.errors, isEmpty);
+        },
+      );
     });
 
     group('Performance of State Updates', () {
@@ -393,14 +445,14 @@ void main() {
         // Arrange
         final stopwatch = Stopwatch();
         final testPosition = _createTestPosition();
-        
+
         // Act
         stopwatch.start();
         for (int i = 0; i < 100; i++) {
           notifier.updateCurrentPosition(testPosition);
         }
         stopwatch.stop();
-        
+
         // Assert - Should complete within 100ms for 100 updates
         expect(stopwatch.elapsedMilliseconds, lessThan(100));
       });
@@ -412,12 +464,12 @@ void main() {
           (index) => _createTestChart('CHART_$index'),
         );
         final stopwatch = Stopwatch();
-        
+
         // Act
         stopwatch.start();
         notifier.updateAvailableCharts(largeChartList);
         stopwatch.stop();
-        
+
         // Assert - Should handle large collections efficiently
         expect(stopwatch.elapsedMilliseconds, lessThan(50));
         expect(notifier.state.availableCharts, hasLength(1000));
@@ -433,7 +485,7 @@ void main() {
         );
         final testPosition = _createTestPosition();
         testNotifier.updateCurrentPosition(testPosition);
-        
+
         // Act & Assert - Should not throw on disposal
         expect(() => testNotifier.dispose(), returnsNormally);
       });
@@ -446,7 +498,7 @@ void main() {
         );
         testNotifier.setGpsEnabled(true);
         testNotifier.setLocationPermissionGranted(true);
-        
+
         // Act & Assert
         expect(() => testNotifier.dispose(), returnsNormally);
       });
@@ -463,7 +515,7 @@ void main() {
         );
         final chart = _createTestChart('US5CA52M');
         final route = _createTestRoute();
-        
+
         // Act - Complete setup workflow
         notifier.setLocationPermissionGranted(true);
         notifier.setGpsEnabled(true);
@@ -471,7 +523,7 @@ void main() {
         notifier.addDownloadedChart(chart);
         notifier.setCurrentChart(chart.id);
         notifier.setActiveRoute(route);
-        
+
         // Assert - Complete marine navigation state
         expect(notifier.state.isLocationPermissionGranted, isTrue);
         expect(notifier.state.isGpsEnabled, isTrue);
@@ -486,36 +538,42 @@ void main() {
         final goodPosition = _createTestPosition();
         notifier.setGpsEnabled(true);
         notifier.updateCurrentPosition(goodPosition);
-        
+
         // Act - Simulate GPS signal loss
         notifier.setGpsEnabled(false);
-        
+
         // Assert - Position retained but GPS disabled
         expect(notifier.state.currentPosition, equals(goodPosition));
         expect(notifier.state.isGpsEnabled, isFalse);
-        
+
         // Verify appropriate logging
-        expect(mockLogger.logs, contains('INFO: GPS enabled status changed: false'));
+        expect(
+          mockLogger.logs,
+          contains('INFO: GPS enabled status changed: false'),
+        );
       });
 
       test('should handle chart switching during navigation', () {
         // Arrange
         final chart1 = _createTestChart('US5CA52M');
         final chart2 = _createTestChart('US4CA11M');
-        
+
         notifier.addDownloadedChart(chart1);
         notifier.addDownloadedChart(chart2);
         notifier.setCurrentChart(chart1.id);
-        
+
         // Act - Switch charts
         notifier.setCurrentChart(chart2.id);
-        
+
         // Assert
         expect(notifier.state.currentChartId, equals(chart2.id));
         expect(notifier.state.downloadedCharts, hasLength(2));
-        
+
         // Verify logging
-        expect(mockLogger.logs, contains('INFO: Current chart changed: ${chart2.id}'));
+        expect(
+          mockLogger.logs,
+          contains('INFO: Current chart changed: ${chart2.id}'),
+        );
       });
 
       test('should handle waypoint management workflow', () {
@@ -528,19 +586,19 @@ void main() {
           longitude: -122.4000,
           type: WaypointType.destination,
         );
-        
+
         // Act - Add waypoints
         notifier.addWaypoint(waypoint1);
         notifier.addWaypoint(waypoint2);
-        
+
         // Assert
         expect(notifier.state.waypoints, hasLength(2));
         expect(notifier.state.waypoints, contains(waypoint1));
         expect(notifier.state.waypoints, contains(waypoint2));
-        
+
         // Act - Remove waypoint
         notifier.removeWaypoint(waypoint1.id);
-        
+
         // Assert
         expect(notifier.state.waypoints, hasLength(1));
         expect(notifier.state.waypoints, contains(waypoint2));
@@ -550,39 +608,45 @@ void main() {
       test('should handle theme and display mode changes', () {
         // Arrange
         final initialState = notifier.state;
-        
+
         // Act - Change theme and day mode
         notifier.setThemeMode(AppThemeMode.dark);
         notifier.setDayMode(false);
-        
+
         // Assert
         expect(notifier.state.themeMode, equals(AppThemeMode.dark));
         expect(notifier.state.isDayMode, isFalse);
         expect(notifier.state, isNot(equals(initialState)));
-        
+
         // Verify logging
-        expect(mockLogger.logs.any((log) => log.contains('Theme mode changed')), isTrue);
-        expect(mockLogger.logs.any((log) => log.contains('Chart day mode changed')), isTrue);
+        expect(
+          mockLogger.logs.any((log) => log.contains('Theme mode changed')),
+          isTrue,
+        );
+        expect(
+          mockLogger.logs.any((log) => log.contains('Chart day mode changed')),
+          isTrue,
+        );
       });
 
       test('should support state reset functionality', () {
         // Arrange - Set up some state
         final testPosition = _createTestPosition();
         final testChart = _createTestChart('US5CA52M');
-        
+
         notifier.updateCurrentPosition(testPosition);
         notifier.addDownloadedChart(testChart);
         notifier.setGpsEnabled(true);
-        
+
         // Act - Reset state
         notifier.reset();
-        
+
         // Assert - State is reset to defaults
         expect(notifier.state.currentPosition, isNull);
         expect(notifier.state.downloadedCharts, isEmpty);
         expect(notifier.state.isGpsEnabled, isFalse);
         expect(notifier.state.isInitialized, isFalse); // Reset to initial state
-        
+
         // Verify logging
         expect(mockLogger.logs, contains('INFO: Application state reset'));
       });

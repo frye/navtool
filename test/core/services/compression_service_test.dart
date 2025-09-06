@@ -57,7 +57,9 @@ void main() {
     group('Chart File Compression Tests', () {
       test('should compress S-57 chart file data successfully', () async {
         // Arrange
-        final chartData = Uint8List.fromList(List.generate(500, (i) => [1, 2, 3, 4, 5][i % 5])); // Simulate 500 bytes
+        final chartData = Uint8List.fromList(
+          List.generate(500, (i) => [1, 2, 3, 4, 5][i % 5]),
+        ); // Simulate 500 bytes
         const chartId = 'US5CA52M';
 
         // Act
@@ -75,15 +77,27 @@ void main() {
         expect(result.compressionTime.inMilliseconds, greaterThan(0));
 
         // Verify logging (info called once for compression start and once for completion)
-  // Two info logs: start + completion (context 'Compression')
-  verifyInfoLogged(mockLogger, RegExp(r'Compressing chart data:'), expectedContext: 'Compression', times: 1);
-  verifyInfoLogged(mockLogger, RegExp(r'Chart compression completed:'), expectedContext: 'Compression', times: 1);
-  expectNoErrorLogs(mockLogger);
+        // Two info logs: start + completion (context 'Compression')
+        verifyInfoLogged(
+          mockLogger,
+          RegExp(r'Compressing chart data:'),
+          expectedContext: 'Compression',
+          times: 1,
+        );
+        verifyInfoLogged(
+          mockLogger,
+          RegExp(r'Chart compression completed:'),
+          expectedContext: 'Compression',
+          times: 1,
+        );
+        expectNoErrorLogs(mockLogger);
       });
 
       test('should decompress S-57 chart file data successfully', () async {
         // Arrange
-        final originalData = Uint8List.fromList(List.generate(500, (i) => [1, 2, 3, 4, 5][i % 5]));
+        final originalData = Uint8List.fromList(
+          List.generate(500, (i) => [1, 2, 3, 4, 5][i % 5]),
+        );
         const chartId = 'US5CA52M';
 
         // First compress the data
@@ -106,7 +120,9 @@ void main() {
 
       test('should handle different compression levels for charts', () async {
         // Arrange
-        final chartData = Uint8List.fromList(List.generate(1000, (i) => [1, 2, 3, 4, 5][i % 5]));
+        final chartData = Uint8List.fromList(
+          List.generate(1000, (i) => [1, 2, 3, 4, 5][i % 5]),
+        );
         const chartId = 'US5CA52M';
 
         // Act - test different compression levels
@@ -131,12 +147,12 @@ void main() {
         // Assert - all compression levels should work and produce valid results
         // Note: For small test data, timing differences may not be significant or predictable
         // so we focus on functionality rather than performance characteristics
-        
+
         // All compression operations should complete successfully
         expect(fastResult.compressionTime.inMicroseconds, greaterThan(0));
         expect(balancedResult.compressionTime.inMicroseconds, greaterThan(0));
         expect(maxResult.compressionTime.inMicroseconds, greaterThan(0));
-        
+
         // Note: In practice, compression ratios might be similar for small test data
         // So we just verify all operations completed successfully
         expect(fastResult.compressionRatio, lessThan(1.0));
@@ -152,7 +168,8 @@ void main() {
 
         // Act & Assert
         expect(
-          () => compressionService.compressChartData(emptyData, chartId: chartId),
+          () =>
+              compressionService.compressChartData(emptyData, chartId: chartId),
           throwsA(isA<AppError>()),
         );
       });
@@ -164,7 +181,10 @@ void main() {
 
         // Act & Assert
         expect(
-          () => compressionService.decompressChartData(corruptedData, chartId: chartId),
+          () => compressionService.decompressChartData(
+            corruptedData,
+            chartId: chartId,
+          ),
           throwsA(isA<AppError>()),
         );
       });
@@ -234,7 +254,9 @@ void main() {
           '{"id":"route_002","name":"Route 2"}',
           '{"id":"route_003","name":"Route 3"}',
         ];
-        final routesData = routes.map((r) => Uint8List.fromList(r.codeUnits)).toList();
+        final routesData = routes
+            .map((r) => Uint8List.fromList(r.codeUnits))
+            .toList();
 
         // Act
         final result = await compressionService.compressRoutesBackup(
@@ -245,7 +267,10 @@ void main() {
 
         // Assert
         expect(result, isA<CompressionResult>());
-        final totalOriginalSize = routesData.fold<int>(0, (sum, data) => sum + data.length);
+        final totalOriginalSize = routesData.fold<int>(
+          0,
+          (sum, data) => sum + data.length,
+        );
         expect(result.originalSize, equals(totalOriginalSize));
         // Note: ZIP compression may not always reduce size for very small test data
         expect(result.compressedSize, greaterThan(0));
@@ -256,17 +281,25 @@ void main() {
       test('should extract ZIP archive from NOAA download', () async {
         // Arrange - Create a real ZIP archive for testing
         final archive = Archive();
-        
+
         // Add a mock S-57 chart file
         final chartData = List.generate(100, (i) => i % 256);
-        final chartFile = ArchiveFile('US5CA52M.000', chartData.length, chartData);
+        final chartFile = ArchiveFile(
+          'US5CA52M.000',
+          chartData.length,
+          chartData,
+        );
         archive.addFile(chartFile);
-        
+
         // Add a metadata file
         final metadataData = 'Chart metadata content'.codeUnits;
-        final metadataFile = ArchiveFile('US5CA52M.txt', metadataData.length, metadataData);
+        final metadataFile = ArchiveFile(
+          'US5CA52M.txt',
+          metadataData.length,
+          metadataData,
+        );
         archive.addFile(metadataFile);
-        
+
         // Encode as ZIP
         final zipData = Uint8List.fromList(ZipEncoder().encode(archive)!);
         const chartId = 'US5CA52M';
@@ -280,7 +313,7 @@ void main() {
         // Assert
         expect(extractedFiles, isA<List<ExtractedFile>>());
         expect(extractedFiles, isNotEmpty);
-        
+
         // Verify extracted files have expected properties
         for (final file in extractedFiles) {
           expect(file.fileName, isNotEmpty);
@@ -291,18 +324,18 @@ void main() {
 
       test('should handle different archive formats', () async {
         // Arrange - Create real archives for testing
-        
+
         // Create ZIP archive
         final zipArchive = Archive();
         final zipData = List.generate(50, (i) => i % 256);
         final zipFile = ArchiveFile('test.000', zipData.length, zipData);
         zipArchive.addFile(zipFile);
         final zipBytes = Uint8List.fromList(ZipEncoder().encode(zipArchive)!);
-        
+
         // Create GZIP compressed data
         final gzipData = List.generate(50, (i) => i % 256);
         final gzipBytes = Uint8List.fromList(GZipEncoder().encode(gzipData)!);
-        
+
         const chartId = 'TEST_CHART';
 
         // Act & Assert - ZIP should work
@@ -327,7 +360,10 @@ void main() {
 
         // Act & Assert
         expect(
-          () => compressionService.extractChartArchive(corruptedData, chartId: chartId),
+          () => compressionService.extractChartArchive(
+            corruptedData,
+            chartId: chartId,
+          ),
           throwsA(isA<AppError>()),
         );
       });
@@ -335,21 +371,29 @@ void main() {
       test('should filter S-57 files from extracted archive', () async {
         // Arrange - Create archive with mixed file types
         final archive = Archive();
-        
+
         // Add S-57 chart files
         final chartData1 = List.generate(100, (i) => i % 256);
-        final chartFile1 = ArchiveFile('US5CA52M.000', chartData1.length, chartData1);
+        final chartFile1 = ArchiveFile(
+          'US5CA52M.000',
+          chartData1.length,
+          chartData1,
+        );
         archive.addFile(chartFile1);
-        
+
         final chartData2 = List.generate(100, (i) => (i + 50) % 256);
-        final chartFile2 = ArchiveFile('US5CA52M.001', chartData2.length, chartData2);
+        final chartFile2 = ArchiveFile(
+          'US5CA52M.001',
+          chartData2.length,
+          chartData2,
+        );
         archive.addFile(chartFile2);
-        
+
         // Add non-chart files
         final textData = 'Some text file content'.codeUnits;
         final textFile = ArchiveFile('readme.txt', textData.length, textData);
         archive.addFile(textFile);
-        
+
         final zipData = Uint8List.fromList(ZipEncoder().encode(archive)!);
         const chartId = 'US5CA52M';
 
@@ -362,12 +406,11 @@ void main() {
         // Assert
         final chartFiles = extractedFiles.where((f) => f.isChartFile).toList();
         expect(chartFiles, isNotEmpty);
-        
+
         // Should identify S-57 files (.000, .001, etc.)
         for (final file in chartFiles) {
           expect(
-            file.fileName.endsWith('.000') || 
-            file.fileName.endsWith('.001'),
+            file.fileName.endsWith('.000') || file.fileName.endsWith('.001'),
             isTrue,
           );
         }
@@ -377,7 +420,9 @@ void main() {
     group('Cache Compression Tests', () {
       test('should compress cache data for offline storage', () async {
         // Arrange
-        final cacheData = Uint8List.fromList(List.generate(1000, (i) => [0xAA, 0xBB, 0xCC, 0xDD][i % 4])); // 1KB of data
+        final cacheData = Uint8List.fromList(
+          List.generate(1000, (i) => [0xAA, 0xBB, 0xCC, 0xDD][i % 4]),
+        ); // 1KB of data
         const cacheKey = 'offshore_charts_cache';
 
         // Act
@@ -391,12 +436,17 @@ void main() {
         expect(result, isA<CompressionResult>());
         expect(result.originalSize, equals(cacheData.length));
         expect(result.compressedSize, lessThan(result.originalSize));
-        expect(result.compressionRatio, lessThan(0.8)); // Should achieve good compression
+        expect(
+          result.compressionRatio,
+          lessThan(0.8),
+        ); // Should achieve good compression
       });
 
       test('should decompress cache data successfully', () async {
         // Arrange
-        final originalData = Uint8List.fromList(List.generate(400, (i) => [0xAA, 0xBB, 0xCC, 0xDD][i % 4]));
+        final originalData = Uint8List.fromList(
+          List.generate(400, (i) => [0xAA, 0xBB, 0xCC, 0xDD][i % 4]),
+        );
         const cacheKey = 'test_cache';
 
         // First compress the data
@@ -434,7 +484,7 @@ void main() {
         expect(result, isA<CompressionResult>());
         expect(result.originalSize, equals(largeData.length));
         expect(result.compressedSize, lessThan(result.originalSize));
-        
+
         // Should complete in reasonable time (less than 10 seconds)
         expect(result.compressionTime.inSeconds, lessThan(10));
       });
@@ -443,7 +493,9 @@ void main() {
     group('Compression Performance Tests', () {
       test('should compress data within performance limits', () async {
         // Arrange
-        final testData = Uint8List.fromList(List.generate(4000, (i) => [0x01, 0x02, 0x03, 0x04][i % 4])); // 4KB
+        final testData = Uint8List.fromList(
+          List.generate(4000, (i) => [0x01, 0x02, 0x03, 0x04][i % 4]),
+        ); // 4KB
         const dataId = 'performance_test';
 
         // Act
@@ -456,7 +508,10 @@ void main() {
         stopwatch.stop();
 
         // Assert
-        expect(stopwatch.elapsedMilliseconds, lessThan(1000)); // Should complete in < 1 second
+        expect(
+          stopwatch.elapsedMilliseconds,
+          lessThan(1000),
+        ); // Should complete in < 1 second
         expect(result.compressionTime.inMilliseconds, lessThan(1000));
         expect(result.compressionRatio, lessThan(1.0));
       });
@@ -493,11 +548,14 @@ void main() {
 
         // Act & Assert
         expect(
-          () => compressionService.compressChartData(invalidData, chartId: chartId),
+          () => compressionService.compressChartData(
+            invalidData,
+            chartId: chartId,
+          ),
           throwsA(isA<AppError>()),
         );
 
-        // Note: No error was logged to the mock logger because the error was thrown 
+        // Note: No error was logged to the mock logger because the error was thrown
         // before reaching the catch block in the implementation
       });
 
@@ -508,12 +566,19 @@ void main() {
 
         // Act & Assert
         expect(
-          () => compressionService.decompressChartData(invalidCompressedData, chartId: chartId),
+          () => compressionService.decompressChartData(
+            invalidCompressedData,
+            chartId: chartId,
+          ),
           throwsA(isA<AppError>()),
         );
 
         // Verify error was logged
-  verifyErrorLogged(mockLogger, RegExp(r'decompression failed|Failed to decompress'), times: 1);
+        verifyErrorLogged(
+          mockLogger,
+          RegExp(r'decompression failed|Failed to decompress'),
+          times: 1,
+        );
       });
 
       test('should handle memory limitations for large files', () async {
@@ -528,7 +593,7 @@ void main() {
             chartId: chartId,
             level: CompressionLevel.fast,
           );
-          
+
           // If successful, verify it's reasonable
           expect(result, isA<CompressionResult>());
           expect(result.originalSize, equals(largeData.length));
@@ -542,9 +607,11 @@ void main() {
     group('Compression Configuration Tests', () {
       test('should allow custom compression settings', () async {
         // Arrange
-        final testData = Uint8List.fromList(List.generate(300, (i) => [0x01, 0x02, 0x03][i % 3]));
+        final testData = Uint8List.fromList(
+          List.generate(300, (i) => [0x01, 0x02, 0x03][i % 3]),
+        );
         const chartId = 'CONFIG_TEST';
-        
+
         final customSettings = CompressionSettings(
           level: CompressionLevel.maximum,
           enableDictionary: true,
@@ -561,7 +628,10 @@ void main() {
 
         // Assert
         expect(result, isA<CompressionResult>());
-        expect(result.compressionRatio, lessThan(0.9)); // Should achieve better compression
+        expect(
+          result.compressionRatio,
+          lessThan(0.9),
+        ); // Should achieve better compression
       });
 
       test('should validate compression settings', () {

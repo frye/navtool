@@ -1,5 +1,5 @@
 /// Test fixtures for S-57 geometry assembly testing
-/// 
+///
 /// Loads primitive data (nodes, edges, FSPT pointers) from JSON fixtures
 /// to test the geometry assembly pipeline
 
@@ -11,8 +11,9 @@ import 'package:navtool/core/services/s57/s57_geometry_assembler.dart';
 
 /// Test fixture loader for S-57 geometry assembly tests
 class S57GeometryTestFixtures {
-  static const String _fixtureFile = 'test/fixtures/geometry/primitive_set.json';
-  
+  static const String _fixtureFile =
+      'test/fixtures/geometry/primitive_set.json';
+
   late Map<String, dynamic> _data;
   late PrimitiveStore _store;
 
@@ -34,7 +35,7 @@ class S57GeometryTestFixtures {
 
     final jsonString = await file.readAsString();
     _data = json.decode(jsonString) as Map<String, dynamic>;
-    
+
     _store = PrimitiveStore();
     _loadNodes();
     _loadEdges();
@@ -43,7 +44,7 @@ class S57GeometryTestFixtures {
   /// Load nodes into primitive store
   void _loadNodes() {
     final nodesData = _data['nodes'] as Map<String, dynamic>;
-    
+
     for (final entry in nodesData.entries) {
       final nodeData = entry.value as Map<String, dynamic>;
       final node = S57Node(
@@ -58,11 +59,11 @@ class S57GeometryTestFixtures {
   /// Load edges into primitive store
   void _loadEdges() {
     final edgesData = _data['edges'] as Map<String, dynamic>;
-    
+
     for (final entry in edgesData.entries) {
       final edgeData = entry.value as Map<String, dynamic>;
       final nodesData = edgeData['nodes'] as List<dynamic>;
-      
+
       final nodes = nodesData.map((nodeData) {
         final nodeMap = nodeData as Map<String, dynamic>;
         return S57Node(
@@ -72,10 +73,7 @@ class S57GeometryTestFixtures {
         );
       }).toList();
 
-      final edge = S57Edge(
-        id: edgeData['id'] as int,
-        nodes: nodes,
-      );
+      final edge = S57Edge(id: edgeData['id'] as int, nodes: nodes);
       _store.addEdge(edge);
     }
   }
@@ -87,7 +85,7 @@ class S57GeometryTestFixtures {
   List<S57SpatialPointer> getFeaturePointers(String featureName) {
     final featuresData = _data['features'] as Map<String, dynamic>;
     final featureData = featuresData[featureName] as Map<String, dynamic>?;
-    
+
     if (featureData == null) {
       throw TestFailure('Feature $featureName not found in fixtures');
     }
@@ -107,7 +105,7 @@ class S57GeometryTestFixtures {
   List<List<double>> getExpectedCoordinates(String featureName) {
     final featuresData = _data['features'] as Map<String, dynamic>;
     final featureData = featuresData[featureName] as Map<String, dynamic>?;
-    
+
     if (featureData == null) {
       throw TestFailure('Feature $featureName not found in fixtures');
     }
@@ -126,7 +124,7 @@ class S57GeometryTestFixtures {
   String getExpectedGeometryType(String featureName) {
     final featuresData = _data['features'] as Map<String, dynamic>;
     final featureData = featuresData[featureName] as Map<String, dynamic>?;
-    
+
     if (featureData == null) {
       throw TestFailure('Feature $featureName not found in fixtures');
     }
@@ -136,9 +134,10 @@ class S57GeometryTestFixtures {
 
   /// Create degenerate edge for testing
   S57Edge createDegenerateEdge() {
-    final testData = _data['test_scenarios']['degenerate_edge'] as Map<String, dynamic>;
+    final testData =
+        _data['test_scenarios']['degenerate_edge'] as Map<String, dynamic>;
     final nodesData = testData['nodes'] as List<dynamic>;
-    
+
     final nodes = nodesData.map((nodeData) {
       final nodeMap = nodeData as Map<String, dynamic>;
       return S57Node(
@@ -148,17 +147,15 @@ class S57GeometryTestFixtures {
       );
     }).toList();
 
-    return S57Edge(
-      id: testData['id'] as int,
-      nodes: nodes,
-    );
+    return S57Edge(id: testData['id'] as int, nodes: nodes);
   }
 
   /// Get pointers for missing primitive test
   List<S57SpatialPointer> getMissingPrimitivePointers() {
-    final testData = _data['test_scenarios']['missing_primitive'] as Map<String, dynamic>;
+    final testData =
+        _data['test_scenarios']['missing_primitive'] as Map<String, dynamic>;
     final pointersData = testData['pointers'] as List<dynamic>;
-    
+
     return pointersData.map((pointerData) {
       final pointerMap = pointerData as Map<String, dynamic>;
       return S57SpatialPointer(
@@ -171,9 +168,11 @@ class S57GeometryTestFixtures {
 
   /// Create self-intersecting polygon for testing
   List<Coordinate> createSelfIntersectingPolygon() {
-    final testData = _data['test_scenarios']['self_intersection_polygon'] as Map<String, dynamic>;
+    final testData =
+        _data['test_scenarios']['self_intersection_polygon']
+            as Map<String, dynamic>;
     final nodesData = testData['nodes'] as List<dynamic>;
-    
+
     return nodesData.map((nodeData) {
       final nodeMap = nodeData as Map<String, dynamic>;
       return Coordinate(
@@ -185,20 +184,17 @@ class S57GeometryTestFixtures {
 
   /// Get stitching test coordinate that should not be duplicated
   List<double> getStitchingTestCoordinate() {
-    final testData = _data['test_scenarios']['stitching_test'] as Map<String, dynamic>;
+    final testData =
+        _data['test_scenarios']['stitching_test'] as Map<String, dynamic>;
     final coord = testData['expected_no_duplicate_at'] as List<dynamic>;
-    return [
-      (coord[0] as num).toDouble(),
-      (coord[1] as num).toDouble(),
-    ];
+    return [(coord[0] as num).toDouble(), (coord[1] as num).toDouble()];
   }
 
   /// Helper to convert coordinates to S57Coordinate list for assertions
   List<S57Coordinate> toS57Coordinates(List<List<double>> coords) {
-    return coords.map((coord) => S57Coordinate(
-      latitude: coord[1],
-      longitude: coord[0],
-    )).toList();
+    return coords
+        .map((coord) => S57Coordinate(latitude: coord[1], longitude: coord[0]))
+        .toList();
   }
 
   /// Helper to convert Coordinate to coordinate pair for assertions

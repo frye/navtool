@@ -100,7 +100,11 @@ class AppError implements Exception {
   }
 
   /// Creates a network error
-  factory AppError.network(String message, {Object? originalError, StackTrace? stackTrace}) {
+  factory AppError.network(
+    String message, {
+    Object? originalError,
+    StackTrace? stackTrace,
+  }) {
     return AppError.create(
       message: message,
       type: AppErrorType.network,
@@ -110,7 +114,11 @@ class AppError implements Exception {
   }
 
   /// Creates a storage error
-  factory AppError.storage(String message, {Object? originalError, StackTrace? stackTrace}) {
+  factory AppError.storage(
+    String message, {
+    Object? originalError,
+    StackTrace? stackTrace,
+  }) {
     return AppError.create(
       message: message,
       type: AppErrorType.storage,
@@ -138,7 +146,11 @@ class AppError implements Exception {
   }
 
   /// Creates a parsing error
-  factory AppError.parsing(String message, {Object? originalError, StackTrace? stackTrace}) {
+  factory AppError.parsing(
+    String message, {
+    Object? originalError,
+    StackTrace? stackTrace,
+  }) {
     return AppError.create(
       message: message,
       type: AppErrorType.parsing,
@@ -148,7 +160,11 @@ class AppError implements Exception {
   }
 
   /// Creates an unknown error
-  factory AppError.unknown(String message, {Object? originalError, StackTrace? stackTrace}) {
+  factory AppError.unknown(
+    String message, {
+    Object? originalError,
+    StackTrace? stackTrace,
+  }) {
     return AppError.create(
       message: message,
       type: AppErrorType.unknown,
@@ -167,15 +183,15 @@ class AppError implements Exception {
   String toString() {
     final buffer = StringBuffer();
     buffer.write('AppError(${type.name}): $message');
-    
+
     if (originalError != null) {
       buffer.write(' [Original: $originalError]');
     }
-    
+
     if (context != null && context!.isNotEmpty) {
       buffer.write(' [Context: $context]');
     }
-    
+
     return buffer.toString();
   }
 

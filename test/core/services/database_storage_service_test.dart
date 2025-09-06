@@ -25,7 +25,7 @@ void main() {
 
     setUp(() async {
       mockLogger = MockAppLogger();
-      
+
       // Create in-memory database for testing
       database = await openDatabase(
         inMemoryDatabasePath,
@@ -34,12 +34,12 @@ void main() {
           // This will be implemented by the service
         },
       );
-      
+
       storageService = DatabaseStorageService(
         logger: mockLogger,
         testDatabase: database,
       );
-      
+
       await storageService.initialize();
     });
 
@@ -53,15 +53,15 @@ void main() {
         final tables = await database.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table'",
         );
-        
+
         final views = await database.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='view'",
         );
-        
+
         // Assert
         final tableNames = tables.map((t) => t['name'] as String).toList();
         final viewNames = views.map((v) => v['name'] as String).toList();
-        
+
         expect(tableNames, contains('charts'));
         expect(tableNames, contains('routes'));
         expect(tableNames, contains('waypoints'));
@@ -74,7 +74,7 @@ void main() {
         final indexes = await database.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='index'",
         );
-        
+
         // Assert
         final indexNames = indexes.map((i) => i['name'] as String).toList();
         expect(indexNames, contains('idx_charts_bounds'));
@@ -153,26 +153,43 @@ void main() {
         // Assert
         final storedData = await storageService.loadChart(chart.id);
         expect(storedData, isNull);
-        
+
         final chartMetadata = await storageService.getChartMetadata(chart.id);
         expect(chartMetadata, isNull);
       });
 
       test('should query charts by geographic bounds', () async {
         // Arrange
-        final chart1 = _createTestChart(id: 'chart1', bounds: GeographicBounds(
-          north: 38.0, south: 37.0, east: -122.0, west: -123.0,
-        ));
-        final chart2 = _createTestChart(id: 'chart2', bounds: GeographicBounds(
-          north: 39.0, south: 38.0, east: -121.0, west: -122.0,
-        ));
-        
+        final chart1 = _createTestChart(
+          id: 'chart1',
+          bounds: GeographicBounds(
+            north: 38.0,
+            south: 37.0,
+            east: -122.0,
+            west: -123.0,
+          ),
+        );
+        final chart2 = _createTestChart(
+          id: 'chart2',
+          bounds: GeographicBounds(
+            north: 39.0,
+            south: 38.0,
+            east: -121.0,
+            west: -122.0,
+          ),
+        );
+
         await storageService.storeChart(chart1, [1, 2, 3]);
         await storageService.storeChart(chart2, [4, 5, 6]);
 
         // Act
         final chartsInBounds = await storageService.getChartsInBounds(
-          GeographicBounds(north: 38.5, south: 37.5, east: -121.5, west: -122.5),
+          GeographicBounds(
+            north: 38.5,
+            south: 37.5,
+            east: -121.5,
+            west: -122.5,
+          ),
         );
 
         // Assert
@@ -184,45 +201,72 @@ void main() {
       test('should demonstrate cache invalidation needed for Washington charts', () async {
         // Arrange - Simulate the real issue: OLD cached charts with wrong bounds
         // These represent charts that were cached BEFORE geometry extraction was implemented
-        
+
         // OLD cached West Coast chart with wrong default bounds
         final oldCachedChart = _createTestChart(
-          id: 'US1WC07M', 
+          id: 'US1WC07M',
           bounds: GeographicBounds.unvalidated(
-            north: 0.0, south: 0.0, east: 0.0, west: 0.0, // Wrong default bounds from old API (legacy)
-          )
+            north: 0.0,
+            south: 0.0,
+            east: 0.0,
+            west: 0.0, // Wrong default bounds from old API (legacy)
+          ),
         );
-        
+
         await storageService.storeChart(oldCachedChart, [1]);
 
         // Act - Query for Washington (this should find 0 charts due to old cache)
         final washingtonBounds = GeographicBounds(
-          north: 49.0, south: 45.5, east: -116.9, west: -124.8
+          north: 49.0,
+          south: 45.5,
+          east: -116.9,
+          west: -124.8,
         );
-        final chartsInWashington = await storageService.getChartsInBounds(washingtonBounds);
-        
-  mockLogger.debug('Found ${chartsInWashington.length} charts with old cached bounds', context: 'DB.CacheInvalidation');
+        final chartsInWashington = await storageService.getChartsInBounds(
+          washingtonBounds,
+        );
+
+        mockLogger.debug(
+          'Found ${chartsInWashington.length} charts with old cached bounds',
+          context: 'DB.CacheInvalidation',
+        );
 
         // Assert - Demonstrates the cache invalidation problem
-        expect(chartsInWashington.length, equals(0), 
-               reason: 'Old cached charts with wrong bounds (0,0,0,0) don\'t intersect Washington');
-               
+        expect(
+          chartsInWashington.length,
+          equals(0),
+          reason:
+              'Old cached charts with wrong bounds (0,0,0,0) don\'t intersect Washington',
+        );
+
         // Now test what SHOULD happen with correct bounds
         final correctedChart = _createTestChart(
-          id: 'US1WC07M', 
+          id: 'US1WC07M',
           bounds: GeographicBounds(
-            north: 49.0, south: 32.0, east: -117.0, west: -125.0, // Correct West Coast bounds
-          )
+            north: 49.0,
+            south: 32.0,
+            east: -117.0,
+            west: -125.0, // Correct West Coast bounds
+          ),
         );
-        
+
         // Update the chart with correct bounds (simulating re-fetch with geometry)
         await storageService.storeChart(correctedChart, [1]);
-        
-        final chartsAfterUpdate = await storageService.getChartsInBounds(washingtonBounds);
-  mockLogger.debug('Found ${chartsAfterUpdate.length} charts after bounds correction', context: 'DB.CacheInvalidation');
-        
-        expect(chartsAfterUpdate.length, equals(1), 
-               reason: 'After bounds correction, West Coast chart should be found for Washington');
+
+        final chartsAfterUpdate = await storageService.getChartsInBounds(
+          washingtonBounds,
+        );
+        mockLogger.debug(
+          'Found ${chartsAfterUpdate.length} charts after bounds correction',
+          context: 'DB.CacheInvalidation',
+        );
+
+        expect(
+          chartsAfterUpdate.length,
+          equals(1),
+          reason:
+              'After bounds correction, West Coast chart should be found for Washington',
+        );
         expect(chartsAfterUpdate.first.id, equals('US1WC07M'));
       });
 
@@ -232,144 +276,221 @@ void main() {
           id: 'US5CA52M',
           title: 'San Francisco Bay',
           scale: 25000,
-          bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
+          bounds: GeographicBounds(
+            north: 38.0,
+            south: 37.0,
+            east: -122.0,
+            west: -123.0,
+          ),
           lastUpdate: DateTime(2024, 1, 15),
           state: 'California',
           type: ChartType.harbor,
         );
-        
+
         final invalidChart1 = Chart(
           id: 'US1WC01M',
           title: 'Columbia River Chart',
           scale: 80000,
-          bounds: GeographicBounds.unvalidated(north: 0, south: 0, east: 0, west: 0), // Invalid legacy cached bounds
+          bounds: GeographicBounds.unvalidated(
+            north: 0,
+            south: 0,
+            east: 0,
+            west: 0,
+          ), // Invalid legacy cached bounds
           lastUpdate: DateTime(2024, 1, 15),
           state: 'Washington',
           type: ChartType.general,
         );
-        
+
         final invalidChart2 = Chart(
           id: 'US1WC04M',
           title: 'Puget Sound Chart',
           scale: 25000,
-          bounds: GeographicBounds.unvalidated(north: 0, south: 0, east: 0, west: 0), // Invalid legacy cached bounds
+          bounds: GeographicBounds.unvalidated(
+            north: 0,
+            south: 0,
+            east: 0,
+            west: 0,
+          ), // Invalid legacy cached bounds
           lastUpdate: DateTime(2024, 1, 15),
           state: 'Washington',
           type: ChartType.harbor,
         );
-        
+
         await storageService.storeChart(validChart, [1]);
         await storageService.storeChart(invalidChart1, [1]);
         await storageService.storeChart(invalidChart2, [1]);
-        
+
         // Act - Count charts with invalid bounds
-        final invalidBoundsCount = await storageService.countChartsWithInvalidBounds();
-        
+        final invalidBoundsCount = await storageService
+            .countChartsWithInvalidBounds();
+
         // Assert
-        expect(invalidBoundsCount, equals(2), reason: 'Should find exactly 2 charts with invalid bounds (0,0,0,0)');
+        expect(
+          invalidBoundsCount,
+          equals(2),
+          reason: 'Should find exactly 2 charts with invalid bounds (0,0,0,0)',
+        );
       });
 
-      test('should provide cache invalidation for charts with invalid bounds', () async {
-        // Arrange - Create charts that simulate the Washington chart discovery issue
-        final washingtonChart1 = Chart(
-          id: 'US1WC01M',
-          title: 'Columbia River to Destruction I.',
-          scale: 80000,
-          bounds: GeographicBounds.unvalidated(north: 0, south: 0, east: 0, west: 0), // Old cached bounds
-          lastUpdate: DateTime(2024, 1, 15),
-          state: 'Washington',
-          type: ChartType.general,
-        );
-        
-        final washingtonChart2 = Chart(
-          id: 'US1WC04M',
-          title: 'Cape Disappointment to Lincoln City',
-          scale: 80000,
-          bounds: GeographicBounds.unvalidated(north: 0, south: 0, east: 0, west: 0), // Old cached bounds
-          lastUpdate: DateTime(2024, 1, 15),
-          state: 'Washington',
-          type: ChartType.general,
-        );
-        
-        await storageService.storeChart(washingtonChart1, [1]);
-        await storageService.storeChart(washingtonChart2, [1]);
-        
-        // Verify the problem exists
-        final invalidCountBefore = await storageService.countChartsWithInvalidBounds();
-        expect(invalidCountBefore, equals(2), reason: 'Should have 2 charts with invalid bounds initially');
-        
-        // Act - Clear charts with invalid bounds (cache invalidation)
-        final clearedCount = await storageService.clearChartsWithInvalidBounds();
-        
-        // Assert - Verify cache invalidation worked
-        expect(clearedCount, equals(2), reason: 'Should clear exactly 2 charts with invalid bounds');
-        
-        final invalidCountAfter = await storageService.countChartsWithInvalidBounds();
-        expect(invalidCountAfter, equals(0), reason: 'Should have 0 charts with invalid bounds after clearing');
-        
-        // Verify the charts are actually gone
-        final remainingCharts = await storageService.getChartsInBounds(
-          GeographicBounds(north: 90, south: -90, east: 180, west: -180)
-        );
-        expect(remainingCharts.length, equals(0), reason: 'All charts with invalid bounds should be removed');
-      });
+      test(
+        'should provide cache invalidation for charts with invalid bounds',
+        () async {
+          // Arrange - Create charts that simulate the Washington chart discovery issue
+          final washingtonChart1 = Chart(
+            id: 'US1WC01M',
+            title: 'Columbia River to Destruction I.',
+            scale: 80000,
+            bounds: GeographicBounds.unvalidated(
+              north: 0,
+              south: 0,
+              east: 0,
+              west: 0,
+            ), // Old cached bounds
+            lastUpdate: DateTime(2024, 1, 15),
+            state: 'Washington',
+            type: ChartType.general,
+          );
 
-      test('should handle edge case charts that just touch boundaries', () async {
-        // Arrange - Chart that just barely touches the query area
-        final edgeChart = _createTestChart(
-          id: 'EDGE01M',
-          bounds: GeographicBounds(
-            north: 45.5, south: 45.0, east: -116.0, west: -117.0, // Just touches Washington's south-east corner
-          )
-        );
-        
-        await storageService.storeChart(edgeChart, [1]);
+          final washingtonChart2 = Chart(
+            id: 'US1WC04M',
+            title: 'Cape Disappointment to Lincoln City',
+            scale: 80000,
+            bounds: GeographicBounds.unvalidated(
+              north: 0,
+              south: 0,
+              east: 0,
+              west: 0,
+            ), // Old cached bounds
+            lastUpdate: DateTime(2024, 1, 15),
+            state: 'Washington',
+            type: ChartType.general,
+          );
 
-        // Act - Query for Washington state bounds
-        final washingtonBounds = GeographicBounds(
-          north: 49.0, south: 45.5, east: -116.9, west: -124.8
-        );
-        final chartsInWashington = await storageService.getChartsInBounds(washingtonBounds);
+          await storageService.storeChart(washingtonChart1, [1]);
+          await storageService.storeChart(washingtonChart2, [1]);
 
-        // Assert - Should find chart that touches the boundary
-        expect(chartsInWashington.length, equals(1));
-        expect(chartsInWashington.first.id, equals('EDGE01M'));
-      });
+          // Verify the problem exists
+          final invalidCountBefore = await storageService
+              .countChartsWithInvalidBounds();
+          expect(
+            invalidCountBefore,
+            equals(2),
+            reason: 'Should have 2 charts with invalid bounds initially',
+          );
 
-      test('should handle charts that partially overlap query bounds', () async {
-        // Arrange - Chart that overlaps but extends in all directions
-        final overlapChart = _createTestChart(
-          id: 'OVERLAP01M',
-          bounds: GeographicBounds(
-            north: 50.0, south: 44.0, east: -115.0, west: -126.0, // Larger than Washington
-          )
-        );
-        
-        await storageService.storeChart(overlapChart, [1]);
+          // Act - Clear charts with invalid bounds (cache invalidation)
+          final clearedCount = await storageService
+              .clearChartsWithInvalidBounds();
 
-        // Act - Query for Washington state bounds  
-        final washingtonBounds = GeographicBounds(
-          north: 49.0, south: 45.5, east: -116.9, west: -124.8
-        );
-        final chartsInWashington = await storageService.getChartsInBounds(washingtonBounds);
+          // Assert - Verify cache invalidation worked
+          expect(
+            clearedCount,
+            equals(2),
+            reason: 'Should clear exactly 2 charts with invalid bounds',
+          );
 
-        // Assert - Should find overlapping chart
-        expect(chartsInWashington.length, equals(1));
-        expect(chartsInWashington.first.id, equals('OVERLAP01M'));
-      });
+          final invalidCountAfter = await storageService
+              .countChartsWithInvalidBounds();
+          expect(
+            invalidCountAfter,
+            equals(0),
+            reason: 'Should have 0 charts with invalid bounds after clearing',
+          );
+
+          // Verify the charts are actually gone
+          final remainingCharts = await storageService.getChartsInBounds(
+            GeographicBounds(north: 90, south: -90, east: 180, west: -180),
+          );
+          expect(
+            remainingCharts.length,
+            equals(0),
+            reason: 'All charts with invalid bounds should be removed',
+          );
+        },
+      );
+
+      test(
+        'should handle edge case charts that just touch boundaries',
+        () async {
+          // Arrange - Chart that just barely touches the query area
+          final edgeChart = _createTestChart(
+            id: 'EDGE01M',
+            bounds: GeographicBounds(
+              north: 45.5,
+              south: 45.0,
+              east: -116.0,
+              west: -117.0, // Just touches Washington's south-east corner
+            ),
+          );
+
+          await storageService.storeChart(edgeChart, [1]);
+
+          // Act - Query for Washington state bounds
+          final washingtonBounds = GeographicBounds(
+            north: 49.0,
+            south: 45.5,
+            east: -116.9,
+            west: -124.8,
+          );
+          final chartsInWashington = await storageService.getChartsInBounds(
+            washingtonBounds,
+          );
+
+          // Assert - Should find chart that touches the boundary
+          expect(chartsInWashington.length, equals(1));
+          expect(chartsInWashington.first.id, equals('EDGE01M'));
+        },
+      );
+
+      test(
+        'should handle charts that partially overlap query bounds',
+        () async {
+          // Arrange - Chart that overlaps but extends in all directions
+          final overlapChart = _createTestChart(
+            id: 'OVERLAP01M',
+            bounds: GeographicBounds(
+              north: 50.0,
+              south: 44.0,
+              east: -115.0,
+              west: -126.0, // Larger than Washington
+            ),
+          );
+
+          await storageService.storeChart(overlapChart, [1]);
+
+          // Act - Query for Washington state bounds
+          final washingtonBounds = GeographicBounds(
+            north: 49.0,
+            south: 45.5,
+            east: -116.9,
+            west: -124.8,
+          );
+          final chartsInWashington = await storageService.getChartsInBounds(
+            washingtonBounds,
+          );
+
+          // Assert - Should find overlapping chart
+          expect(chartsInWashington.length, equals(1));
+          expect(chartsInWashington.first.id, equals('OVERLAP01M'));
+        },
+      );
 
       test('should query charts by scale range', () async {
         // Arrange
         final smallScale = _createTestChart(id: 'small', scale: 10000);
         final mediumScale = _createTestChart(id: 'medium', scale: 50000);
         final largeScale = _createTestChart(id: 'large', scale: 100000);
-        
+
         await storageService.storeChart(smallScale, [1]);
         await storageService.storeChart(mediumScale, [2]);
         await storageService.storeChart(largeScale, [3]);
 
         // Act
-        final chartsInRange = await storageService.getChartsByScaleRange(25000, 75000);
+        final chartsInRange = await storageService.getChartsByScaleRange(
+          25000,
+          75000,
+        );
 
         // Assert
         expect(chartsInRange.length, equals(1));
@@ -556,7 +677,11 @@ void main() {
         await storageService.addToDownloadQueue(chartId, downloadUrl);
 
         // Act
-        await storageService.updateDownloadQueueStatus(chartId, 'downloading', 0.5);
+        await storageService.updateDownloadQueueStatus(
+          chartId,
+          'downloading',
+          0.5,
+        );
 
         // Assert
         final queueItem = await storageService.getDownloadQueueItem(chartId);
@@ -569,7 +694,11 @@ void main() {
         const chartId = 'US5CA52M';
         const downloadUrl = 'https://charts.noaa.gov/ENCs/US5CA52M.zip';
         await storageService.addToDownloadQueue(chartId, downloadUrl);
-        await storageService.updateDownloadQueueStatus(chartId, 'completed', 1.0);
+        await storageService.updateDownloadQueueStatus(
+          chartId,
+          'completed',
+          1.0,
+        );
 
         // Act
         await storageService.removeFromDownloadQueue(chartId);
@@ -584,9 +713,17 @@ void main() {
         await storageService.addToDownloadQueue('chart1', 'url1');
         await storageService.addToDownloadQueue('chart2', 'url2');
         await storageService.addToDownloadQueue('chart3', 'url3');
-        
-        await storageService.updateDownloadQueueStatus('chart2', 'downloading', 0.3);
-        await storageService.updateDownloadQueueStatus('chart3', 'completed', 1.0);
+
+        await storageService.updateDownloadQueueStatus(
+          'chart2',
+          'downloading',
+          0.3,
+        );
+        await storageService.updateDownloadQueueStatus(
+          'chart3',
+          'completed',
+          1.0,
+        );
 
         // Act
         final pendingDownloads = await storageService.getPendingDownloads();
@@ -603,7 +740,10 @@ void main() {
       test('should get storage information', () async {
         // Arrange
         final chart = _createTestChart();
-        await storageService.storeChart(chart, List.generate(1000, (i) => i % 256));
+        await storageService.storeChart(
+          chart,
+          List.generate(1000, (i) => i % 256),
+        );
 
         // Act
         final storageInfo = await storageService.getStorageInfo();
@@ -619,7 +759,10 @@ void main() {
       test('should get storage usage in bytes', () async {
         // Arrange
         final chart = _createTestChart();
-        await storageService.storeChart(chart, List.generate(2000, (i) => i % 256));
+        await storageService.storeChart(
+          chart,
+          List.generate(2000, (i) => i % 256),
+        );
 
         // Act
         final usage = await storageService.getStorageUsage();
@@ -639,12 +782,14 @@ void main() {
           id: 'new_chart',
           lastUpdate: DateTime.now(),
         );
-        
+
         await storageService.storeChart(oldChart, [1, 2, 3]);
         await storageService.storeChart(newChart, [4, 5, 6]);
 
         // Act
-        final cleanedCount = await storageService.cleanupOldDataWithAge(maxAge: const Duration(days: 30));
+        final cleanedCount = await storageService.cleanupOldDataWithAge(
+          maxAge: const Duration(days: 30),
+        );
 
         // Assert
         expect(cleanedCount, equals(1));
@@ -660,7 +805,8 @@ void main() {
 
         // Act & Assert
         expect(
-          () async => await storageService.storeChart(_createTestChart(), [1, 2, 3]),
+          () async =>
+              await storageService.storeChart(_createTestChart(), [1, 2, 3]),
           throwsA(isA<Exception>()),
         );
       });
@@ -699,7 +845,7 @@ void main() {
       test('should handle database version upgrades', () async {
         // This test would verify migration from version 1 to 2
         expect(await storageService.getDatabaseVersion(), equals(1));
-        
+
         // Future migration testing would go here
       });
 
@@ -731,12 +877,14 @@ Chart _createTestChart({
     id: id ?? 'US5CA52M',
     title: title ?? 'San Francisco Bay',
     scale: scale ?? 25000,
-    bounds: bounds ?? GeographicBounds(
-      north: 37.8267,
-      south: 37.7849,
-      east: -122.3994,
-      west: -122.5194,
-    ),
+    bounds:
+        bounds ??
+        GeographicBounds(
+          north: 37.8267,
+          south: 37.7849,
+          east: -122.3994,
+          west: -122.5194,
+        ),
     lastUpdate: lastUpdate ?? DateTime.now().subtract(const Duration(days: 1)),
     state: 'California',
     type: ChartType.harbor,
@@ -750,7 +898,11 @@ NavigationRoute _createTestRoute({String? id, String? name}) {
     name: name ?? 'Test Navigation Route',
     waypoints: [
       _createTestWaypoint(id: '${routeId}_wp1', name: 'Start Point'),
-      _createTestWaypoint(id: '${routeId}_wp2', name: 'End Point', latitude: 37.8000),
+      _createTestWaypoint(
+        id: '${routeId}_wp2',
+        name: 'End Point',
+        latitude: 37.8000,
+      ),
     ],
     description: 'Test route for navigation',
   );

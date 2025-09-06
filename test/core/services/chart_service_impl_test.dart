@@ -40,18 +40,20 @@ void main() {
         const chartId = 'US5CA52M';
         final expectedChart = _createTestChart(chartId);
 
-        when(mockStorage.loadChart(chartId))
-            .thenAnswer((_) async => _createValidS57Data()); // Use valid S-57 data
+        when(
+          mockStorage.loadChart(chartId),
+        ).thenAnswer((_) async => _createValidS57Data()); // Use valid S-57 data
 
         // Act & Assert - Now should pass with implementation
         final chart = await chartService.loadChart(chartId);
         expect(chart, isNotNull);
         expect(chart!.id, equals(chartId));
-      });      test('should return null for non-existent chart', () async {
+      });
+      test('should return null for non-existent chart', () async {
         // Arrange
         const chartId = 'INVALID_CHART';
         when(mockStorage.loadChart(chartId)).thenAnswer((_) async => null);
-        
+
         // Act & Assert - Now should pass with implementation
         final chart = await chartService.loadChart(chartId);
         expect(chart, isNull);
@@ -60,12 +62,12 @@ void main() {
       test('should handle storage errors gracefully', () async {
         // Arrange
         const chartId = 'US5CA52M';
-        when(mockStorage.loadChart(chartId))
-            .thenThrow(Exception('Storage error'));
-        
+        when(
+          mockStorage.loadChart(chartId),
+        ).thenThrow(Exception('Storage error'));
+
         // Act & Assert - Now should pass with implementation
-        expect(() => chartService.loadChart(chartId), 
-               throwsA(isA<AppError>()));
+        expect(() => chartService.loadChart(chartId), throwsA(isA<AppError>()));
       });
     });
 
@@ -76,7 +78,7 @@ void main() {
           _createTestChart('US5CA52M'),
           _createTestChart('US4CA11M'),
         ];
-        
+
         // Act & Assert - Now should pass with implementation
         final charts = await chartService.getAvailableCharts();
         expect(charts, hasLength(2));
@@ -87,7 +89,7 @@ void main() {
         // Arrange
         const query = 'San Francisco';
         final expectedCharts = [_createTestChart('US5CA52M')];
-        
+
         // Act & Assert - Now should pass with implementation
         final charts = await chartService.searchCharts(query);
         expect(charts, hasLength(1));
@@ -97,7 +99,7 @@ void main() {
       test('should return empty list for invalid search query', () async {
         // Arrange
         const query = 'NONEXISTENT_LOCATION';
-        
+
         // Act & Assert - Now should pass with implementation
         final charts = await chartService.searchCharts(query);
         expect(charts, isEmpty);
@@ -108,7 +110,7 @@ void main() {
       test('should parse valid S-57 chart data', () async {
         // Arrange
         final validS57Data = _createValidS57Data();
-        
+
         // Act & Assert - Now should pass with implementation
         final parsedData = await chartService.parseS57Data(validS57Data);
         expect(parsedData, isNotEmpty);
@@ -118,20 +120,48 @@ void main() {
 
       test('should handle corrupted S-57 data gracefully', () async {
         // Arrange
-        final corruptedData = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-                              0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-                              0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]; // 24 bytes with wrong header
+        final corruptedData = [
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+          0xFF,
+        ]; // 24 bytes with wrong header
 
         // Act & Assert - Now should pass with implementation
-        expect(() => chartService.parseS57Data(corruptedData),
-               throwsA(isA<AppError>()));
-      });      test('should reject empty chart data', () async {
+        expect(
+          () => chartService.parseS57Data(corruptedData),
+          throwsA(isA<AppError>()),
+        );
+      });
+      test('should reject empty chart data', () async {
         // Arrange
         final emptyData = <int>[];
-        
+
         // Act & Assert - Now should pass with implementation
-        expect(() => chartService.parseS57Data(emptyData),
-               throwsA(isA<AppError>()));
+        expect(
+          () => chartService.parseS57Data(emptyData),
+          throwsA(isA<AppError>()),
+        );
       });
     });
 
@@ -139,7 +169,7 @@ void main() {
       test('should validate correct chart data', () async {
         // Arrange
         final validData = _createValidS57Data();
-        
+
         // Act & Assert - Now should pass with implementation
         final isValid = await chartService.validateChartData(validData);
         expect(isValid, isTrue);
@@ -147,20 +177,30 @@ void main() {
 
       test('should reject invalid chart data format', () async {
         // Arrange
-        final invalidData = [1, 2, 3]; // Too short for valid S-57 (less than 24 bytes)
+        final invalidData = [
+          1,
+          2,
+          3,
+        ]; // Too short for valid S-57 (less than 24 bytes)
 
         // Act & Assert - Now should pass with implementation
         final isValid = await chartService.validateChartData(invalidData);
         expect(isValid, isFalse);
-      });      test('should validate chart bounds for marine navigation', () async {
-        // Arrange  
+      });
+      test('should validate chart bounds for marine navigation', () async {
+        // Arrange
         final chartWithInvalidBounds = _createValidS57Data();
         // Chart with bounds outside valid marine coordinates - but the implementation
         // returns valid bounds, so we need to test with data that would produce invalid bounds
-        
+
         // Act & Assert - Now should pass with implementation
-        final isValid = await chartService.validateChartData(chartWithInvalidBounds);
-        expect(isValid, isTrue); // Valid S-57 data with valid bounds should pass
+        final isValid = await chartService.validateChartData(
+          chartWithInvalidBounds,
+        );
+        expect(
+          isValid,
+          isTrue,
+        ); // Valid S-57 data with valid bounds should pass
       });
     });
 
@@ -168,8 +208,9 @@ void main() {
       test('should cache loaded charts for improved performance', () async {
         // Arrange
         const chartId = 'US5CA52M';
-        when(mockStorage.loadChart(chartId))
-            .thenAnswer((_) async => _createValidS57Data());
+        when(
+          mockStorage.loadChart(chartId),
+        ).thenAnswer((_) async => _createValidS57Data());
 
         // Act & Assert - Now should pass with implementation
         // First load
@@ -179,43 +220,57 @@ void main() {
 
         // Storage should only be called once due to caching
         verify(mockStorage.loadChart(chartId)).called(1);
-      });      test('should complete chart operations within marine navigation time limits', () async {
-        // Arrange
-        const chartId = 'US5CA52M';
-        final largeChartData = _createValidS57Data(); // Use valid S-57 data instead of large mock data
-        when(mockStorage.loadChart(chartId))
-            .thenAnswer((_) async => largeChartData);
-
-        // Act & Assert - Now should pass with implementation
-        final stopwatch = Stopwatch()..start();
-        await chartService.loadChart(chartId);
-        stopwatch.stop();
-
-        // Should complete within 2 seconds for marine navigation requirements
-        expect(stopwatch.elapsedMilliseconds, lessThan(2000));
       });
+      test(
+        'should complete chart operations within marine navigation time limits',
+        () async {
+          // Arrange
+          const chartId = 'US5CA52M';
+          final largeChartData =
+              _createValidS57Data(); // Use valid S-57 data instead of large mock data
+          when(
+            mockStorage.loadChart(chartId),
+          ).thenAnswer((_) async => largeChartData);
+
+          // Act & Assert - Now should pass with implementation
+          final stopwatch = Stopwatch()..start();
+          await chartService.loadChart(chartId);
+          stopwatch.stop();
+
+          // Should complete within 2 seconds for marine navigation requirements
+          expect(stopwatch.elapsedMilliseconds, lessThan(2000));
+        },
+      );
     });
 
     group('Error Handling and Logging', () {
       test('should log chart loading operations', () async {
         // Arrange
         const chartId = 'US5CA52M';
-        when(mockStorage.loadChart(chartId))
-            .thenAnswer((_) async => _createValidS57Data());
+        when(
+          mockStorage.loadChart(chartId),
+        ).thenAnswer((_) async => _createValidS57Data());
 
         // Act & Assert - Now should pass with implementation
         await chartService.loadChart(chartId);
 
-        verify(mockLogger.info(
-          argThat(contains('Loading chart: $chartId')),
-        )).called(1);
-      });      test('should handle and log chart parsing errors', () async {
+        verify(
+          mockLogger.info(argThat(contains('Loading chart: $chartId'))),
+        ).called(1);
+      });
+      test('should handle and log chart parsing errors', () async {
         // Arrange
-        final invalidData = [0x00, 0x01, 0x02]; // Invalid S-57 header - doesn't start with 0x30, 0x30
+        final invalidData = [
+          0x00,
+          0x01,
+          0x02,
+        ]; // Invalid S-57 header - doesn't start with 0x30, 0x30
 
         // Act & Assert - Now should pass with implementation
-        expect(() => chartService.parseS57Data(invalidData),
-               throwsA(isA<AppError>()));
+        expect(
+          () => chartService.parseS57Data(invalidData),
+          throwsA(isA<AppError>()),
+        );
 
         // Note: Error logging verification would require async handling
         // verify(mockLogger.error(
@@ -229,9 +284,11 @@ void main() {
       test('should not leak memory during chart processing', () async {
         // Arrange
         const chartId = 'US5CA52M';
-        final largeChartData = _createValidS57Data(); // Use valid S-57 data instead of large mock data
-        when(mockStorage.loadChart(chartId))
-            .thenAnswer((_) async => largeChartData);
+        final largeChartData =
+            _createValidS57Data(); // Use valid S-57 data instead of large mock data
+        when(
+          mockStorage.loadChart(chartId),
+        ).thenAnswer((_) async => largeChartData);
 
         // Act & Assert - Now should pass with implementation
         // Load and unload multiple times to test memory management
@@ -240,7 +297,7 @@ void main() {
           // Force garbage collection simulation
           await Future.delayed(Duration(milliseconds: 100));
         }
-        
+
         // Memory usage should stabilize (implementation should handle this)
         expect(true, isTrue); // Placeholder for memory assertion
       });
@@ -284,29 +341,29 @@ Chart _createTestChart(String chartId) {
 List<int> _createValidS57Data() {
   // Create a minimal but valid S-57 ISO 8211 record structure
   final data = <int>[];
-  
+
   // Record leader (24 bytes) - matches S-57 format
-  data.addAll('00100'.codeUnits);     // Record length (minimal)
-  data.addAll('3'.codeUnits);         // Interchange level
-  data.addAll('L'.codeUnits);         // Leader identifier  
-  data.addAll('E'.codeUnits);         // Inline code extension
-  data.addAll('1'.codeUnits);         // Version number
-  data.addAll(' '.codeUnits);         // Application indicator
-  data.addAll('09'.codeUnits);        // Field control length
-  data.addAll('00050'.codeUnits);     // Base address of data
-  data.addAll(' ! '.codeUnits);       // Extended character set
-  data.addAll('3'.codeUnits);         // Size of field length
-  data.addAll('4'.codeUnits);         // Size of field position
-  data.addAll('0'.codeUnits);         // Reserved
-  data.addAll('4'.codeUnits);         // Size of field tag
-  
+  data.addAll('00100'.codeUnits); // Record length (minimal)
+  data.addAll('3'.codeUnits); // Interchange level
+  data.addAll('L'.codeUnits); // Leader identifier
+  data.addAll('E'.codeUnits); // Inline code extension
+  data.addAll('1'.codeUnits); // Version number
+  data.addAll(' '.codeUnits); // Application indicator
+  data.addAll('09'.codeUnits); // Field control length
+  data.addAll('00050'.codeUnits); // Base address of data
+  data.addAll(' ! '.codeUnits); // Extended character set
+  data.addAll('3'.codeUnits); // Size of field length
+  data.addAll('4'.codeUnits); // Size of field position
+  data.addAll('0'.codeUnits); // Reserved
+  data.addAll('4'.codeUnits); // Size of field tag
+
   // Directory terminator
   data.add(0x1e);
-  
+
   // Pad to reach base address and total length
   while (data.length < 100) {
     data.add(0x20); // Space padding
   }
-  
+
   return data;
 }

@@ -92,7 +92,10 @@ void main() {
           west: -122.5,
         );
 
-        expect(bounds.toString(), equals('LatLngBounds(N:37.8, S:37.7, E:-122.3, W:-122.5)'));
+        expect(
+          bounds.toString(),
+          equals('LatLngBounds(N:37.8, S:37.7, E:-122.3, W:-122.5)'),
+        );
       });
     });
 
@@ -247,7 +250,7 @@ void main() {
             const LatLng(37.7649, -122.3994),
             const LatLng(37.7849, -122.3994),
             const LatLng(37.7849, -122.4094),
-          ]
+          ],
         ];
 
         final feature = AreaFeature(

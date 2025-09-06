@@ -35,7 +35,7 @@ void main() {
     group('float decoding', () {
       test('should decode valid float values', () {
         final def = catalog.byAcronym('DRVAL1');
-        
+
         expect(catalog.decodeAttribute(def, ['10.5']), equals(10.5));
         expect(catalog.decodeAttribute(def, ['0.0']), equals(0.0));
         expect(catalog.decodeAttribute(def, ['-5.25']), equals(-5.25));
@@ -44,7 +44,7 @@ void main() {
 
       test('should handle invalid float values', () {
         final def = catalog.byAcronym('DRVAL1');
-        
+
         expect(catalog.decodeAttribute(def, ['not_a_number']), isNull);
         expect(catalog.decodeAttribute(def, ['']), isNull);
         expect(catalog.decodeAttribute(def, ['10.5.5']), isNull);
@@ -53,7 +53,7 @@ void main() {
 
       test('should handle empty or missing values', () {
         final def = catalog.byAcronym('DRVAL1');
-        
+
         expect(catalog.decodeAttribute(def, []), isNull);
       });
     });
@@ -61,7 +61,7 @@ void main() {
     group('int decoding', () {
       test('should decode valid integer values', () {
         final def = catalog.byAcronym('VALNMR');
-        
+
         expect(catalog.decodeAttribute(def, ['123']), equals(123));
         expect(catalog.decodeAttribute(def, ['0']), equals(0));
         expect(catalog.decodeAttribute(def, ['-456']), equals(-456));
@@ -69,7 +69,7 @@ void main() {
 
       test('should handle invalid integer values', () {
         final def = catalog.byAcronym('VALNMR');
-        
+
         expect(catalog.decodeAttribute(def, ['10.5']), isNull);
         expect(catalog.decodeAttribute(def, ['not_a_number']), isNull);
         expect(catalog.decodeAttribute(def, ['']), isNull);
@@ -80,16 +80,22 @@ void main() {
     group('string decoding', () {
       test('should decode string values with trimming', () {
         final def = catalog.byAcronym('OBJNAM');
-        
-        expect(catalog.decodeAttribute(def, ['Test Name']), equals('Test Name'));
-        expect(catalog.decodeAttribute(def, ['  Trimmed  ']), equals('Trimmed'));
+
+        expect(
+          catalog.decodeAttribute(def, ['Test Name']),
+          equals('Test Name'),
+        );
+        expect(
+          catalog.decodeAttribute(def, ['  Trimmed  ']),
+          equals('Trimmed'),
+        );
         expect(catalog.decodeAttribute(def, ['']), equals(''));
         expect(catalog.decodeAttribute(def, ['123']), equals('123'));
       });
 
       test('should handle multi-character strings', () {
         final def = catalog.byAcronym('OBJNAM');
-        
+
         const longString = 'Very Long Object Name With Spaces And Numbers 123';
         expect(catalog.decodeAttribute(def, [longString]), equals(longString));
       });
@@ -98,32 +104,37 @@ void main() {
     group('enum decoding', () {
       test('should decode enum values with known codes', () {
         final def = catalog.byAcronym('COLOUR');
-        
-        final green = catalog.decodeAttribute(def, ['3']) as Map<String, dynamic>;
+
+        final green =
+            catalog.decodeAttribute(def, ['3']) as Map<String, dynamic>;
         expect(green['code'], equals('3'));
         expect(green['label'], equals('green'));
 
-        final blue = catalog.decodeAttribute(def, ['4']) as Map<String, dynamic>;
+        final blue =
+            catalog.decodeAttribute(def, ['4']) as Map<String, dynamic>;
         expect(blue['code'], equals('4'));
         expect(blue['label'], equals('blue'));
 
-        final yellow = catalog.decodeAttribute(def, ['5']) as Map<String, dynamic>;
+        final yellow =
+            catalog.decodeAttribute(def, ['5']) as Map<String, dynamic>;
         expect(yellow['code'], equals('5'));
         expect(yellow['label'], equals('yellow'));
       });
 
       test('should decode enum values with unknown codes', () {
         final def = catalog.byAcronym('COLOUR');
-        
-        final unknown = catalog.decodeAttribute(def, ['99']) as Map<String, dynamic>;
+
+        final unknown =
+            catalog.decodeAttribute(def, ['99']) as Map<String, dynamic>;
         expect(unknown['code'], equals('99'));
         expect(unknown.containsKey('label'), isFalse);
       });
 
       test('should handle trimming for enum codes', () {
         final def = catalog.byAcronym('COLOUR');
-        
-        final trimmed = catalog.decodeAttribute(def, ['  3  ']) as Map<String, dynamic>;
+
+        final trimmed =
+            catalog.decodeAttribute(def, ['  3  ']) as Map<String, dynamic>;
         expect(trimmed['code'], equals('3'));
         expect(trimmed['label'], equals('green'));
       });
@@ -132,30 +143,45 @@ void main() {
     group('unknown attribute handling', () {
       test('should pass through values for unknown attributes', () {
         // Single value should be returned as-is
-        expect(catalog.decodeAttribute(null, ['single_value']), equals('single_value'));
-        
+        expect(
+          catalog.decodeAttribute(null, ['single_value']),
+          equals('single_value'),
+        );
+
         // Multiple values should be returned as list
-        expect(catalog.decodeAttribute(null, ['val1', 'val2']), equals(['val1', 'val2']));
-        
+        expect(
+          catalog.decodeAttribute(null, ['val1', 'val2']),
+          equals(['val1', 'val2']),
+        );
+
         // Empty list should be returned as empty list
         expect(catalog.decodeAttribute(null, []), equals([]));
       });
 
       test('should not emit warnings for unknown attributes in decoding', () {
         // Decoding with null definition should work correctly
-        expect(catalog.decodeAttribute(null, ['some_value']), equals('some_value'));
-        expect(catalog.decodeAttribute(null, ['val1', 'val2']), equals(['val1', 'val2']));
+        expect(
+          catalog.decodeAttribute(null, ['some_value']),
+          equals('some_value'),
+        );
+        expect(
+          catalog.decodeAttribute(null, ['val1', 'val2']),
+          equals(['val1', 'val2']),
+        );
         expect(catalog.decodeAttribute(null, []), equals([]));
-        
+
         // Should continue to work with repeated calls
-        expect(catalog.decodeAttribute(null, ['another_value']), equals('another_value'));
+        expect(
+          catalog.decodeAttribute(null, ['another_value']),
+          equals('another_value'),
+        );
       });
     });
 
     group('edge cases', () {
       test('should handle multiple values gracefully', () {
         final def = catalog.byAcronym('DRVAL1');
-        
+
         // For known attributes, should only use first value
         expect(catalog.decodeAttribute(def, ['10.5', '20.0']), equals(10.5));
       });
@@ -163,11 +189,12 @@ void main() {
       test('should handle empty and whitespace strings', () {
         final stringDef = catalog.byAcronym('OBJNAM');
         final enumDef = catalog.byAcronym('COLOUR');
-        
+
         expect(catalog.decodeAttribute(stringDef, ['']), equals(''));
         expect(catalog.decodeAttribute(stringDef, ['   ']), equals(''));
-        
-        final emptyEnum = catalog.decodeAttribute(enumDef, ['']) as Map<String, dynamic>;
+
+        final emptyEnum =
+            catalog.decodeAttribute(enumDef, ['']) as Map<String, dynamic>;
         expect(emptyEnum['code'], equals(''));
         expect(emptyEnum.containsKey('label'), isFalse);
       });

@@ -11,7 +11,7 @@ import 'settings_service.dart';
 class SettingsServiceImpl implements SettingsService {
   final SharedPreferences? _prefs;
   final AppLogger _logger;
-  
+
   // Cache for frequently accessed settings
   final Map<String, dynamic> _cache = {};
   final Map<String, DateTime> _cacheTimestamps = {};
@@ -44,7 +44,7 @@ class SettingsServiceImpl implements SettingsService {
   T? _getCached<T>(String key) {
     if (_cache.containsKey(key)) {
       final timestamp = _cacheTimestamps[key];
-      if (timestamp != null && 
+      if (timestamp != null &&
           DateTime.now().difference(timestamp) < _cacheExpiration) {
         return _cache[key] as T?;
       } else {
@@ -80,12 +80,12 @@ class SettingsServiceImpl implements SettingsService {
         return cached;
       }
 
-    final prefs = _prefs!; // safe after _validatePrefs
-    final value = prefs.getString(key);
+      final prefs = _prefs!; // safe after _validatePrefs
+      final value = prefs.getString(key);
       if (value != null) {
         _setCached(key, value);
       }
-      
+
       return value;
     } catch (error) {
       _logger.error('Failed to get setting: $key', exception: error);
@@ -102,12 +102,12 @@ class SettingsServiceImpl implements SettingsService {
     try {
       _validateKey(key);
       _validatePrefs();
-      
+
       // Validate specific settings
       _validateSettingValue(key, value);
 
-  final prefs = _prefs!; // safe after _validatePrefs
-  final success = await prefs.setString(key, value);
+      final prefs = _prefs!; // safe after _validatePrefs
+      final success = await prefs.setString(key, value);
       if (!success) {
         throw AppError(
           message: 'Failed to save setting to storage',
@@ -164,10 +164,10 @@ class SettingsServiceImpl implements SettingsService {
         return cached;
       }
 
-  final prefs = _prefs; // safe after _validatePrefs
-  final value = prefs!.getBool(key) ?? false;
+      final prefs = _prefs; // safe after _validatePrefs
+      final value = prefs!.getBool(key) ?? false;
       _setCached(key, value);
-      
+
       return value;
     } catch (error) {
       _logger.error('Failed to get bool setting: $key', exception: error);
@@ -185,8 +185,8 @@ class SettingsServiceImpl implements SettingsService {
       _validateKey(key);
       _validatePrefs();
 
-    final prefs = _prefs!; // safe after _validatePrefs
-    final success = await prefs.setBool(key, value);
+      final prefs = _prefs!; // safe after _validatePrefs
+      final success = await prefs.setBool(key, value);
       if (!success) {
         throw AppError(
           message: 'Failed to save bool setting to storage',
@@ -219,10 +219,10 @@ class SettingsServiceImpl implements SettingsService {
         return cached;
       }
 
-    final prefs = _prefs!; // safe after _validatePrefs
-    final value = prefs.getInt(key) ?? 0;
+      final prefs = _prefs!; // safe after _validatePrefs
+      final value = prefs.getInt(key) ?? 0;
       _setCached(key, value);
-      
+
       return value;
     } catch (error) {
       _logger.error('Failed to get int setting: $key', exception: error);
@@ -239,12 +239,12 @@ class SettingsServiceImpl implements SettingsService {
     try {
       _validateKey(key);
       _validatePrefs();
-      
+
       // Validate marine navigation ranges
       _validateIntegerValue(key, value);
 
-    final prefs = _prefs!; // safe after _validatePrefs
-    final success = await prefs.setInt(key, value);
+      final prefs = _prefs!; // safe after _validatePrefs
+      final success = await prefs.setInt(key, value);
       if (!success) {
         throw AppError(
           message: 'Failed to save int setting to storage',
@@ -277,10 +277,10 @@ class SettingsServiceImpl implements SettingsService {
         return cached;
       }
 
-    final prefs = _prefs!; // safe after _validatePrefs
-    final value = prefs.getDouble(key) ?? 0.0;
+      final prefs = _prefs!; // safe after _validatePrefs
+      final value = prefs.getDouble(key) ?? 0.0;
       _setCached(key, value);
-      
+
       return value;
     } catch (error) {
       _logger.error('Failed to get double setting: $key', exception: error);
@@ -297,12 +297,12 @@ class SettingsServiceImpl implements SettingsService {
     try {
       _validateKey(key);
       _validatePrefs();
-      
+
       // Validate marine navigation ranges
       _validateDoubleValue(key, value);
 
-    final prefs = _prefs!; // safe after _validatePrefs
-    final success = await prefs.setDouble(key, value);
+      final prefs = _prefs!; // safe after _validatePrefs
+      final success = await prefs.setDouble(key, value);
       if (!success) {
         throw AppError(
           message: 'Failed to save double setting to storage',
@@ -331,7 +331,7 @@ class SettingsServiceImpl implements SettingsService {
       final prefs = _prefs!; // safe after _validatePrefs
       final keys = prefs.getKeys();
       final settings = <String, dynamic>{};
-      
+
       for (final key in keys) {
         settings[key] = prefs.get(key);
       }
@@ -492,8 +492,14 @@ class SettingsServiceImpl implements SettingsService {
       await setInt('max_concurrent_downloads', settings.maxConcurrentDownloads);
       await setBool('enable_gps_logging', settings.enableGpsLogging);
       await setBool('show_debug_info', settings.showDebugInfo);
-      await setDouble('chart_rendering_quality', settings.chartRenderingQuality);
-      await setBool('enable_background_downloads', settings.enableBackgroundDownloads);
+      await setDouble(
+        'chart_rendering_quality',
+        settings.chartRenderingQuality,
+      );
+      await setBool(
+        'enable_background_downloads',
+        settings.enableBackgroundDownloads,
+      );
       await setBool('auto_select_chart', settings.autoSelectChart);
       await setString('preferred_units', settings.preferredUnits);
       await setDouble('gps_update_interval', settings.gpsUpdateInterval);
@@ -502,7 +508,10 @@ class SettingsServiceImpl implements SettingsService {
 
       _logger.info('AppSettings model saved to preferences');
     } catch (error) {
-      _logger.error('Failed to save AppSettings to preferences', exception: error);
+      _logger.error(
+        'Failed to save AppSettings to preferences',
+        exception: error,
+      );
       throw AppError(
         message: 'Failed to save AppSettings to preferences',
         type: AppErrorType.storage,
@@ -549,7 +558,8 @@ class SettingsServiceImpl implements SettingsService {
       case 'max_concurrent_downloads':
         if (value < 1 || value > 10) {
           throw AppError(
-            message: 'Invalid max concurrent downloads: $value. Must be between 1 and 10',
+            message:
+                'Invalid max concurrent downloads: $value. Must be between 1 and 10',
             type: AppErrorType.validation,
           );
         }
@@ -563,7 +573,8 @@ class SettingsServiceImpl implements SettingsService {
       case 'chart_rendering_quality':
         if (value < 0.1 || value > 2.0) {
           throw AppError(
-            message: 'Invalid chart rendering quality: $value. Must be between 0.1 and 2.0',
+            message:
+                'Invalid chart rendering quality: $value. Must be between 0.1 and 2.0',
             type: AppErrorType.validation,
           );
         }
@@ -571,7 +582,8 @@ class SettingsServiceImpl implements SettingsService {
       case 'gps_update_interval':
         if (value < 0.1 || value > 60.0) {
           throw AppError(
-            message: 'Invalid GPS update interval: $value. Must be between 0.1 and 60.0 seconds',
+            message:
+                'Invalid GPS update interval: $value. Must be between 0.1 and 60.0 seconds',
             type: AppErrorType.validation,
           );
         }

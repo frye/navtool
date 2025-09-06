@@ -55,7 +55,8 @@ class AppState {
       activeRoute: activeRoute ?? this.activeRoute,
       waypoints: waypoints ?? this.waypoints,
       isGpsEnabled: isGpsEnabled ?? this.isGpsEnabled,
-      isLocationPermissionGranted: isLocationPermissionGranted ?? this.isLocationPermissionGranted,
+      isLocationPermissionGranted:
+          isLocationPermissionGranted ?? this.isLocationPermissionGranted,
       themeMode: themeMode ?? this.themeMode,
       isDayMode: isDayMode ?? this.isDayMode,
     );

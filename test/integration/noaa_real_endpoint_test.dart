@@ -14,12 +14,22 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('DEPRECATED: NOAA Real Endpoint Integration Tests', () {
     test('Tests moved to integration_test directory', () {
-      printOnFailure('DEPRECATED: These tests have been moved to integration_test/noaa_real_endpoint_test.dart');
-      printOnFailure('For mock-based unit tests, use test/core/services/noaa_api_client_mock_test.dart');
-      printOnFailure('For real network integration tests, use integration_test/noaa_real_endpoint_test.dart');
-      
+      printOnFailure(
+        'DEPRECATED: These tests have been moved to integration_test/noaa_real_endpoint_test.dart',
+      );
+      printOnFailure(
+        'For mock-based unit tests, use test/core/services/noaa_api_client_mock_test.dart',
+      );
+      printOnFailure(
+        'For real network integration tests, use integration_test/noaa_real_endpoint_test.dart',
+      );
+
       // This test always passes to indicate the migration is complete
-      expect(true, isTrue, reason: 'Tests successfully migrated to new structure');
+      expect(
+        true,
+        isTrue,
+        reason: 'Tests successfully migrated to new structure',
+      );
     });
   });
 }

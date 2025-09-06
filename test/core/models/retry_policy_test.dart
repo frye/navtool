@@ -7,7 +7,7 @@ void main() {
       test('should create RetryPolicy with default values', () {
         // Arrange & Act
         const policy = RetryPolicy();
-        
+
         // Assert
         expect(policy.maxRetries, 3);
         expect(policy.initialDelay, const Duration(seconds: 1));
@@ -27,7 +27,7 @@ void main() {
           useJitter: false,
           jitterRange: 0.2,
         );
-        
+
         // Assert
         expect(policy.maxRetries, 5);
         expect(policy.initialDelay, const Duration(milliseconds: 500));
@@ -47,7 +47,7 @@ void main() {
           maxDelay: Duration(minutes: 10),
           useJitter: false,
         );
-        
+
         // Act & Assert
         expect(policy.calculateDelay(0), const Duration(seconds: 1));
         expect(policy.calculateDelay(1), const Duration(seconds: 2));
@@ -63,10 +63,12 @@ void main() {
           maxRetries: 15, // Allow enough retries to test max delay
           useJitter: false,
         );
-        
+
         // Act
-        final delay = policy.calculateDelay(10); // Would be 1024 seconds without limit
-        
+        final delay = policy.calculateDelay(
+          10,
+        ); // Would be 1024 seconds without limit
+
         // Assert
         expect(delay, const Duration(seconds: 5));
       });
@@ -79,17 +81,17 @@ void main() {
           useJitter: true,
           jitterRange: 0.1,
         );
-        
+
         // Act
         final delay1 = policy.calculateDelay(0);
         final delay2 = policy.calculateDelay(0);
-        
+
         // Assert - delays should be within jitter range of 1 second (±10%)
         expect(delay1.inMilliseconds, greaterThanOrEqualTo(900));
         expect(delay1.inMilliseconds, lessThanOrEqualTo(1100));
         expect(delay2.inMilliseconds, greaterThanOrEqualTo(900));
         expect(delay2.inMilliseconds, lessThanOrEqualTo(1100));
-        
+
         // Note: Can't guarantee they're different due to time-based pseudo-random
       });
 
@@ -100,7 +102,7 @@ void main() {
           backoffMultiplier: 1.5,
           useJitter: false,
         );
-        
+
         // Act & Assert
         expect(policy.calculateDelay(0), const Duration(seconds: 2));
         expect(policy.calculateDelay(1), const Duration(seconds: 3));
@@ -110,23 +112,17 @@ void main() {
       test('should throw ArgumentError for negative attempt', () {
         // Arrange
         const policy = RetryPolicy();
-        
+
         // Act & Assert
-        expect(
-          () => policy.calculateDelay(-1),
-          throwsA(isA<ArgumentError>()),
-        );
+        expect(() => policy.calculateDelay(-1), throwsA(isA<ArgumentError>()));
       });
 
       test('should throw ArgumentError for attempt exceeding max retries', () {
         // Arrange
         const policy = RetryPolicy(maxRetries: 3);
-        
+
         // Act & Assert
-        expect(
-          () => policy.calculateDelay(3),
-          throwsA(isA<ArgumentError>()),
-        );
+        expect(() => policy.calculateDelay(3), throwsA(isA<ArgumentError>()));
       });
     });
 
@@ -134,7 +130,7 @@ void main() {
       test('should have correct chartDownload policy configuration', () {
         // Arrange & Act
         const policy = RetryPolicy.chartDownload;
-        
+
         // Assert
         expect(policy.maxRetries, 3);
         expect(policy.initialDelay, const Duration(seconds: 2));
@@ -147,7 +143,7 @@ void main() {
       test('should have correct apiRequest policy configuration', () {
         // Arrange & Act
         const policy = RetryPolicy.apiRequest;
-        
+
         // Assert
         expect(policy.maxRetries, 5);
         expect(policy.initialDelay, const Duration(milliseconds: 500));
@@ -160,7 +156,7 @@ void main() {
       test('should have correct critical policy configuration', () {
         // Arrange & Act
         const policy = RetryPolicy.critical;
-        
+
         // Assert
         expect(policy.maxRetries, 7);
         expect(policy.initialDelay, const Duration(seconds: 1));
@@ -179,19 +175,19 @@ void main() {
           initialDelay: Duration(seconds: 1),
           backoffMultiplier: 2.0,
         );
-        
+
         const policy2 = RetryPolicy(
           maxRetries: 3,
           initialDelay: Duration(seconds: 1),
           backoffMultiplier: 2.0,
         );
-        
+
         const policy3 = RetryPolicy(
           maxRetries: 5,
           initialDelay: Duration(seconds: 1),
           backoffMultiplier: 2.0,
         );
-        
+
         // Act & Assert
         expect(policy1, equals(policy2));
         expect(policy1, isNot(equals(policy3)));
@@ -207,10 +203,10 @@ void main() {
           maxDelay: Duration(minutes: 2),
           useJitter: true,
         );
-        
+
         // Act
         final stringRep = policy.toString();
-        
+
         // Assert
         expect(stringRep, contains('RetryPolicy'));
         expect(stringRep, contains('maxRetries: 3'));
@@ -226,10 +222,10 @@ void main() {
           initialDelay: Duration.zero,
           useJitter: false,
         );
-        
+
         // Act
         final delay = policy.calculateDelay(0);
-        
+
         // Assert
         expect(delay, Duration.zero);
       });
@@ -241,7 +237,7 @@ void main() {
           backoffMultiplier: 1.0,
           useJitter: false,
         );
-        
+
         // Act & Assert
         expect(policy.calculateDelay(0), const Duration(seconds: 2));
         expect(policy.calculateDelay(1), const Duration(seconds: 2));
@@ -255,10 +251,10 @@ void main() {
           useJitter: true,
           jitterRange: 0.001, // 0.1%
         );
-        
+
         // Act
         final delay = policy.calculateDelay(0);
-        
+
         // Assert
         // Should be very close to 1 second
         expect(delay.inMilliseconds, greaterThanOrEqualTo(999));

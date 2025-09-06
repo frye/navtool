@@ -59,7 +59,9 @@ void main() {
     }
 
     group('Chart Card Display', () {
-      testWidgets('should display chart basic information', (WidgetTester tester) async {
+      testWidgets('should display chart basic information', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         final chart = createTestChart();
 
@@ -74,7 +76,9 @@ void main() {
         expect(find.text('Harbor'), findsOneWidget);
       });
 
-      testWidgets('should display chart file size', (WidgetTester tester) async {
+      testWidgets('should display chart file size', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         final chart = createTestChart(fileSize: 15728640); // 15MB
 
@@ -99,7 +103,9 @@ void main() {
         expect(find.textContaining('122.3° - 122.5°W'), findsOneWidget);
       });
 
-      testWidgets('should display download status icon when downloaded', (WidgetTester tester) async {
+      testWidgets('should display download status icon when downloaded', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         final chart = createTestChart(isDownloaded: true);
 
@@ -112,7 +118,9 @@ void main() {
         expect(find.text('Downloaded'), findsOneWidget);
       });
 
-      testWidgets('should display cloud icon when not downloaded', (WidgetTester tester) async {
+      testWidgets('should display cloud icon when not downloaded', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         final chart = createTestChart(isDownloaded: false);
 
@@ -125,9 +133,13 @@ void main() {
         expect(find.text('Available'), findsOneWidget);
       });
 
-      testWidgets('should display chart type badge with correct color', (WidgetTester tester) async {
+      testWidgets('should display chart type badge with correct color', (
+        WidgetTester tester,
+      ) async {
         // Arrange & Act - Harbor chart
-        await tester.pumpWidget(createTestWidget(chart: createTestChart(type: ChartType.harbor)));
+        await tester.pumpWidget(
+          createTestWidget(chart: createTestChart(type: ChartType.harbor)),
+        );
         await tester.pumpAndSettle();
 
         // Assert
@@ -136,7 +148,9 @@ void main() {
         expect(harborChip.backgroundColor, Colors.blue.shade100);
 
         // Arrange & Act - Coastal chart
-        await tester.pumpWidget(createTestWidget(chart: createTestChart(type: ChartType.coastal)));
+        await tester.pumpWidget(
+          createTestWidget(chart: createTestChart(type: ChartType.coastal)),
+        );
         await tester.pumpAndSettle();
 
         // Assert
@@ -147,16 +161,17 @@ void main() {
     });
 
     group('Interaction Handling', () {
-      testWidgets('should call onTap when card is tapped', (WidgetTester tester) async {
+      testWidgets('should call onTap when card is tapped', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         bool tapCalled = false;
         final chart = createTestChart();
 
         // Act
-        await tester.pumpWidget(createTestWidget(
-          chart: chart,
-          onTap: () => tapCalled = true,
-        ));
+        await tester.pumpWidget(
+          createTestWidget(chart: chart, onTap: () => tapCalled = true),
+        );
         await tester.pumpAndSettle();
 
         await tester.tap(find.byType(Card));
@@ -166,16 +181,17 @@ void main() {
         expect(tapCalled, isTrue);
       });
 
-      testWidgets('should call onInfoTap when info button is tapped', (WidgetTester tester) async {
+      testWidgets('should call onInfoTap when info button is tapped', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         bool infoTapCalled = false;
         final chart = createTestChart();
 
         // Act
-        await tester.pumpWidget(createTestWidget(
-          chart: chart,
-          onInfoTap: () => infoTapCalled = true,
-        ));
+        await tester.pumpWidget(
+          createTestWidget(chart: chart, onInfoTap: () => infoTapCalled = true),
+        );
         await tester.pumpAndSettle();
 
         await tester.tap(find.byIcon(Icons.info_outline));
@@ -185,17 +201,21 @@ void main() {
         expect(infoTapCalled, isTrue);
       });
 
-      testWidgets('should call onSelectionChanged when checkbox is tapped', (WidgetTester tester) async {
+      testWidgets('should call onSelectionChanged when checkbox is tapped', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         bool? selectionValue;
         final chart = createTestChart();
 
         // Act
-        await tester.pumpWidget(createTestWidget(
-          chart: chart,
-          isSelected: false,
-          onSelectionChanged: (value) => selectionValue = value,
-        ));
+        await tester.pumpWidget(
+          createTestWidget(
+            chart: chart,
+            isSelected: false,
+            onSelectionChanged: (value) => selectionValue = value,
+          ),
+        );
         await tester.pumpAndSettle();
 
         await tester.tap(find.byType(Checkbox));
@@ -205,22 +225,25 @@ void main() {
         expect(selectionValue, isTrue);
       });
 
-      testWidgets('should show checkbox when onSelectionChanged is provided', (WidgetTester tester) async {
+      testWidgets('should show checkbox when onSelectionChanged is provided', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         final chart = createTestChart();
 
         // Act
-        await tester.pumpWidget(createTestWidget(
-          chart: chart,
-          onSelectionChanged: (value) {},
-        ));
+        await tester.pumpWidget(
+          createTestWidget(chart: chart, onSelectionChanged: (value) {}),
+        );
         await tester.pumpAndSettle();
 
         // Assert
         expect(find.byType(Checkbox), findsOneWidget);
       });
 
-      testWidgets('should hide checkbox when onSelectionChanged is null', (WidgetTester tester) async {
+      testWidgets('should hide checkbox when onSelectionChanged is null', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         final chart = createTestChart();
 
@@ -234,16 +257,20 @@ void main() {
     });
 
     group('Visual States', () {
-      testWidgets('should show selected state with different background', (WidgetTester tester) async {
+      testWidgets('should show selected state with different background', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         final chart = createTestChart();
 
         // Act
-        await tester.pumpWidget(createTestWidget(
-          chart: chart,
-          isSelected: true,
-          onSelectionChanged: (value) {},
-        ));
+        await tester.pumpWidget(
+          createTestWidget(
+            chart: chart,
+            isSelected: true,
+            onSelectionChanged: (value) {},
+          ),
+        );
         await tester.pumpAndSettle();
 
         // Assert
@@ -254,16 +281,20 @@ void main() {
         expect(checkbox.value, isTrue);
       });
 
-      testWidgets('should show unselected state with default background', (WidgetTester tester) async {
+      testWidgets('should show unselected state with default background', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         final chart = createTestChart();
 
         // Act
-        await tester.pumpWidget(createTestWidget(
-          chart: chart,
-          isSelected: false,
-          onSelectionChanged: (value) {},
-        ));
+        await tester.pumpWidget(
+          createTestWidget(
+            chart: chart,
+            isSelected: false,
+            onSelectionChanged: (value) {},
+          ),
+        );
         await tester.pumpAndSettle();
 
         // Assert
@@ -271,7 +302,9 @@ void main() {
         expect(checkbox.value, isFalse);
       });
 
-      testWidgets('should show loading state for charts without file size', (WidgetTester tester) async {
+      testWidgets('should show loading state for charts without file size', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         final chart = createTestChart(fileSize: null);
 
@@ -285,7 +318,9 @@ void main() {
     });
 
     group('Chart Type Styling', () {
-      testWidgets('should display different colors for different chart types', (WidgetTester tester) async {
+      testWidgets('should display different colors for different chart types', (
+        WidgetTester tester,
+      ) async {
         final testCases = [
           (ChartType.harbor, Colors.blue.shade100),
           (ChartType.approach, Colors.orange.shade100),
@@ -304,39 +339,57 @@ void main() {
 
           // Assert
           final chip = tester.widget<Chip>(find.byType(Chip));
-          expect(chip.backgroundColor, expectedColor, reason: 'Color for $type should be $expectedColor');
+          expect(
+            chip.backgroundColor,
+            expectedColor,
+            reason: 'Color for $type should be $expectedColor',
+          );
           expect(find.text(type.displayName), findsOneWidget);
         }
       });
     });
 
     group('Accessibility', () {
-      testWidgets('should have proper semantic labels', (WidgetTester tester) async {
+      testWidgets('should have proper semantic labels', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         final chart = createTestChart();
 
         // Act
-        await tester.pumpWidget(createTestWidget(
-          chart: chart,
-          onSelectionChanged: (value) {},
-        ));
+        await tester.pumpWidget(
+          createTestWidget(chart: chart, onSelectionChanged: (value) {}),
+        );
         await tester.pumpAndSettle();
 
         // Assert - Check for semantics widgets with proper structure
-        expect(find.byWidgetPredicate((widget) =>
-          widget is Semantics &&
-          widget.properties.label == 'San Francisco Bay chart card'
-        ), findsOneWidget);
-        
-        expect(find.byWidgetPredicate((widget) =>
-          widget is Semantics &&
-          widget.properties.label == 'Select chart San Francisco Bay'
-        ), findsOneWidget);
-        
-        expect(find.byWidgetPredicate((widget) =>
-          widget is Semantics &&
-          widget.properties.label == 'Chart information for San Francisco Bay'
-        ), findsOneWidget);
+        expect(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is Semantics &&
+                widget.properties.label == 'San Francisco Bay chart card',
+          ),
+          findsOneWidget,
+        );
+
+        expect(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is Semantics &&
+                widget.properties.label == 'Select chart San Francisco Bay',
+          ),
+          findsOneWidget,
+        );
+
+        expect(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is Semantics &&
+                widget.properties.label ==
+                    'Chart information for San Francisco Bay',
+          ),
+          findsOneWidget,
+        );
       });
 
       testWidgets('should be keyboard accessible', (WidgetTester tester) async {
@@ -345,10 +398,9 @@ void main() {
         final chart = createTestChart();
 
         // Act
-        await tester.pumpWidget(createTestWidget(
-          chart: chart,
-          onTap: () => tapCalled = true,
-        ));
+        await tester.pumpWidget(
+          createTestWidget(chart: chart, onTap: () => tapCalled = true),
+        );
         await tester.pumpAndSettle();
 
         // Focus and activate with keyboard
@@ -362,7 +414,9 @@ void main() {
     });
 
     group('Layout Responsiveness', () {
-      testWidgets('should adapt to small screen sizes', (WidgetTester tester) async {
+      testWidgets('should adapt to small screen sizes', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         tester.view.physicalSize = const Size(400, 800);
         tester.view.devicePixelRatio = 1.0;
@@ -380,7 +434,9 @@ void main() {
         expect(find.byType(Card), findsOneWidget);
       });
 
-      testWidgets('should adapt to large screen sizes', (WidgetTester tester) async {
+      testWidgets('should adapt to large screen sizes', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         tester.view.physicalSize = const Size(1200, 800);
         tester.view.devicePixelRatio = 1.0;
@@ -400,13 +456,20 @@ void main() {
     });
 
     group('Error Handling', () {
-      testWidgets('should handle missing chart data gracefully', (WidgetTester tester) async {
+      testWidgets('should handle missing chart data gracefully', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         final chart = Chart(
           id: '',
           title: '',
           scale: 1, // Minimum valid scale
-          bounds: GeographicBounds.unvalidated(north: 0, south: 0, east: 0, west: 0), // Simulate legacy invalid cached bounds
+          bounds: GeographicBounds.unvalidated(
+            north: 0,
+            south: 0,
+            east: 0,
+            west: 0,
+          ), // Simulate legacy invalid cached bounds
           lastUpdate: DateTime.now(),
           state: '',
           type: ChartType.harbor,
@@ -421,10 +484,13 @@ void main() {
         // Should not crash even with empty data
       });
 
-      testWidgets('should handle very long chart titles', (WidgetTester tester) async {
+      testWidgets('should handle very long chart titles', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         final chart = createTestChart(
-          title: 'This is a very long chart title that should be truncated or wrapped properly in the UI',
+          title:
+              'This is a very long chart title that should be truncated or wrapped properly in the UI',
         );
 
         // Act

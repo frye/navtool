@@ -91,7 +91,7 @@ void main() {
         type: WaypointType.destination,
         createdAt: timestamp,
       );
-      
+
       final waypoint2 = Waypoint(
         id: 'wp001',
         name: 'Test Point',
@@ -191,7 +191,7 @@ void main() {
           type: WaypointType.destination,
         ),
       ];
-      
+
       final route = NavigationRoute(
         id: 'route001',
         name: 'Test Route',
@@ -231,13 +231,13 @@ void main() {
           type: WaypointType.destination,
         ),
       ];
-      
+
       final route = NavigationRoute(
         id: 'route001',
         name: 'Test Route',
         waypoints: waypoints,
       );
-      
+
       final currentPosition = GpsPosition(
         latitude: 37.8250,
         longitude: -122.4250,

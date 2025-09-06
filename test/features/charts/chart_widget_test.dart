@@ -40,7 +40,7 @@ void main() {
               const LatLng(37.7649, -122.3994),
               const LatLng(37.7849, -122.3994),
               const LatLng(37.7849, -122.4094),
-            ]
+            ],
           ],
         ),
       ];
@@ -67,7 +67,9 @@ void main() {
     }
 
     group('Widget Creation and Properties', () {
-      testWidgets('should create ChartWidget with default parameters', (WidgetTester tester) async {
+      testWidgets('should create ChartWidget with default parameters', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         expect(find.byType(ChartWidget), findsOneWidget);
@@ -75,7 +77,9 @@ void main() {
         expect(find.byType(CustomPaint), findsAtLeastNWidgets(1));
       });
 
-      testWidgets('should create ChartWidget with custom initial center', (WidgetTester tester) async {
+      testWidgets('should create ChartWidget with custom initial center', (
+        WidgetTester tester,
+      ) async {
         const customCenter = LatLng(40.7589, -73.9851); // New York
 
         await tester.pumpWidget(createTestWidget(initialCenter: customCenter));
@@ -83,7 +87,9 @@ void main() {
         expect(find.byType(ChartWidget), findsOneWidget);
       });
 
-      testWidgets('should create ChartWidget with custom initial zoom', (WidgetTester tester) async {
+      testWidgets('should create ChartWidget with custom initial zoom', (
+        WidgetTester tester,
+      ) async {
         const customZoom = 15.0;
 
         await tester.pumpWidget(createTestWidget(initialZoom: customZoom));
@@ -91,22 +97,30 @@ void main() {
         expect(find.byType(ChartWidget), findsOneWidget);
       });
 
-      testWidgets('should create ChartWidget with empty features list', (WidgetTester tester) async {
+      testWidgets('should create ChartWidget with empty features list', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget(features: []));
 
         expect(find.byType(ChartWidget), findsOneWidget);
         expect(find.byType(CustomPaint), findsAtLeastNWidgets(1));
       });
 
-      testWidgets('should create ChartWidget with night mode', (WidgetTester tester) async {
-        await tester.pumpWidget(createTestWidget(displayMode: ChartDisplayMode.nightMode));
+      testWidgets('should create ChartWidget with night mode', (
+        WidgetTester tester,
+      ) async {
+        await tester.pumpWidget(
+          createTestWidget(displayMode: ChartDisplayMode.nightMode),
+        );
 
         expect(find.byType(ChartWidget), findsOneWidget);
       });
     });
 
     group('Gesture Handling', () {
-      testWidgets('should handle scale gesture start', (WidgetTester tester) async {
+      testWidgets('should handle scale gesture start', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         final gestureDetectors = find.byType(GestureDetector);
@@ -115,13 +129,15 @@ void main() {
         // Start a scale gesture on the first gesture detector
         final center = tester.getCenter(gestureDetectors.first);
         final gesture = await tester.startGesture(center);
-        
+
         await tester.pump();
-        
+
         await gesture.up();
       });
 
-      testWidgets('should handle scale gesture update', (WidgetTester tester) async {
+      testWidgets('should handle scale gesture update', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         final gestureDetectors = find.byType(GestureDetector);
@@ -134,7 +150,9 @@ void main() {
         expect(detector.onScaleEnd, isNotNull);
       });
 
-      testWidgets('should handle scale gesture end', (WidgetTester tester) async {
+      testWidgets('should handle scale gesture end', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         final gestureDetectors = find.byType(GestureDetector);
@@ -150,7 +168,9 @@ void main() {
     });
 
     group('Responsive Layout', () {
-      testWidgets('should adapt to different screen sizes', (WidgetTester tester) async {
+      testWidgets('should adapt to different screen sizes', (
+        WidgetTester tester,
+      ) async {
         // Test with small screen
         tester.view.physicalSize = const Size(400, 300);
         tester.view.devicePixelRatio = 1.0;
@@ -166,7 +186,9 @@ void main() {
         expect(find.byType(ChartWidget), findsOneWidget);
       });
 
-      testWidgets('should handle landscape orientation', (WidgetTester tester) async {
+      testWidgets('should handle landscape orientation', (
+        WidgetTester tester,
+      ) async {
         tester.view.physicalSize = const Size(800, 400); // Landscape
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.resetPhysicalSize);
@@ -176,7 +198,9 @@ void main() {
         expect(find.byType(ChartWidget), findsOneWidget);
       });
 
-      testWidgets('should handle portrait orientation', (WidgetTester tester) async {
+      testWidgets('should handle portrait orientation', (
+        WidgetTester tester,
+      ) async {
         tester.view.physicalSize = const Size(400, 800); // Portrait
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.resetPhysicalSize);
@@ -188,7 +212,9 @@ void main() {
     });
 
     group('Feature Rendering', () {
-      testWidgets('should render with point features', (WidgetTester tester) async {
+      testWidgets('should render with point features', (
+        WidgetTester tester,
+      ) async {
         final pointFeatures = [
           const PointFeature(
             id: 'lighthouse_1',
@@ -209,7 +235,9 @@ void main() {
         expect(find.byType(CustomPaint), findsAtLeastNWidgets(1));
       });
 
-      testWidgets('should render with line features', (WidgetTester tester) async {
+      testWidgets('should render with line features', (
+        WidgetTester tester,
+      ) async {
         final lineFeatures = [
           LineFeature(
             id: 'shoreline_1',
@@ -227,7 +255,9 @@ void main() {
         expect(find.byType(CustomPaint), findsAtLeastNWidgets(1));
       });
 
-      testWidgets('should render with area features', (WidgetTester tester) async {
+      testWidgets('should render with area features', (
+        WidgetTester tester,
+      ) async {
         final areaFeatures = [
           AreaFeature(
             id: 'land_1',
@@ -239,7 +269,7 @@ void main() {
                 const LatLng(37.7649, -122.3994),
                 const LatLng(37.7849, -122.3994),
                 const LatLng(37.7849, -122.4094),
-              ]
+              ],
             ],
           ),
         ];
@@ -249,7 +279,9 @@ void main() {
         expect(find.byType(CustomPaint), findsAtLeastNWidgets(1));
       });
 
-      testWidgets('should render with depth contours', (WidgetTester tester) async {
+      testWidgets('should render with depth contours', (
+        WidgetTester tester,
+      ) async {
         final depthFeatures = [
           const DepthContour(
             id: 'depth_10m',
@@ -266,7 +298,9 @@ void main() {
         expect(find.byType(CustomPaint), findsAtLeastNWidgets(1));
       });
 
-      testWidgets('should render with mixed feature types', (WidgetTester tester) async {
+      testWidgets('should render with mixed feature types', (
+        WidgetTester tester,
+      ) async {
         // Using the default testFeatures which contains mixed types
         await tester.pumpWidget(createTestWidget());
         expect(find.byType(ChartWidget), findsOneWidget);
@@ -276,30 +310,42 @@ void main() {
 
     group('Display Modes', () {
       testWidgets('should render in day mode', (WidgetTester tester) async {
-        await tester.pumpWidget(createTestWidget(displayMode: ChartDisplayMode.dayMode));
+        await tester.pumpWidget(
+          createTestWidget(displayMode: ChartDisplayMode.dayMode),
+        );
         expect(find.byType(ChartWidget), findsOneWidget);
         expect(find.byType(CustomPaint), findsAtLeastNWidgets(1));
       });
 
       testWidgets('should render in night mode', (WidgetTester tester) async {
-        await tester.pumpWidget(createTestWidget(displayMode: ChartDisplayMode.nightMode));
+        await tester.pumpWidget(
+          createTestWidget(displayMode: ChartDisplayMode.nightMode),
+        );
         expect(find.byType(ChartWidget), findsOneWidget);
         expect(find.byType(CustomPaint), findsAtLeastNWidgets(1));
       });
 
-      testWidgets('should switch between display modes', (WidgetTester tester) async {
+      testWidgets('should switch between display modes', (
+        WidgetTester tester,
+      ) async {
         // Start with day mode
-        await tester.pumpWidget(createTestWidget(displayMode: ChartDisplayMode.dayMode));
+        await tester.pumpWidget(
+          createTestWidget(displayMode: ChartDisplayMode.dayMode),
+        );
         expect(find.byType(ChartWidget), findsOneWidget);
 
         // Switch to night mode
-        await tester.pumpWidget(createTestWidget(displayMode: ChartDisplayMode.nightMode));
+        await tester.pumpWidget(
+          createTestWidget(displayMode: ChartDisplayMode.nightMode),
+        );
         expect(find.byType(ChartWidget), findsOneWidget);
       });
     });
 
     group('Edge Cases and Error Handling', () {
-      testWidgets('should handle very small widget size', (WidgetTester tester) async {
+      testWidgets('should handle very small widget size', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(
           ProviderScope(
             child: MaterialApp(
@@ -321,7 +367,9 @@ void main() {
         expect(find.byType(ChartWidget), findsOneWidget);
       });
 
-      testWidgets('should handle very large widget size', (WidgetTester tester) async {
+      testWidgets('should handle very large widget size', (
+        WidgetTester tester,
+      ) async {
         tester.view.physicalSize = const Size(2000, 1500);
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.resetPhysicalSize);
@@ -331,7 +379,9 @@ void main() {
         expect(find.byType(ChartWidget), findsOneWidget);
       });
 
-      testWidgets('should handle extreme zoom levels', (WidgetTester tester) async {
+      testWidgets('should handle extreme zoom levels', (
+        WidgetTester tester,
+      ) async {
         // Test minimum zoom
         await tester.pumpWidget(createTestWidget(initialZoom: 1.0));
         expect(find.byType(ChartWidget), findsOneWidget);
@@ -341,21 +391,31 @@ void main() {
         expect(find.byType(ChartWidget), findsOneWidget);
       });
 
-      testWidgets('should handle extreme coordinates', (WidgetTester tester) async {
+      testWidgets('should handle extreme coordinates', (
+        WidgetTester tester,
+      ) async {
         // Test North Pole
-        await tester.pumpWidget(createTestWidget(initialCenter: const LatLng(90.0, 0.0)));
+        await tester.pumpWidget(
+          createTestWidget(initialCenter: const LatLng(90.0, 0.0)),
+        );
         expect(find.byType(ChartWidget), findsOneWidget);
 
         // Test South Pole
-        await tester.pumpWidget(createTestWidget(initialCenter: const LatLng(-90.0, 0.0)));
+        await tester.pumpWidget(
+          createTestWidget(initialCenter: const LatLng(-90.0, 0.0)),
+        );
         expect(find.byType(ChartWidget), findsOneWidget);
 
         // Test Date Line
-        await tester.pumpWidget(createTestWidget(initialCenter: const LatLng(0.0, 180.0)));
+        await tester.pumpWidget(
+          createTestWidget(initialCenter: const LatLng(0.0, 180.0)),
+        );
         expect(find.byType(ChartWidget), findsOneWidget);
       });
 
-      testWidgets('should handle null or invalid features gracefully', (WidgetTester tester) async {
+      testWidgets('should handle null or invalid features gracefully', (
+        WidgetTester tester,
+      ) async {
         // Test with features containing invalid coordinates
         final invalidFeatures = [
           LineFeature(
@@ -378,7 +438,9 @@ void main() {
     });
 
     group('Widget State Management', () {
-      testWidgets('should maintain state during rebuild', (WidgetTester tester) async {
+      testWidgets('should maintain state during rebuild', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
         expect(find.byType(ChartWidget), findsOneWidget);
 
@@ -387,7 +449,9 @@ void main() {
         expect(find.byType(ChartWidget), findsOneWidget);
       });
 
-      testWidgets('should update when features change', (WidgetTester tester) async {
+      testWidgets('should update when features change', (
+        WidgetTester tester,
+      ) async {
         // Start with initial features
         await tester.pumpWidget(createTestWidget(features: testFeatures));
         expect(find.byType(ChartWidget), findsOneWidget);
@@ -406,7 +470,9 @@ void main() {
         expect(find.byType(ChartWidget), findsOneWidget);
       });
 
-      testWidgets('should update when center changes', (WidgetTester tester) async {
+      testWidgets('should update when center changes', (
+        WidgetTester tester,
+      ) async {
         // Start with initial center
         await tester.pumpWidget(createTestWidget(initialCenter: testCenter));
         expect(find.byType(ChartWidget), findsOneWidget);
@@ -417,7 +483,9 @@ void main() {
         expect(find.byType(ChartWidget), findsOneWidget);
       });
 
-      testWidgets('should update when zoom changes', (WidgetTester tester) async {
+      testWidgets('should update when zoom changes', (
+        WidgetTester tester,
+      ) async {
         // Start with initial zoom
         await tester.pumpWidget(createTestWidget(initialZoom: 12.0));
         expect(find.byType(ChartWidget), findsOneWidget);

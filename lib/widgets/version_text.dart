@@ -5,11 +5,7 @@ class VersionText extends StatefulWidget {
   final TextStyle? style;
   final String prefix;
 
-  const VersionText({
-    super.key,
-    this.style,
-    this.prefix = 'Version ',
-  });
+  const VersionText({super.key, this.style, this.prefix = 'Version '});
 
   @override
   State<VersionText> createState() => _VersionTextState();
@@ -29,7 +25,7 @@ class _VersionTextState extends State<VersionText> {
       final packageInfo = await PackageInfo.fromPlatform();
       final version = packageInfo.version;
       final buildNumber = packageInfo.buildNumber;
-      
+
       if (mounted) {
         setState(() {
           _version = buildNumber.isNotEmpty ? '$version+$buildNumber' : version;
@@ -49,10 +45,7 @@ class _VersionTextState extends State<VersionText> {
     if (_version.isEmpty) {
       return const SizedBox.shrink();
     }
-    
-    return Text(
-      '${widget.prefix}$_version',
-      style: widget.style,
-    );
+
+    return Text('${widget.prefix}$_version', style: widget.style);
   }
 }

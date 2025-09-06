@@ -11,20 +11,23 @@ import 'package:navtool/core/state/download_state.dart';
 
 // Simple mocks (manual lightweight) since we only need minimal behaviors
 class MockHttpClientService extends Mock implements HttpClientService {}
+
 class FakeStorageService extends Mock implements StorageService {
   Directory dir;
   FakeStorageService(this.dir);
   @override
   Future<Directory> getChartsDirectory() async => dir;
 }
+
 class MockAppLogger extends Mock implements AppLogger {}
+
 class MockErrorHandler extends Mock implements ErrorHandler {}
 
 void main() {
   group('DownloadService resume cleanup', () {
     late Directory tempDir;
     late MockHttpClientService http;
-  late FakeStorageService storage;
+    late FakeStorageService storage;
     late MockAppLogger logger;
     late MockErrorHandler errors;
 
@@ -38,13 +41,15 @@ void main() {
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('resume_cleanup_test');
       http = MockHttpClientService();
-  storage = FakeStorageService(tempDir);
-  logger = MockAppLogger();
-  errors = MockErrorHandler();
+      storage = FakeStorageService(tempDir);
+      logger = MockAppLogger();
+      errors = MockErrorHandler();
     });
 
     tearDown(() async {
-      try { if (await tempDir.exists()) await tempDir.delete(recursive: true); } catch (_) {}
+      try {
+        if (await tempDir.exists()) await tempDir.delete(recursive: true);
+      } catch (_) {}
     });
 
     test('removes orphaned resume entry with no files', () async {
@@ -61,9 +66,9 @@ void main() {
             'supportsRange': null,
             'attempts': 2,
             'lastErrorCode': null,
-          }
+          },
         },
-        'queue': []
+        'queue': [],
       };
       await stateFile.writeAsString(jsonEncode(state));
       final service = _build();
@@ -89,16 +94,20 @@ void main() {
             'supportsRange': true,
             'attempts': 1,
             'lastErrorCode': null,
-          }
+          },
         },
-        'queue': []
+        'queue': [],
       };
       await stateFile.writeAsString(jsonEncode(state));
       final service = _build();
       await service.recoverDownloads(const []);
       final resume = await service.getResumeData('MISMATCH');
       expect(resume, isNotNull);
-      expect(resume!.downloadedBytes, 50, reason: 'Should adjust to actual .part size');
+      expect(
+        resume!.downloadedBytes,
+        50,
+        reason: 'Should adjust to actual .part size',
+      );
       service.dispose();
     });
 
@@ -118,15 +127,19 @@ void main() {
             'supportsRange': true,
             'attempts': 3,
             'lastErrorCode': null,
-          }
+          },
         },
-        'queue': []
+        'queue': [],
       };
       await stateFile.writeAsString(jsonEncode(state));
       final service = _build();
       await service.recoverDownloads(const []);
       final resume = await service.getResumeData('COMPLETE');
-      expect(resume, isNull, reason: 'Completed file should clear resume metadata');
+      expect(
+        resume,
+        isNull,
+        reason: 'Completed file should clear resume metadata',
+      );
       service.dispose();
     });
 
@@ -146,16 +159,24 @@ void main() {
             'supportsRange': false,
             'attempts': 1,
             'lastErrorCode': null,
-          }
+          },
         },
-        'queue': []
+        'queue': [],
       };
       await stateFile.writeAsString(jsonEncode(state));
       final service = _build();
       await service.recoverDownloads(const []);
       final resume = await service.getResumeData('ZERO');
-      expect(resume, isNull, reason: 'Zero-length partial should be treated as corrupt and removed');
-      expect(await part.exists(), isFalse, reason: 'Corrupt partial file should be deleted');
+      expect(
+        resume,
+        isNull,
+        reason: 'Zero-length partial should be treated as corrupt and removed',
+      );
+      expect(
+        await part.exists(),
+        isFalse,
+        reason: 'Corrupt partial file should be deleted',
+      );
       service.dispose();
     });
   });

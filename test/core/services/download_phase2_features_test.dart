@@ -59,28 +59,67 @@ void main() {
       const url = 'https://example.com/range_chart.zip';
 
       // HEAD for disk space preflight
-      when(mockHttpClient.head(any, queryParameters: anyNamed('queryParameters'), options: anyNamed('options'), cancelToken: anyNamed('cancelToken'))) 
-          .thenAnswer((_) async => Response(requestOptions: RequestOptions(path: url), statusCode: 200, headers: Headers.fromMap({'content-length': ['100']})));
+      when(
+        mockHttpClient.head(
+          any,
+          queryParameters: anyNamed('queryParameters'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: url),
+          statusCode: 200,
+          headers: Headers.fromMap({
+            'content-length': ['100'],
+          }),
+        ),
+      );
 
       // Initial download (not resumed) -> normal downloadFile call
-      when(mockHttpClient.downloadFile(any, any, cancelToken: anyNamed('cancelToken'), onReceiveProgress: anyNamed('onReceiveProgress')))
-          .thenAnswer((invocation) async {
-        final savePath = invocation.positionalArguments[1] as String; // temp .part
+      when(
+        mockHttpClient.downloadFile(
+          any,
+          any,
+          cancelToken: anyNamed('cancelToken'),
+          onReceiveProgress: anyNamed('onReceiveProgress'),
+        ),
+      ).thenAnswer((invocation) async {
+        final savePath =
+            invocation.positionalArguments[1] as String; // temp .part
         final file = File(savePath);
         await file.create(recursive: true);
         await file.writeAsBytes(List.generate(50, (i) => i));
-        final cb = invocation.namedArguments[#onReceiveProgress] as void Function(int,int)?;
+        final cb =
+            invocation.namedArguments[#onReceiveProgress]
+                as void Function(int, int)?;
         cb?.call(50, 100);
       });
 
       // Range probe (GET bytes=0-0) returns 206
-  when(mockHttpClient.get(any, options: anyNamed('options'), queryParameters: anyNamed('queryParameters'), cancelToken: anyNamed('cancelToken')))
-          .thenAnswer((_) async => Response(
-            requestOptions: RequestOptions(path: url),
-            statusCode: 206,
-            headers: Headers.fromMap({'content-range': ['bytes 0-0/100']}),
-            data: ResponseBody.fromString('', 206, headers: {Headers.contentTypeHeader: ['application/octet-stream']}),
-          ));
+      when(
+        mockHttpClient.get(
+          any,
+          options: anyNamed('options'),
+          queryParameters: anyNamed('queryParameters'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: url),
+          statusCode: 206,
+          headers: Headers.fromMap({
+            'content-range': ['bytes 0-0/100'],
+          }),
+          data: ResponseBody.fromString(
+            '',
+            206,
+            headers: {
+              Headers.contentTypeHeader: ['application/octet-stream'],
+            },
+          ),
+        ),
+      );
 
       await service.downloadChart(chartId, url);
       final resume = await service.getResumeData(chartId);
@@ -96,19 +135,41 @@ void main() {
       int call = 0;
 
       // HEAD preflight
-      when(mockHttpClient.head(any, queryParameters: anyNamed('queryParameters'), options: anyNamed('options'), cancelToken: anyNamed('cancelToken'))) 
-          .thenAnswer((_) async => Response(requestOptions: RequestOptions(path: url), statusCode: 200, headers: Headers.fromMap({'content-length': ['200']})));
+      when(
+        mockHttpClient.head(
+          any,
+          queryParameters: anyNamed('queryParameters'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: url),
+          statusCode: 200,
+          headers: Headers.fromMap({
+            'content-length': ['200'],
+          }),
+        ),
+      );
 
       // First attempt: write partial (80 bytes) then throw to leave .part file
-      when(mockHttpClient.downloadFile(any, any, cancelToken: anyNamed('cancelToken'), onReceiveProgress: anyNamed('onReceiveProgress')))
-          .thenAnswer((invocation) async {
+      when(
+        mockHttpClient.downloadFile(
+          any,
+          any,
+          cancelToken: anyNamed('cancelToken'),
+          onReceiveProgress: anyNamed('onReceiveProgress'),
+        ),
+      ).thenAnswer((invocation) async {
         call++;
         final savePath = invocation.positionalArguments[1] as String;
         if (call == 1) {
           final file = File(savePath);
           await file.create(recursive: true);
-            await file.writeAsBytes(List.generate(80, (i) => i));
-          final cb = invocation.namedArguments[#onReceiveProgress] as void Function(int,int)?;
+          await file.writeAsBytes(List.generate(80, (i) => i));
+          final cb =
+              invocation.namedArguments[#onReceiveProgress]
+                  as void Function(int, int)?;
           cb?.call(80, 200);
           throw AppError.network('Simulated failure after partial write');
         } else {
@@ -119,15 +180,23 @@ void main() {
 
       // Range probe success (for resume) followed by append streaming
       int getCall = 0;
-      when(mockHttpClient.get(any, options: anyNamed('options'), queryParameters: anyNamed('queryParameters'), cancelToken: anyNamed('cancelToken')))
-          .thenAnswer((_) async {
+      when(
+        mockHttpClient.get(
+          any,
+          options: anyNamed('options'),
+          queryParameters: anyNamed('queryParameters'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer((_) async {
         getCall++;
         if (getCall == 1) {
           // Probe response 0-0/200
           return Response(
             requestOptions: RequestOptions(path: url),
             statusCode: 206,
-            headers: Headers.fromMap({'content-range': ['bytes 0-0/200']}),
+            headers: Headers.fromMap({
+              'content-range': ['bytes 0-0/200'],
+            }),
             data: ResponseBody.fromString('', 206),
           );
         } else {
@@ -141,14 +210,19 @@ void main() {
           return Response(
             requestOptions: RequestOptions(path: url),
             statusCode: 206,
-            headers: Headers.fromMap({'content-range': ['bytes 80-199/200']}),
+            headers: Headers.fromMap({
+              'content-range': ['bytes 80-199/200'],
+            }),
             data: ResponseBody(Stream.fromIterable(appendedChunks), 206),
           );
         }
       });
 
       // Attempt initial download (expected to fail)
-      await expectLater(service.downloadChart(chartId, url), throwsA(isA<AppError>()));
+      await expectLater(
+        service.downloadChart(chartId, url),
+        throwsA(isA<AppError>()),
+      );
 
       // GET stub already configured above to stream on second call
 
@@ -159,41 +233,87 @@ void main() {
       expect(await finalFile.length(), equals(200));
     });
 
-    test('retry logic applies jitter (attempts > 1 increments ResumeData.attempts)', () async {
-      const chartId = 'RETRY_CHART';
-      const url = 'https://example.com/retry_chart.zip';
-      int callCount = 0;
+    test(
+      'retry logic applies jitter (attempts > 1 increments ResumeData.attempts)',
+      () async {
+        const chartId = 'RETRY_CHART';
+        const url = 'https://example.com/retry_chart.zip';
+        int callCount = 0;
 
-      when(mockHttpClient.head(any, queryParameters: anyNamed('queryParameters'), options: anyNamed('options'), cancelToken: anyNamed('cancelToken'))) 
-          .thenAnswer((_) async => Response(requestOptions: RequestOptions(path: url), statusCode: 200, headers: Headers.fromMap({'content-length': ['10']})));
+        when(
+          mockHttpClient.head(
+            any,
+            queryParameters: anyNamed('queryParameters'),
+            options: anyNamed('options'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(path: url),
+            statusCode: 200,
+            headers: Headers.fromMap({
+              'content-length': ['10'],
+            }),
+          ),
+        );
 
-      when(mockHttpClient.downloadFile(any, any, cancelToken: anyNamed('cancelToken'), onReceiveProgress: anyNamed('onReceiveProgress')))
-          .thenAnswer((invocation) async {
-        callCount++;
-        if (callCount < 3) { // force two failures to ensure attempts tracked
-          throw AppError.network('Transient failure #$callCount');
-        }
-        final savePath = invocation.positionalArguments[1] as String;
-        final f = File(savePath);
-        await f.create(recursive: true);
-        await f.writeAsBytes(List.generate(10, (i)=>i));
-        final cb = invocation.namedArguments[#onReceiveProgress] as void Function(int,int)?;
-        cb?.call(10, 10);
-      });
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenAnswer((invocation) async {
+          callCount++;
+          if (callCount < 3) {
+            // force two failures to ensure attempts tracked
+            throw AppError.network('Transient failure #$callCount');
+          }
+          final savePath = invocation.positionalArguments[1] as String;
+          final f = File(savePath);
+          await f.create(recursive: true);
+          await f.writeAsBytes(List.generate(10, (i) => i));
+          final cb =
+              invocation.namedArguments[#onReceiveProgress]
+                  as void Function(int, int)?;
+          cb?.call(10, 10);
+        });
 
-      await service.downloadChart(chartId, url);
-  // Validate we had at least 3 underlying download attempts (2 failures + 1 success)
-  expect(callCount, greaterThanOrEqualTo(3));
-    });
+        await service.downloadChart(chartId, url);
+        // Validate we had at least 3 underlying download attempts (2 failures + 1 success)
+        expect(callCount, greaterThanOrEqualTo(3));
+      },
+    );
 
-    test('disk space heuristic rejects extremely large projected size', () async {
-      const chartId = 'HUGE_CHART';
-      const url = 'https://example.com/huge_chart.zip';
-      // Force head to report massive size (6GB) => heuristic should reject
-      when(mockHttpClient.head(any, queryParameters: anyNamed('queryParameters'), options: anyNamed('options'), cancelToken: anyNamed('cancelToken'))) 
-          .thenAnswer((_) async => Response(requestOptions: RequestOptions(path: url), statusCode: 200, headers: Headers.fromMap({'content-length': ['6442450944']}))); // 6 GB
+    test(
+      'disk space heuristic rejects extremely large projected size',
+      () async {
+        const chartId = 'HUGE_CHART';
+        const url = 'https://example.com/huge_chart.zip';
+        // Force head to report massive size (6GB) => heuristic should reject
+        when(
+          mockHttpClient.head(
+            any,
+            queryParameters: anyNamed('queryParameters'),
+            options: anyNamed('options'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(path: url),
+            statusCode: 200,
+            headers: Headers.fromMap({
+              'content-length': ['6442450944'],
+            }),
+          ),
+        ); // 6 GB
 
-      await expectLater(service.downloadChart(chartId, url), throwsA(isA<AppError>()));
-    });
+        await expectLater(
+          service.downloadChart(chartId, url),
+          throwsA(isA<AppError>()),
+        );
+      },
+    );
   });
 }

@@ -23,7 +23,7 @@ void main() {
     test('HttpClientService should be created with proper configuration', () {
       expect(httpClient, isNotNull);
       expect(httpClient.client, isA<Dio>());
-      
+
       // Check timeout configurations
       final options = httpClient.client.options;
       expect(options.connectTimeout, const Duration(seconds: 30));
@@ -33,13 +33,13 @@ void main() {
 
     test('should configure NOAA endpoints correctly', () {
       httpClient.configureNoaaEndpoints();
-      
+
       expect(httpClient.client.options.baseUrl, 'https://charts.noaa.gov');
     });
 
     test('should have proper headers for marine environment', () {
       final headers = httpClient.client.options.headers;
-      
+
       expect(headers['User-Agent'], contains('NavTool'));
       expect(headers['Accept'], contains('application/octet-stream'));
     });
@@ -50,9 +50,11 @@ void main() {
         requestOptions: RequestOptions(path: '/test'),
         type: DioExceptionType.connectionTimeout,
       );
-      
-      expect(() => throw NetworkError.fromDioException(timeoutError), 
-             throwsA(isA<AppError>()));
+
+      expect(
+        () => throw NetworkError.fromDioException(timeoutError),
+        throwsA(isA<AppError>()),
+      );
     });
 
     test('NetworkError should identify retryable errors correctly', () {
@@ -60,12 +62,12 @@ void main() {
         requestOptions: RequestOptions(path: '/test'),
         type: DioExceptionType.connectionTimeout,
       );
-      
+
       final nonRetryableError = DioException(
         requestOptions: RequestOptions(path: '/test'),
         type: DioExceptionType.cancel,
       );
-      
+
       expect(NetworkError.isRetryable(retryableError), isTrue);
       expect(NetworkError.isRetryable(nonRetryableError), isFalse);
     });
@@ -75,13 +77,16 @@ void main() {
         requestOptions: RequestOptions(path: '/test'),
         type: DioExceptionType.connectionError,
       );
-      
+
       final message = NetworkError.getUserFriendlyMessage(connectionError);
       expect(message, contains('internet connection'));
     });
 
     test('should provide marine-specific network configuration', () {
-      expect(MarineNetworkConfig.connectionTimeout, const Duration(seconds: 30));
+      expect(
+        MarineNetworkConfig.connectionTimeout,
+        const Duration(seconds: 30),
+      );
       expect(MarineNetworkConfig.receiveTimeout, const Duration(minutes: 10));
       expect(MarineNetworkConfig.maxConcurrentDownloads, 2);
       expect(MarineNetworkConfig.downloadChunkSize, 1024 * 1024);

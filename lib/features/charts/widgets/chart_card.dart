@@ -55,20 +55,18 @@ class ChartCard extends StatelessWidget {
                         children: [
                           Text(
                             chart.title,
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
                           Text(
                             chart.id,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.6),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurface
+                                      .withValues(alpha: 0.6),
                                 ),
                           ),
                         ],
@@ -109,7 +107,9 @@ class ChartCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Icon(
-                      chart.isDownloaded ? Icons.download_done : Icons.cloud_download,
+                      chart.isDownloaded
+                          ? Icons.download_done
+                          : Icons.cloud_download,
                       size: 16,
                       color: chart.isDownloaded
                           ? Colors.green
@@ -119,10 +119,10 @@ class ChartCard extends StatelessWidget {
                     Text(
                       chart.isDownloaded ? 'Downloaded' : 'Available',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: chart.isDownloaded
-                                ? Colors.green
-                                : Theme.of(context).colorScheme.primary,
-                          ),
+                        color: chart.isDownloaded
+                            ? Colors.green
+                            : Theme.of(context).colorScheme.primary,
+                      ),
                     ),
                   ],
                 ),
@@ -132,10 +132,9 @@ class ChartCard extends StatelessWidget {
                     Icon(
                       Icons.place,
                       size: 14,
-            color: Theme.of(context)
-              .colorScheme
-              .onSurface
-              .withValues(alpha: 0.6),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                     const SizedBox(width: 4),
                     Expanded(
@@ -143,11 +142,10 @@ class ChartCard extends StatelessWidget {
                         '${chart.bounds.south.toStringAsFixed(1)}° - ${chart.bounds.north.toStringAsFixed(1)}°N, '
                         '${chart.bounds.east.abs().toStringAsFixed(1)}° - ${chart.bounds.west.abs().toStringAsFixed(1)}°W',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context)
-                  .colorScheme
-                  .onSurface
-                  .withValues(alpha: 0.6),
-                            ),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -156,31 +154,28 @@ class ChartCard extends StatelessWidget {
                     Icon(
                       Icons.storage,
                       size: 14,
-            color: Theme.of(context)
-              .colorScheme
-              .onSurface
-              .withValues(alpha: 0.6),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                     const SizedBox(width: 4),
                     if (chart.fileSize != null && chart.fileSize! > 1024 * 1024)
                       Text(
                         _formatFileSize(chart.fileSize!),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context)
-                  .colorScheme
-                  .onSurface
-                  .withValues(alpha: 0.6),
-                            ),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
                       ),
                     if (chart.fileSize == null)
                       Text(
                         'Size unknown',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context)
-                  .colorScheme
-                  .onSurface
-                  .withValues(alpha: 0.6),
-                            ),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
                       ),
                   ],
                 ),
@@ -236,7 +231,8 @@ class ChartCard extends StatelessWidget {
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (bytes < 1024 * 1024 * 1024)
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 }

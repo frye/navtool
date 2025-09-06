@@ -59,7 +59,8 @@ Future<void> main(List<String> args) async {
   for (final url in candidates) {
     try {
       final resp = await httpClient.head(url);
-      final code = resp.statusCode ?? resp.statusCode; // Dio Response compatibility
+      final code =
+          resp.statusCode ?? resp.statusCode; // Dio Response compatibility
       if (code != null && code >= 200 && code < 300) {
         selectedUrl = url;
         logger.info('Selected download URL: $selectedUrl (HTTP $code)');
@@ -92,23 +93,33 @@ Future<void> main(List<String> args) async {
     await downloadService.downloadChart(chartId, selectedUrl);
   } catch (e, st) {
     stderr.writeln('\nDownload failed: $e');
-    logger.error('Download script failure for $chartId', exception: e, stackTrace: st);
+    logger.error(
+      'Download script failure for $chartId',
+      exception: e,
+      stackTrace: st,
+    );
     exitCode = 2;
   } finally {
     await progressSub.cancel();
   }
 
   if (exitCode == 0 && lastProgress >= 0.999) {
-    stdout.writeln('\nDownload completed successfully in ${stopwatch.elapsed.inSeconds}s');
+    stdout.writeln(
+      '\nDownload completed successfully in ${stopwatch.elapsed.inSeconds}s',
+    );
     // Determine final file path (DownloadService derives final name from URL)
     final chartsDir = await storageService.getChartsDirectory();
-    final fileName = p.basename(Uri.parse(selectedUrl).path); // e.g., US5WA11M.zip or .000
+    final fileName = p.basename(
+      Uri.parse(selectedUrl).path,
+    ); // e.g., US5WA11M.zip or .000
     final finalPath = p.join(chartsDir.path, fileName);
     if (await File(finalPath).exists()) {
       final size = await File(finalPath).length();
       stdout.writeln('Stored at: $finalPath (${_formatBytes(size)})');
     } else {
-      stdout.writeln('Expected file not found at: $finalPath (may have been renamed internally)');
+      stdout.writeln(
+        'Expected file not found at: $finalPath (may have been renamed internally)',
+      );
     }
   }
 
@@ -125,6 +136,7 @@ Future<void> _gracefulShutdown(ProviderContainer container) async {
 String _formatBytes(int bytes) {
   if (bytes < 1024) return '$bytes B';
   if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-  if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  if (bytes < 1024 * 1024 * 1024)
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
 }

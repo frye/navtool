@@ -13,9 +13,7 @@ import 'package:navtool/core/state/providers.dart';
 
 /// Provider for NOAA metadata parser
 final noaaMetadataParserProvider = Provider<NoaaMetadataParser>((ref) {
-  return NoaaMetadataParserImpl(
-    logger: ref.read(loggerProvider),
-  );
+  return NoaaMetadataParserImpl(logger: ref.read(loggerProvider));
 });
 
 /// Provider for chart catalog service
@@ -24,12 +22,15 @@ final chartCatalogServiceProvider = Provider<ChartCatalogService>((ref) {
     cacheService: ref.read(cacheServiceProvider),
     logger: ref.read(loggerProvider),
     noaaApiClient: ref.read(noaaApiClientProvider),
-    databaseStorageService: ref.read(storageServiceProvider) as DatabaseStorageService,
+    databaseStorageService:
+        ref.read(storageServiceProvider) as DatabaseStorageService,
   );
 });
 
 /// Provider for state region mapping service
-final stateRegionMappingServiceProvider = Provider<StateRegionMappingService>((ref) {
+final stateRegionMappingServiceProvider = Provider<StateRegionMappingService>((
+  ref,
+) {
   return StateRegionMappingServiceImpl(
     cacheService: ref.read(cacheServiceProvider),
     logger: ref.read(loggerProvider),
@@ -39,7 +40,9 @@ final stateRegionMappingServiceProvider = Provider<StateRegionMappingService>((r
 });
 
 /// Provider for NOAA chart discovery service
-final noaaChartDiscoveryServiceProvider = Provider<NoaaChartDiscoveryService>((ref) {
+final noaaChartDiscoveryServiceProvider = Provider<NoaaChartDiscoveryService>((
+  ref,
+) {
   return NoaaChartDiscoveryServiceImpl(
     catalogService: ref.read(chartCatalogServiceProvider),
     mappingService: ref.read(stateRegionMappingServiceProvider),
@@ -49,7 +52,7 @@ final noaaChartDiscoveryServiceProvider = Provider<NoaaChartDiscoveryService>((r
 });
 
 /// Provider for rate limiter configured for NOAA API constraints
-/// 
+///
 /// Configured to respect NOAA's recommended rate limit of 5 requests per second
 /// to prevent server overload and ensure reliable marine operations.
 final rateLimiterProvider = Provider<RateLimiter>((ref) {
@@ -60,7 +63,7 @@ final rateLimiterProvider = Provider<RateLimiter>((ref) {
 });
 
 /// Provider for circuit breaker configured for marine environments
-/// 
+///
 /// Conservative failure threshold and extended timeout optimized for
 /// challenging marine network conditions including satellite connections.
 final circuitBreakerProvider = Provider<CircuitBreaker>((ref) {
@@ -71,7 +74,7 @@ final circuitBreakerProvider = Provider<CircuitBreaker>((ref) {
 });
 
 /// Provider for API retry policy
-/// 
+///
 /// Optimized for fast API requests with moderate retry attempts
 /// suitable for chart catalog and metadata operations.
 final apiRetryPolicyProvider = Provider<RetryPolicy>((ref) {
@@ -79,7 +82,7 @@ final apiRetryPolicyProvider = Provider<RetryPolicy>((ref) {
 });
 
 /// Provider for download retry policy
-/// 
+///
 /// More persistent policy for large chart file downloads
 /// with extended timeouts suitable for marine environments.
 final downloadRetryPolicyProvider = Provider<RetryPolicy>((ref) {
@@ -87,7 +90,7 @@ final downloadRetryPolicyProvider = Provider<RetryPolicy>((ref) {
 });
 
 /// Provider for critical operations retry policy
-/// 
+///
 /// Most persistent policy for safety-critical marine operations
 /// that must eventually succeed for navigation safety.
 final criticalRetryPolicyProvider = Provider<RetryPolicy>((ref) {
@@ -95,7 +98,7 @@ final criticalRetryPolicyProvider = Provider<RetryPolicy>((ref) {
 });
 
 /// Provider for NOAA API client with comprehensive marine optimizations
-/// 
+///
 /// Integrates rate limiting, circuit breaker protection, and retry logic
 /// with the HTTP client service and logging for robust marine operations.
 final noaaApiClientProvider = Provider<NoaaApiClient>((ref) {

@@ -16,7 +16,11 @@ enum DownloadStatus {
   bool get isActive => this == DownloadStatus.downloading;
   bool get canPause => this == DownloadStatus.downloading;
   bool get canResume => this == DownloadStatus.paused;
-  bool get canCancel => [DownloadStatus.queued, DownloadStatus.downloading, DownloadStatus.paused].contains(this);
+  bool get canCancel => [
+    DownloadStatus.queued,
+    DownloadStatus.downloading,
+    DownloadStatus.paused,
+  ].contains(this);
 }
 
 /// Download progress information
@@ -93,7 +97,8 @@ class DownloadProgress {
 
   /// Gets the download speed in bytes per second (if available)
   double? get downloadSpeed {
-    if (downloadedBytes == null || lastUpdated.millisecondsSinceEpoch == 0) return null;
+    if (downloadedBytes == null || lastUpdated.millisecondsSinceEpoch == 0)
+      return null;
     final duration = DateTime.now().difference(lastUpdated);
     if (duration.inMilliseconds <= 0) return null;
     return downloadedBytes! / duration.inSeconds;
@@ -101,7 +106,10 @@ class DownloadProgress {
 
   /// Gets estimated time remaining in seconds (if available)
   int? get estimatedTimeRemaining {
-    if (totalBytes == null || downloadedBytes == null || downloadSpeed == null || downloadSpeed! <= 0) {
+    if (totalBytes == null ||
+        downloadedBytes == null ||
+        downloadSpeed == null ||
+        downloadSpeed! <= 0) {
       return null;
     }
     final remainingBytes = totalBytes! - downloadedBytes!;
@@ -118,10 +126,10 @@ class DownloadProgress {
           progress == other.progress &&
           totalBytes == other.totalBytes &&
           downloadedBytes == other.downloadedBytes &&
-      errorMessage == other.errorMessage &&
-      errorCategory == other.errorCategory &&
-      bytesPerSecond == other.bytesPerSecond &&
-      etaSeconds == other.etaSeconds;
+          errorMessage == other.errorMessage &&
+          errorCategory == other.errorCategory &&
+          bytesPerSecond == other.bytesPerSecond &&
+          etaSeconds == other.etaSeconds;
 
   @override
   int get hashCode =>
@@ -130,10 +138,10 @@ class DownloadProgress {
       progress.hashCode ^
       totalBytes.hashCode ^
       downloadedBytes.hashCode ^
-  errorMessage.hashCode ^
-  (errorCategory?.hashCode ?? 0) ^
-  (bytesPerSecond?.hashCode ?? 0) ^
-  (etaSeconds?.hashCode ?? 0);
+      errorMessage.hashCode ^
+      (errorCategory?.hashCode ?? 0) ^
+      (bytesPerSecond?.hashCode ?? 0) ^
+      (etaSeconds?.hashCode ?? 0);
 
   @override
   String toString() {
@@ -173,8 +181,9 @@ class DownloadQueueState {
       queue.map((id) => downloads[id]).whereType<DownloadProgress>().toList();
 
   /// Gets completed downloads
-  List<DownloadProgress> get completedDownloads =>
-      downloads.values.where((d) => d.status == DownloadStatus.completed).toList();
+  List<DownloadProgress> get completedDownloads => downloads.values
+      .where((d) => d.status == DownloadStatus.completed)
+      .toList();
 
   /// Gets failed downloads
   List<DownloadProgress> get failedDownloads =>
@@ -183,7 +192,10 @@ class DownloadQueueState {
   /// Gets overall download progress (0.0 to 1.0)
   double get overallProgress {
     if (downloads.isEmpty) return 0.0;
-    final totalProgress = downloads.values.fold<double>(0.0, (sum, d) => sum + d.progress);
+    final totalProgress = downloads.values.fold<double>(
+      0.0,
+      (sum, d) => sum + d.progress,
+    );
     return totalProgress / downloads.length;
   }
 
@@ -196,7 +208,8 @@ class DownloadQueueState {
     return DownloadQueueState(
       downloads: downloads ?? this.downloads,
       queue: queue ?? this.queue,
-      maxConcurrentDownloads: maxConcurrentDownloads ?? this.maxConcurrentDownloads,
+      maxConcurrentDownloads:
+          maxConcurrentDownloads ?? this.maxConcurrentDownloads,
       isPaused: isPaused ?? this.isPaused,
     );
   }
@@ -238,9 +251,9 @@ class DownloadQueueNotifier extends StateNotifier<DownloadQueueState> {
   DownloadQueueNotifier({
     required AppLogger logger,
     required ErrorHandler errorHandler,
-  })  : _logger = logger,
-        _errorHandler = errorHandler,
-        super(const DownloadQueueState());
+  }) : _logger = logger,
+       _errorHandler = errorHandler,
+       super(const DownloadQueueState());
 
   /// Adds a chart to the download queue
   void queueDownload(String chartId) {
@@ -255,15 +268,14 @@ class DownloadQueueNotifier extends StateNotifier<DownloadQueueState> {
         status: DownloadStatus.queued,
       );
 
-      final updatedDownloads = Map<String, DownloadProgress>.from(state.downloads);
+      final updatedDownloads = Map<String, DownloadProgress>.from(
+        state.downloads,
+      );
       updatedDownloads[chartId] = progress;
 
       final updatedQueue = [...state.queue, chartId];
 
-      state = state.copyWith(
-        downloads: updatedDownloads,
-        queue: updatedQueue,
-      );
+      state = state.copyWith(downloads: updatedDownloads, queue: updatedQueue);
 
       _logger.info('Queued chart for download: $chartId');
       _processQueue();
@@ -273,7 +285,8 @@ class DownloadQueueNotifier extends StateNotifier<DownloadQueueState> {
   }
 
   /// Updates download progress
-  void updateProgress(String chartId, {
+  void updateProgress(
+    String chartId, {
     DownloadStatus? status,
     double? progress,
     int? totalBytes,
@@ -283,11 +296,13 @@ class DownloadQueueNotifier extends StateNotifier<DownloadQueueState> {
     try {
       final currentProgress = state.downloads[chartId];
       // If progress entry doesn't exist (e.g., service initiated download directly), create one
-      final baseProgress = currentProgress ?? DownloadProgress.withDefaults(
-        chartId: chartId,
-        status: status ?? DownloadStatus.downloading,
-        progress: progress ?? 0.0,
-      );
+      final baseProgress =
+          currentProgress ??
+          DownloadProgress.withDefaults(
+            chartId: chartId,
+            status: status ?? DownloadStatus.downloading,
+            progress: progress ?? 0.0,
+          );
 
       final updatedProgress = baseProgress.copyWith(
         status: status,
@@ -298,7 +313,9 @@ class DownloadQueueNotifier extends StateNotifier<DownloadQueueState> {
         lastUpdated: DateTime.now(),
       );
 
-      final updatedDownloads = Map<String, DownloadProgress>.from(state.downloads);
+      final updatedDownloads = Map<String, DownloadProgress>.from(
+        state.downloads,
+      );
       updatedDownloads[chartId] = updatedProgress;
 
       state = state.copyWith(downloads: updatedDownloads);
@@ -341,7 +358,7 @@ class DownloadQueueNotifier extends StateNotifier<DownloadQueueState> {
       updateProgress(chartId, status: DownloadStatus.queued);
       final updatedQueue = [...state.queue, chartId];
       state = state.copyWith(queue: updatedQueue);
-      
+
       _logger.info('Resumed download: $chartId');
       _processQueue();
     } catch (error, stackTrace) {
@@ -385,11 +402,15 @@ class DownloadQueueNotifier extends StateNotifier<DownloadQueueState> {
   /// Clears completed and failed downloads
   void clearCompleted() {
     try {
-      final updatedDownloads = Map<String, DownloadProgress>.from(state.downloads);
-      updatedDownloads.removeWhere((_, progress) => 
-          progress.status == DownloadStatus.completed || 
-          progress.status == DownloadStatus.failed ||
-          progress.status == DownloadStatus.cancelled);
+      final updatedDownloads = Map<String, DownloadProgress>.from(
+        state.downloads,
+      );
+      updatedDownloads.removeWhere(
+        (_, progress) =>
+            progress.status == DownloadStatus.completed ||
+            progress.status == DownloadStatus.failed ||
+            progress.status == DownloadStatus.cancelled,
+      );
 
       state = state.copyWith(downloads: updatedDownloads);
       _logger.info('Cleared completed downloads');

@@ -6,11 +6,7 @@ class AppIcon extends StatelessWidget {
   final double? size;
   final Color? color;
 
-  const AppIcon({
-    super.key,
-    this.size,
-    this.color,
-  });
+  const AppIcon({super.key, this.size, this.color});
 
   /// Get the appropriate icon asset path based on the current platform
   String _getIconAssetPath() {

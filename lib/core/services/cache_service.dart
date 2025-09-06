@@ -4,11 +4,7 @@ import 'dart:typed_data';
 /// Provides unified access to both memory and disk caching with compression
 abstract class CacheService {
   /// Store data in cache with optional expiration
-  Future<void> store(
-    String key, 
-    Uint8List data, {
-    Duration? maxAge,
-  });
+  Future<void> store(String key, Uint8List data, {Duration? maxAge});
 
   /// Retrieve data from cache
   /// Returns null if key doesn't exist or has expired
@@ -43,7 +39,7 @@ abstract class CacheService {
   void validateKey(String key);
 
   // Memory cache operations for frequently accessed data
-  
+
   /// Store data in memory cache (fast access)
   void storeInMemory(String key, Uint8List data);
 

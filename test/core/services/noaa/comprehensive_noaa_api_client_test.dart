@@ -13,15 +13,11 @@ import '../../../utils/test_fixtures.dart';
 import '../../../helpers/verify_helpers.dart';
 
 // Generate mocks for dependencies
-@GenerateMocks([
-  HttpClientService,
-  AppLogger,
-  RateLimiter,
-])
+@GenerateMocks([HttpClientService, AppLogger, RateLimiter])
 import 'comprehensive_noaa_api_client_test.mocks.dart';
 
 /// Comprehensive unit tests for NOAA API Client
-/// 
+///
 /// These tests achieve >90% coverage by testing edge cases,
 /// error conditions, and marine environment scenarios.
 void main() {
@@ -35,7 +31,7 @@ void main() {
       mockHttpClient = MockHttpClientService();
       mockLogger = MockAppLogger();
       mockRateLimiter = MockRateLimiter();
-      
+
       apiClient = NoaaApiClientImpl(
         httpClient: mockHttpClient,
         logger: mockLogger,
@@ -47,12 +43,15 @@ void main() {
       test('should handle empty catalog response', () async {
         // Arrange
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => Response(
-              requestOptions: RequestOptions(path: ''),
-              data: '{"type":"FeatureCollection","features":[]}',
-              statusCode: 200,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(path: ''),
+            data: '{"type":"FeatureCollection","features":[]}',
+            statusCode: 200,
+          ),
+        );
 
         // Act
         final result = await apiClient.fetchChartCatalog();
@@ -68,15 +67,20 @@ void main() {
 
       test('should handle large catalog response efficiently', () async {
         // Arrange
-        final largeCatalog = MockResponseBuilders.buildCatalogResponse(chartCount: 1000);
-        
+        final largeCatalog = MockResponseBuilders.buildCatalogResponse(
+          chartCount: 1000,
+        );
+
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => Response(
-              requestOptions: RequestOptions(path: ''),
-              data: largeCatalog,
-              statusCode: 200,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(path: ''),
+            data: largeCatalog,
+            statusCode: 200,
+          ),
+        );
 
         // Act
         final stopwatch = Stopwatch()..start();
@@ -84,23 +88,33 @@ void main() {
         stopwatch.stop();
 
         // Assert - allow for added totalFeatures field from pagination aggregator
-        final expectedDecoded = jsonDecode(largeCatalog) as Map<String, dynamic>;
+        final expectedDecoded =
+            jsonDecode(largeCatalog) as Map<String, dynamic>;
         final actualDecoded = jsonDecode(result) as Map<String, dynamic>;
         expect(actualDecoded['type'], expectedDecoded['type']);
-        expect((actualDecoded['features'] as List).length, (expectedDecoded['features'] as List).length);
-        expect(actualDecoded['totalFeatures'], (expectedDecoded['features'] as List).length);
+        expect(
+          (actualDecoded['features'] as List).length,
+          (expectedDecoded['features'] as List).length,
+        );
+        expect(
+          actualDecoded['totalFeatures'],
+          (expectedDecoded['features'] as List).length,
+        );
         expect(stopwatch.elapsedMilliseconds, lessThan(1000)); // Should be fast
       });
 
       test('should handle malformed JSON response', () async {
         // Arrange
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => Response(
-              requestOptions: RequestOptions(path: ''),
-              data: 'invalid json {{{',
-              statusCode: 200,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(path: ''),
+            data: 'invalid json {{{',
+            statusCode: 200,
+          ),
+        );
 
         // Act & Assert
         expect(
@@ -112,34 +126,44 @@ void main() {
       test('should handle HTTP 500 server error', () async {
         // Arrange
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: ''),
+            response: Response(
               requestOptions: RequestOptions(path: ''),
-              response: Response(
-                requestOptions: RequestOptions(path: ''),
-                statusCode: 500,
-                statusMessage: 'Internal Server Error',
-              ),
-              type: DioExceptionType.badResponse,
-            ));
+              statusCode: 500,
+              statusMessage: 'Internal Server Error',
+            ),
+            type: DioExceptionType.badResponse,
+          ),
+        );
 
         // Act & Assert
         expect(
           () => apiClient.fetchChartCatalog(),
-          throwsA(isA<NoaaApiException>().having(
-            (e) => e.isRetryable, 'isRetryable', isTrue,
-          )),
+          throwsA(
+            isA<NoaaApiException>().having(
+              (e) => e.isRetryable,
+              'isRetryable',
+              isTrue,
+            ),
+          ),
         );
       });
 
       test('should handle connection timeout', () async {
         // Arrange
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
-              requestOptions: RequestOptions(path: ''),
-              type: DioExceptionType.connectionTimeout,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: ''),
+            type: DioExceptionType.connectionTimeout,
+          ),
+        );
 
         // Act & Assert
         expect(
@@ -151,11 +175,14 @@ void main() {
       test('should handle receive timeout', () async {
         // Arrange
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
-              requestOptions: RequestOptions(path: ''),
-              type: DioExceptionType.receiveTimeout,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: ''),
+            type: DioExceptionType.receiveTimeout,
+          ),
+        );
 
         // Act & Assert
         expect(
@@ -170,36 +197,44 @@ void main() {
           'BBOX': '-124.0,32.0,-114.0,42.0',
           'STATE': 'California',
         };
-        
+
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => Response(
-              requestOptions: RequestOptions(path: ''),
-              data: '{"type":"FeatureCollection","features":[]}',
-              statusCode: 200,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(path: ''),
+            data: '{"type":"FeatureCollection","features":[]}',
+            statusCode: 200,
+          ),
+        );
 
         // Act
         await apiClient.fetchChartCatalog(filters: filters);
 
         // Assert
-        verify(mockHttpClient.get(
-          any,
-          queryParameters: argThat(
-            containsPair('BBOX', '-124.0,32.0,-114.0,42.0'),
-            named: 'queryParameters',
+        verify(
+          mockHttpClient.get(
+            any,
+            queryParameters: argThat(
+              containsPair('BBOX', '-124.0,32.0,-114.0,42.0'),
+              named: 'queryParameters',
+            ),
           ),
-        )).called(1);
+        ).called(1);
       });
 
       test('should handle network connection error', () async {
         // Arrange
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
-              requestOptions: RequestOptions(path: ''),
-              type: DioExceptionType.connectionError,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: ''),
+            type: DioExceptionType.connectionError,
+          ),
+        );
 
         // Act & Assert
         expect(
@@ -213,17 +248,20 @@ void main() {
       test('should return null for 404 response', () async {
         // Arrange
         const chartId = 'NONEXISTENT_CHART';
-        
+
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: ''),
+            response: Response(
               requestOptions: RequestOptions(path: ''),
-              response: Response(
-                requestOptions: RequestOptions(path: ''),
-                statusCode: 404,
-              ),
-              type: DioExceptionType.badResponse,
-            ));
+              statusCode: 404,
+            ),
+            type: DioExceptionType.badResponse,
+          ),
+        );
 
         // Act
         final result = await apiClient.getChartMetadata(chartId);
@@ -240,16 +278,20 @@ void main() {
           title: 'San Francisco Bay',
           state: 'California',
         );
-        
-        final metadataResponse = MockResponseBuilders.buildChartMetadataResponse(testChart);
-        
+
+        final metadataResponse =
+            MockResponseBuilders.buildChartMetadataResponse(testChart);
+
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => Response(
-              requestOptions: RequestOptions(path: ''),
-              data: metadataResponse,
-              statusCode: 200,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(path: ''),
+            data: metadataResponse,
+            statusCode: 200,
+          ),
+        );
 
         // Act
         final result = await apiClient.getChartMetadata(chartId);
@@ -263,14 +305,17 @@ void main() {
       test('should handle empty metadata response', () async {
         // Arrange
         const chartId = 'US5CA52M';
-        
+
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => Response(
-              requestOptions: RequestOptions(path: ''),
-              data: '{}',
-              statusCode: 200,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(path: ''),
+            data: '{}',
+            statusCode: 200,
+          ),
+        );
 
         // Act
         final result = await apiClient.getChartMetadata(chartId);
@@ -282,15 +327,19 @@ void main() {
       test('should handle metadata response with missing properties', () async {
         // Arrange
         const chartId = 'US5CA52M';
-        final incompleteData = '{"type":"Feature","geometry":null,"properties":null}';
-        
+        final incompleteData =
+            '{"type":"Feature","geometry":null,"properties":null}';
+
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => Response(
-              requestOptions: RequestOptions(path: ''),
-              data: incompleteData,
-              statusCode: 200,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(path: ''),
+            data: incompleteData,
+            statusCode: 200,
+          ),
+        );
 
         // Act
         final result = await apiClient.getChartMetadata(chartId);
@@ -313,14 +362,17 @@ void main() {
       test('should handle malformed metadata JSON', () async {
         // Arrange
         const chartId = 'US5CA52M';
-        
+
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => Response(
-              requestOptions: RequestOptions(path: ''),
-              data: 'invalid json response',
-              statusCode: 200,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(path: ''),
+            data: 'invalid json response',
+            statusCode: 200,
+          ),
+        );
 
         // Act & Assert
         expect(
@@ -334,14 +386,17 @@ void main() {
       test('should return true for available chart', () async {
         // Arrange
         const chartId = 'US5CA52M';
-        
+
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => Response(
-              requestOptions: RequestOptions(path: ''),
-              data: '{"available":true}',
-              statusCode: 200,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(path: ''),
+            data: '{"available":true}',
+            statusCode: 200,
+          ),
+        );
 
         // Act
         final result = await apiClient.isChartAvailable(chartId);
@@ -353,17 +408,20 @@ void main() {
       test('should return false for 404 response', () async {
         // Arrange
         const chartId = 'NONEXISTENT_CHART';
-        
+
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: ''),
+            response: Response(
               requestOptions: RequestOptions(path: ''),
-              response: Response(
-                requestOptions: RequestOptions(path: ''),
-                statusCode: 404,
-              ),
-              type: DioExceptionType.badResponse,
-            ));
+              statusCode: 404,
+            ),
+            type: DioExceptionType.badResponse,
+          ),
+        );
 
         // Act
         final result = await apiClient.isChartAvailable(chartId);
@@ -375,17 +433,20 @@ void main() {
       test('should handle server error during availability check', () async {
         // Arrange
         const chartId = 'US5CA52M';
-        
+
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: ''),
+            response: Response(
               requestOptions: RequestOptions(path: ''),
-              response: Response(
-                requestOptions: RequestOptions(path: ''),
-                statusCode: 500,
-              ),
-              type: DioExceptionType.badResponse,
-            ));
+              statusCode: 500,
+            ),
+            type: DioExceptionType.badResponse,
+          ),
+        );
 
         // Act & Assert
         expect(
@@ -409,17 +470,21 @@ void main() {
         const chartId = 'US5CA52M';
         const savePath = '/tmp/test_chart.zip';
         final progressValues = <double>[];
-        
+
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          cancelToken: anyNamed('cancelToken'),
-          queryParameters: anyNamed('queryParameters'),
-        )).thenAnswer((invocation) async {
-          final onProgress = invocation.namedArguments[const Symbol('onReceiveProgress')] as Function?;
-          
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+            cancelToken: anyNamed('cancelToken'),
+            queryParameters: anyNamed('queryParameters'),
+          ),
+        ).thenAnswer((invocation) async {
+          final onProgress =
+              invocation.namedArguments[const Symbol('onReceiveProgress')]
+                  as Function?;
+
           // Simulate download progress
           onProgress?.call(25, 100);
           onProgress?.call(50, 100);
@@ -436,58 +501,68 @@ void main() {
 
         // Assert
         expect(progressValues, [0.25, 0.5, 0.75, 1.0]);
-        verify(mockHttpClient.downloadFile(
-          any,
-          savePath,
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          cancelToken: anyNamed('cancelToken'),
-          queryParameters: anyNamed('queryParameters'),
-        )).called(1);
+        verify(
+          mockHttpClient.downloadFile(
+            any,
+            savePath,
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+            cancelToken: anyNamed('cancelToken'),
+            queryParameters: anyNamed('queryParameters'),
+          ),
+        ).called(1);
       });
 
       test('should handle download without progress callback', () async {
         // Arrange
         const chartId = 'US5CA52M';
         const savePath = '/tmp/test_chart.zip';
-        
+
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          cancelToken: anyNamed('cancelToken'),
-          queryParameters: anyNamed('queryParameters'),
-        )).thenAnswer((_) async {});
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+            cancelToken: anyNamed('cancelToken'),
+            queryParameters: anyNamed('queryParameters'),
+          ),
+        ).thenAnswer((_) async {});
 
         // Act
         await apiClient.downloadChart(chartId, savePath);
 
         // Assert
-        verify(mockHttpClient.downloadFile(
-          any,
-          savePath,
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          cancelToken: anyNamed('cancelToken'),
-          queryParameters: anyNamed('queryParameters'),
-        )).called(1);
+        verify(
+          mockHttpClient.downloadFile(
+            any,
+            savePath,
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+            cancelToken: anyNamed('cancelToken'),
+            queryParameters: anyNamed('queryParameters'),
+          ),
+        ).called(1);
       });
 
       test('should handle download failure', () async {
         // Arrange
         const chartId = 'US5CA52M';
         const savePath = '/tmp/test_chart.zip';
-        
+
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          cancelToken: anyNamed('cancelToken'),
-          queryParameters: anyNamed('queryParameters'),
-        )).thenThrow(DioException(
-          requestOptions: RequestOptions(path: ''),
-          type: DioExceptionType.connectionError,
-        ));
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+            cancelToken: anyNamed('cancelToken'),
+            queryParameters: anyNamed('queryParameters'),
+          ),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: ''),
+            type: DioExceptionType.connectionError,
+          ),
+        );
 
         // Act & Assert
         expect(
@@ -502,7 +577,7 @@ void main() {
           () => apiClient.downloadChart('', '/tmp/test.zip'),
           throwsA(isA<ArgumentError>()),
         );
-        
+
         expect(
           () => apiClient.downloadChart('US5CA52M', ''),
           throwsA(isA<ArgumentError>()),
@@ -514,17 +589,21 @@ void main() {
         const chartId = 'US5CA52M';
         const savePath = '/tmp/test_chart.zip';
         final progressValues = <double>[];
-        
+
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          cancelToken: anyNamed('cancelToken'),
-          queryParameters: anyNamed('queryParameters'),
-        )).thenAnswer((invocation) async {
-          final onProgress = invocation.namedArguments[const Symbol('onReceiveProgress')] as Function?;
-          
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+            cancelToken: anyNamed('cancelToken'),
+            queryParameters: anyNamed('queryParameters'),
+          ),
+        ).thenAnswer((invocation) async {
+          final onProgress =
+              invocation.namedArguments[const Symbol('onReceiveProgress')]
+                  as Function?;
+
           // Simulate unknown total length
           onProgress?.call(1024, -1);
         });
@@ -537,7 +616,10 @@ void main() {
         );
 
         // Assert - Should handle unknown total gracefully
-        expect(progressValues, isEmpty); // No progress reported for unknown total
+        expect(
+          progressValues,
+          isEmpty,
+        ); // No progress reported for unknown total
       });
     });
 
@@ -545,11 +627,14 @@ void main() {
       test('should handle unexpected DioException types', () async {
         // Arrange
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
-              requestOptions: RequestOptions(path: ''),
-              type: DioExceptionType.unknown,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: ''),
+            type: DioExceptionType.unknown,
+          ),
+        );
 
         // Act & Assert
         expect(
@@ -561,94 +646,130 @@ void main() {
       test('should handle non-DioException errors', () async {
         // Arrange
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(Exception('Unexpected error'));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(Exception('Unexpected error'));
 
         // Act & Assert
-        expect(
-          () => apiClient.fetchChartCatalog(),
-          throwsA(isA<Exception>()),
-        );
+        expect(() => apiClient.fetchChartCatalog(), throwsA(isA<Exception>()));
       });
 
       test('should handle rate limiter throwing exception', () async {
         // Arrange
-        when(mockRateLimiter.acquire()).thenThrow(Exception('Rate limiter error'));
+        when(
+          mockRateLimiter.acquire(),
+        ).thenThrow(Exception('Rate limiter error'));
 
         // Act & Assert
-        expect(
-          () => apiClient.fetchChartCatalog(),
-          throwsA(isA<Exception>()),
-        );
+        expect(() => apiClient.fetchChartCatalog(), throwsA(isA<Exception>()));
       });
 
       test('should handle very long response data', () async {
         // Arrange - Create a large but valid JSON response
-        final features = List.generate(1000, (i) => {
-          "type": "Feature",
-          "properties": {
-            "chartId": "US5CA52M_$i",
-            "title": "Test Chart $i with a very long title that includes lots of descriptive text",
-            "scale": "1:80000",
-            "edition": "1st Ed., 2024"
+        final features = List.generate(
+          1000,
+          (i) => {
+            "type": "Feature",
+            "properties": {
+              "chartId": "US5CA52M_$i",
+              "title":
+                  "Test Chart $i with a very long title that includes lots of descriptive text",
+              "scale": "1:80000",
+              "edition": "1st Ed., 2024",
+            },
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                [
+                  [-122.5, 37.7],
+                  [-122.4, 37.7],
+                  [-122.4, 37.8],
+                  [-122.5, 37.8],
+                  [-122.5, 37.7],
+                ],
+              ],
+            },
           },
-          "geometry": {
-            "type": "Polygon",
-            "coordinates": [[[-122.5, 37.7], [-122.4, 37.7], [-122.4, 37.8], [-122.5, 37.8], [-122.5, 37.7]]]
-          }
-        });
+        );
         final veryLongResponse = jsonEncode({
           "type": "FeatureCollection",
-          "features": features
+          "features": features,
         });
-        
+
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => Response(
-              requestOptions: RequestOptions(path: ''),
-              data: veryLongResponse,
-              statusCode: 200,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(path: ''),
+            data: veryLongResponse,
+            statusCode: 200,
+          ),
+        );
 
         // Act
         final result = await apiClient.fetchChartCatalog();
 
         // Assert - structural equality ignoring added totalFeatures
-        final expectedDecoded = jsonDecode(veryLongResponse) as Map<String, dynamic>;
+        final expectedDecoded =
+            jsonDecode(veryLongResponse) as Map<String, dynamic>;
         final actualDecoded = jsonDecode(result) as Map<String, dynamic>;
         expect(actualDecoded['type'], expectedDecoded['type']);
-        expect((actualDecoded['features'] as List).length, (expectedDecoded['features'] as List).length);
-        expect(actualDecoded['totalFeatures'], (expectedDecoded['features'] as List).length);
-        expect(result.length, greaterThan(50000)); // Verify it's a large response
+        expect(
+          (actualDecoded['features'] as List).length,
+          (expectedDecoded['features'] as List).length,
+        );
+        expect(
+          actualDecoded['totalFeatures'],
+          (expectedDecoded['features'] as List).length,
+        );
+        expect(
+          result.length,
+          greaterThan(50000),
+        ); // Verify it's a large response
       });
 
       test('should log all operations correctly', () async {
         // Arrange
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async => Response(
-              requestOptions: RequestOptions(path: ''),
-              data: '{"type":"FeatureCollection","features":[]}',
-              statusCode: 200,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(path: ''),
+            data: '{"type":"FeatureCollection","features":[]}',
+            statusCode: 200,
+          ),
+        );
 
         // Act
         await apiClient.fetchChartCatalog();
 
         // Assert
-        verifyInfoLogged(mockLogger, 'Fetching NOAA chart catalog', expectedContext: 'NoaaApiClient');
+        verifyInfoLogged(
+          mockLogger,
+          'Fetching NOAA chart catalog',
+          expectedContext: 'NoaaApiClient',
+        );
         // Updated log message after pagination refactor
-        verifyInfoLogged(mockLogger, 'Successfully fetched full catalog', expectedContext: 'NoaaApiClient');
+        verifyInfoLogged(
+          mockLogger,
+          'Successfully fetched full catalog',
+          expectedContext: 'NoaaApiClient',
+        );
       });
 
       test('should log errors with proper context', () async {
         // Arrange
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
-              requestOptions: RequestOptions(path: ''),
-              type: DioExceptionType.connectionError,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: ''),
+            type: DioExceptionType.connectionError,
+          ),
+        );
 
         // Act & Assert
         try {
@@ -657,7 +778,11 @@ void main() {
           // Expected to throw
         }
 
-        verifyErrorLogged(mockLogger, 'Failed to fetch chart catalog', expectedContext: 'NoaaApiClient');
+        verifyErrorLogged(
+          mockLogger,
+          'Failed to fetch chart catalog',
+          expectedContext: 'NoaaApiClient',
+        );
       });
     });
 
@@ -667,10 +792,9 @@ void main() {
         when(mockRateLimiter.acquire()).thenAnswer((_) async {
           await Future.delayed(const Duration(milliseconds: 100));
         });
-        when(mockHttpClient.get(
-          any, 
-          queryParameters: anyNamed('queryParameters'),
-        )).thenAnswer((_) async {
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer((_) async {
           await Future.delayed(const Duration(seconds: 1)); // Slow response
           return Response(
             requestOptions: RequestOptions(path: ''),
@@ -689,11 +813,14 @@ void main() {
       test('should handle intermittent connectivity gracefully', () async {
         // Arrange - Simulate intermittent connection issues
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
-              requestOptions: RequestOptions(path: ''),
-              type: DioExceptionType.connectionError,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: ''),
+            type: DioExceptionType.connectionError,
+          ),
+        );
 
         // Act & Assert - Should fail with network connectivity exception
         expect(
@@ -707,16 +834,20 @@ void main() {
         const chartId = 'US5CA52M';
         const savePath = '/tmp/test_chart.zip';
         final progressValues = <double>[];
-        
+
         when(mockRateLimiter.acquire()).thenAnswer((_) async {});
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          cancelToken: anyNamed('cancelToken'),
-        )).thenAnswer((invocation) async {
-          final onProgress = invocation.namedArguments[const Symbol('onReceiveProgress')] as Function?;
-          
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer((invocation) async {
+          final onProgress =
+              invocation.namedArguments[const Symbol('onReceiveProgress')]
+                  as Function?;
+
           // Simulate slow download with gradual progress
           for (int i = 1; i <= 10; i++) {
             await Future.delayed(const Duration(milliseconds: 10));
@@ -732,7 +863,10 @@ void main() {
         );
 
         // Assert
-        expect(progressValues.length, greaterThanOrEqualTo(5)); // At least some progress updates
+        expect(
+          progressValues.length,
+          greaterThanOrEqualTo(5),
+        ); // At least some progress updates
         expect(progressValues.last, equals(1.0));
         expect(progressValues.first, equals(0.1));
       });

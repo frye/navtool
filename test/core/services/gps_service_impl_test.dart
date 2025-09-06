@@ -21,7 +21,9 @@ class MockGeolocator {
     return Position(
       latitude: latitude,
       longitude: longitude,
-      timestamp: DateTime.fromMillisecondsSinceEpoch(timestamp == 0 ? DateTime.now().millisecondsSinceEpoch : timestamp),
+      timestamp: DateTime.fromMillisecondsSinceEpoch(
+        timestamp == 0 ? DateTime.now().millisecondsSinceEpoch : timestamp,
+      ),
       accuracy: accuracy,
       altitude: altitude,
       altitudeAccuracy: 1.0,
@@ -40,7 +42,7 @@ class MockAppLogger extends Mock implements AppLogger {}
 void main() {
   // Initialize Flutter binding for platform services
   TestWidgetsFlutterBinding.ensureInitialized();
-  
+
   group('GpsServiceImpl Tests', () {
     late GpsServiceImpl gpsService;
     late MockAppLogger mockLogger;
@@ -54,7 +56,7 @@ void main() {
       test('should request location permission successfully', () async {
         // Arrange & Act
         final result = await gpsService.requestLocationPermission();
-        
+
         // Assert
         expect(result, isA<bool>());
         // In test environment, permission requests typically return false
@@ -64,20 +66,29 @@ void main() {
       test('should check location permission status', () async {
         // Arrange & Act
         final result = await gpsService.checkLocationPermission();
-        
+
         // Assert
         expect(result, isA<bool>());
-        expect(result, isFalse); // In test environment, permission is typically not granted
+        expect(
+          result,
+          isFalse,
+        ); // In test environment, permission is typically not granted
       });
 
       test('should handle permission denied gracefully', () async {
         // Arrange & Act & Assert
-        expect(() async => await gpsService.requestLocationPermission(), returnsNormally);
+        expect(
+          () async => await gpsService.requestLocationPermission(),
+          returnsNormally,
+        );
       });
 
       test('should handle permission permanently denied', () async {
         // Arrange & Act & Assert
-        expect(() async => await gpsService.checkLocationPermission(), returnsNormally);
+        expect(
+          () async => await gpsService.checkLocationPermission(),
+          returnsNormally,
+        );
       });
     });
 
@@ -85,15 +96,21 @@ void main() {
       test('should check if location services are enabled', () async {
         // Arrange & Act
         final result = await gpsService.isLocationEnabled();
-        
+
         // Assert
         expect(result, isA<bool>());
-        expect(result, isFalse); // In test environment, location services are typically disabled
+        expect(
+          result,
+          isFalse,
+        ); // In test environment, location services are typically disabled
       });
 
       test('should handle location services disabled', () async {
         // Arrange & Act & Assert
-        expect(() async => await gpsService.isLocationEnabled(), returnsNormally);
+        expect(
+          () async => await gpsService.isLocationEnabled(),
+          returnsNormally,
+        );
       });
     });
 
@@ -101,7 +118,7 @@ void main() {
       test('should get current GPS position with marine accuracy', () async {
         // Arrange & Act
         final position = await gpsService.getCurrentPosition();
-        
+
         // Assert
         // In test environment without GPS hardware, this will return null
         expect(position, isNull);
@@ -110,7 +127,7 @@ void main() {
       test('should return null when position unavailable', () async {
         // Arrange & Act
         final position = await gpsService.getCurrentPosition();
-        
+
         // Assert
         expect(position, isNull); // Expected in test environment
       });
@@ -124,13 +141,19 @@ void main() {
 
       test('should handle timeout when getting position', () async {
         // Arrange & Act & Assert
-        expect(() async => await gpsService.getCurrentPosition(), returnsNormally);
+        expect(
+          () async => await gpsService.getCurrentPosition(),
+          returnsNormally,
+        );
       });
 
       test('should require high accuracy for marine navigation', () async {
         // This tests that the method uses marine-grade accuracy settings
         // In test environment it returns null but doesn't throw
-        expect(() async => await gpsService.getCurrentPosition(), returnsNormally);
+        expect(
+          () async => await gpsService.getCurrentPosition(),
+          returnsNormally,
+        );
       });
     });
 
@@ -142,7 +165,10 @@ void main() {
 
       test('should stop location tracking', () async {
         // Arrange & Act & Assert
-        expect(() async => await gpsService.stopLocationTracking(), returnsNormally);
+        expect(
+          () async => await gpsService.stopLocationTracking(),
+          returnsNormally,
+        );
       });
 
       test('should emit GPS position updates in stream', () async {
@@ -164,12 +190,18 @@ void main() {
     group('Marine Navigation Requirements', () {
       test('should use high accuracy location settings', () async {
         // Test that the service handles location requests appropriately
-        expect(() async => await gpsService.getCurrentPosition(), returnsNormally);
+        expect(
+          () async => await gpsService.getCurrentPosition(),
+          returnsNormally,
+        );
       });
 
       test('should have appropriate timeout for marine environment', () async {
         // Test that marine timeout settings are used
-        expect(() async => await gpsService.getCurrentPosition(), returnsNormally);
+        expect(
+          () async => await gpsService.getCurrentPosition(),
+          returnsNormally,
+        );
       });
 
       test('should log GPS events for debugging', () async {
@@ -201,25 +233,34 @@ void main() {
     });
 
     group('Seattle Fallback Location', () {
-      test('should return Seattle coordinates when location services disabled', () async {
-        // Arrange: Location services are disabled (simulated by test environment)
-        
-        // Act
-        final position = await gpsService.getCurrentPositionWithFallback();
-        
-        // Assert
-        expect(position, isNotNull);
-        expect(position!.latitude, closeTo(47.6062, 0.001)); // Seattle latitude
-        expect(position!.longitude, closeTo(-122.3321, 0.001)); // Seattle longitude
-        expect(position!.accuracy, equals(1000.0)); // Fallback accuracy
-        expect(position!.timestamp, isNotNull);
-      });
+      test(
+        'should return Seattle coordinates when location services disabled',
+        () async {
+          // Arrange: Location services are disabled (simulated by test environment)
+
+          // Act
+          final position = await gpsService.getCurrentPositionWithFallback();
+
+          // Assert
+          expect(position, isNotNull);
+          expect(
+            position!.latitude,
+            closeTo(47.6062, 0.001),
+          ); // Seattle latitude
+          expect(
+            position!.longitude,
+            closeTo(-122.3321, 0.001),
+          ); // Seattle longitude
+          expect(position!.accuracy, equals(1000.0)); // Fallback accuracy
+          expect(position!.timestamp, isNotNull);
+        },
+      );
 
       test('should prefer real GPS position over Seattle fallback', () async {
         // This test will pass null for now since we don't have real GPS in test environment
         // but documents the expected behavior
         final position = await gpsService.getCurrentPositionWithFallback();
-        
+
         // In test environment, should get Seattle fallback
         expect(position, isNotNull);
         expect(position!.latitude, closeTo(47.6062, 0.001));
@@ -228,38 +269,47 @@ void main() {
 
       test('should use Seattle fallback when permission denied', () async {
         // Arrange: Permission is denied (simulated by test environment)
-        
+
         // Act
         final position = await gpsService.getCurrentPositionWithFallback();
-        
+
         // Assert: Should get Seattle coordinates
         expect(position, isNotNull);
         expect(position!.latitude, equals(47.6062));
         expect(position!.longitude, equals(-122.3321));
       });
 
-      test('should use Seattle fallback when location services disabled', () async {
-        // Arrange: Location services disabled (simulated by test environment)
-        
-        // Act
-        final position = await gpsService.getCurrentPositionWithFallback();
-        
-        // Assert: Should get Seattle coordinates
-        expect(position, isNotNull);
-        expect(position!.latitude, equals(47.6062));
-        expect(position!.longitude, equals(-122.3321));
-      });
+      test(
+        'should use Seattle fallback when location services disabled',
+        () async {
+          // Arrange: Location services disabled (simulated by test environment)
+
+          // Act
+          final position = await gpsService.getCurrentPositionWithFallback();
+
+          // Assert: Should get Seattle coordinates
+          expect(position, isNotNull);
+          expect(position!.latitude, equals(47.6062));
+          expect(position!.longitude, equals(-122.3321));
+        },
+      );
     });
 
     group('Error Handling - Additional', () {
       test('should handle GPS timeout error', () async {
         // Test handling of GPS timeout (returns null gracefully)
-        expect(() async => await gpsService.getCurrentPosition(), returnsNormally);
+        expect(
+          () async => await gpsService.getCurrentPosition(),
+          returnsNormally,
+        );
       });
 
       test('should handle GPS hardware error', () async {
         // Test handling of GPS hardware issues (returns null gracefully)
-        expect(() async => await gpsService.getCurrentPosition(), returnsNormally);
+        expect(
+          () async => await gpsService.getCurrentPosition(),
+          returnsNormally,
+        );
       });
     });
   });

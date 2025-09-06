@@ -15,11 +15,9 @@ class DatabaseStorageService implements StorageService {
   Database? _database;
   final Database? _testDatabase; // For testing purposes
 
-  DatabaseStorageService({
-    required AppLogger logger,
-    Database? testDatabase,
-  }) : _logger = logger,
-       _testDatabase = testDatabase;
+  DatabaseStorageService({required AppLogger logger, Database? testDatabase})
+    : _logger = logger,
+      _testDatabase = testDatabase;
 
   /// Database schema version
   static const int _databaseVersion = 2;
@@ -63,7 +61,7 @@ class DatabaseStorageService implements StorageService {
   /// Handle database upgrades
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     _logger.info('Database upgrade from $oldVersion to $newVersion');
-    
+
     if (oldVersion < 2) {
       await _migrateToVersion2(db);
     }
@@ -202,56 +200,102 @@ class DatabaseStorageService implements StorageService {
   /// Create database indexes for performance
   Future<void> _createIndexes(Database db) async {
     // Original indexes
-    await db.execute('CREATE INDEX idx_charts_bounds ON charts (bounds_north, bounds_south, bounds_east, bounds_west)');
+    await db.execute(
+      'CREATE INDEX idx_charts_bounds ON charts (bounds_north, bounds_south, bounds_east, bounds_west)',
+    );
     await db.execute('CREATE INDEX idx_charts_scale ON charts (scale)');
-    await db.execute('CREATE INDEX idx_waypoints_route_id ON waypoints (route_id)');
-    await db.execute('CREATE INDEX idx_waypoints_location ON waypoints (latitude, longitude)');
-    await db.execute('CREATE INDEX idx_download_queue_status ON download_queue (status)');
-    await db.execute('CREATE INDEX idx_state_chart_mapping_state ON state_chart_mapping (state_name)');
-    
+    await db.execute(
+      'CREATE INDEX idx_waypoints_route_id ON waypoints (route_id)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_waypoints_location ON waypoints (latitude, longitude)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_download_queue_status ON download_queue (status)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_state_chart_mapping_state ON state_chart_mapping (state_name)',
+    );
+
     // NOAA-specific indexes (safe to create - will only exist if columns exist)
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_charts_cell_name ON charts (cell_name)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_charts_usage_band ON charts (usage_band)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_charts_region ON charts (region)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_charts_source ON charts (source)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_state_chart_mapping_cell ON state_chart_mapping (cell_name)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_state_chart_mapping_coverage ON state_chart_mapping (coverage_percentage)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_catalog_cache_type ON chart_catalog_cache (catalog_type)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_catalog_cache_valid ON chart_catalog_cache (is_valid)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_catalog_cache_expires ON chart_catalog_cache (expires_at)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_chart_history_cell ON chart_update_history (cell_name)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_chart_history_detected ON chart_update_history (update_detected_at)');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_charts_cell_name ON charts (cell_name)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_charts_usage_band ON charts (usage_band)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_charts_region ON charts (region)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_charts_source ON charts (source)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_state_chart_mapping_cell ON state_chart_mapping (cell_name)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_state_chart_mapping_coverage ON state_chart_mapping (coverage_percentage)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_catalog_cache_type ON chart_catalog_cache (catalog_type)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_catalog_cache_valid ON chart_catalog_cache (is_valid)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_catalog_cache_expires ON chart_catalog_cache (expires_at)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_chart_history_cell ON chart_update_history (cell_name)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_chart_history_detected ON chart_update_history (update_detected_at)',
+    );
   }
 
   /// Migrate database from version 1 to version 2 (NOAA extensions)
   Future<void> _migrateToVersion2(Database db) async {
     _logger.info('Migrating database to version 2 - adding NOAA extensions');
-    
+
     await db.transaction((txn) async {
       // Check if charts table exists and add NOAA-specific columns
       try {
         await txn.execute('ALTER TABLE charts ADD COLUMN cell_name TEXT');
         await txn.execute('ALTER TABLE charts ADD COLUMN usage_band TEXT');
-        await txn.execute('ALTER TABLE charts ADD COLUMN edition_number INTEGER DEFAULT 0');
-        await txn.execute('ALTER TABLE charts ADD COLUMN update_number INTEGER DEFAULT 0');
-        await txn.execute('ALTER TABLE charts ADD COLUMN compilation_scale INTEGER');
+        await txn.execute(
+          'ALTER TABLE charts ADD COLUMN edition_number INTEGER DEFAULT 0',
+        );
+        await txn.execute(
+          'ALTER TABLE charts ADD COLUMN update_number INTEGER DEFAULT 0',
+        );
+        await txn.execute(
+          'ALTER TABLE charts ADD COLUMN compilation_scale INTEGER',
+        );
         await txn.execute('ALTER TABLE charts ADD COLUMN region TEXT');
         await txn.execute('ALTER TABLE charts ADD COLUMN dt_pub TEXT');
         await txn.execute('ALTER TABLE charts ADD COLUMN issue_date TEXT');
-        await txn.execute('ALTER TABLE charts ADD COLUMN source_date_string TEXT');
+        await txn.execute(
+          'ALTER TABLE charts ADD COLUMN source_date_string TEXT',
+        );
         await txn.execute('ALTER TABLE charts ADD COLUMN edition_date TEXT');
-        await txn.execute('ALTER TABLE charts ADD COLUMN boundary_polygon TEXT');
-        await txn.execute('ALTER TABLE charts ADD COLUMN source TEXT DEFAULT "noaa"');
-        await txn.execute('ALTER TABLE charts ADD COLUMN status TEXT DEFAULT "current"');
+        await txn.execute(
+          'ALTER TABLE charts ADD COLUMN boundary_polygon TEXT',
+        );
+        await txn.execute(
+          'ALTER TABLE charts ADD COLUMN source TEXT DEFAULT "noaa"',
+        );
+        await txn.execute(
+          'ALTER TABLE charts ADD COLUMN status TEXT DEFAULT "current"',
+        );
       } catch (e) {
         _logger.warning('Some chart table columns may already exist: $e');
       }
-      
+
       // Check if state_chart_mapping table exists, create if not
       final tables = await txn.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='state_chart_mapping'"
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='state_chart_mapping'",
       );
-      
+
       if (tables.isEmpty) {
         // Create state_chart_mapping table if it doesn't exist
         await txn.execute('''
@@ -268,13 +312,19 @@ class DatabaseStorageService implements StorageService {
       } else {
         // Add new columns to existing table
         try {
-          await txn.execute('ALTER TABLE state_chart_mapping ADD COLUMN coverage_percentage REAL DEFAULT 0.0');
-          await txn.execute('ALTER TABLE state_chart_mapping ADD COLUMN updated_at TEXT');
+          await txn.execute(
+            'ALTER TABLE state_chart_mapping ADD COLUMN coverage_percentage REAL DEFAULT 0.0',
+          );
+          await txn.execute(
+            'ALTER TABLE state_chart_mapping ADD COLUMN updated_at TEXT',
+          );
         } catch (e) {
-          _logger.warning('Some state_chart_mapping columns may already exist: $e');
+          _logger.warning(
+            'Some state_chart_mapping columns may already exist: $e',
+          );
         }
       }
-      
+
       // Create new tables if they don't exist
       try {
         await txn.execute('''
@@ -289,7 +339,7 @@ class DatabaseStorageService implements StorageService {
             expires_at TEXT
           )
         ''');
-        
+
         await txn.execute('''
           CREATE TABLE IF NOT EXISTS chart_update_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -304,25 +354,47 @@ class DatabaseStorageService implements StorageService {
       } catch (e) {
         _logger.warning('Some tables may already exist: $e');
       }
-      
+
       // Create NOAA-specific indexes (use IF NOT EXISTS to avoid conflicts)
       try {
-        await txn.execute('CREATE INDEX IF NOT EXISTS idx_charts_cell_name ON charts (cell_name)');
-        await txn.execute('CREATE INDEX IF NOT EXISTS idx_charts_usage_band ON charts (usage_band)');
-        await txn.execute('CREATE INDEX IF NOT EXISTS idx_charts_region ON charts (region)');
-        await txn.execute('CREATE INDEX IF NOT EXISTS idx_charts_source ON charts (source)');
-        await txn.execute('CREATE INDEX IF NOT EXISTS idx_state_chart_mapping_cell ON state_chart_mapping (cell_name)');
-        await txn.execute('CREATE INDEX IF NOT EXISTS idx_state_chart_mapping_coverage ON state_chart_mapping (coverage_percentage)');
-        await txn.execute('CREATE INDEX IF NOT EXISTS idx_catalog_cache_type ON chart_catalog_cache (catalog_type)');
-        await txn.execute('CREATE INDEX IF NOT EXISTS idx_catalog_cache_valid ON chart_catalog_cache (is_valid)');
-        await txn.execute('CREATE INDEX IF NOT EXISTS idx_catalog_cache_expires ON chart_catalog_cache (expires_at)');
-        await txn.execute('CREATE INDEX IF NOT EXISTS idx_chart_history_cell ON chart_update_history (cell_name)');
-        await txn.execute('CREATE INDEX IF NOT EXISTS idx_chart_history_detected ON chart_update_history (update_detected_at)');
+        await txn.execute(
+          'CREATE INDEX IF NOT EXISTS idx_charts_cell_name ON charts (cell_name)',
+        );
+        await txn.execute(
+          'CREATE INDEX IF NOT EXISTS idx_charts_usage_band ON charts (usage_band)',
+        );
+        await txn.execute(
+          'CREATE INDEX IF NOT EXISTS idx_charts_region ON charts (region)',
+        );
+        await txn.execute(
+          'CREATE INDEX IF NOT EXISTS idx_charts_source ON charts (source)',
+        );
+        await txn.execute(
+          'CREATE INDEX IF NOT EXISTS idx_state_chart_mapping_cell ON state_chart_mapping (cell_name)',
+        );
+        await txn.execute(
+          'CREATE INDEX IF NOT EXISTS idx_state_chart_mapping_coverage ON state_chart_mapping (coverage_percentage)',
+        );
+        await txn.execute(
+          'CREATE INDEX IF NOT EXISTS idx_catalog_cache_type ON chart_catalog_cache (catalog_type)',
+        );
+        await txn.execute(
+          'CREATE INDEX IF NOT EXISTS idx_catalog_cache_valid ON chart_catalog_cache (is_valid)',
+        );
+        await txn.execute(
+          'CREATE INDEX IF NOT EXISTS idx_catalog_cache_expires ON chart_catalog_cache (expires_at)',
+        );
+        await txn.execute(
+          'CREATE INDEX IF NOT EXISTS idx_chart_history_cell ON chart_update_history (cell_name)',
+        );
+        await txn.execute(
+          'CREATE INDEX IF NOT EXISTS idx_chart_history_detected ON chart_update_history (update_detected_at)',
+        );
       } catch (e) {
         _logger.warning('Some indexes may already exist: $e');
       }
     });
-    
+
     _logger.info('Database migration to version 2 completed');
   }
 
@@ -335,7 +407,10 @@ class DatabaseStorageService implements StorageService {
     final db = _database ?? _testDatabase;
     if (db == null) return 0;
     try {
-      final result = await db.rawQuery('SELECT COUNT(*) as c FROM charts WHERE source = ?', ['noaa']);
+      final result = await db.rawQuery(
+        'SELECT COUNT(*) as c FROM charts WHERE source = ?',
+        ['noaa'],
+      );
       return (result.first['c'] as int?) ?? 0;
     } catch (e) {
       _logger.warning('Failed to count NOAA charts: $e');
@@ -348,11 +423,13 @@ class DatabaseStorageService implements StorageService {
     final db = _database ?? _testDatabase;
     if (db == null) return const [];
     try {
-      final result = await db.query('charts',
-          columns: ['id'],
-          where: 'source = ?',
-          whereArgs: ['noaa'],
-          limit: limit);
+      final result = await db.query(
+        'charts',
+        columns: ['id'],
+        where: 'source = ?',
+        whereArgs: ['noaa'],
+        limit: limit,
+      );
       return result.map((r) => r['id'] as String).toList();
     } catch (e) {
       _logger.warning('Failed to get sample NOAA chart IDs: $e');
@@ -367,8 +444,8 @@ class DatabaseStorageService implements StorageService {
 
   /// Protected access to database for extensions
   Database? get database => _database;
-  
-  /// Protected access to logger for extensions  
+
+  /// Protected access to logger for extensions
   AppLogger get logger => _logger;
 
   /// Ensures the database is initialized before use
@@ -389,7 +466,7 @@ class DatabaseStorageService implements StorageService {
       throw ArgumentError('Chart data cannot be empty');
     }
     final db = await _getDb();
-    
+
     try {
       await db.transaction((txn) async {
         // Insert chart metadata with NOAA extensions
@@ -432,7 +509,8 @@ class DatabaseStorageService implements StorageService {
           chartData['issue_date'] = chart.metadata['issue_date'];
         }
         if (chart.metadata.containsKey('source_date_string')) {
-          chartData['source_date_string'] = chart.metadata['source_date_string'];
+          chartData['source_date_string'] =
+              chart.metadata['source_date_string'];
         }
         if (chart.metadata.containsKey('edition_date')) {
           chartData['edition_date'] = chart.metadata['edition_date'];
@@ -441,7 +519,11 @@ class DatabaseStorageService implements StorageService {
           chartData['boundary_polygon'] = chart.metadata['boundary_polygon'];
         }
 
-        await txn.insert('charts', chartData, conflictAlgorithm: ConflictAlgorithm.replace);
+        await txn.insert(
+          'charts',
+          chartData,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
 
         // Insert chart data
         await txn.insert('chart_data', {
@@ -460,7 +542,7 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<List<int>?> loadChart(String chartId) async {
     final db = await _getDb();
-    
+
     try {
       final result = await db.query(
         'chart_data',
@@ -482,15 +564,19 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<void> deleteChart(String chartId) async {
     final db = await _getDb();
-    
+
     try {
       await db.transaction((txn) async {
         // Delete chart data first
-        await txn.delete('chart_data', where: 'chart_id = ?', whereArgs: [chartId]);
+        await txn.delete(
+          'chart_data',
+          where: 'chart_id = ?',
+          whereArgs: [chartId],
+        );
         // Delete chart metadata
         await txn.delete('charts', where: 'id = ?', whereArgs: [chartId]);
       });
-      
+
       _logger.info('Deleted chart: $chartId');
     } catch (e) {
       _logger.error('Failed to delete chart $chartId: $e');
@@ -501,7 +587,7 @@ class DatabaseStorageService implements StorageService {
   /// Get chart metadata without the binary data (not part of interface)
   Future<Chart?> getChartMetadata(String chartId) async {
     final db = await _getDb();
-    
+
     try {
       final result = await db.query(
         'charts',
@@ -521,7 +607,7 @@ class DatabaseStorageService implements StorageService {
   /// Update chart metadata (not part of interface)
   Future<void> updateChartMetadata(Chart chart) async {
     final db = await _getDb();
-    
+
     try {
       await db.update(
         'charts',
@@ -539,7 +625,7 @@ class DatabaseStorageService implements StorageService {
         where: 'id = ?',
         whereArgs: [chart.id],
       );
-      
+
       _logger.info('Updated chart metadata: ${chart.id}');
     } catch (e) {
       _logger.error('Failed to update chart metadata ${chart.id}: $e');
@@ -551,20 +637,33 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<List<Chart>> getChartsInBounds(GeographicBounds bounds) async {
     final db = await _getDb();
-    
+
     try {
       // Debug logging
-      _logger.debug('Searching for charts in bounds: north=${bounds.north}, south=${bounds.south}, east=${bounds.east}, west=${bounds.west}');
-      
+      _logger.debug(
+        'Searching for charts in bounds: north=${bounds.north}, south=${bounds.south}, east=${bounds.east}, west=${bounds.west}',
+      );
+
       // First, let's see what charts exist in the database
-      final allChartsResult = await db.query('charts', columns: ['cell_name', 'bounds_north', 'bounds_south', 'bounds_east', 'bounds_west']);
+      final allChartsResult = await db.query(
+        'charts',
+        columns: [
+          'cell_name',
+          'bounds_north',
+          'bounds_south',
+          'bounds_east',
+          'bounds_west',
+        ],
+      );
       _logger.debug('Total charts in database: ${allChartsResult.length}');
       for (final row in allChartsResult) {
-        _logger.debug('Chart in DB: ${row['cell_name']} bounds=(S:${row['bounds_south']}, N:${row['bounds_north']}, W:${row['bounds_west']}, E:${row['bounds_east']})');
+        _logger.debug(
+          'Chart in DB: ${row['cell_name']} bounds=(S:${row['bounds_south']}, N:${row['bounds_north']}, W:${row['bounds_west']}, E:${row['bounds_east']})',
+        );
       }
-      
+
       // Correct bounding box intersection: chart and bounds overlap if none of the separation conditions are true
-      // Separation conditions: chart.south > bounds.north OR chart.north < bounds.south OR 
+      // Separation conditions: chart.south > bounds.north OR chart.north < bounds.south OR
       //                       chart.west > bounds.east OR chart.east < bounds.west
       // Intersection is the negation: NOT separated
       final result = await db.query(
@@ -576,9 +675,13 @@ class DatabaseStorageService implements StorageService {
         whereArgs: [bounds.north, bounds.south, bounds.east, bounds.west],
       );
 
-      _logger.debug('SQL query returned ${result.length} charts for Washington bounds (N:${bounds.north}, S:${bounds.south}, E:${bounds.east}, W:${bounds.west})');
+      _logger.debug(
+        'SQL query returned ${result.length} charts for Washington bounds (N:${bounds.north}, S:${bounds.south}, E:${bounds.east}, W:${bounds.west})',
+      );
       for (final row in result) {
-        _logger.debug('Found chart: ${row['cell_name']} bounds=(S:${row['bounds_south']}, N:${row['bounds_north']}, W:${row['bounds_west']}, E:${row['bounds_east']})');
+        _logger.debug(
+          'Found chart: ${row['cell_name']} bounds=(S:${row['bounds_south']}, N:${row['bounds_north']}, W:${row['bounds_west']}, E:${row['bounds_east']})',
+        );
       }
 
       return result.map(_chartFromMap).toList();
@@ -592,12 +695,12 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<int> countChartsWithInvalidBounds() async {
     final db = await _getDb();
-    
+
     try {
       final result = await db.rawQuery(
-        'SELECT COUNT(*) as count FROM charts WHERE bounds_north = 0 AND bounds_south = 0 AND bounds_east = 0 AND bounds_west = 0'
+        'SELECT COUNT(*) as count FROM charts WHERE bounds_north = 0 AND bounds_south = 0 AND bounds_east = 0 AND bounds_west = 0',
       );
-      
+
       return Sqflite.firstIntValue(result) ?? 0;
     } catch (e) {
       _logger.error('Failed to count charts with invalid bounds: $e');
@@ -609,15 +712,18 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<int> clearChartsWithInvalidBounds() async {
     final db = await _getDb();
-    
+
     try {
-      _logger.info('Clearing charts with invalid bounds to force cache refresh');
-      
+      _logger.info(
+        'Clearing charts with invalid bounds to force cache refresh',
+      );
+
       final deletedCount = await db.delete(
         'charts',
-        where: 'bounds_north = 0 AND bounds_south = 0 AND bounds_east = 0 AND bounds_west = 0'
+        where:
+            'bounds_north = 0 AND bounds_south = 0 AND bounds_east = 0 AND bounds_west = 0',
       );
-      
+
       _logger.info('Cleared $deletedCount charts with invalid bounds');
       return deletedCount;
     } catch (e) {
@@ -629,7 +735,7 @@ class DatabaseStorageService implements StorageService {
   /// Get charts by scale range (helper, not part of StorageService interface)
   Future<List<Chart>> getChartsByScaleRange(int minScale, int maxScale) async {
     final db = await _getDb();
-    
+
     try {
       final result = await db.query(
         'charts',
@@ -649,7 +755,7 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<void> storeRoute(NavigationRoute route) async {
     final db = await _getDb();
-    
+
     try {
       await db.transaction((txn) async {
         // Insert route
@@ -680,7 +786,9 @@ class DatabaseStorageService implements StorageService {
         }
       });
 
-      _logger.info('Stored route: ${route.id} with ${route.waypoints.length} waypoints');
+      _logger.info(
+        'Stored route: ${route.id} with ${route.waypoints.length} waypoints',
+      );
     } catch (e) {
       _logger.error('Failed to store route ${route.id}: $e');
       rethrow;
@@ -690,7 +798,7 @@ class DatabaseStorageService implements StorageService {
   /// Get a navigation route by ID (helper, prefer loadRoute for interface compliance)
   Future<NavigationRoute?> getRoute(String routeId) async {
     final db = await _getDb();
-    
+
     try {
       final routeResult = await db.query(
         'routes',
@@ -708,7 +816,7 @@ class DatabaseStorageService implements StorageService {
       );
 
       final waypoints = waypointsResult.map(_waypointFromMap).toList();
-      
+
       return _routeFromMap(routeResult.first, waypoints);
     } catch (e) {
       _logger.error('Failed to get route $routeId: $e');
@@ -719,7 +827,7 @@ class DatabaseStorageService implements StorageService {
   /// Update a navigation route (helper, not part of interface)
   Future<void> updateRoute(NavigationRoute route) async {
     final db = await _getDb();
-    
+
     try {
       await db.update(
         'routes',
@@ -732,7 +840,7 @@ class DatabaseStorageService implements StorageService {
         where: 'id = ?',
         whereArgs: [route.id],
       );
-      
+
       _logger.info('Updated route: ${route.id}');
     } catch (e) {
       _logger.error('Failed to update route ${route.id}: $e');
@@ -744,9 +852,13 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<void> deleteRoute(String routeId) async {
     final db = await _getDb();
-    
+
     try {
-      final deletedCount = await db.delete('routes', where: 'id = ?', whereArgs: [routeId]);
+      final deletedCount = await db.delete(
+        'routes',
+        where: 'id = ?',
+        whereArgs: [routeId],
+      );
       if (deletedCount > 0) {
         _logger.info('Deleted route: $routeId');
       }
@@ -759,7 +871,7 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<List<NavigationRoute>> getAllRoutes() async {
     final db = await _getDb();
-    
+
     try {
       final routesResult = await db.query('routes', orderBy: 'created_at DESC');
       final routes = <NavigationRoute>[];
@@ -789,7 +901,7 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<void> storeWaypoint(Waypoint waypoint) async {
     final db = await _getDb();
-    
+
     try {
       await db.insert('waypoints', {
         'id': waypoint.id,
@@ -814,7 +926,7 @@ class DatabaseStorageService implements StorageService {
   /// Get a waypoint by ID (helper, prefer loadWaypoint for interface compliance)
   Future<Waypoint?> getWaypoint(String waypointId) async {
     final db = await _getDb();
-    
+
     try {
       final result = await db.query(
         'waypoints',
@@ -834,9 +946,13 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<void> deleteWaypoint(String waypointId) async {
     final db = await _getDb();
-    
+
     try {
-      final deletedCount = await db.delete('waypoints', where: 'id = ?', whereArgs: [waypointId]);
+      final deletedCount = await db.delete(
+        'waypoints',
+        where: 'id = ?',
+        whereArgs: [waypointId],
+      );
       if (deletedCount > 0) {
         _logger.info('Deleted waypoint: $waypointId');
       }
@@ -849,16 +965,21 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<NavigationRoute?> loadRoute(String routeId) async {
     final db = _database!;
-    
+
     try {
-      final routeResult = await db.query('routes', where: 'id = ?', whereArgs: [routeId]);
+      final routeResult = await db.query(
+        'routes',
+        where: 'id = ?',
+        whereArgs: [routeId],
+      );
       if (routeResult.isEmpty) {
         return null;
       }
 
       final routeMap = routeResult.first;
-      final waypointIds = (routeMap['waypoint_ids'] as String?)?.split(',') ?? [];
-      
+      final waypointIds =
+          (routeMap['waypoint_ids'] as String?)?.split(',') ?? [];
+
       final waypoints = <Waypoint>[];
       for (final waypointId in waypointIds) {
         final waypoint = await loadWaypoint(waypointId);
@@ -878,13 +999,17 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<Waypoint?> loadWaypoint(String waypointId) async {
     final db = _database!;
-    
+
     try {
-      final result = await db.query('waypoints', where: 'id = ?', whereArgs: [waypointId]);
+      final result = await db.query(
+        'waypoints',
+        where: 'id = ?',
+        whereArgs: [waypointId],
+      );
       if (result.isEmpty) {
         return null;
       }
-      
+
       return _waypointFromMap(result.first);
     } catch (e) {
       _logger.error('Failed to load waypoint $waypointId: $e');
@@ -896,7 +1021,7 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<void> updateWaypoint(Waypoint waypoint) async {
     final db = _database!;
-    
+
     try {
       final updatedWaypoint = waypoint.copyWith(updatedAt: DateTime.now());
       await db.update(
@@ -927,7 +1052,7 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<List<Waypoint>> getAllWaypoints() async {
     final db = _database!;
-    
+
     try {
       final result = await db.query('waypoints', orderBy: 'created_at DESC');
       return result.map((map) => _waypointFromMap(map)).toList();
@@ -940,11 +1065,12 @@ class DatabaseStorageService implements StorageService {
   /// Get waypoints within geographic area
   Future<List<Waypoint>> getWaypointsInArea(GeographicBounds bounds) async {
     final db = _database!;
-    
+
     try {
       final result = await db.query(
         'waypoints',
-        where: 'latitude >= ? AND latitude <= ? AND longitude >= ? AND longitude <= ?',
+        where:
+            'latitude >= ? AND latitude <= ? AND longitude >= ? AND longitude <= ?',
         whereArgs: [bounds.south, bounds.north, bounds.west, bounds.east],
       );
 
@@ -959,7 +1085,7 @@ class DatabaseStorageService implements StorageService {
   /// Add chart to download queue
   Future<void> addToDownloadQueue(String chartId, String downloadUrl) async {
     final db = _database!;
-    
+
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
       await db.insert('download_queue', {
@@ -979,9 +1105,13 @@ class DatabaseStorageService implements StorageService {
   }
 
   /// Update download queue item status
-  Future<void> updateDownloadQueueStatus(String chartId, String status, double progress) async {
+  Future<void> updateDownloadQueueStatus(
+    String chartId,
+    String status,
+    double progress,
+  ) async {
     final db = _database!;
-    
+
     try {
       await db.update(
         'download_queue',
@@ -993,7 +1123,7 @@ class DatabaseStorageService implements StorageService {
         where: 'chart_id = ?',
         whereArgs: [chartId],
       );
-      
+
       _logger.debug('Updated download status: $chartId -> $status ($progress)');
     } catch (e) {
       _logger.error('Failed to update download status $chartId: $e');
@@ -1004,9 +1134,13 @@ class DatabaseStorageService implements StorageService {
   /// Remove chart from download queue
   Future<void> removeFromDownloadQueue(String chartId) async {
     final db = _database!;
-    
+
     try {
-      final deletedCount = await db.delete('download_queue', where: 'chart_id = ?', whereArgs: [chartId]);
+      final deletedCount = await db.delete(
+        'download_queue',
+        where: 'chart_id = ?',
+        whereArgs: [chartId],
+      );
       if (deletedCount > 0) {
         _logger.info('Removed from download queue: $chartId');
       }
@@ -1018,7 +1152,7 @@ class DatabaseStorageService implements StorageService {
   /// Get download queue item
   Future<Map<String, dynamic>?> getDownloadQueueItem(String chartId) async {
     final db = _database!;
-    
+
     try {
       final result = await db.query(
         'download_queue',
@@ -1036,7 +1170,7 @@ class DatabaseStorageService implements StorageService {
   /// Get pending downloads
   Future<List<Map<String, dynamic>>> getPendingDownloads() async {
     final db = _database!;
-    
+
     try {
       final result = await db.query(
         'download_queue',
@@ -1056,12 +1190,32 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<Map<String, dynamic>> getStorageInfo() async {
     final db = _database!;
-    
+
     try {
-      final chartsCount = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM charts')) ?? 0;
-      final routesCount = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM routes')) ?? 0;
-      final waypointsCount = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM waypoints WHERE route_id IS NULL')) ?? 0;
-      final downloadsCount = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM download_queue WHERE status != "completed"')) ?? 0;
+      final chartsCount =
+          Sqflite.firstIntValue(
+            await db.rawQuery('SELECT COUNT(*) FROM charts'),
+          ) ??
+          0;
+      final routesCount =
+          Sqflite.firstIntValue(
+            await db.rawQuery('SELECT COUNT(*) FROM routes'),
+          ) ??
+          0;
+      final waypointsCount =
+          Sqflite.firstIntValue(
+            await db.rawQuery(
+              'SELECT COUNT(*) FROM waypoints WHERE route_id IS NULL',
+            ),
+          ) ??
+          0;
+      final downloadsCount =
+          Sqflite.firstIntValue(
+            await db.rawQuery(
+              'SELECT COUNT(*) FROM download_queue WHERE status != "completed"',
+            ),
+          ) ??
+          0;
 
       // Calculate database size
       int databaseSize = 0;
@@ -1074,9 +1228,13 @@ class DatabaseStorageService implements StorageService {
         }
       } else {
         // For test databases, calculate size based on data
-        final chartDataSize = Sqflite.firstIntValue(
-          await db.rawQuery('SELECT COALESCE(SUM(LENGTH(data)), 0) FROM chart_data')
-        ) ?? 0;
+        final chartDataSize =
+            Sqflite.firstIntValue(
+              await db.rawQuery(
+                'SELECT COALESCE(SUM(LENGTH(data)), 0) FROM chart_data',
+              ),
+            ) ??
+            0;
         databaseSize = chartDataSize + 10000; // Add overhead estimate
       }
 
@@ -1119,7 +1277,7 @@ class DatabaseStorageService implements StorageService {
   Future<int> _cleanupOldData({required Duration maxAge}) async {
     final db = _database!;
     final cutoffTime = DateTime.now().subtract(maxAge).millisecondsSinceEpoch;
-    
+
     try {
       final deletedCount = await db.delete(
         'charts',
@@ -1150,20 +1308,25 @@ class DatabaseStorageService implements StorageService {
         east: map['bounds_east'] as double,
         west: map['bounds_west'] as double,
       ),
-      lastUpdate: DateTime.fromMillisecondsSinceEpoch(map['last_update'] as int),
+      lastUpdate: DateTime.fromMillisecondsSinceEpoch(
+        map['last_update'] as int,
+      ),
       state: map['state'] as String? ?? '',
       type: ChartType.values.firstWhere((t) => t.name == map['type']),
     );
   }
 
-  NavigationRoute _routeFromMap(Map<String, dynamic> map, List<Waypoint> waypoints) {
+  NavigationRoute _routeFromMap(
+    Map<String, dynamic> map,
+    List<Waypoint> waypoints,
+  ) {
     return NavigationRoute(
       id: map['id'] as String,
       name: map['name'] as String,
       waypoints: waypoints,
       description: map['description'] as String?,
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
-      updatedAt: map['updated_at'] != null 
+      updatedAt: map['updated_at'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['updated_at'] as int)
           : null,
       isActive: (map['is_active'] as int) == 1,
@@ -1179,24 +1342,31 @@ class DatabaseStorageService implements StorageService {
       type: WaypointType.values.firstWhere((t) => t.name == map['type']),
       description: map['description'] as String?,
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
-      updatedAt: map['updated_at'] != null 
+      updatedAt: map['updated_at'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['updated_at'] as int)
           : null,
     );
   }
 
   // State-Chart Mapping Operations
-  
+
   /// Store state-to-chart cell mapping
   @override
-  Future<void> storeStateCellMapping(String stateName, List<String> chartCells) async {
+  Future<void> storeStateCellMapping(
+    String stateName,
+    List<String> chartCells,
+  ) async {
     final db = _database!;
-    
+
     try {
       await db.transaction((txn) async {
         // Clear existing mappings for this state
-        await txn.delete('state_chart_mapping', where: 'state_name = ?', whereArgs: [stateName]);
-        
+        await txn.delete(
+          'state_chart_mapping',
+          where: 'state_name = ?',
+          whereArgs: [stateName],
+        );
+
         // Insert new mappings
         for (final cellName in chartCells) {
           await txn.insert('state_chart_mapping', {
@@ -1207,8 +1377,10 @@ class DatabaseStorageService implements StorageService {
           });
         }
       });
-      
-      _logger.info('Stored state-chart mapping for $stateName: ${chartCells.length} charts');
+
+      _logger.info(
+        'Stored state-chart mapping for $stateName: ${chartCells.length} charts',
+      );
     } catch (e) {
       _logger.error('Failed to store state-chart mapping for $stateName: $e');
       rethrow;
@@ -1219,7 +1391,7 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<List<String>?> getStateCellMapping(String stateName) async {
     final db = _database!;
-    
+
     try {
       final result = await db.query(
         'state_chart_mapping',
@@ -1227,9 +1399,9 @@ class DatabaseStorageService implements StorageService {
         where: 'state_name = ?',
         whereArgs: [stateName],
       );
-      
+
       if (result.isEmpty) return null;
-      
+
       return result.map((row) => row['cell_name'] as String).toList();
     } catch (e) {
       _logger.error('Failed to get state-chart mapping for $stateName: $e');
@@ -1241,7 +1413,7 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<void> clearAllStateCellMappings() async {
     final db = _database!;
-    
+
     try {
       await db.delete('state_chart_mapping');
       _logger.info('Cleared all state-chart mappings');

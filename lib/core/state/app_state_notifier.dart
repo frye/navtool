@@ -15,9 +15,9 @@ class AppStateNotifier extends StateNotifier<AppState> {
   AppStateNotifier({
     required AppLogger logger,
     required ErrorHandler errorHandler,
-  })  : _logger = logger,
-        _errorHandler = errorHandler,
-        super(const AppState()) {
+  }) : _logger = logger,
+       _errorHandler = errorHandler,
+       super(const AppState()) {
     _initialize();
   }
 
@@ -25,10 +25,10 @@ class AppStateNotifier extends StateNotifier<AppState> {
   Future<void> _initialize() async {
     try {
       _logger.info('Initializing application state');
-      
+
       // TODO: Load persisted state from storage
       // TODO: Initialize services
-      
+
       state = state.copyWith(isInitialized: true);
       _logger.info('Application state initialized successfully');
     } catch (error, stackTrace) {
@@ -41,14 +41,17 @@ class AppStateNotifier extends StateNotifier<AppState> {
   void updateCurrentPosition(GpsPosition position) {
     try {
       state = state.copyWith(currentPosition: position);
-      _logger.debug('Updated current position: ${position.toCoordinateString()}');
+      _logger.debug(
+        'Updated current position: ${position.toCoordinateString()}',
+      );
     } catch (error, stackTrace) {
       _errorHandler.handleError(error, stackTrace);
     }
   }
 
   /// Alias for updateCurrentPosition for backward compatibility
-  void updateGpsPosition(GpsPosition position) => updateCurrentPosition(position);
+  void updateGpsPosition(GpsPosition position) =>
+      updateCurrentPosition(position);
 
   /// Sets GPS enabled status
   void setGpsEnabled(bool enabled) {

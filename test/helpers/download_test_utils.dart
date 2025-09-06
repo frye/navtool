@@ -35,24 +35,34 @@ void configureDownloadHttpClientMock(
   };
 
   // HEAD requests: return a 200 with content-length header.
-  when(mockHttpClient.head(any,
-          queryParameters: anyNamed('queryParameters'),
-          options: anyNamed('options'),
-          cancelToken: anyNamed('cancelToken')))
-      .thenAnswer((invocation) async => Response(
-            requestOptions: RequestOptions(path: invocation.positionalArguments.first as String),
-            statusCode: 200,
-            headers: Headers.fromMap({
-              'content-length': [totalSize.toString()],
-            }),
-          ));
+  when(
+    mockHttpClient.head(
+      any,
+      queryParameters: anyNamed('queryParameters'),
+      options: anyNamed('options'),
+      cancelToken: anyNamed('cancelToken'),
+    ),
+  ).thenAnswer(
+    (invocation) async => Response(
+      requestOptions: RequestOptions(
+        path: invocation.positionalArguments.first as String,
+      ),
+      statusCode: 200,
+      headers: Headers.fromMap({
+        'content-length': [totalSize.toString()],
+      }),
+    ),
+  );
 
   // GET requests (range probes etc.): respond with subset or full bytes.
-  when(mockHttpClient.get(any,
-          queryParameters: anyNamed('queryParameters'),
-          options: anyNamed('options'),
-          cancelToken: anyNamed('cancelToken')))
-      .thenAnswer((invocation) async {
+  when(
+    mockHttpClient.get(
+      any,
+      queryParameters: anyNamed('queryParameters'),
+      options: anyNamed('options'),
+      cancelToken: anyNamed('cancelToken'),
+    ),
+  ).thenAnswer((invocation) async {
     final url = invocation.positionalArguments.first as String;
     final data = fileContents![url] ?? utf8.encode('generic');
     return Response(
@@ -63,16 +73,21 @@ void configureDownloadHttpClientMock(
   });
 
   // downloadFile simulation: writes bytes and invokes progress callback.
-  when(mockHttpClient.downloadFile(any, any,
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          cancelToken: anyNamed('cancelToken'),
-          queryParameters: anyNamed('queryParameters'),
-          resumeFrom: anyNamed('resumeFrom')))
-      .thenAnswer((invocation) async {
+  when(
+    mockHttpClient.downloadFile(
+      any,
+      any,
+      onReceiveProgress: anyNamed('onReceiveProgress'),
+      cancelToken: anyNamed('cancelToken'),
+      queryParameters: anyNamed('queryParameters'),
+      resumeFrom: anyNamed('resumeFrom'),
+    ),
+  ).thenAnswer((invocation) async {
     final url = invocation.positionalArguments[0] as String;
     final savePath = invocation.positionalArguments[1] as String;
     final onProgress =
-        invocation.namedArguments[const Symbol('onReceiveProgress')] as void Function(int, int)?;
+        invocation.namedArguments[const Symbol('onReceiveProgress')]
+            as void Function(int, int)?;
 
     final data = fileContents![url] ?? utf8.encode('generic');
     final chunkSize = (data.length / progressChunks).ceil();
@@ -101,8 +116,11 @@ Future<void> corruptDownloadedFile(String path) async {
 }
 
 /// Retry deletion of a directory to mitigate Windows file locking issues.
-Future<void> retryDeleteDirectory(Directory dir,
-    {int attempts = 5, Duration backoff = const Duration(milliseconds: 80)}) async {
+Future<void> retryDeleteDirectory(
+  Directory dir, {
+  int attempts = 5,
+  Duration backoff = const Duration(milliseconds: 80),
+}) async {
   for (int i = 0; i < attempts; i++) {
     try {
       if (await dir.exists()) {

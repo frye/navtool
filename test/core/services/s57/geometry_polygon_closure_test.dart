@@ -25,23 +25,29 @@ void main() {
       // Assert
       expect(geometry.type, equals(S57GeometryType.area));
       expect(expectedType, equals('polygon'));
-      
+
       // Verify polygon structure
       expect(geometry.rings.length, equals(1)); // Single outer ring
-      
+
       final ring = geometry.rings.first;
       final actualCoords = fixtures.coordinateListToLists(ring);
-      
+
       expect(actualCoords.length, equals(expectedCoords.length));
-      
+
       // Verify all coordinates match
       for (int i = 0; i < expectedCoords.length; i++) {
-        expect(actualCoords[i][0], equals(expectedCoords[i][0]), 
-               reason: 'X coordinate at index $i');
-        expect(actualCoords[i][1], equals(expectedCoords[i][1]), 
-               reason: 'Y coordinate at index $i');
+        expect(
+          actualCoords[i][0],
+          equals(expectedCoords[i][0]),
+          reason: 'X coordinate at index $i',
+        );
+        expect(
+          actualCoords[i][1],
+          equals(expectedCoords[i][1]),
+          reason: 'Y coordinate at index $i',
+        );
       }
-      
+
       // Verify no warnings for valid polygon
       expect(fixtures.store.warnings, isEmpty);
     });
@@ -55,10 +61,10 @@ void main() {
 
       // Assert
       expect(geometry.type, equals(S57GeometryType.area));
-      
+
       final ring = geometry.rings.first;
       expect(ring.length, greaterThan(2));
-      
+
       // First and last coordinates should be equal
       expect(ring.first, equals(ring.last));
       expect(ring.first.x, equals(ring.last.x));
@@ -69,7 +75,7 @@ void main() {
       // Arrange - Create unclosed polygon (missing final edge)
       final pointers = [
         const S57SpatialPointer(refId: 1, isEdge: true, reverse: false), // E1
-        const S57SpatialPointer(refId: 2, isEdge: true, reverse: false), // E2  
+        const S57SpatialPointer(refId: 2, isEdge: true, reverse: false), // E2
         const S57SpatialPointer(refId: 3, isEdge: true, reverse: false), // E3
         // Missing E4 that would close the polygon
       ];
@@ -79,10 +85,10 @@ void main() {
 
       // Assert - Should create line since not closed
       expect(geometry.type, equals(S57GeometryType.line));
-      
+
       final coords = geometry.rings.first;
       expect(coords.length, equals(4)); // Start + 3 edges = 4 coordinates
-      
+
       // Should not be closed
       expect(coords.first, isNot(equals(coords.last)));
     });
@@ -90,26 +96,49 @@ void main() {
     test('should handle nearly-closed polygon with auto-closure warning', () {
       // Arrange - Create nearly closed polygon (within tolerance)
       final store = PrimitiveStore();
-      
+
       // Create nodes that are very close but not identical
       store.addNode(const S57Node(id: 1, x: 0.0, y: 0.0));
       store.addNode(const S57Node(id: 2, x: 1.0, y: 0.0));
       store.addNode(const S57Node(id: 3, x: 1.0, y: 1.0));
-      store.addNode(const S57Node(id: 4, x: 0.0000001, y: 0.0000001)); // Very close to (0,0)
-      
+      store.addNode(
+        const S57Node(id: 4, x: 0.0000001, y: 0.0000001),
+      ); // Very close to (0,0)
+
       // Create edge that almost closes
-      store.addEdge(const S57Edge(id: 1, nodes: [
-        S57Node(id: 3, x: 1.0, y: 1.0),
-        S57Node(id: 4, x: 0.0000001, y: 0.0000001),
-      ]));
-      
+      store.addEdge(
+        const S57Edge(
+          id: 1,
+          nodes: [
+            S57Node(id: 3, x: 1.0, y: 1.0),
+            S57Node(id: 4, x: 0.0000001, y: 0.0000001),
+          ],
+        ),
+      );
+
       final testAssembler = S57GeometryAssembler(store);
-      
+
       final pointers = [
-        const S57SpatialPointer(refId: 1, isEdge: false, reverse: false), // Start node
-        const S57SpatialPointer(refId: 2, isEdge: false, reverse: false), // Corner 1
-        const S57SpatialPointer(refId: 3, isEdge: false, reverse: false), // Corner 2
-        const S57SpatialPointer(refId: 1, isEdge: true, reverse: false),  // Almost close
+        const S57SpatialPointer(
+          refId: 1,
+          isEdge: false,
+          reverse: false,
+        ), // Start node
+        const S57SpatialPointer(
+          refId: 2,
+          isEdge: false,
+          reverse: false,
+        ), // Corner 1
+        const S57SpatialPointer(
+          refId: 3,
+          isEdge: false,
+          reverse: false,
+        ), // Corner 2
+        const S57SpatialPointer(
+          refId: 1,
+          isEdge: true,
+          reverse: false,
+        ), // Almost close
       ];
 
       // Act
@@ -117,8 +146,11 @@ void main() {
 
       // Assert
       expect(geometry.type, equals(S57GeometryType.area));
-      expect(store.warnings.any((w) => w.contains('Auto-closing polygon')), isTrue);
-      
+      expect(
+        store.warnings.any((w) => w.contains('Auto-closing polygon')),
+        isTrue,
+      );
+
       // Should be closed after auto-closure
       final ring = geometry.rings.first;
       expect(ring.first, equals(ring.last));
@@ -182,7 +214,7 @@ void main() {
         const Coordinate(0.0, 2.0),
         const Coordinate(0.0, 0.0),
       ];
-      
+
       final innerRing = [
         const Coordinate(0.5, 0.5),
         const Coordinate(1.5, 0.5),

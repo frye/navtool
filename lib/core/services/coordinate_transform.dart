@@ -19,22 +19,23 @@ class CoordinateTransform {
     required double zoom,
     required LatLng center,
     required Size screenSize,
-  })  : _zoom = zoom,
-        _center = center,
-        _screenSize = screenSize,
-        _pixelsPerDegree = _calculatePixelsPerDegree(zoom, center.latitude);
+  }) : _zoom = zoom,
+       _center = center,
+       _screenSize = screenSize,
+       _pixelsPerDegree = _calculatePixelsPerDegree(zoom, center.latitude);
 
   /// Calculate pixels per degree at given zoom and latitude
   static double _calculatePixelsPerDegree(double zoom, double latitude) {
     // Base pixels per degree at equator for zoom level 0
     const double basePixelsPerDegree = 256.0 / 360.0;
-    
+
     // Adjust for latitude (Mercator projection)
-    final double latitudeAdjustment = 1.0 / math.cos(latitude * math.pi / 180.0);
-    
+    final double latitudeAdjustment =
+        1.0 / math.cos(latitude * math.pi / 180.0);
+
     // Scale by zoom level (each zoom level doubles the scale)
     final double zoomScale = math.pow(2, zoom).toDouble();
-    
+
     return basePixelsPerDegree * zoomScale * latitudeAdjustment;
   }
 
@@ -42,10 +43,10 @@ class CoordinateTransform {
   Offset latLngToScreen(LatLng latLng) {
     final double deltaLng = latLng.longitude - _center.longitude;
     final double deltaLat = latLng.latitude - _center.latitude;
-    
+
     final double x = _screenSize.width / 2 + (deltaLng * _pixelsPerDegree);
     final double y = _screenSize.height / 2 - (deltaLat * _pixelsPerDegree);
-    
+
     return Offset(x, y);
   }
 
@@ -53,18 +54,20 @@ class CoordinateTransform {
   LatLng screenToLatLng(Offset screen) {
     final double deltaX = screen.dx - _screenSize.width / 2;
     final double deltaY = screen.dy - _screenSize.height / 2;
-    
+
     final double lng = _center.longitude + (deltaX / _pixelsPerDegree);
     final double lat = _center.latitude - (deltaY / _pixelsPerDegree);
-    
+
     return LatLng(lat, lng);
   }
 
   /// Get the visible bounds of the current view
   LatLngBounds get visibleBounds {
     final LatLng topLeft = screenToLatLng(const Offset(0, 0));
-    final LatLng bottomRight = screenToLatLng(Offset(_screenSize.width, _screenSize.height));
-    
+    final LatLng bottomRight = screenToLatLng(
+      Offset(_screenSize.width, _screenSize.height),
+    );
+
     return LatLngBounds(
       north: topLeft.latitude,
       south: bottomRight.latitude,
@@ -76,18 +79,23 @@ class CoordinateTransform {
   /// Calculate the distance in meters between two geographic coordinates
   static double distanceInMeters(LatLng point1, LatLng point2) {
     const double earthRadius = 6371000; // Earth's radius in meters
-    
+
     final double lat1Rad = point1.latitude * math.pi / 180;
     final double lat2Rad = point2.latitude * math.pi / 180;
-    final double deltaLatRad = (point2.latitude - point1.latitude) * math.pi / 180;
-    final double deltaLngRad = (point2.longitude - point1.longitude) * math.pi / 180;
-    
-    final double a = math.sin(deltaLatRad / 2) * math.sin(deltaLatRad / 2) +
-        math.cos(lat1Rad) * math.cos(lat2Rad) *
-        math.sin(deltaLngRad / 2) * math.sin(deltaLngRad / 2);
-    
+    final double deltaLatRad =
+        (point2.latitude - point1.latitude) * math.pi / 180;
+    final double deltaLngRad =
+        (point2.longitude - point1.longitude) * math.pi / 180;
+
+    final double a =
+        math.sin(deltaLatRad / 2) * math.sin(deltaLatRad / 2) +
+        math.cos(lat1Rad) *
+            math.cos(lat2Rad) *
+            math.sin(deltaLngRad / 2) *
+            math.sin(deltaLngRad / 2);
+
     final double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-    
+
     return earthRadius * c;
   }
 
@@ -95,15 +103,17 @@ class CoordinateTransform {
   static double bearing(LatLng point1, LatLng point2) {
     final double lat1Rad = point1.latitude * math.pi / 180;
     final double lat2Rad = point2.latitude * math.pi / 180;
-    final double deltaLngRad = (point2.longitude - point1.longitude) * math.pi / 180;
-    
+    final double deltaLngRad =
+        (point2.longitude - point1.longitude) * math.pi / 180;
+
     final double y = math.sin(deltaLngRad) * math.cos(lat2Rad);
-    final double x = math.cos(lat1Rad) * math.sin(lat2Rad) -
+    final double x =
+        math.cos(lat1Rad) * math.sin(lat2Rad) -
         math.sin(lat1Rad) * math.cos(lat2Rad) * math.cos(deltaLngRad);
-    
+
     final double bearingRad = math.atan2(y, x);
     final double bearingDeg = (bearingRad * 180 / math.pi + 360) % 360;
-    
+
     return bearingDeg;
   }
 
@@ -128,7 +138,7 @@ class CoordinateTransform {
   /// Check if a feature is visible in the current viewport
   bool isFeatureVisible(MaritimeFeature feature) {
     final bounds = visibleBounds;
-    
+
     if (feature is PointFeature) {
       return bounds.contains(feature.position);
     } else if (feature is LineFeature) {
@@ -140,7 +150,7 @@ class CoordinateTransform {
           .expand((ring) => ring)
           .any((coord) => bounds.contains(coord));
     }
-    
+
     return bounds.contains(feature.position);
   }
 
@@ -191,22 +201,22 @@ class CoordinateTransform {
   /// Transform coordinates with rotation
   Offset transformWithRotation(Offset point) {
     if (_rotation == 0.0) return point;
-    
+
     final radians = _rotation * (math.pi / 180.0);
     final cos = math.cos(radians);
     final sin = math.sin(radians);
-    
+
     final centerX = _screenSize.width / 2;
     final centerY = _screenSize.height / 2;
-    
+
     // Translate to origin
     final translatedX = point.dx - centerX;
     final translatedY = point.dy - centerY;
-    
+
     // Apply rotation
     final rotatedX = translatedX * cos - translatedY * sin;
     final rotatedY = translatedX * sin + translatedY * cos;
-    
+
     // Translate back
     return Offset(rotatedX + centerX, rotatedY + centerY);
   }
@@ -215,23 +225,24 @@ class CoordinateTransform {
   Offset latLngToScreenPrecise(LatLng latLng) {
     // Use more precise spherical mercator projection
     const earthRadius = 6378137.0; // WGS84 Earth radius in meters
-    
+
     final lat = latLng.latitude * (math.pi / 180.0);
     final lng = latLng.longitude * (math.pi / 180.0);
-    
+
     final x = earthRadius * lng;
     final y = earthRadius * math.log(math.tan(math.pi / 4 + lat / 2));
-    
+
     // Convert to screen coordinates
     final centerLat = _center.latitude * (math.pi / 180.0);
     final centerLng = _center.longitude * (math.pi / 180.0);
-    
+
     final centerX = earthRadius * centerLng;
-    final centerY = earthRadius * math.log(math.tan(math.pi / 4 + centerLat / 2));
-    
+    final centerY =
+        earthRadius * math.log(math.tan(math.pi / 4 + centerLat / 2));
+
     final screenX = _screenSize.width / 2 + (x - centerX) * _zoom / 1000;
     final screenY = _screenSize.height / 2 - (y - centerY) * _zoom / 1000;
-    
+
     final point = Offset(screenX, screenY);
     return transformWithRotation(point);
   }
@@ -264,17 +275,20 @@ class CoordinateTransform {
   /// Calculate great circle distance
   double calculateDistance(LatLng point1, LatLng point2) {
     const earthRadius = 3440.065; // Earth radius in nautical miles
-    
+
     final lat1 = point1.latitude * (math.pi / 180.0);
     final lat2 = point2.latitude * (math.pi / 180.0);
     final deltaLat = (point2.latitude - point1.latitude) * (math.pi / 180.0);
     final deltaLng = (point2.longitude - point1.longitude) * (math.pi / 180.0);
-    
-    final a = math.sin(deltaLat / 2) * math.sin(deltaLat / 2) +
-        math.cos(lat1) * math.cos(lat2) *
-        math.sin(deltaLng / 2) * math.sin(deltaLng / 2);
+
+    final a =
+        math.sin(deltaLat / 2) * math.sin(deltaLat / 2) +
+        math.cos(lat1) *
+            math.cos(lat2) *
+            math.sin(deltaLng / 2) *
+            math.sin(deltaLng / 2);
     final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-    
+
     return earthRadius * c;
   }
 
@@ -283,11 +297,12 @@ class CoordinateTransform {
     final lat1 = from.latitude * (math.pi / 180.0);
     final lat2 = to.latitude * (math.pi / 180.0);
     final deltaLng = (to.longitude - from.longitude) * (math.pi / 180.0);
-    
+
     final y = math.sin(deltaLng) * math.cos(lat2);
-    final x = math.cos(lat1) * math.sin(lat2) -
+    final x =
+        math.cos(lat1) * math.sin(lat2) -
         math.sin(lat1) * math.cos(lat2) * math.cos(deltaLng);
-    
+
     final bearing = math.atan2(y, x) * (180.0 / math.pi);
     return (bearing + 360.0) % 360.0;
   }
@@ -298,16 +313,20 @@ class CoordinateTransform {
     final lat2 = point2.latitude * (math.pi / 180.0);
     final deltaLat = lat2 - lat1;
     var deltaLng = (point2.longitude - point1.longitude) * (math.pi / 180.0);
-    
-    final deltaPhi = math.log(math.tan(lat2 / 2 + math.pi / 4) / math.tan(lat1 / 2 + math.pi / 4));
+
+    final deltaPhi = math.log(
+      math.tan(lat2 / 2 + math.pi / 4) / math.tan(lat1 / 2 + math.pi / 4),
+    );
     final q = deltaLat != 0 ? deltaLat / deltaPhi : math.cos(lat1);
-    
+
     if (deltaLng.abs() > math.pi) {
       final sign = deltaLng > 0 ? -1 : 1;
       deltaLng = sign * (2 * math.pi - deltaLng.abs());
     }
-    
-    final distance = math.sqrt(deltaLat * deltaLat + q * q * deltaLng * deltaLng);
+
+    final distance = math.sqrt(
+      deltaLat * deltaLat + q * q * deltaLng * deltaLng,
+    );
     return distance * 180.0 / math.pi * 60.0; // Convert to nautical miles
   }
 
@@ -316,14 +335,16 @@ class CoordinateTransform {
     final lat1 = from.latitude * (math.pi / 180.0);
     final lat2 = to.latitude * (math.pi / 180.0);
     var deltaLng = (to.longitude - from.longitude) * (math.pi / 180.0);
-    
-    final deltaPhi = math.log(math.tan(lat2 / 2 + math.pi / 4) / math.tan(lat1 / 2 + math.pi / 4));
-    
+
+    final deltaPhi = math.log(
+      math.tan(lat2 / 2 + math.pi / 4) / math.tan(lat1 / 2 + math.pi / 4),
+    );
+
     if (deltaLng.abs() > math.pi) {
       final sign = deltaLng > 0 ? -1 : 1;
       deltaLng = sign * (2 * math.pi - deltaLng.abs());
     }
-    
+
     final bearing = math.atan2(deltaLng, deltaPhi) * (180.0 / math.pi);
     return (bearing + 360.0) % 360.0;
   }
@@ -331,17 +352,19 @@ class CoordinateTransform {
   /// Check if point is within screen bounds
   bool isPointInBounds(LatLng point) {
     final screenPoint = latLngToScreen(point);
-    return screenPoint.dx >= 0 && 
-           screenPoint.dx <= _screenSize.width &&
-           screenPoint.dy >= 0 && 
-           screenPoint.dy <= _screenSize.height;
+    return screenPoint.dx >= 0 &&
+        screenPoint.dx <= _screenSize.width &&
+        screenPoint.dy >= 0 &&
+        screenPoint.dy <= _screenSize.height;
   }
 
   /// Get viewport bounds in lat/lng
   LatLngBounds getViewportBounds() {
     final topLeft = screenToLatLng(const Offset(0, 0));
-    final bottomRight = screenToLatLng(Offset(_screenSize.width, _screenSize.height));
-    
+    final bottomRight = screenToLatLng(
+      Offset(_screenSize.width, _screenSize.height),
+    );
+
     return LatLngBounds(
       north: topLeft.latitude,
       south: bottomRight.latitude,

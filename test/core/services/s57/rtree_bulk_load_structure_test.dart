@@ -60,13 +60,17 @@ void main() {
 
     test('should handle empty feature list', () {
       final tree = S57SpatialTree.bulkLoad([]);
-      
+
       expect(tree.featureCount, equals(0));
       expect(tree.getAllFeatures(), isEmpty);
       expect(tree.calculateBounds(), isNull);
-      
+
       final emptyBounds = S57Bounds(
-        north: 47.7, south: 47.6, east: -122.3, west: -122.4);
+        north: 47.7,
+        south: 47.6,
+        east: -122.3,
+        west: -122.4,
+      );
       expect(tree.queryBounds(emptyBounds), isEmpty);
     });
 
@@ -91,26 +95,39 @@ void main() {
     });
 
     test('should handle features with same coordinates (zero-area)', () {
-      final features = List.generate(10, (i) => S57Feature(
-        recordId: i,
-        featureType: S57FeatureType.buoy,
-        geometryType: S57GeometryType.point,
-        coordinates: [const S57Coordinate(latitude: 47.65, longitude: -122.35)],
-        attributes: const {},
-      ));
+      final features = List.generate(
+        10,
+        (i) => S57Feature(
+          recordId: i,
+          featureType: S57FeatureType.buoy,
+          geometryType: S57GeometryType.point,
+          coordinates: [
+            const S57Coordinate(latitude: 47.65, longitude: -122.35),
+          ],
+          attributes: const {},
+        ),
+      );
 
       final tree = S57SpatialTree.bulkLoad(features);
 
       expect(tree.featureCount, equals(10));
 
       // Point query should find all features
-      final pointResults = tree.queryPoint(47.65, -122.35, radiusDegrees: 0.001);
+      final pointResults = tree.queryPoint(
+        47.65,
+        -122.35,
+        radiusDegrees: 0.001,
+      );
       expect(pointResults.length, equals(10));
     });
 
     test('should maintain node fan-out within bounds', () {
-      final features = _createFeatureGrid(100); // Large enough to test structure
-      final config = RTreeConfig(maxNodeEntries: 8); // Smaller fan-out for testing
+      final features = _createFeatureGrid(
+        100,
+      ); // Large enough to test structure
+      final config = RTreeConfig(
+        maxNodeEntries: 8,
+      ); // Smaller fan-out for testing
       final tree = S57SpatialTree.bulkLoad(features, config: config);
 
       expect(tree.featureCount, equals(100));
@@ -132,7 +149,9 @@ void main() {
           recordId: 1,
           featureType: S57FeatureType.buoy,
           geometryType: S57GeometryType.point,
-          coordinates: [const S57Coordinate(latitude: 47.65, longitude: -122.35)],
+          coordinates: [
+            const S57Coordinate(latitude: 47.65, longitude: -122.35),
+          ],
           attributes: const {},
         ),
         // Line far from the point
@@ -168,13 +187,21 @@ void main() {
 
       // Large bounds should capture all features
       final largeBounds = S57Bounds(
-        north: 47.7, south: 47.5, east: -122.3, west: -122.5);
+        north: 47.7,
+        south: 47.5,
+        east: -122.3,
+        west: -122.5,
+      );
       final allResults = tree.queryBounds(largeBounds);
       expect(allResults.length, equals(3));
 
       // Small bounds should capture only the point feature
       final pointBounds = S57Bounds(
-        north: 47.651, south: 47.649, east: -122.349, west: -122.351);
+        north: 47.651,
+        south: 47.649,
+        east: -122.349,
+        west: -122.351,
+      );
       final pointResults = tree.queryBounds(pointBounds);
       expect(pointResults.length, equals(1));
       expect(pointResults.first.recordId, equals(1));
@@ -186,22 +213,25 @@ void main() {
 List<S57Feature> _createFeatureGrid(int count) {
   final features = <S57Feature>[];
   final gridSize = (sqrt(count.toDouble())).ceil();
-  
+
   for (int i = 0; i < count; i++) {
     final row = i ~/ gridSize;
     final col = i % gridSize;
-    
-    final lat = 47.65 + (row * 0.001); // 1 degree = ~111km, so 0.001 degree = ~111m
+
+    final lat =
+        47.65 + (row * 0.001); // 1 degree = ~111km, so 0.001 degree = ~111m
     final lon = -122.35 + (col * 0.001);
-    
-    features.add(S57Feature(
-      recordId: i,
-      featureType: S57FeatureType.values[i % S57FeatureType.values.length],
-      geometryType: S57GeometryType.point,
-      coordinates: [S57Coordinate(latitude: lat, longitude: lon)],
-      attributes: {'grid_pos': '$row,$col'},
-    ));
+
+    features.add(
+      S57Feature(
+        recordId: i,
+        featureType: S57FeatureType.values[i % S57FeatureType.values.length],
+        geometryType: S57GeometryType.point,
+        coordinates: [S57Coordinate(latitude: lat, longitude: lon)],
+        attributes: {'grid_pos': '$row,$col'},
+      ),
+    );
   }
-  
+
   return features;
 }

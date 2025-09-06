@@ -19,7 +19,7 @@ import 'settings_service_impl_test.mocks.dart';
 void main() {
   // Initialize Flutter binding for platform services
   TestWidgetsFlutterBinding.ensureInitialized();
-  
+
   group('SettingsService Implementation Tests', () {
     late SettingsService settingsService;
     late MockSharedPreferences mockPrefs;
@@ -115,7 +115,10 @@ void main() {
         // Assert
         verify(mockPrefs.containsKey(key)).called(1);
         verifyNever(mockPrefs.remove(key));
-        verifyWarningLogged(mockLogger, 'Attempted to delete non-existent setting:');
+        verifyWarningLogged(
+          mockLogger,
+          'Attempted to delete non-existent setting:',
+        );
       });
     });
 
@@ -134,18 +137,21 @@ void main() {
         verify(mockPrefs.getBool(key)).called(1);
       });
 
-      test('should return default false for non-existent boolean setting', () async {
-        // Arrange
-        const key = 'non_existent_bool';
-        when(mockPrefs.getBool(key)).thenReturn(null);
+      test(
+        'should return default false for non-existent boolean setting',
+        () async {
+          // Arrange
+          const key = 'non_existent_bool';
+          when(mockPrefs.getBool(key)).thenReturn(null);
 
-        // Act
-        final result = await settingsService.getBool(key);
+          // Act
+          final result = await settingsService.getBool(key);
 
-        // Assert
-        expect(result, isFalse);
-        verify(mockPrefs.getBool(key)).called(1);
-      });
+          // Assert
+          expect(result, isFalse);
+          verify(mockPrefs.getBool(key)).called(1);
+        },
+      );
 
       test('should set boolean setting successfully', () async {
         // Arrange
@@ -177,18 +183,21 @@ void main() {
         verify(mockPrefs.getInt(key)).called(1);
       });
 
-      test('should return default 0 for non-existent integer setting', () async {
-        // Arrange
-        const key = 'non_existent_int';
-        when(mockPrefs.getInt(key)).thenReturn(null);
+      test(
+        'should return default 0 for non-existent integer setting',
+        () async {
+          // Arrange
+          const key = 'non_existent_int';
+          when(mockPrefs.getInt(key)).thenReturn(null);
 
-        // Act
-        final result = await settingsService.getInt(key);
+          // Act
+          final result = await settingsService.getInt(key);
 
-        // Assert
-        expect(result, equals(0));
-        verify(mockPrefs.getInt(key)).called(1);
-      });
+          // Assert
+          expect(result, equals(0));
+          verify(mockPrefs.getInt(key)).called(1);
+        },
+      );
 
       test('should set integer setting successfully', () async {
         // Arrange
@@ -208,7 +217,7 @@ void main() {
         // Arrange
         const key = 'max_concurrent_downloads';
         const invalidValue = -1;
-        
+
         // Act & Assert
         expect(
           () => settingsService.setInt(key, invalidValue),
@@ -233,18 +242,21 @@ void main() {
         verify(mockPrefs.getDouble(key)).called(1);
       });
 
-      test('should return default 0.0 for non-existent double setting', () async {
-        // Arrange
-        const key = 'non_existent_double';
-        when(mockPrefs.getDouble(key)).thenReturn(null);
+      test(
+        'should return default 0.0 for non-existent double setting',
+        () async {
+          // Arrange
+          const key = 'non_existent_double';
+          when(mockPrefs.getDouble(key)).thenReturn(null);
 
-        // Act
-        final result = await settingsService.getDouble(key);
+          // Act
+          final result = await settingsService.getDouble(key);
 
-        // Assert
-        expect(result, equals(0.0));
-        verify(mockPrefs.getDouble(key)).called(1);
-      });
+          // Assert
+          expect(result, equals(0.0));
+          verify(mockPrefs.getDouble(key)).called(1);
+        },
+      );
 
       test('should set double setting successfully', () async {
         // Arrange
@@ -264,7 +276,7 @@ void main() {
         // Arrange
         const key = 'chart_rendering_quality';
         const invalidValue = -0.5; // Quality can't be negative
-        
+
         // Act & Assert
         expect(
           () => settingsService.setDouble(key, invalidValue),
@@ -275,37 +287,47 @@ void main() {
     });
 
     group('Marine Navigation Settings Tests', () {
-      test('should validate GPS update interval within marine standards', () async {
-        // Arrange
-        const key = 'gps_update_interval';
-        const validValue = 1.0; // 1 second is valid for marine navigation
-        when(mockPrefs.setDouble(key, validValue)).thenAnswer((_) async => true);
+      test(
+        'should validate GPS update interval within marine standards',
+        () async {
+          // Arrange
+          const key = 'gps_update_interval';
+          const validValue = 1.0; // 1 second is valid for marine navigation
+          when(
+            mockPrefs.setDouble(key, validValue),
+          ).thenAnswer((_) async => true);
 
-        // Act
-        await settingsService.setDouble(key, validValue);
+          // Act
+          await settingsService.setDouble(key, validValue);
 
-        // Assert
-        verify(mockPrefs.setDouble(key, validValue)).called(1);
-      });
+          // Assert
+          verify(mockPrefs.setDouble(key, validValue)).called(1);
+        },
+      );
 
-      test('should reject GPS update interval too fast for marine use', () async {
-        // Arrange
-        const key = 'gps_update_interval';
-        const invalidValue = 0.05; // 50ms is too fast for marine navigation
-        
-        // Act & Assert
-        expect(
-          () => settingsService.setDouble(key, invalidValue),
-          throwsA(isA<AppError>()),
-        );
-        verifyNever(mockPrefs.setDouble(key, invalidValue));
-      });
+      test(
+        'should reject GPS update interval too fast for marine use',
+        () async {
+          // Arrange
+          const key = 'gps_update_interval';
+          const invalidValue = 0.05; // 50ms is too fast for marine navigation
+
+          // Act & Assert
+          expect(
+            () => settingsService.setDouble(key, invalidValue),
+            throwsA(isA<AppError>()),
+          );
+          verifyNever(mockPrefs.setDouble(key, invalidValue));
+        },
+      );
 
       test('should validate preferred units setting', () async {
         // Arrange
         const key = 'preferred_units';
         const validValue = 'metric';
-        when(mockPrefs.setString(key, validValue)).thenAnswer((_) async => true);
+        when(
+          mockPrefs.setString(key, validValue),
+        ).thenAnswer((_) async => true);
 
         // Act
         await settingsService.setSetting(key, validValue);
@@ -318,7 +340,7 @@ void main() {
         // Arrange
         const key = 'preferred_units';
         const invalidValue = 'invalid_units';
-        
+
         // Act & Assert
         expect(
           () => settingsService.setSetting(key, invalidValue),
@@ -331,7 +353,9 @@ void main() {
         // Arrange
         const key = 'theme_mode';
         const validValue = 'dark';
-        when(mockPrefs.setString(key, validValue)).thenAnswer((_) async => true);
+        when(
+          mockPrefs.setString(key, validValue),
+        ).thenAnswer((_) async => true);
 
         // Act
         await settingsService.setSetting(key, validValue);
@@ -346,7 +370,7 @@ void main() {
         // Arrange - Test upper bound
         const key = 'max_concurrent_downloads';
         const invalidValue = 15; // Too many for marine device
-        
+
         // Act & Assert
         expect(
           () => settingsService.setInt(key, invalidValue),
@@ -358,7 +382,7 @@ void main() {
         // Arrange - Test upper bound
         const key = 'chart_rendering_quality';
         const invalidValue = 5.0; // Too high, should be <= 2.0
-        
+
         // Act & Assert
         expect(
           () => settingsService.setDouble(key, invalidValue),
@@ -374,9 +398,13 @@ void main() {
         when(mockPrefs.getString('preferred_units')).thenReturn(null);
 
         // Act
-        final maxDownloads = await settingsService.getInt('max_concurrent_downloads');
+        final maxDownloads = await settingsService.getInt(
+          'max_concurrent_downloads',
+        );
         final gpsLogging = await settingsService.getBool('enable_gps_logging');
-        final renderQuality = await settingsService.getDouble('chart_rendering_quality');
+        final renderQuality = await settingsService.getDouble(
+          'chart_rendering_quality',
+        );
         final units = await settingsService.getSetting('preferred_units');
 
         // Assert - Should return appropriate defaults
@@ -429,7 +457,7 @@ void main() {
           'export_timestamp': '2025-08-16T12:00:00Z',
           'app_version': '1.0.0',
         };
-        
+
         when(mockPrefs.setString(any, any)).thenAnswer((_) async => true);
         when(mockPrefs.setBool(any, any)).thenAnswer((_) async => true);
         when(mockPrefs.setInt(any, any)).thenAnswer((_) async => true);
@@ -444,7 +472,10 @@ void main() {
         verify(mockPrefs.setInt('max_concurrent_downloads', 5)).called(1);
         verify(mockPrefs.setDouble('chart_rendering_quality', 2.0)).called(1);
         verify(mockPrefs.setString('preferred_units', 'imperial')).called(1);
-        verifyInfoLogged(mockLogger, 'Settings imported successfully from backup');
+        verifyInfoLogged(
+          mockLogger,
+          'Settings imported successfully from backup',
+        );
       });
 
       test('should validate backup data before import', () async {
@@ -499,7 +530,10 @@ void main() {
         verify(mockPrefs.setDouble('chart_rendering_quality', 1.0)).called(1);
         verify(mockPrefs.setString('preferred_units', 'metric')).called(1);
         verify(mockPrefs.setDouble('gps_update_interval', 1.0)).called(1);
-        verifyInfoLogged(mockLogger, 'Settings reset to marine navigation defaults');
+        verifyInfoLogged(
+          mockLogger,
+          'Settings reset to marine navigation defaults',
+        );
       });
     });
 
@@ -569,7 +603,9 @@ void main() {
         verify(mockPrefs.setBool('enable_gps_logging', false)).called(1);
         verify(mockPrefs.setBool('show_debug_info', false)).called(1);
         verify(mockPrefs.setDouble('chart_rendering_quality', 0.8)).called(1);
-        verify(mockPrefs.setBool('enable_background_downloads', false)).called(1);
+        verify(
+          mockPrefs.setBool('enable_background_downloads', false),
+        ).called(1);
         verify(mockPrefs.setBool('auto_select_chart', true)).called(1);
         verify(mockPrefs.setString('preferred_units', 'metric')).called(1);
         verify(mockPrefs.setDouble('gps_update_interval', 1.5)).called(1);
@@ -583,13 +619,12 @@ void main() {
       test('should handle SharedPreferences errors gracefully', () async {
         // Arrange
         const key = 'test_key';
-        when(mockPrefs.getString(key)).thenThrow(Exception('SharedPreferences error'));
+        when(
+          mockPrefs.getString(key),
+        ).thenThrow(Exception('SharedPreferences error'));
 
         // Act & Assert
-        expect(
-          () => settingsService.getSetting(key),
-          throwsA(isA<AppError>()),
-        );
+        expect(() => settingsService.getSetting(key), throwsA(isA<AppError>()));
         verifyErrorLogged(mockLogger, 'Failed to get setting:');
       });
 
@@ -640,20 +675,27 @@ void main() {
         const key = 'theme_mode';
         const value1 = 'dark';
         const value2 = 'light';
-        
+
         when(mockPrefs.getString(key)).thenReturn(value1);
         when(mockPrefs.setString(key, value2)).thenAnswer((_) async => true);
 
         // Act
         await settingsService.getSetting(key); // First call - cached
-        await settingsService.setSetting(key, value2); // Update - should invalidate cache
+        await settingsService.setSetting(
+          key,
+          value2,
+        ); // Update - should invalidate cache
 
         when(mockPrefs.getString(key)).thenReturn(value2);
-        final updatedValue = await settingsService.getSetting(key); // Should fetch fresh value
+        final updatedValue = await settingsService.getSetting(
+          key,
+        ); // Should fetch fresh value
 
         // Assert
         expect(updatedValue, equals(value2));
-        verify(mockPrefs.getString(key)).called(2); // Initial + after cache invalidation
+        verify(
+          mockPrefs.getString(key),
+        ).called(2); // Initial + after cache invalidation
       });
     });
   });

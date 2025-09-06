@@ -26,7 +26,10 @@ void main() {
         expect(warnings, hasLength(1));
         expect(warnings[0].objectAcronym, equals('DEPARE'));
         expect(warnings[0].missingAttribute, equals('DRVAL1'));
-        expect(warnings[0].message, contains('Missing required attribute DRVAL1'));
+        expect(
+          warnings[0].message,
+          contains('Missing required attribute DRVAL1'),
+        );
         expect(warnings[0].message, contains('DEPARE'));
         expect(warnings[0].message, contains('Depth Area'));
       });
@@ -61,10 +64,7 @@ void main() {
         );
 
         // DRVAL1 is present but null - should warn
-        final attributes = <String, Object?>{
-          'DRVAL1': null,
-          'DRVAL2': 20.0,
-        };
+        final attributes = <String, Object?>{'DRVAL1': null, 'DRVAL2': 20.0};
 
         final warnings = S57RequiredAttributeValidator.validateRequired(
           depareClass,
@@ -96,7 +96,10 @@ void main() {
         expect(warnings, hasLength(1));
         expect(warnings[0].objectAcronym, equals('SOUNDG'));
         expect(warnings[0].missingAttribute, equals('VALSOU'));
-        expect(warnings[0].message, contains('Missing required attribute VALSOU'));
+        expect(
+          warnings[0].message,
+          contains('Missing required attribute VALSOU'),
+        );
         expect(warnings[0].message, contains('SOUNDG'));
         expect(warnings[0].message, contains('Sounding'));
       });
@@ -109,10 +112,7 @@ void main() {
         );
 
         // Has VALSOU - no warning
-        final attributes = <String, Object?>{
-          'VALSOU': 15.5,
-          'QUASOU': 1,
-        };
+        final attributes = <String, Object?>{'VALSOU': 15.5, 'QUASOU': 1};
 
         final warnings = S57RequiredAttributeValidator.validateRequired(
           soundgClass,
@@ -145,31 +145,29 @@ void main() {
         expect(warnings[0].missingAttribute, equals('CATBOY'));
       });
 
-      test('should not warn for object classes without required attributes', () {
-        const coastlineClass = S57ObjectClass(
-          code: 121,
-          acronym: 'COALNE',
-          name: 'Coastline',
-        );
+      test(
+        'should not warn for object classes without required attributes',
+        () {
+          const coastlineClass = S57ObjectClass(
+            code: 121,
+            acronym: 'COALNE',
+            name: 'Coastline',
+          );
 
-        // COALNE has no required attributes defined
-        final attributes = <String, Object?>{
-          'WATLEV': 3,
-          'CATCOA': 1,
-        };
+          // COALNE has no required attributes defined
+          final attributes = <String, Object?>{'WATLEV': 3, 'CATCOA': 1};
 
-        final warnings = S57RequiredAttributeValidator.validateRequired(
-          coastlineClass,
-          attributes,
-        );
+          final warnings = S57RequiredAttributeValidator.validateRequired(
+            coastlineClass,
+            attributes,
+          );
 
-        expect(warnings, isEmpty);
-      });
+          expect(warnings, isEmpty);
+        },
+      );
 
       test('should handle null object class', () {
-        final attributes = <String, Object?>{
-          'SOME_ATTR': 'value',
-        };
+        final attributes = <String, Object?>{'SOME_ATTR': 'value'};
 
         final warnings = S57RequiredAttributeValidator.validateRequired(
           null,
@@ -283,20 +281,24 @@ void main() {
         );
 
         expect(
-          S57RequiredAttributeValidator.isAttributeRequired('UNKNOWN', 'ANYTHING'),
+          S57RequiredAttributeValidator.isAttributeRequired(
+            'UNKNOWN',
+            'ANYTHING',
+          ),
           isFalse,
         );
       });
 
       test('should return object classes with required attributes', () {
-        final objectClasses = S57RequiredAttributeValidator.getObjectClassesWithRequiredAttributes();
-        
+        final objectClasses =
+            S57RequiredAttributeValidator.getObjectClassesWithRequiredAttributes();
+
         expect(objectClasses, contains('DEPARE'));
         expect(objectClasses, contains('SOUNDG'));
         expect(objectClasses, contains('BOYLAT'));
         expect(objectClasses, contains('BOYISD'));
         expect(objectClasses, contains('BOYSPP'));
-        
+
         // Should not contain classes without required attributes
         expect(objectClasses, isNot(contains('COALNE')));
         expect(objectClasses, isNot(contains('LIGHTS')));

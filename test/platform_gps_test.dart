@@ -8,14 +8,14 @@ import 'package:navtool/core/services/gps_service_win32.dart';
 void main() {
   // Initialize Flutter binding for platform services
   TestWidgetsFlutterBinding.ensureInitialized();
-  
+
   group('Platform-specific GPS Service Tests', () {
     test('should use correct GPS service implementation based on platform', () {
       final container = ProviderContainer();
-      
+
       try {
         final gpsService = container.read(gpsServiceProvider);
-        
+
         // Verify that the correct implementation is used based on current platform
         if (defaultTargetPlatform == TargetPlatform.windows) {
           expect(gpsService, isA<GpsServiceWin32>());
@@ -23,31 +23,32 @@ void main() {
           // macOS, Linux, iOS, Android should use geolocator-based implementation
           expect(gpsService, isA<GpsServiceImpl>());
         }
-        
+
         // Verify that service implements the GPS interface correctly
         expect(gpsService.getCurrentPosition, isA<Function>());
         expect(gpsService.requestLocationPermission, isA<Function>());
         expect(gpsService.checkLocationPermission, isA<Function>());
         expect(gpsService.isLocationEnabled, isA<Function>());
-        
       } finally {
         container.dispose();
       }
     });
 
-    test('should handle platform-specific GPS service creation without errors', () {
-      final container = ProviderContainer();
-      
-      try {
-        // This should not throw any exceptions
-        expect(() => container.read(gpsServiceProvider), returnsNormally);
-        
-        final gpsService = container.read(gpsServiceProvider);
-        expect(gpsService, isNotNull);
-        
-      } finally {
-        container.dispose();
-      }
-    });
+    test(
+      'should handle platform-specific GPS service creation without errors',
+      () {
+        final container = ProviderContainer();
+
+        try {
+          // This should not throw any exceptions
+          expect(() => container.read(gpsServiceProvider), returnsNormally);
+
+          final gpsService = container.read(gpsServiceProvider);
+          expect(gpsService, isNotNull);
+        } finally {
+          container.dispose();
+        }
+      },
+    );
   });
 }

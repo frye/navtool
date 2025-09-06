@@ -18,7 +18,7 @@ import '../services/cache_service.dart';
 import '../services/cache_service_impl.dart';
 import '../services/gps_service.dart';
 // Cross-platform GPS implementations
-import '../services/gps_service_impl.dart';  // Geolocator-based (macOS, Linux, iOS, Android)
+import '../services/gps_service_impl.dart'; // Geolocator-based (macOS, Linux, iOS, Android)
 import '../services/gps_service_win32.dart'; // Windows-specific
 import '../services/background_task_service.dart';
 import '../services/compression_service.dart';
@@ -37,12 +37,14 @@ import '../utils/network_resilience.dart';
 
 // Dependencies
 final loggerProvider = Provider<AppLogger>((ref) => const ConsoleLogger());
-final errorHandlerProvider = Provider<ErrorHandler>((ref) => ErrorHandler(logger: ref.read(loggerProvider)));
+final errorHandlerProvider = Provider<ErrorHandler>(
+  (ref) => ErrorHandler(logger: ref.read(loggerProvider)),
+);
 
 // GPS Service - Platform-specific implementation
 final gpsServiceProvider = Provider<GpsService>((ref) {
   final logger = ref.read(loggerProvider);
-  
+
   // Always use Windows-specific implementation on Windows to avoid geolocator CMake issues
   if (defaultTargetPlatform == TargetPlatform.windows) {
     logger.info('Using Windows-specific GPS implementation (Win32)');
@@ -87,12 +89,16 @@ final downloadServiceProvider = Provider<DownloadService>((ref) {
 });
 
 // Download metrics collector
-final downloadMetricsCollectorProvider = Provider<DownloadMetricsCollector>((ref) {
+final downloadMetricsCollectorProvider = Provider<DownloadMetricsCollector>((
+  ref,
+) {
   return DownloadMetricsCollector();
 });
 
 // Reactive metrics snapshot provider (simple polling every 1s)
-final downloadMetricsSnapshotProvider = StreamProvider.autoDispose((ref) async* {
+final downloadMetricsSnapshotProvider = StreamProvider.autoDispose((
+  ref,
+) async* {
   final collector = ref.watch(downloadMetricsCollectorProvider);
   while (true) {
     await Future.delayed(const Duration(seconds: 1));
@@ -131,9 +137,7 @@ final cacheServiceProvider = Provider<CacheService>((ref) {
 
 // Compression service
 final compressionServiceProvider = Provider<CompressionService>((ref) {
-  return CompressionServiceImpl(
-    logger: ref.read(loggerProvider),
-  );
+  return CompressionServiceImpl(logger: ref.read(loggerProvider));
 });
 
 // Chart service
@@ -146,9 +150,7 @@ final chartServiceProvider = Provider<ChartService>((ref) {
 
 // Navigation service
 final navigationServiceProvider = Provider<NavigationService>((ref) {
-  return NavigationServiceImpl(
-    logger: ref.read(loggerProvider),
-  );
+  return NavigationServiceImpl(logger: ref.read(loggerProvider));
 });
 
 // Settings service
@@ -161,7 +163,9 @@ final settingsServiceProvider = Provider<SettingsService>((ref) {
 });
 
 // Main application state
-final appStateProvider = StateNotifierProvider<AppStateNotifier, AppState>((ref) {
+final appStateProvider = StateNotifierProvider<AppStateNotifier, AppState>((
+  ref,
+) {
   return AppStateNotifier(
     logger: ref.read(loggerProvider),
     errorHandler: ref.read(errorHandlerProvider),
@@ -169,20 +173,22 @@ final appStateProvider = StateNotifierProvider<AppStateNotifier, AppState>((ref)
 });
 
 // Settings provider
-final appSettingsProvider = StateNotifierProvider<AppSettingsNotifier, AppSettings>((ref) {
-  return AppSettingsNotifier(
-    logger: ref.read(loggerProvider),
-    errorHandler: ref.read(errorHandlerProvider),
-  );
-});
+final appSettingsProvider =
+    StateNotifierProvider<AppSettingsNotifier, AppSettings>((ref) {
+      return AppSettingsNotifier(
+        logger: ref.read(loggerProvider),
+        errorHandler: ref.read(errorHandlerProvider),
+      );
+    });
 
 // Download queue state
-final downloadQueueProvider = StateNotifierProvider<DownloadQueueNotifier, DownloadQueueState>((ref) {
-  return DownloadQueueNotifier(
-    logger: ref.read(loggerProvider),
-    errorHandler: ref.read(errorHandlerProvider),
-  );
-});
+final downloadQueueProvider =
+    StateNotifierProvider<DownloadQueueNotifier, DownloadQueueState>((ref) {
+      return DownloadQueueNotifier(
+        logger: ref.read(loggerProvider),
+        errorHandler: ref.read(errorHandlerProvider),
+      );
+    });
 
 // Computed state selectors
 final isAppInitializedProvider = Provider<bool>((ref) {
@@ -201,17 +207,17 @@ final gpsPositionProvider = FutureProvider<GpsPosition?>((ref) async {
 final currentChartProvider = Provider<Chart?>((ref) {
   final state = ref.watch(appStateProvider);
   if (state.currentChartId == null) return null;
-  
+
   // Try to find the chart in downloaded charts first
   for (final chart in state.downloadedCharts) {
     if (chart.id == state.currentChartId) return chart;
   }
-  
+
   // Fall back to available charts
   for (final chart in state.availableCharts) {
     if (chart.id == state.currentChartId) return chart;
   }
-  
+
   return null;
 });
 
@@ -277,25 +283,37 @@ final downloadQueueLengthProvider = Provider<int>((ref) {
 });
 
 // Chart-specific providers
-final chartsByStateProvider = Provider.family<List<Chart>, String>((ref, state) {
+final chartsByStateProvider = Provider.family<List<Chart>, String>((
+  ref,
+  state,
+) {
   final charts = ref.watch(availableChartsProvider);
-  return charts.where((chart) => chart.state.toLowerCase() == state.toLowerCase()).toList();
+  return charts
+      .where((chart) => chart.state.toLowerCase() == state.toLowerCase())
+      .toList();
 });
 
-final chartsByTypeProvider = Provider.family<List<Chart>, ChartType>((ref, type) {
+final chartsByTypeProvider = Provider.family<List<Chart>, ChartType>((
+  ref,
+  type,
+) {
   final charts = ref.watch(availableChartsProvider);
   return charts.where((chart) => chart.type == type).toList();
 });
 
-final chartsInBoundsProvider = Provider.family<List<Chart>, ({double north, double south, double east, double west})>((ref, bounds) {
-  final charts = ref.watch(availableChartsProvider);
-  return charts.where((chart) {
-    return chart.bounds.north <= bounds.north &&
-           chart.bounds.south >= bounds.south &&
-           chart.bounds.east <= bounds.east &&
-           chart.bounds.west >= bounds.west;
-  }).toList();
-});
+final chartsInBoundsProvider =
+    Provider.family<
+      List<Chart>,
+      ({double north, double south, double east, double west})
+    >((ref, bounds) {
+      final charts = ref.watch(availableChartsProvider);
+      return charts.where((chart) {
+        return chart.bounds.north <= bounds.north &&
+            chart.bounds.south >= bounds.south &&
+            chart.bounds.east <= bounds.east &&
+            chart.bounds.west >= bounds.west;
+      }).toList();
+    });
 
 // Navigation-specific providers
 final routeWaypointsProvider = Provider<List<Waypoint>>((ref) {
@@ -306,27 +324,27 @@ final routeWaypointsProvider = Provider<List<Waypoint>>((ref) {
 final nextWaypointProvider = Provider<Waypoint?>((ref) {
   final route = ref.watch(activeRouteProvider);
   final position = ref.watch(currentPositionProvider);
-  
+
   if (route == null || position == null) return null;
-  
+
   return route.getNextWaypoint(position);
 });
 
 final remainingDistanceProvider = Provider<double?>((ref) {
   final route = ref.watch(activeRouteProvider);
   final position = ref.watch(currentPositionProvider);
-  
+
   if (route == null || position == null) return null;
-  
+
   return route.remainingDistance(position);
 });
 
 final bearingToNextWaypointProvider = Provider<double?>((ref) {
   final route = ref.watch(activeRouteProvider);
   final position = ref.watch(currentPositionProvider);
-  
+
   if (route == null || position == null) return null;
-  
+
   return route.getBearing(position);
 });
 
@@ -363,36 +381,49 @@ final waypointCountProvider = Provider<int>((ref) {
 });
 
 // GPS status provider
-final gpsStatusProvider = Provider<({bool enabled, bool permissionGranted, bool hasPosition})>((ref) {
-  final state = ref.watch(appStateProvider);
-  return (
-    enabled: state.isGpsEnabled,
-    permissionGranted: state.isLocationPermissionGranted,
-    hasPosition: state.currentPosition != null,
-  );
-});
+final gpsStatusProvider =
+    Provider<({bool enabled, bool permissionGranted, bool hasPosition})>((ref) {
+      final state = ref.watch(appStateProvider);
+      return (
+        enabled: state.isGpsEnabled,
+        permissionGranted: state.isLocationPermissionGranted,
+        hasPosition: state.currentPosition != null,
+      );
+    });
 
 // Settings-derived providers
 final themeProvider = Provider<AppThemeMode>((ref) {
-  return ref.watch(appSettingsProvider.select((settings) => settings.themeMode));
+  return ref.watch(
+    appSettingsProvider.select((settings) => settings.themeMode),
+  );
 });
 
 final dayModeProvider = Provider<bool>((ref) {
-  return ref.watch(appSettingsProvider.select((settings) => settings.isDayMode));
+  return ref.watch(
+    appSettingsProvider.select((settings) => settings.isDayMode),
+  );
 });
 
 final maxDownloadsProvider = Provider<int>((ref) {
-  return ref.watch(appSettingsProvider.select((settings) => settings.maxConcurrentDownloads));
+  return ref.watch(
+    appSettingsProvider.select((settings) => settings.maxConcurrentDownloads),
+  );
 });
 
 final preferredUnitsProvider = Provider<String>((ref) {
-  return ref.watch(appSettingsProvider.select((settings) => settings.preferredUnits));
+  return ref.watch(
+    appSettingsProvider.select((settings) => settings.preferredUnits),
+  );
 });
 
 final debugInfoEnabledProvider = Provider<bool>((ref) {
-  return ref.watch(appSettingsProvider.select((settings) => settings.showDebugInfo));
+  return ref.watch(
+    appSettingsProvider.select((settings) => settings.showDebugInfo),
+  );
 });
 
 final advancedFeaturesEnabledProvider = Provider<bool>((ref) {
-  return ref.watch(appSettingsProvider.select((settings) => settings.showAdvancedFeatures));
+  return ref.watch(
+    appSettingsProvider.select((settings) => settings.showAdvancedFeatures),
+  );
 });

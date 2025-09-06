@@ -16,8 +16,11 @@ abstract class SpatialIndex {
   List<S57Feature> queryBounds(S57Bounds bounds);
 
   /// Query features near a specific point (within radius in degrees)
-  List<S57Feature> queryPoint(double latitude, double longitude, 
-                               {double radiusDegrees = 0.01});
+  List<S57Feature> queryPoint(
+    double latitude,
+    double longitude, {
+    double radiusDegrees = 0.01,
+  });
 
   /// Query features by type
   List<S57Feature> queryByType(S57FeatureType featureType);

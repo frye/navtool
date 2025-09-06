@@ -10,40 +10,39 @@ enum S57FeatureType {
   beacon(57, 'BCNCAR'), // Cardinal beacon
   buoy(58, 'BOYLAT'), // Generic buoy (using lateral buoy code as primary)
   buoyLateral(58, 'BOYLAT'), // Lateral buoy
-  buoyCardinal(59, 'BOYCAR'), // Cardinal buoy 
+  buoyCardinal(59, 'BOYCAR'), // Cardinal buoy
   buoyIsolatedDanger(60, 'BOYINB'), // Isolated danger buoy
   buoySpecialPurpose(61, 'BOYSAW'), // Special purpose buoy
   lighthouse(75, 'LIGHTS'), // Light
   daymark(85, 'DAYMAR'), // Daymark
-  
+
   // Bathymetry (official S-57 codes)
   depthArea(120, 'DEPARE'), // Depth area
   depthContour(121, 'DEPCNT'), // Depth contour
   sounding(127, 'SOUNDG'), // Sounding
-  
+
   // Coastline features (official S-57 codes)
   coastline(30, 'COALNE'), // Coastline
   /// Alias used in tests (not an additional official S-57 object – provided to satisfy test enum usage)
   shoreline(30, 'COALNE'),
   landArea(71, 'LNDARE'), // Land area
-  
+
   // Obstructions (official S-57 codes)
   obstruction(104, 'OBSTRN'), // Obstruction
   wreck(159, 'WRECKS'), // Wreck
   underwater(158, 'UWTROC'), // Underwater/awash rock
-  
+
   // Unknown/other
-  unknown(0, 'UNKNOW'),
-  ;
-  
+  unknown(0, 'UNKNOW');
+
   const S57FeatureType(this.code, this.acronym);
-  
+
   /// Official S-57 object class code
   final int code;
-  
+
   /// S-57 object class acronym
   final String acronym;
-  
+
   /// Create from S-57 object class code
   static S57FeatureType fromCode(int code) {
     for (final type in S57FeatureType.values) {
@@ -51,7 +50,7 @@ enum S57FeatureType {
     }
     return S57FeatureType.unknown;
   }
-  
+
   /// Create from S-57 acronym
   static S57FeatureType fromAcronym(String acronym) {
     for (final type in S57FeatureType.values) {
@@ -62,11 +61,7 @@ enum S57FeatureType {
 }
 
 /// S-57 geometry types
-enum S57GeometryType {
-  point,
-  line,
-  area,
-}
+enum S57GeometryType { point, line, area }
 
 /// S-57 Feature Record
 class S57Feature {
@@ -92,7 +87,9 @@ class S57Feature {
       'id': recordId,
       'type': _featureTypeToString(featureType),
       'geometry_type': _geometryTypeToString(geometryType),
-      'coordinates': coordinates.map((c) => {'lat': c.latitude, 'lon': c.longitude}).toList(),
+      'coordinates': coordinates
+          .map((c) => {'lat': c.latitude, 'lon': c.longitude})
+          .toList(),
       'attributes': attributes,
       'label': label,
     };
@@ -112,7 +109,7 @@ class S57Feature {
       S57FeatureType.depthContour => 'depth_contour',
       S57FeatureType.sounding => 'sounding',
       S57FeatureType.coastline => 'coastline',
-  S57FeatureType.shoreline => 'shoreline',
+      S57FeatureType.shoreline => 'shoreline',
       S57FeatureType.landArea => 'land_area',
       S57FeatureType.obstruction => 'obstruction',
       S57FeatureType.wreck => 'wreck',
@@ -135,10 +132,7 @@ class S57Coordinate {
   final double latitude;
   final double longitude;
 
-  const S57Coordinate({
-    required this.latitude,
-    required this.longitude,
-  });
+  const S57Coordinate({required this.latitude, required this.longitude});
 
   @override
   String toString() => 'S57Coordinate(lat: $latitude, lon: $longitude)';
@@ -160,20 +154,20 @@ class S57Bounds {
 
   /// Check if bounds are valid marine navigation coordinates
   bool get isValid {
-    return north >= -90 && north <= 90 &&
-           south >= -90 && south <= 90 &&
-           east >= -180 && east <= 180 &&
-           west >= -180 && west <= 180 &&
-           north > south && east > west;
+    return north >= -90 &&
+        north <= 90 &&
+        south >= -90 &&
+        south <= 90 &&
+        east >= -180 &&
+        east <= 180 &&
+        west >= -180 &&
+        west <= 180 &&
+        north > south &&
+        east > west;
   }
 
   Map<String, double> toMap() {
-    return {
-      'north': north,
-      'south': south,
-      'east': east,
-      'west': west,
-    };
+    return {'north': north, 'south': south, 'east': east, 'west': west};
   }
 }
 
@@ -232,13 +226,19 @@ class S57ParsedData {
       'bounds': bounds.toMap(),
       'spatial_index': {
         'feature_count': spatialIndex.featureCount,
-        'feature_types': spatialIndex.presentFeatureTypes.map((t) => t.toString()).toList(),
+        'feature_types': spatialIndex.presentFeatureTypes
+            .map((t) => t.toString())
+            .toList(),
       },
     };
   }
 
   /// Query features near a point using spatial index
-  List<S57Feature> queryFeaturesNear(double lat, double lon, {double radiusDegrees = 0.01}) {
+  List<S57Feature> queryFeaturesNear(
+    double lat,
+    double lon, {
+    double radiusDegrees = 0.01,
+  }) {
     return spatialIndex.queryPoint(lat, lon, radiusDegrees: radiusDegrees);
   }
 
@@ -264,11 +264,7 @@ class S57Node {
   final double x;
   final double y;
 
-  const S57Node({
-    required this.id,
-    required this.x,
-    required this.y,
-  });
+  const S57Node({required this.id, required this.x, required this.y});
 
   /// Convert to S57Coordinate for compatibility with existing code
   S57Coordinate toCoordinate() {
@@ -287,15 +283,12 @@ class S57Node {
   String toString() => 'S57Node(id: $id, x: $x, y: $y)';
 }
 
-/// S-57 Edge primitive (chain of connected nodes)  
+/// S-57 Edge primitive (chain of connected nodes)
 class S57Edge {
   final int id;
   final List<S57Node> nodes;
 
-  const S57Edge({
-    required this.id,
-    required this.nodes,
-  });
+  const S57Edge({required this.id, required this.nodes});
 
   /// Get coordinates as list for geometry construction
   List<S57Coordinate> toCoordinates() {
@@ -307,7 +300,9 @@ class S57Edge {
 
   @override
   bool operator ==(Object other) {
-    return other is S57Edge && other.id == id && _listEquals(other.nodes, nodes);
+    return other is S57Edge &&
+        other.id == id &&
+        _listEquals(other.nodes, nodes);
   }
 
   @override
@@ -327,9 +322,9 @@ class S57Edge {
 
 /// S-57 Spatial Pointer from FSPT/VRPT records
 class S57SpatialPointer {
-  final int refId;        // Target node or edge ID
-  final bool isEdge;      // True if edge primitive, false if node
-  final bool reverse;     // Orientation flag - reverse coordinate sequence if true
+  final int refId; // Target node or edge ID
+  final bool isEdge; // True if edge primitive, false if node
+  final bool reverse; // Orientation flag - reverse coordinate sequence if true
 
   const S57SpatialPointer({
     required this.refId,
@@ -362,7 +357,8 @@ class S57SpatialPointer {
   int get hashCode => Object.hash(refId, isEdge, reverse);
 
   @override
-  String toString() => 'S57SpatialPointer(refId: $refId, isEdge: $isEdge, reverse: $reverse)';
+  String toString() =>
+      'S57SpatialPointer(refId: $refId, isEdge: $isEdge, reverse: $reverse)';
 }
 
 /// Coordinate wrapper for geometry assembly
@@ -397,35 +393,29 @@ class Coordinate {
 /// Generic S-57 geometry result from assembly process
 class S57Geometry {
   final S57GeometryType type;
-  final List<List<Coordinate>> rings; // Point: single ring with one coord, Line: single ring, Polygon: multiple rings
+  final List<List<Coordinate>>
+  rings; // Point: single ring with one coord, Line: single ring, Polygon: multiple rings
 
-  const S57Geometry({
-    required this.type,
-    required this.rings,
-  });
+  const S57Geometry({required this.type, required this.rings});
 
   /// Create point geometry
   factory S57Geometry.point(Coordinate coord) {
     return S57Geometry(
       type: S57GeometryType.point,
-      rings: [[coord]],
+      rings: [
+        [coord],
+      ],
     );
   }
 
   /// Create line geometry
   factory S57Geometry.line(List<Coordinate> coords) {
-    return S57Geometry(
-      type: S57GeometryType.line,
-      rings: [coords],
-    );
+    return S57Geometry(type: S57GeometryType.line, rings: [coords]);
   }
 
   /// Create polygon geometry
   factory S57Geometry.polygon(List<List<Coordinate>> rings) {
-    return S57Geometry(
-      type: S57GeometryType.area,
-      rings: rings,
-    );
+    return S57Geometry(type: S57GeometryType.area, rings: rings);
   }
 
   /// Get all coordinates as flat list

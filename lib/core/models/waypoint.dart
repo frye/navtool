@@ -167,9 +167,9 @@ class Waypoint {
   @override
   String toString() {
     return 'Waypoint(id: $id, name: $name, '
-           'lat: ${latitude.toStringAsFixed(6)}, '
-           'lon: ${longitude.toStringAsFixed(6)}, '
-           'type: ${type.displayName})';
+        'lat: ${latitude.toStringAsFixed(6)}, '
+        'lon: ${longitude.toStringAsFixed(6)}, '
+        'type: ${type.displayName})';
   }
 
   /// Creates a copy with optional parameter overrides

@@ -8,7 +8,7 @@ import 'dart:math' as math;
 import 'test_logger.dart';
 
 /// Comprehensive test utilities for NOAA testing
-/// 
+///
 /// Provides fixtures, mock data generation, and helper functions
 /// for testing all aspects of NOAA integration.
 class TestFixtures {
@@ -46,12 +46,9 @@ class TestFixtures {
       id: id ?? 'TEST001',
       title: title ?? 'Test Chart',
       scale: scale ?? 25000,
-      bounds: bounds ?? GeographicBounds(
-        north: 25.0,
-        south: 24.0,
-        east: -80.0,
-        west: -81.0,
-      ),
+      bounds:
+          bounds ??
+          GeographicBounds(north: 25.0, south: 24.0, east: -80.0, west: -81.0),
       lastUpdate: lastUpdate ?? DateTime(2024, 1, 15),
       state: state ?? 'Florida',
       type: type ?? ChartType.harbor,
@@ -81,13 +78,16 @@ class TestFixtures {
       'type': 'Feature',
       'geometry': {
         'type': 'Polygon',
-        'coordinates': [coordinates ?? [
-          [-81.0, 24.0],
-          [-80.0, 24.0],
-          [-80.0, 25.0],
-          [-81.0, 25.0],
-          [-81.0, 24.0]
-        ]]
+        'coordinates': [
+          coordinates ??
+              [
+                [-81.0, 24.0],
+                [-80.0, 24.0],
+                [-80.0, 25.0],
+                [-81.0, 25.0],
+                [-81.0, 24.0],
+              ],
+        ],
       },
       'properties': {
         'CELL_NAME': cellName ?? 'TEST001',
@@ -107,7 +107,7 @@ class TestFixtures {
         'ISSUE_DATE': '2024-01-15',
         'SOURCE_DATE_STRING': 'January 2024',
         'EDITION_DATE': '2024-01-15T00:00:00Z',
-      }
+      },
     };
   }
 
@@ -116,19 +116,20 @@ class TestFixtures {
     List<Map<String, dynamic>>? features,
     int? featureCount,
   }) {
-    final catalogFeatures = features ?? 
-        List.generate(featureCount ?? 5, (i) => createTestGeoJsonFeature(
-          cellName: 'US5TEST${i.toString().padLeft(2, '0')}M',
-          title: 'Test Chart $i',
-          scale: 25000 + (i * 5000),
-          state: ['Florida', 'California', 'New York', 'Texas'][i % 4],
-          usage: ['Harbor', 'Approach', 'Coastal'][i % 3],
-        ));
+    final catalogFeatures =
+        features ??
+        List.generate(
+          featureCount ?? 5,
+          (i) => createTestGeoJsonFeature(
+            cellName: 'US5TEST${i.toString().padLeft(2, '0')}M',
+            title: 'Test Chart $i',
+            scale: 25000 + (i * 5000),
+            state: ['Florida', 'California', 'New York', 'Texas'][i % 4],
+            usage: ['Harbor', 'Approach', 'Coastal'][i % 3],
+          ),
+        );
 
-    return {
-      'type': 'FeatureCollection',
-      'features': catalogFeatures,
-    };
+    return {'type': 'FeatureCollection', 'features': catalogFeatures};
   }
 }
 
@@ -141,37 +142,46 @@ class MockDataGenerators {
     final features = List.generate(chartCount, (i) {
       final lat = 24.0 + (_random.nextDouble() * 20.0); // 24-44 degrees
       final lon = -125.0 + (_random.nextDouble() * 50.0); // -125 to -75 degrees
-      
+
       return TestFixtures.createTestGeoJsonFeature(
         cellName: 'US5PERF${i.toString().padLeft(4, '0')}M',
         title: 'Performance Test Chart $i',
-        scale: [10000, 15000, 20000, 25000, 30000, 40000, 50000][_random.nextInt(7)],
+        scale: [
+          10000,
+          15000,
+          20000,
+          25000,
+          30000,
+          40000,
+          50000,
+        ][_random.nextInt(7)],
         state: _getRandomState(),
         usage: ['Harbor', 'Approach', 'Coastal', 'General'][_random.nextInt(4)],
         coordinates: _generateRandomCoordinates(lat, lon),
       );
     });
 
-    return {
-      'type': 'FeatureCollection',
-      'features': features,
-    };
+    return {'type': 'FeatureCollection', 'features': features};
   }
 
   /// Generate charts for specific state testing
   static List<Chart> generateChartsForState(String state, int count) {
     final bounds = _getStateBounds(state);
-    
+
     return List.generate(count, (i) {
       final chartBounds = _generateBoundsWithinState(bounds);
-      
+
       return TestFixtures.createTestChart(
         id: 'US5${state.substring(0, 2).toUpperCase()}${i.toString().padLeft(2, '0')}M',
         title: '$state Chart $i',
         state: state,
         bounds: chartBounds,
         scale: [20000, 25000, 30000, 40000][_random.nextInt(4)],
-        type: [ChartType.harbor, ChartType.approach, ChartType.coastal][_random.nextInt(3)],
+        type: [
+          ChartType.harbor,
+          ChartType.approach,
+          ChartType.coastal,
+        ][_random.nextInt(3)],
       );
     });
   }
@@ -179,22 +189,19 @@ class MockDataGenerators {
   /// Generate complex MultiPolygon geometry for testing
   static Map<String, dynamic> generateComplexGeometry() {
     final polygons = <List<List<List<double>>>>[];
-    
+
     // Generate 3-5 polygons
     final polygonCount = 3 + _random.nextInt(3);
     for (int i = 0; i < polygonCount; i++) {
       final centerLat = 35.0 + (_random.nextDouble() * 10.0);
       final centerLon = -120.0 + (_random.nextDouble() * 20.0);
       final radius = 0.1 + (_random.nextDouble() * 0.2);
-      
+
       final polygon = _generatePolygonAround(centerLat, centerLon, radius);
       polygons.add([polygon]);
     }
 
-    return {
-      'type': 'MultiPolygon',
-      'coordinates': polygons,
-    };
+    return {'type': 'MultiPolygon', 'coordinates': polygons};
   }
 
   /// Generate charts with various statuses for testing
@@ -218,13 +225,24 @@ class MockDataGenerators {
 
   static String _getRandomState() {
     final states = [
-      'Florida', 'California', 'New York', 'Texas', 'Washington',
-      'Massachusetts', 'Alabama', 'Maryland', 'Michigan', 'Hawaii'
+      'Florida',
+      'California',
+      'New York',
+      'Texas',
+      'Washington',
+      'Massachusetts',
+      'Alabama',
+      'Maryland',
+      'Michigan',
+      'Hawaii',
     ];
     return states[_random.nextInt(states.length)];
   }
 
-  static List<List<double>> _generateRandomCoordinates(double centerLat, double centerLon) {
+  static List<List<double>> _generateRandomCoordinates(
+    double centerLat,
+    double centerLon,
+  ) {
     final size = 0.1 + (_random.nextDouble() * 0.2);
     return [
       [centerLon - size, centerLat - size],
@@ -238,38 +256,68 @@ class MockDataGenerators {
   static GeographicBounds _getStateBounds(String state) {
     // Simplified state bounds for testing
     final stateBounds = {
-      'Florida': GeographicBounds(north: 31.0, south: 24.4, east: -79.9, west: -87.6),
-      'California': GeographicBounds(north: 42.0, south: 32.5, east: -114.1, west: -124.7),
-      'New York': GeographicBounds(north: 45.0, south: 40.5, east: -71.9, west: -79.8),
-      'Texas': GeographicBounds(north: 36.5, south: 25.8, east: -93.5, west: -106.6),
-      'Washington': GeographicBounds(north: 49.0, south: 45.5, east: -116.9, west: -124.8),
+      'Florida': GeographicBounds(
+        north: 31.0,
+        south: 24.4,
+        east: -79.9,
+        west: -87.6,
+      ),
+      'California': GeographicBounds(
+        north: 42.0,
+        south: 32.5,
+        east: -114.1,
+        west: -124.7,
+      ),
+      'New York': GeographicBounds(
+        north: 45.0,
+        south: 40.5,
+        east: -71.9,
+        west: -79.8,
+      ),
+      'Texas': GeographicBounds(
+        north: 36.5,
+        south: 25.8,
+        east: -93.5,
+        west: -106.6,
+      ),
+      'Washington': GeographicBounds(
+        north: 49.0,
+        south: 45.5,
+        east: -116.9,
+        west: -124.8,
+      ),
     };
-    
-    return stateBounds[state] ?? GeographicBounds(
-      north: 40.0, south: 30.0, east: -80.0, west: -90.0
-    );
+
+    return stateBounds[state] ??
+        GeographicBounds(north: 40.0, south: 30.0, east: -80.0, west: -90.0);
   }
 
-  static GeographicBounds _generateBoundsWithinState(GeographicBounds stateBounds) {
+  static GeographicBounds _generateBoundsWithinState(
+    GeographicBounds stateBounds,
+  ) {
     final latRange = stateBounds.north - stateBounds.south;
     final lonRange = stateBounds.east - stateBounds.west;
-    
+
     final size = 0.1 + (_random.nextDouble() * 0.2);
     final centerLat = stateBounds.south + (_random.nextDouble() * latRange);
     final centerLon = stateBounds.west + (_random.nextDouble() * lonRange);
-    
+
     return GeographicBounds(
-      north: math.min(centerLat + size/2, stateBounds.north),
-      south: math.max(centerLat - size/2, stateBounds.south),
-      east: math.min(centerLon + size/2, stateBounds.east),
-      west: math.max(centerLon - size/2, stateBounds.west),
+      north: math.min(centerLat + size / 2, stateBounds.north),
+      south: math.max(centerLat - size / 2, stateBounds.south),
+      east: math.min(centerLon + size / 2, stateBounds.east),
+      west: math.max(centerLon - size / 2, stateBounds.west),
     );
   }
 
-  static List<List<double>> _generatePolygonAround(double centerLat, double centerLon, double radius) {
+  static List<List<double>> _generatePolygonAround(
+    double centerLat,
+    double centerLon,
+    double radius,
+  ) {
     final points = <List<double>>[];
     final numPoints = 8 + _random.nextInt(8); // 8-15 points
-    
+
     for (int i = 0; i < numPoints; i++) {
       final angle = (i / numPoints) * 2 * math.pi;
       final r = radius * (0.8 + _random.nextDouble() * 0.4); // Vary radius
@@ -277,7 +325,7 @@ class MockDataGenerators {
       final lon = centerLon + r * math.sin(angle);
       points.add([lon, lat]);
     }
-    
+
     // Close the polygon
     points.add(points.first);
     return points;
@@ -302,15 +350,21 @@ class NoaaTestAssertions {
     expect(feature['type'], equals('Feature'));
     expect(feature['geometry'], isA<Map<String, dynamic>>());
     expect(feature['properties'], isA<Map<String, dynamic>>());
-    
+
     final properties = feature['properties'] as Map<String, dynamic>;
     final requiredFields = ['CHART', 'TITLE', 'SCALE', 'STATE', 'USAGE'];
-    
+
     for (final field in requiredFields) {
-      expect(properties.containsKey(field), isTrue, 
-          reason: 'Missing required field: $field');
-      expect(properties[field], isNotNull,
-          reason: 'Required field $field is null');
+      expect(
+        properties.containsKey(field),
+        isTrue,
+        reason: 'Missing required field: $field',
+      );
+      expect(
+        properties[field],
+        isNotNull,
+        reason: 'Required field $field is null',
+      );
     }
   }
 
@@ -318,21 +372,27 @@ class NoaaTestAssertions {
   static void assertValidCatalog(Map<String, dynamic> catalog) {
     expect(catalog['type'], equals('FeatureCollection'));
     expect(catalog['features'], isA<List>());
-    
+
     final features = catalog['features'] as List;
     expect(features, isNotEmpty);
-    
+
     for (final feature in features) {
       assertValidGeoJsonFeature(feature as Map<String, dynamic>);
     }
   }
 
   /// Assert that charts are within geographic bounds
-  static void assertChartsInBounds(List<Chart> charts, GeographicBounds bounds) {
+  static void assertChartsInBounds(
+    List<Chart> charts,
+    GeographicBounds bounds,
+  ) {
     for (final chart in charts) {
       expect(chart.bounds, isNotNull);
-      expect(chart.bounds!.overlaps(bounds), isTrue,
-          reason: 'Chart ${chart.id} is outside expected bounds');
+      expect(
+        chart.bounds!.overlaps(bounds),
+        isTrue,
+        reason: 'Chart ${chart.id} is outside expected bounds',
+      );
     }
   }
 
@@ -343,14 +403,20 @@ class NoaaTestAssertions {
     required int itemCount,
     String? operation,
   }) {
-    expect(elapsedMs, lessThan(maxAllowedMs),
-        reason: '${operation ?? 'Operation'} took ${elapsedMs}ms for $itemCount items, '
-               'expected < ${maxAllowedMs}ms');
-    
+    expect(
+      elapsedMs,
+      lessThan(maxAllowedMs),
+      reason:
+          '${operation ?? 'Operation'} took ${elapsedMs}ms for $itemCount items, '
+          'expected < ${maxAllowedMs}ms',
+    );
+
     if (itemCount > 0) {
       final msPerItem = elapsedMs / itemCount;
-  testLogger.info('Performance: ${operation ?? 'Operation'} processed $itemCount items '
-    'in ${elapsedMs}ms (${msPerItem.toStringAsFixed(2)}ms/item)');
+      testLogger.info(
+        'Performance: ${operation ?? 'Operation'} processed $itemCount items '
+        'in ${elapsedMs}ms (${msPerItem.toStringAsFixed(2)}ms/item)',
+      );
     }
   }
 
@@ -360,12 +426,18 @@ class NoaaTestAssertions {
     required int maxAllowedBytes,
     String? operation,
   }) {
-    expect(memoryBytes, lessThan(maxAllowedBytes),
-        reason: '${operation ?? 'Operation'} used ${memoryBytes} bytes, '
-               'expected < ${maxAllowedBytes} bytes');
-    
+    expect(
+      memoryBytes,
+      lessThan(maxAllowedBytes),
+      reason:
+          '${operation ?? 'Operation'} used ${memoryBytes} bytes, '
+          'expected < ${maxAllowedBytes} bytes',
+    );
+
     final mb = memoryBytes / (1024 * 1024);
-  testLogger.info('Memory: ${operation ?? 'Operation'} used ${mb.toStringAsFixed(2)}MB');
+    testLogger.info(
+      'Memory: ${operation ?? 'Operation'} used ${mb.toStringAsFixed(2)}MB',
+    );
   }
 }
 
@@ -389,7 +461,7 @@ class MockResponseBuilders {
         'message': message,
         'details': details ?? {},
         'timestamp': DateTime.now().toIso8601String(),
-      }
+      },
     });
   }
 
@@ -419,13 +491,13 @@ class MockResponseBuilders {
             [chart.bounds.east, chart.bounds.north],
             [chart.bounds.west, chart.bounds.north],
             [chart.bounds.west, chart.bounds.south],
-          ]
-        ]
-      }
+          ],
+        ],
+      },
     };
 
     final collection = {
-      'features': [feature]
+      'features': [feature],
     };
 
     return jsonEncode(collection);
@@ -437,7 +509,7 @@ class TestEnvironment {
   /// Check if integration tests should be skipped
   static bool get shouldSkipIntegrationTests {
     return Platform.environment['SKIP_INTEGRATION_TESTS'] == 'true' ||
-           Platform.environment['CI'] == 'true';
+        Platform.environment['CI'] == 'true';
   }
 
   /// Check if performance tests should be skipped
@@ -455,12 +527,12 @@ class TestEnvironment {
 
   /// Print test environment information
   static void printEnvironmentInfo() {
-  testLogger.info('Test Environment:');
-  testLogger.info('  Platform: ${Platform.operatingSystem}');
-  testLogger.info('  CI: ${Platform.environment['CI'] ?? 'false'}');
-  testLogger.info('  Skip Integration: $shouldSkipIntegrationTests');
-  testLogger.info('  Skip Performance: $shouldSkipPerformanceTests');
-  testLogger.info('  Timeout: $testTimeout');
+    testLogger.info('Test Environment:');
+    testLogger.info('  Platform: ${Platform.operatingSystem}');
+    testLogger.info('  CI: ${Platform.environment['CI'] ?? 'false'}');
+    testLogger.info('  Skip Integration: $shouldSkipIntegrationTests');
+    testLogger.info('  Skip Performance: $shouldSkipPerformanceTests');
+    testLogger.info('  Timeout: $testTimeout');
   }
 }
 
@@ -473,7 +545,7 @@ class MarineTestUtils {
       GeographicBounds(north: 30.0, south: 18.0, east: -80.0, west: -98.0),
       // US East Coast
       GeographicBounds(north: 45.0, south: 25.0, east: -65.0, west: -85.0),
-      // US West Coast  
+      // US West Coast
       GeographicBounds(north: 49.0, south: 32.0, east: -115.0, west: -130.0),
       // Great Lakes
       GeographicBounds(north: 49.0, south: 41.0, east: -76.0, west: -95.0),
@@ -497,14 +569,14 @@ class MarineTestUtils {
   /// Generate realistic marine chart scales
   static List<int> getRealisticChartScales() {
     return [
-      10000,  // Harbor scale
-      15000,  // Harbor/Approach
-      20000,  // Harbor/Approach
-      25000,  // Approach
-      30000,  // Approach
-      40000,  // Coastal
-      50000,  // Coastal
-      80000,  // General
+      10000, // Harbor scale
+      15000, // Harbor/Approach
+      20000, // Harbor/Approach
+      25000, // Approach
+      30000, // Approach
+      40000, // Coastal
+      50000, // Coastal
+      80000, // General
       100000, // General
       200000, // Overview
     ];
@@ -515,20 +587,21 @@ extension GeographicBoundsTestHelpers on GeographicBounds {
   /// Check if bounds are valid for marine navigation
   bool get isValidForMarine {
     return (south >= -90.0 && north <= 90.0) &&
-           (west >= -180.0 && east <= 180.0) &&
-           (north - south) >= 0.001 && // Minimum size
-           (east - west) >= 0.001;
+        (west >= -180.0 && east <= 180.0) &&
+        (north - south) >= 0.001 && // Minimum size
+        (east - west) >= 0.001;
   }
 
   /// Check if point is contained within bounds
   bool contains(double lat, double lon) {
-    return lat >= south && lat <= north &&
-           lon >= west && lon <= east;
+    return lat >= south && lat <= north && lon >= west && lon <= east;
   }
 
   /// Check if bounds overlap with another bounds
   bool overlaps(GeographicBounds other) {
-    return !(east < other.west || west > other.east ||
-             north < other.south || south > other.north);
+    return !(east < other.west ||
+        west > other.east ||
+        north < other.south ||
+        south > other.north);
   }
 }

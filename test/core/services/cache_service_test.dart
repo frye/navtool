@@ -42,26 +42,35 @@ void main() {
         final data = Uint8List.fromList([1, 2, 3, 4, 5]);
         const maxAge = Duration(hours: 24);
 
-        when(mockFileSystem.getCacheDirectory())
-            .thenAnswer((_) async => Directory.systemTemp);
-        when(mockCompression.compressCacheData(any, cacheKey: anyNamed('cacheKey')))
-            .thenAnswer((_) async => CompressionResult(
-              originalSize: 5,
-              compressedSize: 3,
-              compressionRatio: 0.6,
-              compressionTime: Duration(milliseconds: 10),
-              compressedData: Uint8List.fromList([1, 2, 3]),
-            ));
+        when(
+          mockFileSystem.getCacheDirectory(),
+        ).thenAnswer((_) async => Directory.systemTemp);
+        when(
+          mockCompression.compressCacheData(
+            any,
+            cacheKey: anyNamed('cacheKey'),
+          ),
+        ).thenAnswer(
+          (_) async => CompressionResult(
+            originalSize: 5,
+            compressedSize: 3,
+            compressionRatio: 0.6,
+            compressionTime: Duration(milliseconds: 10),
+            compressedData: Uint8List.fromList([1, 2, 3]),
+          ),
+        );
 
         // Act
         await cacheService.store(cacheKey, data, maxAge: maxAge);
 
         // Assert
         verify(mockFileSystem.getCacheDirectory()).called(1);
-        verify(mockCompression.compressCacheData(data, cacheKey: cacheKey)).called(1);
-  // Verify storing and stored debug logs occurred
-  verifyDebugLogged(mockLogger, 'Storing cache data:');
-  verifyDebugLogged(mockLogger, 'Cache data stored:');
+        verify(
+          mockCompression.compressCacheData(data, cacheKey: cacheKey),
+        ).called(1);
+        // Verify storing and stored debug logs occurred
+        verifyDebugLogged(mockLogger, 'Storing cache data:');
+        verifyDebugLogged(mockLogger, 'Cache data stored:');
       });
 
       test('should retrieve cached data by key', () async {
@@ -98,15 +107,16 @@ void main() {
         // Arrange
         const cacheKey = 'test_cache_key';
 
-        when(mockFileSystem.getCacheDirectory())
-            .thenAnswer((_) async => Directory.systemTemp);
+        when(
+          mockFileSystem.getCacheDirectory(),
+        ).thenAnswer((_) async => Directory.systemTemp);
 
         // Act
         await cacheService.remove(cacheKey);
 
         // Assert
         verify(mockFileSystem.getCacheDirectory()).called(1);
-  verifyInfoLogged(mockLogger, 'Cache entry removed:');
+        verifyInfoLogged(mockLogger, 'Cache entry removed:');
       });
     });
 
@@ -121,13 +131,15 @@ void main() {
         // Assert
         expect(cleared, isTrue);
         verify(mockFileSystem.clearCache()).called(1);
-  verifyInfoLogged(mockLogger, 'All cache data cleared');
+        verifyInfoLogged(mockLogger, 'All cache data cleared');
       });
 
       test('should get total cache size', () async {
         // Arrange
         const expectedSize = 1024;
-        when(mockFileSystem.getCacheSize()).thenAnswer((_) async => expectedSize);
+        when(
+          mockFileSystem.getCacheSize(),
+        ).thenAnswer((_) async => expectedSize);
 
         // Act
         final size = await cacheService.getSize();
@@ -139,8 +151,9 @@ void main() {
 
       test('should clean up expired cache entries', () async {
         // Arrange
-        when(mockFileSystem.getCacheDirectory())
-            .thenAnswer((_) async => Directory.systemTemp);
+        when(
+          mockFileSystem.getCacheDirectory(),
+        ).thenAnswer((_) async => Directory.systemTemp);
 
         // Act
         final cleanedCount = await cacheService.cleanupExpired();
@@ -148,13 +161,14 @@ void main() {
         // Assert
         expect(cleanedCount, isA<int>());
         verify(mockFileSystem.getCacheDirectory()).called(1);
-  verifyInfoLogged(mockLogger, 'Cleaned up');
+        verifyInfoLogged(mockLogger, 'Cleaned up');
       });
 
       test('should get cache statistics', () async {
         // Arrange
-        when(mockFileSystem.getCacheDirectory())
-            .thenAnswer((_) async => Directory.systemTemp);
+        when(
+          mockFileSystem.getCacheDirectory(),
+        ).thenAnswer((_) async => Directory.systemTemp);
         when(mockFileSystem.getCacheSize()).thenAnswer((_) async => 2048);
 
         // Act
@@ -172,9 +186,10 @@ void main() {
       test('should handle cache expiration correctly', () async {
         // Arrange
         const cacheKey = 'expired_key';
-        
-        when(mockFileSystem.getCacheDirectory())
-            .thenAnswer((_) async => Directory.systemTemp);
+
+        when(
+          mockFileSystem.getCacheDirectory(),
+        ).thenAnswer((_) async => Directory.systemTemp);
 
         // Act
         final isExpired = await cacheService.isExpired(cacheKey);
@@ -189,8 +204,9 @@ void main() {
         const cacheKey = 'test_key';
         final expiration = DateTime.now().add(Duration(hours: 1));
 
-        when(mockFileSystem.getCacheDirectory())
-            .thenAnswer((_) async => Directory.systemTemp);
+        when(
+          mockFileSystem.getCacheDirectory(),
+        ).thenAnswer((_) async => Directory.systemTemp);
 
         // Act & Assert - Should handle non-existent cache entry gracefully
         expect(
@@ -206,8 +222,9 @@ void main() {
         const cacheKey = 'error_key';
         final data = Uint8List.fromList([1, 2, 3]);
 
-        when(mockFileSystem.getCacheDirectory())
-            .thenThrow(Exception('Storage error'));
+        when(
+          mockFileSystem.getCacheDirectory(),
+        ).thenThrow(Exception('Storage error'));
 
         // Act & Assert
         expect(
@@ -222,10 +239,15 @@ void main() {
         const cacheKey = 'compression_error_key';
         final data = Uint8List.fromList([1, 2, 3]);
 
-        when(mockFileSystem.getCacheDirectory())
-            .thenAnswer((_) async => Directory.systemTemp);
-        when(mockCompression.compressCacheData(any, cacheKey: anyNamed('cacheKey')))
-            .thenThrow(AppError.storage('Compression failed'));
+        when(
+          mockFileSystem.getCacheDirectory(),
+        ).thenAnswer((_) async => Directory.systemTemp);
+        when(
+          mockCompression.compressCacheData(
+            any,
+            cacheKey: anyNamed('cacheKey'),
+          ),
+        ).thenThrow(AppError.storage('Compression failed'));
 
         // Act & Assert
         expect(
@@ -239,25 +261,37 @@ void main() {
       test('should validate cache keys', () {
         // Arrange & Act & Assert
         expect(() => cacheService.validateKey('valid_key'), returnsNormally);
-        expect(() => cacheService.validateKey(''), throwsA(isA<ArgumentError>()));
-        expect(() => cacheService.validateKey('key/with/slashes'), throwsA(isA<ArgumentError>()));
-        expect(() => cacheService.validateKey('key with spaces'), throwsA(isA<ArgumentError>()));
+        expect(
+          () => cacheService.validateKey(''),
+          throwsA(isA<ArgumentError>()),
+        );
+        expect(
+          () => cacheService.validateKey('key/with/slashes'),
+          throwsA(isA<ArgumentError>()),
+        );
+        expect(
+          () => cacheService.validateKey('key with spaces'),
+          throwsA(isA<ArgumentError>()),
+        );
       });
     });
 
     group('Memory Cache Integration', () {
-      test('should integrate with memory cache for frequently accessed data', () async {
-        // Arrange
-        const cacheKey = 'memory_cache_key';
-        final data = Uint8List.fromList([1, 2, 3, 4, 5]);
+      test(
+        'should integrate with memory cache for frequently accessed data',
+        () async {
+          // Arrange
+          const cacheKey = 'memory_cache_key';
+          final data = Uint8List.fromList([1, 2, 3, 4, 5]);
 
-        // Act - Store in memory cache
-        cacheService.storeInMemory(cacheKey, data);
+          // Act - Store in memory cache
+          cacheService.storeInMemory(cacheKey, data);
 
-        // Assert - Should retrieve from memory
-        final result = cacheService.getFromMemory(cacheKey);
-        expect(result, equals(data));
-      });
+          // Assert - Should retrieve from memory
+          final result = cacheService.getFromMemory(cacheKey);
+          expect(result, equals(data));
+        },
+      );
 
       test('should evict old entries from memory cache when limit reached', () {
         // Arrange

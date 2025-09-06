@@ -144,8 +144,14 @@ void main() {
       final waypoint = _createTestWaypoint();
 
       // Act & Assert
-      expect(() => service.calculateBearing(position, waypoint.toPosition()), returnsNormally);
-      expect(() => service.calculateDistance(position, waypoint.toPosition()), returnsNormally);
+      expect(
+        () => service.calculateBearing(position, waypoint.toPosition()),
+        returnsNormally,
+      );
+      expect(
+        () => service.calculateDistance(position, waypoint.toPosition()),
+        returnsNormally,
+      );
     });
   });
 
@@ -187,7 +193,10 @@ void main() {
 
       // Act & Assert
       expect(() => service.getSetting('test_key'), returnsNormally);
-      expect(() => service.setSetting('test_key', 'test_value'), returnsNormally);
+      expect(
+        () => service.setSetting('test_key', 'test_value'),
+        returnsNormally,
+      );
       expect(() => service.deleteSetting('test_key'), returnsNormally);
     });
 
@@ -212,12 +221,7 @@ Chart _createTestChart() {
     id: 'US5CA52M',
     title: 'Test Chart',
     scale: 25000,
-    bounds: GeographicBounds(
-      north: 38,
-      south: 37,
-      east: -122,
-      west: -123,
-    ),
+    bounds: GeographicBounds(north: 38, south: 37, east: -122, west: -123),
     lastUpdate: DateTime.now(),
     state: 'California',
     type: ChartType.harbor,
@@ -279,7 +283,11 @@ class MockChartService implements ChartService {
 
 class MockDownloadService implements DownloadService {
   @override
-  Future<void> downloadChart(String chartId, String url, {String? expectedChecksum}) async {}
+  Future<void> downloadChart(
+    String chartId,
+    String url, {
+    String? expectedChecksum,
+  }) async {}
 
   @override
   Future<void> pauseDownload(String chartId) async {}
@@ -298,7 +306,9 @@ class MockDownloadService implements DownloadService {
 
   // Enhanced queue management methods
   @override
-  Future<void> addToQueue(String chartId, String url, {
+  Future<void> addToQueue(
+    String chartId,
+    String url, {
     DownloadPriority priority = DownloadPriority.normal,
     String? expectedChecksum,
   }) async {}
@@ -314,17 +324,19 @@ class MockDownloadService implements DownloadService {
 
   // Batch download operations
   @override
-  Future<String> startBatchDownload(List<String> chartIds, List<String> urls, {
+  Future<String> startBatchDownload(
+    List<String> chartIds,
+    List<String> urls, {
     DownloadPriority priority = DownloadPriority.normal,
   }) async => 'batch-id';
 
   @override
-  Future<BatchDownloadProgress> getBatchProgress(String batchId) async => 
+  Future<BatchDownloadProgress> getBatchProgress(String batchId) async =>
       BatchDownloadProgress(
-        batchId: batchId, 
+        batchId: batchId,
         status: BatchDownloadStatus.pending,
-        totalCharts: 0, 
-        completedCharts: 0, 
+        totalCharts: 0,
+        completedCharts: 0,
         failedCharts: 0,
         overallProgress: 0.0,
         lastUpdated: DateTime.now(),
@@ -332,17 +344,19 @@ class MockDownloadService implements DownloadService {
       );
 
   @override
-  Stream<BatchDownloadProgress> getBatchProgressStream(String batchId) => 
-      Stream.value(BatchDownloadProgress(
-        batchId: batchId, 
-        status: BatchDownloadStatus.pending,
-        totalCharts: 0, 
-        completedCharts: 0, 
-        failedCharts: 0,
-        overallProgress: 0.0,
-        lastUpdated: DateTime.now(),
-        failedChartIds: [],
-      ));
+  Stream<BatchDownloadProgress> getBatchProgressStream(String batchId) =>
+      Stream.value(
+        BatchDownloadProgress(
+          batchId: batchId,
+          status: BatchDownloadStatus.pending,
+          totalCharts: 0,
+          completedCharts: 0,
+          failedCharts: 0,
+          overallProgress: 0.0,
+          lastUpdated: DateTime.now(),
+          failedChartIds: [],
+        ),
+      );
 
   @override
   Future<void> pauseBatchDownload(String batchId) async {}
@@ -395,10 +409,12 @@ class MockGpsService implements GpsService {
 
   // Added to satisfy updated interface (Seattle fallback behavior not needed for tests)
   @override
-  Future<GpsPosition?> getCurrentPositionWithFallback() async => _createTestPosition();
+  Future<GpsPosition?> getCurrentPositionWithFallback() async =>
+      _createTestPosition();
 
   @override
-  Stream<GpsPosition> getLocationStream() => Stream.value(_createTestPosition());
+  Stream<GpsPosition> getLocationStream() =>
+      Stream.value(_createTestPosition());
 
   @override
   Future<bool> requestLocationPermission() async => true;
@@ -408,7 +424,7 @@ class MockGpsService implements GpsService {
 
   @override
   Future<bool> isLocationEnabled() async => true;
-  
+
   // Enhanced functionality methods for issue #53
   @override
   Future<GpsSignalQuality> assessSignalQuality(GpsPosition? position) async {
@@ -431,7 +447,9 @@ class MockGpsService implements GpsService {
   }
 
   @override
-  Future<List<GpsSignalQuality>> getSignalQualityTrend(Duration timeWindow) async => [];
+  Future<List<GpsSignalQuality>> getSignalQualityTrend(
+    Duration timeWindow,
+  ) async => [];
 
   @override
   Future<void> clearPositionHistory() async {}
@@ -468,10 +486,14 @@ class MockGpsService implements GpsService {
   }
 
   @override
-  Future<List<GpsPosition>> filterForMarineAccuracy(List<GpsPosition> positions) async => positions;
+  Future<List<GpsPosition>> filterForMarineAccuracy(
+    List<GpsPosition> positions,
+  ) async => positions;
 
   @override
-  Future<CourseOverGround?> calculateCourseOverGround(Duration timeWindow) async {
+  Future<CourseOverGround?> calculateCourseOverGround(
+    Duration timeWindow,
+  ) async {
     return CourseOverGround(
       bearing: 45.0,
       confidence: 0.8,
@@ -493,7 +515,8 @@ class MockGpsService implements GpsService {
 
 class MockNavigationService implements NavigationService {
   @override
-  Future<NavigationRoute> createRoute(List<Waypoint> waypoints) async => _createTestRoute();
+  Future<NavigationRoute> createRoute(List<Waypoint> waypoints) async =>
+      _createTestRoute();
 
   @override
   Future<void> activateRoute(NavigationRoute route) async {}
@@ -534,7 +557,10 @@ class MockStorageService implements StorageService {
   Future<void> cleanupOldData() async {}
 
   @override
-  Future<void> storeStateCellMapping(String stateName, List<String> chartCells) async {}
+  Future<void> storeStateCellMapping(
+    String stateName,
+    List<String> chartCells,
+  ) async {}
 
   @override
   Future<List<String>?> getStateCellMapping(String stateName) async => null;

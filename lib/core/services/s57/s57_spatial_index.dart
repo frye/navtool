@@ -7,11 +7,11 @@ import 'spatial_index_interface.dart';
 class S57SpatialIndex implements SpatialIndex {
   final List<S57Feature> _features = [];
   final Map<S57FeatureType, List<S57Feature>> _featuresByType = {};
-  
+
   /// Add a feature to the spatial index
   void addFeature(S57Feature feature) {
     _features.add(feature);
-    
+
     // Index by feature type for efficient type-based queries
     _featuresByType.putIfAbsent(feature.featureType, () => []).add(feature);
   }
@@ -32,27 +32,30 @@ class S57SpatialIndex implements SpatialIndex {
   /// Query features within a geographic bounds
   List<S57Feature> queryBounds(S57Bounds bounds) {
     final results = <S57Feature>[];
-    
+
     for (final feature in _features) {
       if (_featureIntersectsBounds(feature, bounds)) {
         results.add(feature);
       }
     }
-    
+
     return results;
   }
 
   /// Query features near a specific point (within radius in degrees)
-  List<S57Feature> queryPoint(double latitude, double longitude, 
-                               {double radiusDegrees = 0.01}) {
+  List<S57Feature> queryPoint(
+    double latitude,
+    double longitude, {
+    double radiusDegrees = 0.01,
+  }) {
     final results = <S57Feature>[];
-    
+
     for (final feature in _features) {
       if (_featureNearPoint(feature, latitude, longitude, radiusDegrees)) {
         results.add(feature);
       }
     }
-    
+
     return results;
   }
 
@@ -65,7 +68,7 @@ class S57SpatialIndex implements SpatialIndex {
   @override
   List<S57Feature> queryTypes(Set<S57FeatureType> types, {S57Bounds? bounds}) {
     final results = <S57Feature>[];
-    
+
     for (final type in types) {
       final typedFeatures = queryByType(type);
       if (bounds != null) {
@@ -79,16 +82,16 @@ class S57SpatialIndex implements SpatialIndex {
         results.addAll(typedFeatures);
       }
     }
-    
+
     return results;
   }
 
   /// Query navigation aids (buoys, beacons, lighthouses)
   List<S57Feature> queryNavigationAids() {
     final results = <S57Feature>[];
-    
+
     final navTypes = [
-      S57FeatureType.buoy,  // Include generic buoy type
+      S57FeatureType.buoy, // Include generic buoy type
       S57FeatureType.buoyLateral,
       S57FeatureType.buoyCardinal,
       S57FeatureType.buoyIsolatedDanger,
@@ -97,28 +100,28 @@ class S57SpatialIndex implements SpatialIndex {
       S57FeatureType.lighthouse,
       S57FeatureType.daymark,
     ];
-    
+
     for (final type in navTypes) {
       results.addAll(queryByType(type));
     }
-    
+
     return results;
   }
 
   /// Query depth-related features (contours, areas, soundings)
   List<S57Feature> queryDepthFeatures() {
     final results = <S57Feature>[];
-    
+
     final depthTypes = [
       S57FeatureType.depthContour,
       S57FeatureType.depthArea,
       S57FeatureType.sounding,
     ];
-    
+
     for (final type in depthTypes) {
       results.addAll(queryByType(type));
     }
-    
+
     return results;
   }
 
@@ -151,12 +154,7 @@ class S57SpatialIndex implements SpatialIndex {
       }
     }
 
-    return S57Bounds(
-      north: maxLat,
-      south: minLat,
-      east: maxLon,
-      west: minLon,
-    );
+    return S57Bounds(north: maxLat, south: minLat, east: maxLon, west: minLon);
   }
 
   /// Check if a feature intersects with given bounds
@@ -173,9 +171,19 @@ class S57SpatialIndex implements SpatialIndex {
   }
 
   /// Check if a feature is near a point
-  bool _featureNearPoint(S57Feature feature, double lat, double lon, double radius) {
+  bool _featureNearPoint(
+    S57Feature feature,
+    double lat,
+    double lon,
+    double radius,
+  ) {
     for (final coord in feature.coordinates) {
-      final distance = _calculateDistance(lat, lon, coord.latitude, coord.longitude);
+      final distance = _calculateDistance(
+        lat,
+        lon,
+        coord.latitude,
+        coord.longitude,
+      );
       if (distance <= radius) {
         return true;
       }
@@ -185,7 +193,12 @@ class S57SpatialIndex implements SpatialIndex {
 
   /// Calculate approximate distance between two points in degrees
   /// For marine navigation, this provides sufficient accuracy for spatial queries
-  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+  double _calculateDistance(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
     final dLat = lat2 - lat1;
     final dLon = lon2 - lon1;
     return sqrt(dLat * dLat + dLon * dLon);
@@ -209,10 +222,10 @@ class SpatialIndexStats {
   @override
   String toString() {
     return 'SpatialIndexStats('
-           'features: $totalFeatures, '
-           'types: ${featureCountsByType.length}, '
-           'bounds: $bounds, '
-           'indexed: ${indexTime.toIso8601String()}'
-           ')';
+        'features: $totalFeatures, '
+        'types: ${featureCountsByType.length}, '
+        'bounds: $bounds, '
+        'indexed: ${indexTime.toIso8601String()}'
+        ')';
   }
 }

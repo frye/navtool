@@ -1,5 +1,5 @@
 /// S-57 Required Attribute Validation
-/// 
+///
 /// Provides validation rules for required attributes per object class
 /// and generates warnings for missing required attributes
 
@@ -24,9 +24,9 @@ class S57ValidationWarning {
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     return other is S57ValidationWarning &&
-           other.objectAcronym == objectAcronym &&
-           other.missingAttribute == missingAttribute &&
-           other.message == message;
+        other.objectAcronym == objectAcronym &&
+        other.missingAttribute == missingAttribute &&
+        other.message == message;
   }
 
   @override
@@ -34,7 +34,7 @@ class S57ValidationWarning {
 }
 
 /// S-57 Required Attribute Validation Service
-/// 
+///
 /// Validates that required attributes are present for each object class
 /// and generates non-fatal warnings for missing attributes
 class S57RequiredAttributeValidator {
@@ -64,12 +64,16 @@ class S57RequiredAttributeValidator {
     final warnings = <S57ValidationWarning>[];
 
     for (final requiredAttr in required) {
-      if (!attributes.containsKey(requiredAttr) || attributes[requiredAttr] == null) {
-        warnings.add(S57ValidationWarning(
-          objectAcronym: objectClass.acronym,
-          missingAttribute: requiredAttr,
-          message: 'Missing required attribute $requiredAttr for ${objectClass.acronym} (${objectClass.name})',
-        ));
+      if (!attributes.containsKey(requiredAttr) ||
+          attributes[requiredAttr] == null) {
+        warnings.add(
+          S57ValidationWarning(
+            objectAcronym: objectClass.acronym,
+            missingAttribute: requiredAttr,
+            message:
+                'Missing required attribute $requiredAttr for ${objectClass.acronym} (${objectClass.name})',
+          ),
+        );
       }
     }
 
@@ -82,7 +86,10 @@ class S57RequiredAttributeValidator {
   }
 
   /// Check if an attribute is required for an object class
-  static bool isAttributeRequired(String objectAcronym, String attributeAcronym) {
+  static bool isAttributeRequired(
+    String objectAcronym,
+    String attributeAcronym,
+  ) {
     final required = _requiredAttributes[objectAcronym];
     return required?.contains(attributeAcronym) ?? false;
   }

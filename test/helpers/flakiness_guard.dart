@@ -39,5 +39,8 @@ Future<T> waitForCondition<T>(
     await Future<void>.delayed(sleep);
   }
   final snap = diagnosticSnapshot != null ? await diagnosticSnapshot() : null;
-  fail(reason ?? 'Condition not satisfied within $timeout. Last value: $lastValue${snap != null ? '\nSnapshot: ' + snap : ''}');
+  fail(
+    reason ??
+        'Condition not satisfied within $timeout. Last value: $lastValue${snap != null ? '\nSnapshot: ' + snap : ''}',
+  );
 }

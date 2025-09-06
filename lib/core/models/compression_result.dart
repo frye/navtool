@@ -51,8 +51,8 @@ class CompressionResult {
   @override
   String toString() {
     return 'CompressionResult(original: ${originalSize}B, compressed: ${compressedSize}B, '
-           'ratio: ${(compressionRatio * 100).toStringAsFixed(1)}%, '
-           'time: ${compressionTime.inMilliseconds}ms)';
+        'ratio: ${(compressionRatio * 100).toStringAsFixed(1)}%, '
+        'time: ${compressionTime.inMilliseconds}ms)';
   }
 }
 
@@ -60,10 +60,10 @@ class CompressionResult {
 enum CompressionLevel {
   /// Fast compression for real-time operations
   fast,
-  
+
   /// Balanced compression for general use
   balanced,
-  
+
   /// Maximum compression for storage optimization
   maximum;
 
@@ -109,8 +109,10 @@ class ExtractedFile {
   /// Check if this is an S-57 chart file
   bool get isS57ChartFile {
     final extension = fileName.toLowerCase().split('.').last;
-    return extension.length == 3 && 
-           (extension.startsWith('00') || extension.startsWith('01') || extension.startsWith('02'));
+    return extension.length == 3 &&
+        (extension.startsWith('00') ||
+            extension.startsWith('01') ||
+            extension.startsWith('02'));
   }
 
   /// Get file size in bytes
@@ -154,7 +156,7 @@ class CompressionSettings {
   @override
   String toString() {
     return 'CompressionSettings(level: ${level.displayName}, '
-           'dictionary: $enableDictionary, chunk: ${chunkSize}B, '
-           'memory: $memoryLevel, checksum: $enableChecksum)';
+        'dictionary: $enableDictionary, chunk: ${chunkSize}B, '
+        'memory: $memoryLevel, checksum: $enableChecksum)';
   }
 }
