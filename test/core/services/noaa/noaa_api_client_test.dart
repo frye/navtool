@@ -3,21 +3,21 @@ import 'package:navtool/core/services/noaa/noaa_api_client.dart';
 import 'package:navtool/core/models/chart.dart';
 
 /// Test suite for NoaaApiClient interface contract validation
-/// 
+///
 /// These tests verify that the abstract interface is properly defined
 /// and can be implemented correctly. They focus on:
 /// - Method signature validation
 /// - Return type verification
 /// - Interface compliance checking
 /// - Type safety validation
-/// 
+///
 /// **Test Categories:**
 /// - Interface definition tests
 /// - Method signature validation
 /// - Return type compliance
 /// - Callback type verification
-/// 
-/// **Note:** Implementation-specific behavior is tested in the 
+///
+/// **Note:** Implementation-specific behavior is tested in the
 /// corresponding implementation test files.
 void main() {
   group('NoaaApiClient Interface Contract', () {
@@ -26,7 +26,7 @@ void main() {
     test('NoaaApiClient should define required interface structure', () {
       // Verify the interface type exists and is properly structured
       expect(NoaaApiClient, isA<Type>());
-      
+
       // Confirm it's an abstract interface - this will be validated by the Dart analyzer
       // No need to test instantiation as abstract classes cannot be instantiated by design
     });

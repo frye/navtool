@@ -34,7 +34,7 @@ void main() {
     late MockStorageService mockStorageService;
     late MockAppLogger mockLogger;
     late MockErrorHandler mockErrorHandler;
-  late Directory realChartsDirectory;
+    late Directory realChartsDirectory;
 
     // Mutable network suitability flag to allow selective auto-processing
     bool networkSuitable = true;
@@ -45,11 +45,14 @@ void main() {
       mockStorageService = MockStorageService();
       mockLogger = MockAppLogger();
       mockErrorHandler = MockErrorHandler();
-    // Use a real temporary directory instead of a mocked Directory to avoid
-    // filesystem rename issues (Windows path edge cases) during tests.
-    realChartsDirectory = Directory.systemTemp.createTempSync('enhanced_downloads_');
-    when(mockStorageService.getChartsDirectory())
-      .thenAnswer((_) async => realChartsDirectory);
+      // Use a real temporary directory instead of a mocked Directory to avoid
+      // filesystem rename issues (Windows path edge cases) during tests.
+      realChartsDirectory = Directory.systemTemp.createTempSync(
+        'enhanced_downloads_',
+      );
+      when(
+        mockStorageService.getChartsDirectory(),
+      ).thenAnswer((_) async => realChartsDirectory);
 
       downloadService = DownloadServiceImpl(
         httpClient: mockHttpClient,
@@ -66,18 +69,30 @@ void main() {
       test('should add charts to download queue with priority', () async {
         networkSuitable = false; // prevent auto start
         // Act - Add charts with different priorities
-        await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip', priority: DownloadPriority.high);
-        await downloadService.addToQueue('chart2', 'http://example.com/chart2.zip', priority: DownloadPriority.normal);
-        await downloadService.addToQueue('chart3', 'http://example.com/chart3.zip', priority: DownloadPriority.low);
+        await downloadService.addToQueue(
+          'chart1',
+          'http://example.com/chart1.zip',
+          priority: DownloadPriority.high,
+        );
+        await downloadService.addToQueue(
+          'chart2',
+          'http://example.com/chart2.zip',
+          priority: DownloadPriority.normal,
+        );
+        await downloadService.addToQueue(
+          'chart3',
+          'http://example.com/chart3.zip',
+          priority: DownloadPriority.low,
+        );
 
         // Assert
         final queue = await downloadService.getDetailedQueue();
         expect(queue.length, 3);
-        
+
         // High priority should be first
         expect(queue.first.chartId, 'chart1');
         expect(queue.first.priority, DownloadPriority.high);
-        
+
         // Low priority should be last
         expect(queue.last.chartId, 'chart3');
         expect(queue.last.priority, DownloadPriority.low);
@@ -87,8 +102,14 @@ void main() {
       test('should not add duplicate charts to queue', () async {
         networkSuitable = false; // prevent auto start
         // Act - Add same chart twice
-        await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
-        await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
+        await downloadService.addToQueue(
+          'chart1',
+          'http://example.com/chart1.zip',
+        );
+        await downloadService.addToQueue(
+          'chart1',
+          'http://example.com/chart1.zip',
+        );
 
         // Assert
         final queue = await downloadService.getDetailedQueue();
@@ -100,8 +121,14 @@ void main() {
       test('should remove charts from queue', () async {
         networkSuitable = false; // prevent auto start
         // Arrange
-        await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
-        await downloadService.addToQueue('chart2', 'http://example.com/chart2.zip');
+        await downloadService.addToQueue(
+          'chart1',
+          'http://example.com/chart1.zip',
+        );
+        await downloadService.addToQueue(
+          'chart2',
+          'http://example.com/chart2.zip',
+        );
 
         // Act
         await downloadService.removeFromQueue('chart1');
@@ -116,8 +143,14 @@ void main() {
       test('should clear entire queue', () async {
         networkSuitable = false; // prevent auto start
         // Arrange
-        await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
-        await downloadService.addToQueue('chart2', 'http://example.com/chart2.zip');
+        await downloadService.addToQueue(
+          'chart1',
+          'http://example.com/chart1.zip',
+        );
+        await downloadService.addToQueue(
+          'chart2',
+          'http://example.com/chart2.zip',
+        );
 
         // Act
         await downloadService.clearQueue();
@@ -131,9 +164,21 @@ void main() {
       test('should reorder queue items by priority', () async {
         networkSuitable = false; // prevent auto start
         // Arrange - Add charts in mixed priority order
-        await downloadService.addToQueue('low1', 'http://example.com/low1.zip', priority: DownloadPriority.low);
-        await downloadService.addToQueue('high1', 'http://example.com/high1.zip', priority: DownloadPriority.high);
-        await downloadService.addToQueue('normal1', 'http://example.com/normal1.zip', priority: DownloadPriority.normal);
+        await downloadService.addToQueue(
+          'low1',
+          'http://example.com/low1.zip',
+          priority: DownloadPriority.low,
+        );
+        await downloadService.addToQueue(
+          'high1',
+          'http://example.com/high1.zip',
+          priority: DownloadPriority.high,
+        );
+        await downloadService.addToQueue(
+          'normal1',
+          'http://example.com/normal1.zip',
+          priority: DownloadPriority.normal,
+        );
 
         // Act
         final queue = await downloadService.getDetailedQueue();
@@ -159,13 +204,20 @@ void main() {
           'http://example.com/chart3.zip',
         ];
 
-        when(mockHttpClient.downloadFile(any, any, 
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress')))
-            .thenAnswer((_) async {});
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenAnswer((_) async {});
 
         // Act
-        final batchId = await downloadService.startBatchDownload(chartIds, urls);
+        final batchId = await downloadService.startBatchDownload(
+          chartIds,
+          urls,
+        );
 
         // Assert
         expect(batchId, isNotNull);
@@ -178,15 +230,25 @@ void main() {
       test('should track batch download progress', () async {
         // Arrange
         final chartIds = ['chart1', 'chart2'];
-        final urls = ['http://example.com/chart1.zip', 'http://example.com/chart2.zip'];
+        final urls = [
+          'http://example.com/chart1.zip',
+          'http://example.com/chart2.zip',
+        ];
 
-        when(mockHttpClient.downloadFile(any, any, 
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress')))
-            .thenAnswer((_) async {});
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenAnswer((_) async {});
 
         // Act
-        final batchId = await downloadService.startBatchDownload(chartIds, urls);
+        final batchId = await downloadService.startBatchDownload(
+          chartIds,
+          urls,
+        );
 
         // Assert
         final progressStream = downloadService.getBatchProgressStream(batchId);
@@ -203,8 +265,14 @@ void main() {
       test('should pause batch download', () async {
         // Arrange
         final chartIds = ['chart1', 'chart2'];
-        final urls = ['http://example.com/chart1.zip', 'http://example.com/chart2.zip'];
-        final batchId = await downloadService.startBatchDownload(chartIds, urls);
+        final urls = [
+          'http://example.com/chart1.zip',
+          'http://example.com/chart2.zip',
+        ];
+        final batchId = await downloadService.startBatchDownload(
+          chartIds,
+          urls,
+        );
 
         // Act
         await downloadService.pauseBatchDownload(batchId);
@@ -217,8 +285,14 @@ void main() {
       test('should resume batch download', () async {
         // Arrange
         final chartIds = ['chart1', 'chart2'];
-        final urls = ['http://example.com/chart1.zip', 'http://example.com/chart2.zip'];
-        final batchId = await downloadService.startBatchDownload(chartIds, urls);
+        final urls = [
+          'http://example.com/chart1.zip',
+          'http://example.com/chart2.zip',
+        ];
+        final batchId = await downloadService.startBatchDownload(
+          chartIds,
+          urls,
+        );
         await downloadService.pauseBatchDownload(batchId);
 
         // Act
@@ -232,8 +306,14 @@ void main() {
       test('should cancel batch download', () async {
         // Arrange
         final chartIds = ['chart1', 'chart2'];
-        final urls = ['http://example.com/chart1.zip', 'http://example.com/chart2.zip'];
-        final batchId = await downloadService.startBatchDownload(chartIds, urls);
+        final urls = [
+          'http://example.com/chart1.zip',
+          'http://example.com/chart2.zip',
+        ];
+        final batchId = await downloadService.startBatchDownload(
+          chartIds,
+          urls,
+        );
 
         // Act
         await downloadService.cancelBatchDownload(batchId);
@@ -253,23 +333,32 @@ void main() {
         const resumeFrom = 1024;
 
         // Setup partial file scenario
-  // Create a real partial .part file to simulate prior partial download
-  final partFile = File('${realChartsDirectory.path}/chart1.zip.part');
-  await partFile.writeAsBytes(List.filled(resumeFrom, 0x00));
-        when(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          resumeFrom: anyNamed('resumeFrom')))
-            .thenAnswer((_) async {});
+        // Create a real partial .part file to simulate prior partial download
+        final partFile = File('${realChartsDirectory.path}/chart1.zip.part');
+        await partFile.writeAsBytes(List.filled(resumeFrom, 0x00));
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+            resumeFrom: anyNamed('resumeFrom'),
+          ),
+        ).thenAnswer((_) async {});
 
         // Act
         await downloadService.resumeDownload(chartId, url: url);
 
         // Assert
-        verify(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          resumeFrom: anyNamed('resumeFrom'))).called(1);
+        verify(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+            resumeFrom: anyNamed('resumeFrom'),
+          ),
+        ).called(1);
       });
 
       test('should handle resume from corruption by restarting download', () async {
@@ -284,42 +373,56 @@ void main() {
         await partFile.writeAsBytes([1, 2, 3]); // Partial file content
 
         // Override the charts directory to point to our temp directory
-    when(mockStorageService.getChartsDirectory())
-      .thenAnswer((_) async => tempDir);
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenAnswer((_) async => tempDir);
 
         // Setup scenario where resume fails with 416 (range not satisfiable)
-        when(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          resumeFrom: anyNamed('resumeFrom')))
-            .thenAnswer((_) async {
-              throw DioException(
-                requestOptions: RequestOptions(path: url),
-                type: DioExceptionType.badResponse,
-                response: Response(
-                  requestOptions: RequestOptions(path: url),
-                  statusCode: 416, // Range not satisfiable
-                ),
-              );
-            });
-        
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+            resumeFrom: anyNamed('resumeFrom'),
+          ),
+        ).thenAnswer((_) async {
+          throw DioException(
+            requestOptions: RequestOptions(path: url),
+            type: DioExceptionType.badResponse,
+            response: Response(
+              requestOptions: RequestOptions(path: url),
+              statusCode: 416, // Range not satisfiable
+            ),
+          );
+        });
+
         // The restart download (without resumeFrom) should succeed
-        when(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress')))
-            .thenAnswer((invocation) async {
-              final targetPath = invocation.positionalArguments[1] as String; // tempFilePath
-              final restartedPartFile = File(targetPath);
-              await restartedPartFile.writeAsBytes([1, 2, 3, 4, 5]);
-            });
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenAnswer((invocation) async {
+          final targetPath =
+              invocation.positionalArguments[1] as String; // tempFilePath
+          final restartedPartFile = File(targetPath);
+          await restartedPartFile.writeAsBytes([1, 2, 3, 4, 5]);
+        });
 
         // Act
         await downloadService.resumeDownload(chartId, url: url);
 
-  // Assert - Should log range not satisfiable warning (restart path). Completion log
-  // may be emitted by underlying downloadChart flow after restart, but we only require the warning.
-  verifyWarningLogged(mockLogger, 'Range not satisfiable, restarting download', expectedContext: 'Download');
-  // Don't assert completion log to avoid flakiness in resume path sequencing.
+        // Assert - Should log range not satisfiable warning (restart path). Completion log
+        // may be emitted by underlying downloadChart flow after restart, but we only require the warning.
+        verifyWarningLogged(
+          mockLogger,
+          'Range not satisfiable, restarting download',
+          expectedContext: 'Download',
+        );
+        // Don't assert completion log to avoid flakiness in resume path sequencing.
 
         // Cleanup
         await tempDir.delete(recursive: true);
@@ -343,22 +446,33 @@ void main() {
         // Create a real temporary file for this test
         final tempDir = Directory.systemTemp.createTempSync('download_test_');
         final tempFile = File('${tempDir.path}/chart1.zip');
-        await tempFile.writeAsBytes(List.generate(expectedSize, (i) => i % 256));
+        await tempFile.writeAsBytes(
+          List.generate(expectedSize, (i) => i % 256),
+        );
 
         // Override the charts directory to point to our temp directory
-    when(mockStorageService.getChartsDirectory())
-      .thenAnswer((_) async => tempDir);
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenAnswer((_) async => tempDir);
 
-        when(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress')))
-            .thenAnswer((_) async {}); // File already exists from our setup
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenAnswer((_) async {}); // File already exists from our setup
 
         // Act
         await downloadService.downloadChart(chartId, url);
 
         // Assert
-        verifyInfoLogged(mockLogger, 'Chart download completed', expectedContext: 'Download');
+        verifyInfoLogged(
+          mockLogger,
+          'Chart download completed',
+          expectedContext: 'Download',
+        );
 
         // Cleanup
         await tempDir.delete(recursive: true);
@@ -377,51 +491,86 @@ void main() {
         await tempFile.writeAsBytes([1, 2, 3, 4, 5]);
 
         // Override the charts directory to point to our temp directory
-        when(mockStorageService.getChartsDirectory())
-            .thenAnswer((_) async => tempDir);
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenAnswer((_) async => tempDir);
 
-        when(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress')))
-            .thenAnswer((_) async {}); // File already exists from our setup
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenAnswer((_) async {}); // File already exists from our setup
 
         // Act
-        await downloadService.downloadChart(chartId, url, expectedChecksum: expectedChecksum);
+        await downloadService.downloadChart(
+          chartId,
+          url,
+          expectedChecksum: expectedChecksum,
+        );
 
         // Assert
         // Completion log should occur
-        verifyInfoLogged(mockLogger, 'Chart download completed', expectedContext: 'Download');
+        verifyInfoLogged(
+          mockLogger,
+          'Chart download completed',
+          expectedContext: 'Download',
+        );
 
         // Cleanup
         await tempDir.delete(recursive: true);
       });
 
-      test('should emit monotonic normalized progress values (mid-progress stream test)', () async {
-        networkSuitable = true;
-        const chartId = 'progress_chart';
-        const url = 'http://example.com/progress_chart.bin';
-        final tempDir = Directory.systemTemp.createTempSync('progress_stream_');
-        when(mockStorageService.getChartsDirectory()).thenAnswer((_) async => tempDir);
+      test(
+        'should emit monotonic normalized progress values (mid-progress stream test)',
+        () async {
+          networkSuitable = true;
+          const chartId = 'progress_chart';
+          const url = 'http://example.com/progress_chart.bin';
+          final tempDir = Directory.systemTemp.createTempSync(
+            'progress_stream_',
+          );
+          when(
+            mockStorageService.getChartsDirectory(),
+          ).thenAnswer((_) async => tempDir);
 
-        final totalBytes = 100;
-        final steps = <int>[10, 25, 50, 75, 100];
-        void Function(int,int)? progressCb;
+          final totalBytes = 100;
+          final steps = <int>[10, 25, 50, 75, 100];
+          void Function(int, int)? progressCb;
 
-        when(mockHttpClient.head(any,
-          queryParameters: anyNamed('queryParameters'),
-          options: anyNamed('options'),
-          cancelToken: anyNamed('cancelToken'))).thenAnswer((_) async => Response(
-            requestOptions: RequestOptions(path: url),
-            statusCode: 200,
-            headers: Headers.fromMap({'content-length': ['$totalBytes']}),
-          ));
+          when(
+            mockHttpClient.head(
+              any,
+              queryParameters: anyNamed('queryParameters'),
+              options: anyNamed('options'),
+              cancelToken: anyNamed('cancelToken'),
+            ),
+          ).thenAnswer(
+            (_) async => Response(
+              requestOptions: RequestOptions(path: url),
+              statusCode: 200,
+              headers: Headers.fromMap({
+                'content-length': ['$totalBytes'],
+              }),
+            ),
+          );
 
-        when(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          resumeFrom: anyNamed('resumeFrom'))).thenAnswer((invocation) async {
-            progressCb = invocation.namedArguments[#onReceiveProgress] as void Function(int,int)?;
-            final savePath = invocation.positionalArguments[1] as String; // .part temp file
+          when(
+            mockHttpClient.downloadFile(
+              any,
+              any,
+              cancelToken: anyNamed('cancelToken'),
+              onReceiveProgress: anyNamed('onReceiveProgress'),
+              resumeFrom: anyNamed('resumeFrom'),
+            ),
+          ).thenAnswer((invocation) async {
+            progressCb =
+                invocation.namedArguments[#onReceiveProgress]
+                    as void Function(int, int)?;
+            final savePath =
+                invocation.positionalArguments[1] as String; // .part temp file
             final tempFile = File(savePath);
             await tempFile.create(recursive: true);
             for (final s in steps) {
@@ -431,40 +580,63 @@ void main() {
             }
           });
 
-  final captured = <double>[];
-  // Subscribe FIRST so we don't miss early 0.0 emission created inside downloadChart
-  final sub = downloadService.getDownloadProgress(chartId).listen(captured.add);
-  // Start download
-  await downloadService.downloadChart(chartId, url);
-  expect(captured, isNotEmpty, reason: 'Progress emissions should be captured');
-  // First emission should be 0.0 (seed) unless download is trivially instantaneous; allow slight float tolerance.
-  expect(captured.first, closeTo(0.0, 1e-9), reason: 'First progress emission should be the seeded 0.0');
-        // Range check
-        for (final v in captured) {
-          expect(v >= 0 && v <= 1, isTrue, reason: 'Progress value $v out of [0,1] range');
-        }
-        // Monotonic non-decreasing
-        for (var i = 1; i < captured.length; i++) {
-          expect(captured[i] + 1e-9 >= captured[i-1], isTrue, reason: 'Progress regressed at index $i');
-        }
-        expect(captured.last, closeTo(1.0, 1e-9), reason: 'Final progress should be 1.0');
-
-        // Dispose resources & subscription BEFORE deleting directory to release file handles (Windows)
-        await sub.cancel();
-        downloadService.dispose();
-        // Retry delete if transient sharing violation occurs
-        for (int i = 0; i < 3; i++) {
-          try {
-            if (tempDir.existsSync()) {
-              await tempDir.delete(recursive: true);
-            }
-            break; // success
-          } on FileSystemException {
-            if (i == 2) rethrow;
-            await Future<void>.delayed(const Duration(milliseconds: 50));
+          final captured = <double>[];
+          // Subscribe FIRST so we don't miss early 0.0 emission created inside downloadChart
+          final sub = downloadService
+              .getDownloadProgress(chartId)
+              .listen(captured.add);
+          // Start download
+          await downloadService.downloadChart(chartId, url);
+          expect(
+            captured,
+            isNotEmpty,
+            reason: 'Progress emissions should be captured',
+          );
+          // First emission should be 0.0 (seed) unless download is trivially instantaneous; allow slight float tolerance.
+          expect(
+            captured.first,
+            closeTo(0.0, 1e-9),
+            reason: 'First progress emission should be the seeded 0.0',
+          );
+          // Range check
+          for (final v in captured) {
+            expect(
+              v >= 0 && v <= 1,
+              isTrue,
+              reason: 'Progress value $v out of [0,1] range',
+            );
           }
-        }
-      });
+          // Monotonic non-decreasing
+          for (var i = 1; i < captured.length; i++) {
+            expect(
+              captured[i] + 1e-9 >= captured[i - 1],
+              isTrue,
+              reason: 'Progress regressed at index $i',
+            );
+          }
+          expect(
+            captured.last,
+            closeTo(1.0, 1e-9),
+            reason: 'Final progress should be 1.0',
+          );
+
+          // Dispose resources & subscription BEFORE deleting directory to release file handles (Windows)
+          await sub.cancel();
+          downloadService.dispose();
+          // Retry delete if transient sharing violation occurs
+          for (int i = 0; i < 3; i++) {
+            try {
+              if (tempDir.existsSync()) {
+                await tempDir.delete(recursive: true);
+              }
+              break; // success
+            } on FileSystemException {
+              if (i == 2) rethrow;
+              await Future<void>.delayed(const Duration(milliseconds: 50));
+            }
+          }
+        },
+      );
     });
 
     group('Error Handling and Resilience', () {
@@ -480,32 +652,42 @@ void main() {
         await tempFile.writeAsBytes([1, 2, 3, 4, 5]);
 
         // Override the charts directory to point to our temp directory
-        when(mockStorageService.getChartsDirectory())
-            .thenAnswer((_) async => tempDir);
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenAnswer((_) async => tempDir);
 
         // Setup multiple calls - first few fail, then succeeds
         var callCount = 0;
-        when(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress')))
-            .thenAnswer((_) async {
-              callCount++;
-              if (callCount <= 2) {
-                throw DioException(
-                  requestOptions: RequestOptions(path: url),
-                  type: DioExceptionType.connectionTimeout,
-                );
-              }
-              // Third call succeeds - no throw
-            });
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenAnswer((_) async {
+          callCount++;
+          if (callCount <= 2) {
+            throw DioException(
+              requestOptions: RequestOptions(path: url),
+              type: DioExceptionType.connectionTimeout,
+            );
+          }
+          // Third call succeeds - no throw
+        });
 
         // Act
         await downloadService.downloadChart(chartId, url);
 
         // Assert
-        verify(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'))).called(3);
+        verify(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).called(3);
 
         // Cleanup
         await tempDir.delete(recursive: true);
@@ -517,8 +699,9 @@ void main() {
         const url = 'http://example.com/chart1.zip';
         networkSuitable = true;
 
-    when(mockStorageService.getChartsDirectory())
-      .thenThrow(const FileSystemException('Storage unavailable'));
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenThrow(const FileSystemException('Storage unavailable'));
 
         // Act & Assert (async)
         await expectLater(
@@ -537,26 +720,32 @@ void main() {
         // Start a download
         final inProgress = Completer<void>();
         final unblock = Completer<void>();
-        when(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress')))
-            .thenAnswer((_) async {
-              // Signal that the download has started so the test can proceed deterministically.
-              if (!inProgress.isCompleted) inProgress.complete();
-              // Wait until test explicitly allows completion (no real-time sleep).
-              await unblock.future;
-            });
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenAnswer((_) async {
+          // Signal that the download has started so the test can proceed deterministically.
+          if (!inProgress.isCompleted) inProgress.complete();
+          // Wait until test explicitly allows completion (no real-time sleep).
+          await unblock.future;
+        });
 
-  final downloadFuture = downloadService.downloadChart(chartId, url).catchError((_) {
-    // Disposal may trigger an AppError(storage) since file not finalized; this is acceptable.
-  });
-  // Ensure the mocked download actually started before disposing (eliminates race conditions).
-  await inProgress.future;
+        final downloadFuture = downloadService
+            .downloadChart(chartId, url)
+            .catchError((_) {
+              // Disposal may trigger an AppError(storage) since file not finalized; this is acceptable.
+            });
+        // Ensure the mocked download actually started before disposing (eliminates race conditions).
+        await inProgress.future;
 
         // Act
-  downloadService.dispose();
-  // Allow the mocked download to finish after disposal logic executes.
-  unblock.complete();
+        downloadService.dispose();
+        // Allow the mocked download to finish after disposal logic executes.
+        unblock.complete();
 
         // Assert - future should complete (cancellation benign in mock implementation)
         await downloadFuture;

@@ -7,7 +7,8 @@ class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   // Global navigation key to access navigator from anywhere
-  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
 
   @override
   Widget build(BuildContext context) {
@@ -56,10 +57,7 @@ class _AppContent extends StatelessWidget {
           final routeName = settings.name ?? '/';
           final routeBuilder = AppRoutes.routes[routeName];
           if (routeBuilder != null) {
-            return MaterialPageRoute(
-              builder: routeBuilder,
-              settings: settings,
-            );
+            return MaterialPageRoute(builder: routeBuilder, settings: settings);
           }
           // Default to home if route not found
           return MaterialPageRoute(

@@ -28,7 +28,10 @@ class MacosNativeMenuBar extends StatelessWidget {
           menus: [
             PlatformMenuItem(
               label: 'New Chart',
-              shortcut: const SingleActivator(LogicalKeyboardKey.keyN, meta: true),
+              shortcut: const SingleActivator(
+                LogicalKeyboardKey.keyN,
+                meta: true,
+              ),
               onSelected: () {
                 if (onNewChart != null) {
                   onNewChart!();
@@ -39,7 +42,10 @@ class MacosNativeMenuBar extends StatelessWidget {
             ),
             PlatformMenuItem(
               label: 'Open Chart',
-              shortcut: const SingleActivator(LogicalKeyboardKey.keyO, meta: true),
+              shortcut: const SingleActivator(
+                LogicalKeyboardKey.keyO,
+                meta: true,
+              ),
               onSelected: () {
                 if (onOpenChart != null) {
                   onOpenChart!();
@@ -52,7 +58,11 @@ class MacosNativeMenuBar extends StatelessWidget {
               label: 'Import GRIB Data',
               onSelected: () {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Import GRIB Data functionality coming soon!')),
+                  const SnackBar(
+                    content: Text(
+                      'Import GRIB Data functionality coming soon!',
+                    ),
+                  ),
                 );
               },
             ),

@@ -73,10 +73,13 @@ void main() {
         expect(feature.geometryType, equals(S57GeometryType.line));
         expect(feature.coordinates, hasLength(2));
         expect(feature.label, equals('Test Depth Area')); // Uses OBJNAM
-        
+
         // Check decoded attributes
         expect(feature.attributes['DRVAL1'], equals(10.5)); // Decoded as float
-        expect(feature.attributes['OBJNAM'], equals('Test Depth Area')); // Decoded as string
+        expect(
+          feature.attributes['OBJNAM'],
+          equals('Test Depth Area'),
+        ); // Decoded as string
       });
 
       test('should build feature with enum attributes', () {
@@ -101,7 +104,7 @@ void main() {
         expect(feature, isNotNull);
         expect(feature!.featureType, equals(S57FeatureType.buoyLateral));
         expect(feature.geometryType, equals(S57GeometryType.point));
-        
+
         // Check enum decoding
         final catboy = feature.attributes['CATBOY'] as Map<String, dynamic>;
         expect(catboy['code'], equals('1'));
@@ -148,34 +151,40 @@ void main() {
         // Assert
         expect(feature, isNotNull);
         expect(feature!.attributes['DRVAL1'], equals(15.0)); // Decoded
-        expect(feature.attributes['UNKNOWN_ATTR'], equals('some_value')); // Passed through
+        expect(
+          feature.attributes['UNKNOWN_ATTR'],
+          equals('some_value'),
+        ); // Passed through
       });
 
-      test('should emit validation warnings for missing required attributes', () {
-        // Arrange - DEPARE without required DRVAL1
-        final rawAttributes = {
-          'OBJNAM': ['Depth Area Without Min Depth'],
-        };
-        final coordinates = [
-          const S57Coordinate(latitude: 47.6, longitude: -122.3),
-        ];
+      test(
+        'should emit validation warnings for missing required attributes',
+        () {
+          // Arrange - DEPARE without required DRVAL1
+          final rawAttributes = {
+            'OBJNAM': ['Depth Area Without Min Depth'],
+          };
+          final coordinates = [
+            const S57Coordinate(latitude: 47.6, longitude: -122.3),
+          ];
 
-        // Act
-        final feature = builder.buildFeature(
-          recordId: 111,
-          objectCode: 42, // DEPARE
-          rawAttributes: rawAttributes,
-          coordinates: coordinates,
-        );
+          // Act
+          final feature = builder.buildFeature(
+            recordId: 111,
+            objectCode: 42, // DEPARE
+            rawAttributes: rawAttributes,
+            coordinates: coordinates,
+          );
 
-        // Assert - feature should be built even with validation warnings
-        expect(feature, isNotNull);
-        expect(feature!.attributes, isNot(contains('DRVAL1')));
-        expect(feature.label, equals('Depth Area Without Min Depth'));
-        
-        // Warnings are printed but we can't easily test that in this context
-        // The important thing is that the feature is still created
-      });
+          // Assert - feature should be built even with validation warnings
+          expect(feature, isNotNull);
+          expect(feature!.attributes, isNot(contains('DRVAL1')));
+          expect(feature.label, equals('Depth Area Without Min Depth'));
+
+          // Warnings are printed but we can't easily test that in this context
+          // The important thing is that the feature is still created
+        },
+      );
 
       test('should determine geometry types correctly', () {
         final rawAttributes = <String, List<String>>{};
@@ -254,7 +263,10 @@ void main() {
 
         // Assert
         expect(feature, isNotNull);
-        expect(feature!.geometryType, equals(S57GeometryType.point)); // Default fallback
+        expect(
+          feature!.geometryType,
+          equals(S57GeometryType.point),
+        ); // Default fallback
         expect(feature.coordinates, isEmpty);
       });
     });
@@ -265,10 +277,7 @@ void main() {
       });
 
       test('should throw error when not initialized', () {
-        expect(
-          () => S57FeatureBuilderFactory.create(),
-          throwsStateError,
-        );
+        expect(() => S57FeatureBuilderFactory.create(), throwsStateError);
       });
 
       test('should create builder with custom catalogs', () {

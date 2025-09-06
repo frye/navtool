@@ -28,7 +28,7 @@ abstract class StorageService {
   Future<Directory> getChartsDirectory();
 
   // Navigation-related storage methods
-  
+
   /// Stores a navigation route
   Future<void> storeRoute(NavigationRoute route);
 
@@ -57,7 +57,7 @@ abstract class StorageService {
   Future<List<Waypoint>> getAllWaypoints();
 
   // State-Chart Mapping Operations
-  
+
   /// Store state-to-chart cell mapping
   Future<void> storeStateCellMapping(String stateName, List<String> chartCells);
 

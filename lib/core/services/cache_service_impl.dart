@@ -19,7 +19,7 @@ class CacheServiceImpl implements CacheService {
   final Map<String, Uint8List> _memoryCache = {};
   final Map<String, DateTime> _memoryCacheTimestamps = {};
   int _memoryCacheLimit = 100; // Default limit
-  
+
   // Cache metadata for expiration tracking
   final Map<String, DateTime> _cacheExpirations = {};
 
@@ -35,7 +35,7 @@ class CacheServiceImpl implements CacheService {
   Future<void> store(String key, Uint8List data, {Duration? maxAge}) async {
     try {
       validateKey(key);
-      
+
       if (data.isEmpty) {
         throw AppError.validation('Cache data cannot be empty');
       }
@@ -62,8 +62,8 @@ class CacheServiceImpl implements CacheService {
         'compressedSize': compressionResult.compressedSize,
         'compressionRatio': compressionResult.compressionRatio,
         'createdAt': DateTime.now().millisecondsSinceEpoch,
-        'expiresAt': maxAge != null 
-            ? DateTime.now().add(maxAge).millisecondsSinceEpoch 
+        'expiresAt': maxAge != null
+            ? DateTime.now().add(maxAge).millisecondsSinceEpoch
             : null,
       };
       await metadataFile.writeAsString(jsonEncode(metadata));
@@ -73,7 +73,9 @@ class CacheServiceImpl implements CacheService {
         _cacheExpirations[key] = DateTime.now().add(maxAge);
       }
 
-      _logger.debug('Cache data stored: $key (compressed from ${compressionResult.originalSize} to ${compressionResult.compressedSize} bytes)');
+      _logger.debug(
+        'Cache data stored: $key (compressed from ${compressionResult.originalSize} to ${compressionResult.compressedSize} bytes)',
+      );
     } catch (e) {
       _logger.error('Failed to store cache data: $key', exception: e);
       if (e is AppError) rethrow;
@@ -140,7 +142,7 @@ class CacheServiceImpl implements CacheService {
       // Check disk cache
       final cacheDir = await _fileSystemService.getCacheDirectory();
       final cacheFile = File(path.join(cacheDir.path, '$key.cache'));
-      
+
       if (!await cacheFile.exists()) {
         return false;
       }
@@ -256,7 +258,7 @@ class CacheServiceImpl implements CacheService {
           entryCount++;
           final fileName = path.basenameWithoutExtension(entity.path);
           final key = fileName;
-          
+
           if (await isExpired(key)) {
             expiredCount++;
           }
@@ -300,7 +302,7 @@ class CacheServiceImpl implements CacheService {
 
       final metadataJson = await metadataFile.readAsString();
       final metadata = jsonDecode(metadataJson) as Map<String, dynamic>;
-      
+
       final expiresAt = metadata['expiresAt'] as int?;
       if (expiresAt == null) {
         return false; // No expiration set
@@ -344,7 +346,10 @@ class CacheServiceImpl implements CacheService {
     } catch (e) {
       _logger.error('Failed to set cache expiration: $key', exception: e);
       if (e is AppError) rethrow;
-      throw AppError.storage('Failed to set cache expiration', originalError: e);
+      throw AppError.storage(
+        'Failed to set cache expiration',
+        originalError: e,
+      );
     }
   }
 
@@ -369,7 +374,8 @@ class CacheServiceImpl implements CacheService {
     validateKey(key);
 
     // Implement LRU eviction if limit exceeded
-    if (_memoryCache.length >= _memoryCacheLimit && !_memoryCache.containsKey(key)) {
+    if (_memoryCache.length >= _memoryCacheLimit &&
+        !_memoryCache.containsKey(key)) {
       _evictOldestFromMemory();
     }
 
@@ -412,14 +418,14 @@ class CacheServiceImpl implements CacheService {
     if (maxEntries <= 0) {
       throw ArgumentError('Memory cache limit must be positive');
     }
-    
+
     _memoryCacheLimit = maxEntries;
-    
+
     // Evict entries if current size exceeds new limit
     while (_memoryCache.length > _memoryCacheLimit) {
       _evictOldestFromMemory();
     }
-    
+
     _logger.debug('Memory cache limit set to: $maxEntries');
   }
 

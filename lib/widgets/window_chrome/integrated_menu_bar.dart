@@ -41,15 +41,19 @@ class _IntegratedMenuBarState extends State<IntegratedMenuBar> {
       MenuDefinition('Tools', 'T', _getActionsForMenu('Tools')),
       MenuDefinition('Help', 'H', _getActionsForMenu('Help')),
     ];
-    
+
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: menus.map((menu) => _MenuButton(
-        menu: menu,
-        isOpen: _openMenuTitle == menu.title,
-        onToggle: _toggleMenu,
-        onClose: _closeMenu,
-      )).toList(),
+      children: menus
+          .map(
+            (menu) => _MenuButton(
+              menu: menu,
+              isOpen: _openMenuTitle == menu.title,
+              onToggle: _toggleMenu,
+              onClose: _closeMenu,
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -58,44 +62,70 @@ class _IntegratedMenuBarState extends State<IntegratedMenuBar> {
       case 'File':
         return [
           MenuAction('New Chart', Icons.add, 'Ctrl+N', (context) {
-            logger.info('New Chart selected - navigating to chart', context: 'Menu.File');
+            logger.info(
+              'New Chart selected - navigating to chart',
+              context: 'Menu.File',
+            );
             try {
               MyApp.navigatorKey.currentState?.pushNamed('/chart');
             } catch (e) {
-              logger.error('Failed to navigate', context: 'Menu.File', exception: e);
+              logger.error(
+                'Failed to navigate',
+                context: 'Menu.File',
+                exception: e,
+              );
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('New Chart - Navigation functionality needs fixing')),
+                const SnackBar(
+                  content: Text(
+                    'New Chart - Navigation functionality needs fixing',
+                  ),
+                ),
               );
             }
           }),
           MenuAction('Open', Icons.folder_open, 'Ctrl+O', (context) {
-            logger.info('Open selected - navigating to chart', context: 'Menu.File');
+            logger.info(
+              'Open selected - navigating to chart',
+              context: 'Menu.File',
+            );
             try {
               MyApp.navigatorKey.currentState?.pushNamed('/chart');
             } catch (e) {
-              logger.error('Failed to navigate', context: 'Menu.File', exception: e);
+              logger.error(
+                'Failed to navigate',
+                context: 'Menu.File',
+                exception: e,
+              );
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Open - Navigation functionality needs fixing')),
+                const SnackBar(
+                  content: Text('Open - Navigation functionality needs fixing'),
+                ),
               );
             }
           }),
           MenuAction('Import', Icons.file_upload, '', (context) {
             logger.info('Import selected', context: 'Menu.File');
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Import functionality coming soon!')),
+              const SnackBar(
+                content: Text('Import functionality coming soon!'),
+              ),
             );
           }),
           MenuAction('Export', Icons.file_download, '', (context) {
             logger.info('Export selected', context: 'Menu.File');
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Export functionality coming soon!')),
+              const SnackBar(
+                content: Text('Export functionality coming soon!'),
+              ),
             );
           }),
           MenuAction.separator(),
           MenuAction('Recent Files', Icons.history, '', (context) {
             logger.info('Recent Files selected', context: 'Menu.File');
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Recent files functionality coming soon!')),
+              const SnackBar(
+                content: Text('Recent files functionality coming soon!'),
+              ),
             );
           }),
           MenuAction.separator(),
@@ -140,7 +170,9 @@ class _IntegratedMenuBarState extends State<IntegratedMenuBar> {
           MenuAction('Preferences', Icons.settings, 'Ctrl+,', (context) {
             logger.info('Preferences selected', context: 'Menu.Edit');
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Preferences functionality coming soon!')),
+              const SnackBar(
+                content: Text('Preferences functionality coming soon!'),
+              ),
             );
           }),
         ];
@@ -161,7 +193,9 @@ class _IntegratedMenuBarState extends State<IntegratedMenuBar> {
           MenuAction('Reset Zoom', Icons.zoom_out_map, 'Ctrl+0', (context) {
             logger.info('Reset Zoom selected', context: 'Menu.View');
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Reset zoom functionality coming soon!')),
+              const SnackBar(
+                content: Text('Reset zoom functionality coming soon!'),
+              ),
             );
           }),
           MenuAction.separator(),
@@ -178,19 +212,25 @@ class _IntegratedMenuBarState extends State<IntegratedMenuBar> {
           MenuAction('Chart Library', Icons.map, '', (context) {
             logger.info('Chart Library selected', context: 'Menu.Tools');
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Chart library functionality coming soon!')),
+              const SnackBar(
+                content: Text('Chart library functionality coming soon!'),
+              ),
             );
           }),
           MenuAction('GPS Settings', Icons.gps_fixed, '', (context) {
             logger.info('GPS Settings selected', context: 'Menu.Tools');
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('GPS settings functionality coming soon!')),
+              const SnackBar(
+                content: Text('GPS settings functionality coming soon!'),
+              ),
             );
           }),
           MenuAction('Navigation Tools', Icons.navigation, '', (context) {
             logger.info('Navigation Tools selected', context: 'Menu.Tools');
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Navigation tools functionality coming soon!')),
+              const SnackBar(
+                content: Text('Navigation tools functionality coming soon!'),
+              ),
             );
           }),
         ];
@@ -199,11 +239,16 @@ class _IntegratedMenuBarState extends State<IntegratedMenuBar> {
           MenuAction('Documentation', Icons.help, 'F1', (context) {
             logger.info('Documentation selected', context: 'Menu.Help');
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Documentation functionality coming soon!')),
+              const SnackBar(
+                content: Text('Documentation functionality coming soon!'),
+              ),
             );
           }),
           MenuAction('About NavTool', Icons.info, '', (context) {
-            logger.info('About NavTool selected - showing dialog', context: 'Menu.Help');
+            logger.info(
+              'About NavTool selected - showing dialog',
+              context: 'Menu.Help',
+            );
             // Use the global navigator key to access the root navigator
             try {
               final navigatorState = MyApp.navigatorKey.currentState;
@@ -215,21 +260,35 @@ class _IntegratedMenuBarState extends State<IntegratedMenuBar> {
               } else {
                 // Fallback to showing a snackbar
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('About NavTool - Dialog functionality needs fixing')),
+                  const SnackBar(
+                    content: Text(
+                      'About NavTool - Dialog functionality needs fixing',
+                    ),
+                  ),
                 );
               }
             } catch (e) {
-              logger.error('Failed to show dialog', context: 'Menu.Help', exception: e);
+              logger.error(
+                'Failed to show dialog',
+                context: 'Menu.Help',
+                exception: e,
+              );
               // Fallback to showing a snackbar
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('About NavTool - Dialog functionality needs fixing')),
+                const SnackBar(
+                  content: Text(
+                    'About NavTool - Dialog functionality needs fixing',
+                  ),
+                ),
               );
             }
           }),
           MenuAction('Check for Updates', Icons.system_update, '', (context) {
             logger.info('Check for Updates selected', context: 'Menu.Help');
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Update check functionality coming soon!')),
+              const SnackBar(
+                content: Text('Update check functionality coming soon!'),
+              ),
             );
           }),
         ];
@@ -287,19 +346,25 @@ class _MenuButtonState extends State<_MenuButton> {
       child: GestureDetector(
         key: _menuKey,
         onTap: () {
-          logger.debug('Menu button clicked: ${widget.menu.title}', context: 'Menu.UI');
+          logger.debug(
+            'Menu button clicked: ${widget.menu.title}',
+            context: 'Menu.UI',
+          );
           widget.onToggle(widget.menu.title, _menuKey);
         },
         onPanStart: (_) {
           // Consume pan events to prevent window dragging
-          logger.debug('Pan start consumed by menu button: ${widget.menu.title}', context: 'Menu.UI');
+          logger.debug(
+            'Pan start consumed by menu button: ${widget.menu.title}',
+            context: 'Menu.UI',
+          );
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
           decoration: BoxDecoration(
-      color: (_isHovered || widget.isOpen)
-        ? Colors.grey.withValues(alpha: 0.2)
-        : Colors.transparent,
+            color: (_isHovered || widget.isOpen)
+                ? Colors.grey.withValues(alpha: 0.2)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(3.0),
           ),
           child: Text(
@@ -317,7 +382,8 @@ class _MenuButtonState extends State<_MenuButton> {
   void _showDropdown() {
     if (_overlayEntry != null) return;
 
-    final RenderBox? renderBox = _menuKey.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? renderBox =
+        _menuKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
 
     final offset = renderBox.localToGlobal(Offset.zero);
@@ -372,7 +438,10 @@ class _MenuButtonState extends State<_MenuButton> {
   Widget _buildMenuItem(MenuAction action) {
     return InkWell(
       onTap: () {
-        logger.debug('Menu action selected: ${action.title}', context: 'Menu.Action');
+        logger.debug(
+          'Menu action selected: ${action.title}',
+          context: 'Menu.Action',
+        );
         widget.onClose();
         // Execute the action using the global navigator context
         final navigatorState = MyApp.navigatorKey.currentState;
@@ -391,10 +460,7 @@ class _MenuButtonState extends State<_MenuButton> {
               const SizedBox(width: 16),
               Text(
                 action.shortcut,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey[600],
-                ),
+                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
               ),
             ],
           ],
@@ -422,12 +488,12 @@ class MenuAction {
   final bool isSeparator;
 
   MenuAction(this.title, this.icon, this.shortcut, this.onPressed)
-      : isSeparator = false;
+    : isSeparator = false;
 
   MenuAction.separator()
-      : title = '',
-        icon = null,
-        shortcut = '',
-        onPressed = ((context) {}),
-        isSeparator = true;
+    : title = '',
+      icon = null,
+      shortcut = '',
+      onPressed = ((context) {}),
+      isSeparator = true;
 }

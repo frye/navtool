@@ -50,30 +50,38 @@ void main() {
       mockLogger = MockAppLogger();
 
       // GPS Service mocks
-      when(mockGpsService.getCurrentPosition()).thenAnswer((_) async => 
-        GpsPosition(
+      when(mockGpsService.getCurrentPosition()).thenAnswer(
+        (_) async => GpsPosition(
           latitude: 37.7749,
           longitude: -122.4194,
           accuracy: 5.0,
           timestamp: DateTime.now(),
-        )
+        ),
       );
       when(mockGpsService.isLocationEnabled()).thenAnswer((_) async => true);
-      when(mockGpsService.checkLocationPermission()).thenAnswer((_) async => true);
+      when(
+        mockGpsService.checkLocationPermission(),
+      ).thenAnswer((_) async => true);
 
       // Storage Service mocks
       when(mockStorageService.storeChart(any, any)).thenAnswer((_) async {});
-      when(mockStorageService.getStorageInfo()).thenAnswer((_) async => <String, dynamic>{});
+      when(
+        mockStorageService.getStorageInfo(),
+      ).thenAnswer((_) async => <String, dynamic>{});
 
       // Download Service mocks
-      when(mockDownloadService.downloadChart(any, any)).thenAnswer((_) async {});
+      when(
+        mockDownloadService.downloadChart(any, any),
+      ).thenAnswer((_) async {});
       when(mockDownloadService.getDownloadQueue()).thenAnswer((_) async => []);
 
       // Chart Service mocks
       when(mockChartService.getAvailableCharts()).thenAnswer((_) async => []);
 
       // Settings Service mocks - using actual methods
-      when(mockSettingsService.getSetting(any)).thenAnswer((_) async => 'light');
+      when(
+        mockSettingsService.getSetting(any),
+      ).thenAnswer((_) async => 'light');
 
       // Logger mocks
       when(mockLogger.info(any)).thenReturn(null);
@@ -98,7 +106,9 @@ void main() {
     }
 
     group('Basic App Functionality', () {
-      testWidgets('should initialize and show home screen', (WidgetTester tester) async {
+      testWidgets('should initialize and show home screen', (
+        WidgetTester tester,
+      ) async {
         // Act
         await tester.pumpWidget(createTestApp());
         await tester.pumpAndSettle();
@@ -107,7 +117,9 @@ void main() {
         expect(find.byType(HomeScreen), findsOneWidget);
       });
 
-      testWidgets('should handle basic chart loading', (WidgetTester tester) async {
+      testWidgets('should handle basic chart loading', (
+        WidgetTester tester,
+      ) async {
         // Arrange
         final testChart = Chart(
           id: 'test_chart',
@@ -123,16 +135,18 @@ void main() {
           state: 'CA',
           type: ChartType.harbor,
         );
-        
-        when(mockChartService.getAvailableCharts()).thenAnswer((_) async => [testChart]);
-        
+
+        when(
+          mockChartService.getAvailableCharts(),
+        ).thenAnswer((_) async => [testChart]);
+
         // Act
         await tester.pumpWidget(createTestApp());
         await tester.pumpAndSettle();
-        
+
         // Assert
         expect(find.byType(HomeScreen), findsOneWidget);
-        
+
         // Note: Not verifying service calls since the app might not call them during initial load
       });
     });

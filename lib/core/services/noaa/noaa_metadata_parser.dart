@@ -25,9 +25,13 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
   NoaaMetadataParserImpl({required AppLogger logger}) : _logger = logger;
 
   @override
-  Future<List<Chart>> parseGeoJsonToCharts(Map<String, dynamic> geoJsonData) async {
+  Future<List<Chart>> parseGeoJsonToCharts(
+    Map<String, dynamic> geoJsonData,
+  ) async {
     if (geoJsonData['type'] != 'FeatureCollection') {
-      throw MetadataParsingException('Invalid GeoJSON: Expected FeatureCollection');
+      throw MetadataParsingException(
+        'Invalid GeoJSON: Expected FeatureCollection',
+      );
     }
 
     final features = geoJsonData['features'] as List<dynamic>? ?? [];
@@ -39,17 +43,22 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
         final geometry = feature['geometry'] as Map<String, dynamic>;
 
         if (!validateRequiredProperties(properties)) {
-          _logger.warning('Skipping chart feature with missing required properties: ${properties['CHART']}');
+          _logger.warning(
+            'Skipping chart feature with missing required properties: ${properties['CHART']}',
+          );
           continue;
         }
 
-        if (geometry['type'] != 'Polygon' && geometry['type'] != 'MultiPolygon') {
-          _logger.warning('Skipping chart feature with invalid geometry: ${properties['CHART']}');
+        if (geometry['type'] != 'Polygon' &&
+            geometry['type'] != 'MultiPolygon') {
+          _logger.warning(
+            'Skipping chart feature with invalid geometry: ${properties['CHART']}',
+          );
           continue;
         }
 
         final bounds = extractBoundsFromGeometry(geometry);
-        
+
         // Parse date with error handling
         DateTime lastUpdate;
         try {
@@ -67,7 +76,9 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
           try {
             edition = int.parse(properties['EDITION_NUM'].toString());
           } catch (e) {
-            _logger.warning('Invalid edition number for chart ${properties['CHART']}: ${properties['EDITION_NUM']}');
+            _logger.warning(
+              'Invalid edition number for chart ${properties['CHART']}: ${properties['EDITION_NUM']}',
+            );
           }
         }
 
@@ -77,7 +88,9 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
           try {
             updateNumber = int.parse(properties['UPDATE_NUM'].toString());
           } catch (e) {
-            _logger.warning('Invalid update number for chart ${properties['CHART']}: ${properties['UPDATE_NUM']}');
+            _logger.warning(
+              'Invalid update number for chart ${properties['CHART']}: ${properties['UPDATE_NUM']}',
+            );
           }
         }
 
@@ -152,7 +165,7 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
         for (final coord in ring) {
           final lng = (coord[0] as num).toDouble();
           final lat = (coord[1] as num).toDouble();
-          
+
           minLat = lat < minLat ? lat : minLat;
           maxLat = lat > maxLat ? lat : maxLat;
           minLng = lng < minLng ? lng : minLng;
@@ -164,7 +177,7 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
           for (final coord in ring) {
             final lng = (coord[0] as num).toDouble();
             final lat = (coord[1] as num).toDouble();
-            
+
             minLat = lat < minLat ? lat : minLat;
             maxLat = lat > maxLat ? lat : maxLat;
             minLng = lng < minLng ? lng : minLng;
@@ -174,7 +187,7 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
       } else {
         throw InvalidGeometryException(
           'Unsupported geometry type: $type',
-          data: {'geometryType': type}
+          data: {'geometryType': type},
         );
       }
 
@@ -190,22 +203,29 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
       }
       throw InvalidGeometryException(
         'Failed to extract bounds from geometry: $error',
-        data: {'geometryType': type, 'originalError': error.toString()}
+        data: {'geometryType': type, 'originalError': error.toString()},
       );
     }
   }
 
   @override
   bool validateRequiredProperties(Map<String, dynamic> properties) {
-    final requiredFields = ['CHART', 'TITLE', 'SCALE', 'LAST_UPDATE', 'STATE', 'USAGE'];
-    
+    final requiredFields = [
+      'CHART',
+      'TITLE',
+      'SCALE',
+      'LAST_UPDATE',
+      'STATE',
+      'USAGE',
+    ];
+
     for (final field in requiredFields) {
       final value = properties[field];
       if (value == null || (value is String && value.trim().isEmpty)) {
         return false;
       }
     }
-    
+
     return true;
   }
 
@@ -228,7 +248,7 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
   /// Builds metadata map from NOAA properties
   Map<String, dynamic> _buildMetadataMap(Map<String, dynamic> properties) {
     final metadata = <String, dynamic>{};
-    
+
     // Add all NOAA-specific fields to metadata
     final metadataFields = [
       'CELL_NAME',
@@ -238,9 +258,9 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
       'ISSUE_DATE',
       'SOURCE_DATE_STRING',
       'EDITION_DATE',
-      'RELEASE_DATE'
+      'RELEASE_DATE',
     ];
-    
+
     for (final field in metadataFields) {
       if (properties.containsKey(field) && properties[field] != null) {
         // Convert field names to camelCase for consistency
@@ -248,7 +268,7 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
         metadata[camelCaseField] = properties[field];
       }
     }
-    
+
     return metadata;
   }
 
@@ -256,9 +276,14 @@ class NoaaMetadataParserImpl implements NoaaMetadataParser {
   String _toCamelCase(String snakeCase) {
     final parts = snakeCase.toLowerCase().split('_');
     if (parts.isEmpty) return snakeCase;
-    
-    return parts[0] + parts.skip(1).map((part) => 
-      part.isEmpty ? '' : part[0].toUpperCase() + part.substring(1)
-    ).join('');
+
+    return parts[0] +
+        parts
+            .skip(1)
+            .map(
+              (part) =>
+                  part.isEmpty ? '' : part[0].toUpperCase() + part.substring(1),
+            )
+            .join('');
   }
 }

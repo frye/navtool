@@ -97,13 +97,13 @@ void main() {
         east: -122.0,
         west: -123.0,
       );
-      
+
       final insidePosition = GpsPosition(
         latitude: 37.5,
         longitude: -122.5,
         timestamp: DateTime.now(),
       );
-      
+
       final outsidePosition = GpsPosition(
         latitude: 39.0,
         longitude: -122.5,
@@ -205,7 +205,7 @@ void main() {
         longitude: -122.4194,
         timestamp: DateTime.now(),
       );
-      
+
       final position2 = GpsPosition(
         latitude: 37.7849, // ~1.1km north
         longitude: -122.4194,
@@ -227,7 +227,7 @@ void main() {
         longitude: -122.4194,
         timestamp: DateTime.now(),
       );
-      
+
       final position2 = GpsPosition(
         latitude: 37.7849, // Due north
         longitude: -122.4194,
@@ -238,7 +238,10 @@ void main() {
       final bearing = position1.bearingTo(position2);
 
       // Assert
-      expect(bearing, closeTo(0.0, 1.0)); // Should be close to 0 degrees (north)
+      expect(
+        bearing,
+        closeTo(0.0, 1.0),
+      ); // Should be close to 0 degrees (north)
     });
 
     test('GpsPosition equality should work correctly', () {
@@ -249,7 +252,7 @@ void main() {
         longitude: -122.4194,
         timestamp: timestamp,
       );
-      
+
       final position2 = GpsPosition(
         latitude: 37.7749,
         longitude: -122.4194,

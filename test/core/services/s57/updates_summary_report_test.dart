@@ -1,5 +1,5 @@
 /// Test for S-57 Update Summary Reporting
-/// 
+///
 /// Tests summary accumulation and reporting functionality
 
 import 'package:flutter_test/flutter_test.dart';
@@ -99,8 +99,14 @@ void main() {
       expect(map['modified'], equals(2));
       expect(map['deleted'], equals(1));
       expect(map['finalRver'], equals(3));
-      expect(map['applied'], equals(['SAMPLE.001', 'SAMPLE.002', 'SAMPLE.003']));
-      expect(map['warnings'], equals(['INSERT_EXISTS: Feature already exists']));
+      expect(
+        map['applied'],
+        equals(['SAMPLE.001', 'SAMPLE.002', 'SAMPLE.003']),
+      );
+      expect(
+        map['warnings'],
+        equals(['INSERT_EXISTS: Feature already exists']),
+      );
     });
 
     test('should have meaningful toString', () {
@@ -129,11 +135,7 @@ void main() {
       expect(foid1, equals('550_12345_1'));
 
       // Test createFoidFromMap
-      final foidData = {
-        'agency': 550,
-        'feature_id': 98765,
-        'subdivision': 2,
-      };
+      final foidData = {'agency': 550, 'feature_id': 98765, 'subdivision': 2};
       final foid2 = FoidHelper.createFoidFromMap(foidData);
       expect(foid2, equals('550_98765_2'));
 
@@ -168,36 +170,56 @@ void main() {
       // .002: Modify F1
       // .003: Insert F4(OBSTRN)
       // Final: F1(modified), F3(unaffected), F4(added)
-      
+
       final summary = UpdateSummary();
-      
+
       // Apply update .001 (delete F2)
       summary.deleted = 1;
       summary.applied.add('SAMPLE.001');
       summary.finalRver = 1;
-      
+
       // Apply update .002 (modify F1)
       summary.modified = 1;
       summary.applied.add('SAMPLE.002');
       summary.finalRver = 2;
-      
+
       // Apply update .003 (insert F4)
       summary.inserted = 1;
       summary.applied.add('SAMPLE.003');
       summary.finalRver = 3;
-      
+
       // Verify expected final state
-      expect(summary.inserted, equals(1), reason: 'Should have inserted 1 feature (F4)');
-      expect(summary.modified, equals(1), reason: 'Should have modified 1 feature (F1)');
-      expect(summary.deleted, equals(1), reason: 'Should have deleted 1 feature (F2)');
-      expect(summary.finalRver, equals(3), reason: 'Final RVER should be 3 from last update');
-      expect(summary.applied, hasLength(3), reason: 'Should have applied 3 updates');
-      
+      expect(
+        summary.inserted,
+        equals(1),
+        reason: 'Should have inserted 1 feature (F4)',
+      );
+      expect(
+        summary.modified,
+        equals(1),
+        reason: 'Should have modified 1 feature (F1)',
+      );
+      expect(
+        summary.deleted,
+        equals(1),
+        reason: 'Should have deleted 1 feature (F2)',
+      );
+      expect(
+        summary.finalRver,
+        equals(3),
+        reason: 'Final RVER should be 3 from last update',
+      );
+      expect(
+        summary.applied,
+        hasLength(3),
+        reason: 'Should have applied 3 updates',
+      );
+
       // Verify the sequence
       expect(summary.applied[0], equals('SAMPLE.001'));
       expect(summary.applied[1], equals('SAMPLE.002'));
       expect(summary.applied[2], equals('SAMPLE.003'));
-      
+
       print('Expected sample sequence summary: $summary');
     });
   });

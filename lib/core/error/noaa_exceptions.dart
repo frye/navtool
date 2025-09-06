@@ -1,5 +1,5 @@
 /// NOAA-specific exception classes for robust API error handling
-/// 
+///
 /// This file defines a comprehensive hierarchy of exceptions for handling
 /// various error scenarios that can occur when communicating with NOAA APIs.
 /// All exceptions include error codes, retry flags, and metadata for debugging.
@@ -15,13 +15,13 @@ class NoaaApiException implements Exception {
 
   /// Human-readable error message
   final String message;
-  
+
   /// Optional error code for programmatic handling
   final String? errorCode;
-  
+
   /// Whether this error can be retried
   final bool isRetryable;
-  
+
   /// Additional metadata for debugging and context
   final Map<String, dynamic>? metadata;
 
@@ -46,15 +46,13 @@ class ChartNotAvailableException extends NoaaApiException {
 
   /// The chart cell name that was not found
   final String chartCellName;
-}/// Exception thrown when there are network connectivity issues
+}
+
+/// Exception thrown when there are network connectivity issues
 class NetworkConnectivityException extends NoaaApiException {
   const NetworkConnectivityException([
     String message = 'No internet connection available',
-  ]) : super(
-        message,
-        errorCode: 'NETWORK_CONNECTIVITY',
-        isRetryable: true,
-      );
+  ]) : super(message, errorCode: 'NETWORK_CONNECTIVITY', isRetryable: true);
 }
 
 /// Exception thrown when API rate limits are exceeded
@@ -63,17 +61,19 @@ class RateLimitExceededException extends NoaaApiException {
     String message = 'Rate limit exceeded for NOAA API requests',
     this.retryAfter,
   }) : super(
-          message,
-          errorCode: 'RATE_LIMIT_EXCEEDED',
-          isRetryable: true,
-          metadata: retryAfter != null
-              ? {'retryAfterSeconds': retryAfter.inSeconds}
-              : null,
-        );
+         message,
+         errorCode: 'RATE_LIMIT_EXCEEDED',
+         isRetryable: true,
+         metadata: retryAfter != null
+             ? {'retryAfterSeconds': retryAfter.inSeconds}
+             : null,
+       );
 
   /// Duration to wait before retrying
   final Duration? retryAfter;
-}/// Exception thrown when chart download operations fail
+}
+
+/// Exception thrown when chart download operations fail
 class ChartDownloadException extends NoaaApiException {
   ChartDownloadException(
     this.chartCellName,
@@ -82,11 +82,11 @@ class ChartDownloadException extends NoaaApiException {
     this.bytesDownloaded,
     this.totalBytes,
   }) : super(
-        message,
-        errorCode: 'CHART_DOWNLOAD_FAILED',
-        isRetryable: isRetryable,
-        metadata: _buildMetadata(chartCellName, bytesDownloaded, totalBytes),
-      );
+         message,
+         errorCode: 'CHART_DOWNLOAD_FAILED',
+         isRetryable: isRetryable,
+         metadata: _buildMetadata(chartCellName, bytesDownloaded, totalBytes),
+       );
 
   /// The chart cell name being downloaded
   final String chartCellName;
@@ -126,13 +126,13 @@ class NoaaServiceUnavailableException extends NoaaApiException {
     String message = 'NOAA service is temporarily unavailable',
     this.httpStatusCode,
   ]) : super(
-        message,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        isRetryable: true,
-        metadata: httpStatusCode != null
-          ? {'httpStatusCode': httpStatusCode}
-          : null,
-      );
+         message,
+         errorCode: 'SERVICE_UNAVAILABLE',
+         isRetryable: true,
+         metadata: httpStatusCode != null
+             ? {'httpStatusCode': httpStatusCode}
+             : null,
+       );
 
   /// HTTP status code if available
   final int? httpStatusCode;

@@ -20,7 +20,7 @@ void main() {
 
       final warnings = collector.warnings;
       expect(warnings, hasLength(1));
-      
+
       final warning = warnings.first;
       expect(warning.code, equals(S57WarningCodes.polygonClosedAuto));
       expect(warning.severity, equals(S57WarningSeverity.info));
@@ -67,9 +67,11 @@ void main() {
       expect(collector.totalWarnings, equals(4));
       expect(collector.infoCount, equals(4));
 
-      final autoCloseWarnings = collector.getWarningsByCode(S57WarningCodes.polygonClosedAuto);
+      final autoCloseWarnings = collector.getWarningsByCode(
+        S57WarningCodes.polygonClosedAuto,
+      );
       expect(autoCloseWarnings, hasLength(4));
-      
+
       expect(autoCloseWarnings[0].featureId, equals('DEPARE_001'));
       expect(autoCloseWarnings[1].featureId, equals('LNDARE_001'));
       expect(autoCloseWarnings[2].featureId, equals('RESARE_001'));
@@ -95,17 +97,20 @@ void main() {
       final polygonContexts = [
         {
           'context': 'Marine area processing',
-          'message': 'DEPARE polygon ring auto-closed during marine area assembly',
+          'message':
+              'DEPARE polygon ring auto-closed during marine area assembly',
           'featureId': 'DEPARE_MARINE_001',
         },
         {
           'context': 'Coastline processing',
-          'message': 'COALNE polygon auto-closed to form complete coastal boundary',
+          'message':
+              'COALNE polygon auto-closed to form complete coastal boundary',
           'featureId': 'COAST_BOUNDARY_001',
         },
         {
           'context': 'Restriction zone',
-          'message': 'RESARE polygon auto-closed for navigation restriction area',
+          'message':
+              'RESARE polygon auto-closed for navigation restriction area',
           'featureId': 'RESTRICTION_ZONE_001',
         },
       ];
@@ -119,7 +124,7 @@ void main() {
       }
 
       expect(collector.totalWarnings, equals(3));
-      
+
       final warnings = collector.warnings;
       expect(warnings[0].message, contains('Marine area processing'));
       expect(warnings[1].message, contains('Coastline processing'));
@@ -135,9 +140,12 @@ void main() {
       collector.info(S57WarningCodes.depthOutOfRange, 'Depth range');
 
       final summary = collector.createSummaryReport();
-      
+
       expect(summary['totalWarnings'], equals(5));
-      expect(summary['warningsByCode'][S57WarningCodes.polygonClosedAuto], equals(3));
+      expect(
+        summary['warningsByCode'][S57WarningCodes.polygonClosedAuto],
+        equals(3),
+      );
       expect(summary['warningsBySeverity']['info'], equals(4));
       expect(summary['warningsBySeverity']['warning'], equals(1));
     });
@@ -145,9 +153,9 @@ void main() {
     test('should log polygon auto-close warnings correctly', () {
       final outputs = <String>[];
       final testLogger = TestLogger(outputs);
-      
+
       final loggedCollector = S57WarningCollector(logger: testLogger);
-      
+
       loggedCollector.info(
         S57WarningCodes.polygonClosedAuto,
         'Area polygon automatically closed during geometry processing',
@@ -159,21 +167,27 @@ void main() {
       expect(outputs.first, contains('INFO:'));
       expect(outputs.first, contains('[POLYGON_CLOSED_AUTO]'));
       expect(outputs.first, contains('automatically closed'));
-      expect(outputs.first, contains('(record:LOG_POLYGON_001, feature:AREA_LOG_001)'));
+      expect(
+        outputs.first,
+        contains('(record:LOG_POLYGON_001, feature:AREA_LOG_001)'),
+      );
     });
 
     test('should handle complex polygon closure scenarios', () {
       final complexScenarios = [
         {
-          'message': 'Multi-ring polygon - outer ring auto-closed, inner rings already closed',
+          'message':
+              'Multi-ring polygon - outer ring auto-closed, inner rings already closed',
           'featureId': 'COMPLEX_MULTI_001',
         },
         {
-          'message': 'Island polygon auto-closed with tolerance 0.0001° due to coordinate precision',
+          'message':
+              'Island polygon auto-closed with tolerance 0.0001° due to coordinate precision',
           'featureId': 'ISLAND_PRECISE_001',
         },
         {
-          'message': 'Self-intersecting polygon auto-closed - may require manual review',
+          'message':
+              'Self-intersecting polygon auto-closed - may require manual review',
           'featureId': 'SELF_INTERSECT_001',
         },
       ];
@@ -187,7 +201,7 @@ void main() {
       }
 
       expect(collector.totalWarnings, equals(3));
-      
+
       final warnings = collector.warnings;
       expect(warnings[0].message, contains('Multi-ring polygon'));
       expect(warnings[1].message, contains('tolerance 0.0001°'));
@@ -209,10 +223,7 @@ void main() {
 
     test('should handle edge cases with polygon auto-closure', () {
       // Test with minimal context
-      collector.info(
-        S57WarningCodes.polygonClosedAuto,
-        'Polygon auto-closed',
-      );
+      collector.info(S57WarningCodes.polygonClosedAuto, 'Polygon auto-closed');
 
       // Test with partial context
       collector.info(
@@ -222,7 +233,7 @@ void main() {
       );
 
       expect(collector.totalWarnings, equals(2));
-      
+
       final warnings = collector.warnings;
       expect(warnings[0].recordId, isNull);
       expect(warnings[0].featureId, isNull);
@@ -246,7 +257,7 @@ void main() {
 
       expect(collectorWithThreshold.totalWarnings, equals(6));
       expect(collectorWithThreshold.isThresholdExceeded, isTrue);
-      
+
       final summary = collectorWithThreshold.createSummaryReport();
       expect(summary['isThresholdExceeded'], isTrue);
       expect(summary['maxWarnings'], equals(5));
@@ -255,23 +266,26 @@ void main() {
     test('should handle polygon auto-closure with file context', () {
       final outputs = <String>[];
       final testLogger = TestLogger(outputs);
-      
+
       final loggedCollector = S57WarningCollector(logger: testLogger);
-      
+
       loggedCollector.startFile('/charts/US5CN11M.000');
-      
+
       loggedCollector.info(
         S57WarningCodes.polygonClosedAuto,
         'Depth area polygon auto-closed',
         featureId: 'DEPARE_FILE_001',
       );
-      
+
       loggedCollector.finishFile('/charts/US5CN11M.000');
 
       expect(outputs, hasLength(3));
       expect(outputs[0], contains('Starting: /charts/US5CN11M.000'));
       expect(outputs[1], contains('[POLYGON_CLOSED_AUTO]'));
-      expect(outputs[2], contains('Finished: /charts/US5CN11M.000 (1 warnings)'));
+      expect(
+        outputs[2],
+        contains('Finished: /charts/US5CN11M.000 (1 warnings)'),
+      );
     });
   });
 }
@@ -286,7 +300,9 @@ class TestLogger implements S57ParseLogger {
   void onWarning(S57ParseWarning warning) {
     final severityPrefix = _getSeverityPrefix(warning.severity);
     final contextSuffix = _getContextSuffix(warning);
-    outputs.add('$severityPrefix[${warning.code}] ${warning.message}$contextSuffix');
+    outputs.add(
+      '$severityPrefix[${warning.code}] ${warning.message}$contextSuffix',
+    );
   }
 
   @override

@@ -41,7 +41,7 @@ void main() {
               const LatLng(37.7799, -122.4244),
               const LatLng(37.7899, -122.4344),
               const LatLng(37.7699, -122.4144),
-            ]
+            ],
           ],
         ),
       ];

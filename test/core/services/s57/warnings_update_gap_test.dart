@@ -19,7 +19,7 @@ void main() {
 
       final warnings = collector.warnings;
       expect(warnings, hasLength(1));
-      
+
       final warning = warnings.first;
       expect(warning.code, equals(S57WarningCodes.updateGap));
       expect(warning.severity, equals(S57WarningSeverity.error));
@@ -62,9 +62,11 @@ void main() {
       expect(collector.errorCount, equals(3));
       expect(collector.hasErrors, isTrue);
 
-      final gapWarnings = collector.getWarningsByCode(S57WarningCodes.updateGap);
+      final gapWarnings = collector.getWarningsByCode(
+        S57WarningCodes.updateGap,
+      );
       expect(gapWarnings, hasLength(3));
-      
+
       expect(gapWarnings[0].message, contains('missing files: 002'));
       expect(gapWarnings[1].message, contains('missing files: 004,005'));
       expect(gapWarnings[2].message, contains('missing files: 009'));
@@ -98,36 +100,51 @@ void main() {
       expect(warning.message, contains('without intermediate updates 6,7'));
     });
 
-    test('should escalate to exception in strict mode with context preservation', () {
-      final strictCollector = S57WarningCollector(
-        options: const S57ParseOptions(strictMode: true),
-      );
-
-      strictCollector.warning(S57WarningCodes.missingRequiredAttr, 'Some attribute missing');
-
-      try {
-        strictCollector.error(
-          S57WarningCodes.updateGap,
-          'Fatal update gap - cannot proceed with incomplete sequence',
-          recordId: 'FATAL_GAP_001',
+    test(
+      'should escalate to exception in strict mode with context preservation',
+      () {
+        final strictCollector = S57WarningCollector(
+          options: const S57ParseOptions(strictMode: true),
         );
-        fail('Expected S57StrictModeException');
-      } on S57StrictModeException catch (e) {
-        expect(e.triggeredBy.code, equals(S57WarningCodes.updateGap));
-        expect(e.triggeredBy.message, contains('Fatal update gap'));
-        expect(e.triggeredBy.recordId, equals('FATAL_GAP_001'));
-        
-        // Should preserve previous warnings
-        expect(e.allWarnings, hasLength(2));
-        expect(e.allWarnings[0].code, equals(S57WarningCodes.missingRequiredAttr));
-        expect(e.allWarnings[1].code, equals(S57WarningCodes.updateGap));
-      }
-    });
+
+        strictCollector.warning(
+          S57WarningCodes.missingRequiredAttr,
+          'Some attribute missing',
+        );
+
+        try {
+          strictCollector.error(
+            S57WarningCodes.updateGap,
+            'Fatal update gap - cannot proceed with incomplete sequence',
+            recordId: 'FATAL_GAP_001',
+          );
+          fail('Expected S57StrictModeException');
+        } on S57StrictModeException catch (e) {
+          expect(e.triggeredBy.code, equals(S57WarningCodes.updateGap));
+          expect(e.triggeredBy.message, contains('Fatal update gap'));
+          expect(e.triggeredBy.recordId, equals('FATAL_GAP_001'));
+
+          // Should preserve previous warnings
+          expect(e.allWarnings, hasLength(2));
+          expect(
+            e.allWarnings[0].code,
+            equals(S57WarningCodes.missingRequiredAttr),
+          );
+          expect(e.allWarnings[1].code, equals(S57WarningCodes.updateGap));
+        }
+      },
+    );
 
     test('should handle different update file naming patterns', () {
       final namingPatterns = [
-        {'pattern': 'Sequential', 'gap': 'UP001.001 to UP001.003 missing UP001.002'},
-        {'pattern': 'Date-based', 'gap': '20230101.000 to 20230103.000 missing 20230102.000'},
+        {
+          'pattern': 'Sequential',
+          'gap': 'UP001.001 to UP001.003 missing UP001.002',
+        },
+        {
+          'pattern': 'Date-based',
+          'gap': '20230101.000 to 20230103.000 missing 20230102.000',
+        },
         {'pattern': 'Version', 'gap': 'v1.0 to v1.2 missing v1.1'},
       ];
 
@@ -140,7 +157,7 @@ void main() {
       }
 
       expect(collector.totalWarnings, equals(3));
-      
+
       final warnings = collector.getWarningsByCode(S57WarningCodes.updateGap);
       expect(warnings[0].message, contains('Sequential update gap'));
       expect(warnings[1].message, contains('Date-based update gap'));
@@ -150,9 +167,9 @@ void main() {
     test('should log update gap errors correctly', () {
       final outputs = <String>[];
       final testLogger = TestLogger(outputs);
-      
+
       final loggedCollector = S57WarningCollector(logger: testLogger);
-      
+
       loggedCollector.error(
         S57WarningCodes.updateGap,
         'Update file sequence broken - missing intermediate files',
@@ -173,10 +190,13 @@ void main() {
       collector.warning(S57WarningCodes.unknownObjCode, 'Unknown warning');
 
       final summary = collector.createSummaryReport();
-      
+
       expect(summary['totalWarnings'], equals(4));
       expect(summary['warningsByCode'][S57WarningCodes.updateGap], equals(2));
-      expect(summary['warningsByCode'][S57WarningCodes.updateRverMismatch], equals(1));
+      expect(
+        summary['warningsByCode'][S57WarningCodes.updateRverMismatch],
+        equals(1),
+      );
       expect(summary['warningsBySeverity']['error'], equals(3));
       expect(summary['warningsBySeverity']['warning'], equals(1));
       expect(summary['hasErrors'], isTrue);
@@ -193,7 +213,10 @@ void main() {
       final warning = collector.warnings.first;
       expect(warning.message, contains('File system scan'));
       expect(warning.message, contains('/charts/updates/'));
-      expect(warning.message, contains('missing files 002.000, 003.000, 005.000'));
+      expect(
+        warning.message,
+        contains('missing files 002.000, 003.000, 005.000'),
+      );
       expect(warning.featureId, equals('CHART_US5CN11M'));
     });
 
@@ -212,10 +235,7 @@ void main() {
 
     test('should handle edge cases with update gap detection', () {
       // Test with minimal context
-      collector.error(
-        S57WarningCodes.updateGap,
-        'Update gap detected',
-      );
+      collector.error(S57WarningCodes.updateGap, 'Update gap detected');
 
       // Test with malformed update sequence
       collector.error(
@@ -226,7 +246,7 @@ void main() {
 
       expect(collector.totalWarnings, equals(2));
       expect(collector.errorCount, equals(2));
-      
+
       final warnings = collector.warnings;
       expect(warnings[0].recordId, isNull);
       expect(warnings[0].featureId, isNull);
@@ -245,7 +265,9 @@ class TestLogger implements S57ParseLogger {
   void onWarning(S57ParseWarning warning) {
     final severityPrefix = _getSeverityPrefix(warning.severity);
     final contextSuffix = _getContextSuffix(warning);
-    outputs.add('$severityPrefix[${warning.code}] ${warning.message}$contextSuffix');
+    outputs.add(
+      '$severityPrefix[${warning.code}] ${warning.message}$contextSuffix',
+    );
   }
 
   @override

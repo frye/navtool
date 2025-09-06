@@ -8,14 +8,14 @@ void main() {
   group('ChartScreen Tests', () {
     Widget createTestWidget({String? chartTitle, bool withNavigation = false}) {
       return ProviderScope(
-        child: MaterialApp(
-          home: ChartScreen(chartTitle: chartTitle),
-        ),
+        child: MaterialApp(home: ChartScreen(chartTitle: chartTitle)),
       );
     }
 
     group('Screen Structure and Layout', () {
-      testWidgets('should create ChartScreen with all required components', (WidgetTester tester) async {
+      testWidgets('should create ChartScreen with all required components', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         // Check that the main components are present
@@ -25,20 +25,26 @@ void main() {
         expect(find.byType(ChartWidget), findsOneWidget);
       });
 
-      testWidgets('should have correct app bar title', (WidgetTester tester) async {
+      testWidgets('should have correct app bar title', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         expect(find.text('Marine Chart'), findsOneWidget);
       });
 
-      testWidgets('should use custom chart title when provided', (WidgetTester tester) async {
+      testWidgets('should use custom chart title when provided', (
+        WidgetTester tester,
+      ) async {
         const customTitle = 'San Francisco Bay Chart';
         await tester.pumpWidget(createTestWidget(chartTitle: customTitle));
 
         expect(find.text(customTitle), findsOneWidget);
       });
 
-      testWidgets('should have app bar action buttons', (WidgetTester tester) async {
+      testWidgets('should have app bar action buttons', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         // Should have info and settings buttons
@@ -46,7 +52,9 @@ void main() {
         expect(find.byIcon(Icons.settings), findsOneWidget);
       });
 
-      testWidgets('should display chart status bar', (WidgetTester tester) async {
+      testWidgets('should display chart status bar', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         // Look for chart status indicators
@@ -55,7 +63,9 @@ void main() {
         expect(find.textContaining('features'), findsOneWidget);
       });
 
-      testWidgets('should have floating action buttons', (WidgetTester tester) async {
+      testWidgets('should have floating action buttons', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         // Should have floating action buttons
@@ -74,12 +84,14 @@ void main() {
 
         await tester.tap(infoButton);
         await tester.pumpAndSettle();
-        
+
         // Should show chart info dialog or bottom sheet
         // This would depend on the implementation of _showChartInfo
       });
 
-      testWidgets('should handle settings button tap', (WidgetTester tester) async {
+      testWidgets('should handle settings button tap', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         final settingsButton = find.byIcon(Icons.settings);
@@ -87,11 +99,13 @@ void main() {
 
         await tester.tap(settingsButton);
         await tester.pumpAndSettle();
-        
+
         // Should show settings dialog or navigate to settings
       });
 
-      testWidgets('should handle add waypoint action', (WidgetTester tester) async {
+      testWidgets('should handle add waypoint action', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         final waypointButton = find.byIcon(Icons.add_location);
@@ -101,7 +115,9 @@ void main() {
         await tester.pump();
       });
 
-      testWidgets('should handle measure distance action', (WidgetTester tester) async {
+      testWidgets('should handle measure distance action', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         final measureButton = find.byIcon(Icons.straighten);
@@ -113,7 +129,9 @@ void main() {
     });
 
     group('Chart Information Display', () {
-      testWidgets('should display chart title in status bar', (WidgetTester tester) async {
+      testWidgets('should display chart title in status bar', (
+        WidgetTester tester,
+      ) async {
         const customTitle = 'San Francisco Bay';
         await tester.pumpWidget(createTestWidget(chartTitle: customTitle));
 
@@ -128,7 +146,9 @@ void main() {
         expect(find.textContaining('features'), findsOneWidget);
       });
 
-      testWidgets('should display display mode indicator', (WidgetTester tester) async {
+      testWidgets('should display display mode indicator', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         // Should show day/night mode
@@ -136,7 +156,9 @@ void main() {
         expect(find.text('Day'), findsOneWidget);
       });
 
-      testWidgets('should show chart layers indicator', (WidgetTester tester) async {
+      testWidgets('should show chart layers indicator', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         // Should show layers icon
@@ -145,17 +167,21 @@ void main() {
     });
 
     group('Sample Data and Features', () {
-      testWidgets('should display sample maritime features', (WidgetTester tester) async {
+      testWidgets('should display sample maritime features', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         // Chart widget should be present and rendering features
         expect(find.byType(ChartWidget), findsOneWidget);
-        
+
         // Feature count should be displayed
         expect(find.textContaining('features'), findsOneWidget);
       });
 
-      testWidgets('should show feature information in status bar', (WidgetTester tester) async {
+      testWidgets('should show feature information in status bar', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         // Should display feature count > 0 for sample data
@@ -165,7 +191,9 @@ void main() {
     });
 
     group('Responsive Design', () {
-      testWidgets('should adapt to small screen sizes', (WidgetTester tester) async {
+      testWidgets('should adapt to small screen sizes', (
+        WidgetTester tester,
+      ) async {
         tester.view.physicalSize = const Size(400, 600);
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.resetPhysicalSize);
@@ -177,7 +205,9 @@ void main() {
         expect(find.byType(ChartWidget), findsOneWidget);
       });
 
-      testWidgets('should adapt to large screen sizes', (WidgetTester tester) async {
+      testWidgets('should adapt to large screen sizes', (
+        WidgetTester tester,
+      ) async {
         tester.view.physicalSize = const Size(1200, 800);
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.resetPhysicalSize);
@@ -189,7 +219,9 @@ void main() {
         expect(find.byType(ChartWidget), findsOneWidget);
       });
 
-      testWidgets('should handle landscape orientation', (WidgetTester tester) async {
+      testWidgets('should handle landscape orientation', (
+        WidgetTester tester,
+      ) async {
         tester.view.physicalSize = const Size(800, 480); // Landscape
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.resetPhysicalSize);
@@ -201,7 +233,9 @@ void main() {
         expect(find.byType(ChartWidget), findsOneWidget);
       });
 
-      testWidgets('should handle portrait orientation', (WidgetTester tester) async {
+      testWidgets('should handle portrait orientation', (
+        WidgetTester tester,
+      ) async {
         tester.view.physicalSize = const Size(480, 800); // Portrait
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.resetPhysicalSize);
@@ -215,7 +249,9 @@ void main() {
     });
 
     group('Navigation and App Bar', () {
-      testWidgets('should have back button functionality', (WidgetTester tester) async {
+      testWidgets('should have back button functionality', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(
           ProviderScope(
             child: MaterialApp(
@@ -229,7 +265,7 @@ void main() {
         );
 
         expect(find.byType(ChartScreen), findsOneWidget);
-        
+
         // Should have back button in app bar
         final backButton = find.byTooltip('Back');
         if (backButton.evaluate().isNotEmpty) {
@@ -238,19 +274,23 @@ void main() {
         }
       });
 
-      testWidgets('should display app bar with proper styling', (WidgetTester tester) async {
+      testWidgets('should display app bar with proper styling', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         final appBar = tester.widget<AppBar>(find.byType(AppBar));
         expect(appBar.title, isA<Text>());
-        
+
         final titleText = appBar.title as Text;
         expect(titleText.data, 'Marine Chart');
       });
     });
 
     group('Error Handling and Edge Cases', () {
-      testWidgets('should handle empty chart data gracefully', (WidgetTester tester) async {
+      testWidgets('should handle empty chart data gracefully', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         // Even with potential empty data, basic structure should exist
@@ -259,7 +299,9 @@ void main() {
         expect(find.text('Marine Chart'), findsOneWidget);
       });
 
-      testWidgets('should maintain state during rebuilds', (WidgetTester tester) async {
+      testWidgets('should maintain state during rebuilds', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         // Initial state
@@ -273,14 +315,17 @@ void main() {
         expect(find.byType(ChartWidget), findsOneWidget);
       });
 
-      testWidgets('should handle rapid control interactions', (WidgetTester tester) async {
+      testWidgets('should handle rapid control interactions', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         // Test rapid interactions with floating action buttons
         final waypointButton = find.byIcon(Icons.add_location);
         final measureButton = find.byIcon(Icons.straighten);
 
-        if (waypointButton.evaluate().isNotEmpty && measureButton.evaluate().isNotEmpty) {
+        if (waypointButton.evaluate().isNotEmpty &&
+            measureButton.evaluate().isNotEmpty) {
           for (int i = 0; i < 3; i++) {
             await tester.tap(waypointButton);
             await tester.pump();
@@ -296,7 +341,9 @@ void main() {
     });
 
     group('State Management', () {
-      testWidgets('should maintain chart state correctly', (WidgetTester tester) async {
+      testWidgets('should maintain chart state correctly', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         // Chart should maintain its state
@@ -304,7 +351,9 @@ void main() {
         expect(find.textContaining('features'), findsOneWidget);
       });
 
-      testWidgets('should handle display mode changes', (WidgetTester tester) async {
+      testWidgets('should handle display mode changes', (
+        WidgetTester tester,
+      ) async {
         await tester.pumpWidget(createTestWidget());
 
         // Should start in day mode

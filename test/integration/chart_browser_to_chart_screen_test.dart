@@ -28,20 +28,29 @@ class FakeDiscoveryService implements NoaaChartDiscoveryService {
     // Debug output to help diagnose integration test issues
     // (Will appear in test logs; harmless in production builds.)
     // ignore: avoid_print
-    print('[FakeDiscoveryService] discoverChartsByState("$state") returning ${stateCharts.length} charts');
+    print(
+      '[FakeDiscoveryService] discoverChartsByState("$state") returning ${stateCharts.length} charts',
+    );
     return stateCharts;
   }
 
   @override
-  Future<List<Chart>> discoverChartsByLocation(GpsPosition position) async => locationCharts;
+  Future<List<Chart>> discoverChartsByLocation(GpsPosition position) async =>
+      locationCharts;
 
   @override
-  Future<List<Chart>> searchCharts(String query, {Map<String, String>? filters}) async => searchChartsResults;
+  Future<List<Chart>> searchCharts(
+    String query, {
+    Map<String, String>? filters,
+  }) async => searchChartsResults;
 
   @override
   Future<Chart?> getChartMetadata(String chartId) async {
     try {
-      return [...stateCharts, ...locationCharts].firstWhere((c) => c.id == chartId);
+      return [
+        ...stateCharts,
+        ...locationCharts,
+      ].firstWhere((c) => c.id == chartId);
     } catch (_) {
       return null;
     }
@@ -83,7 +92,7 @@ class FakeGpsService implements GpsService {
   Future<bool> isLocationEnabled() async => true;
   @override
   Future<GpsSignalQuality> assessSignalQuality(GpsPosition? position) async =>
-    GpsSignalQuality.fromAccuracy(5.0);
+      GpsSignalQuality.fromAccuracy(5.0);
   @override
   Future<void> logPosition(GpsPosition position) async {}
   @override
@@ -97,7 +106,9 @@ class FakeGpsService implements GpsService {
         duration: Duration.zero,
       );
   @override
-  Future<List<GpsSignalQuality>> getSignalQualityTrend(Duration timeWindow) async => [];
+  Future<List<GpsSignalQuality>> getSignalQualityTrend(
+    Duration timeWindow,
+  ) async => [];
   @override
   Future<void> clearPositionHistory() async {}
   @override
@@ -111,7 +122,8 @@ class FakeGpsService implements GpsService {
         period: Duration.zero,
       );
   @override
-  Future<MovementState> getMovementState(Duration analysisWindow) async => const MovementState(
+  Future<MovementState> getMovementState(Duration analysisWindow) async =>
+      const MovementState(
         isStationary: true,
         averageSpeed: 0,
         confidence: 1.0,
@@ -119,13 +131,19 @@ class FakeGpsService implements GpsService {
       );
   @override
   Future<PositionFreshness> getPositionFreshness() async =>
-    PositionFreshness.fromLastUpdate(DateTime.now());
+      PositionFreshness.fromLastUpdate(DateTime.now());
   @override
-  Future<List<GpsPosition>> filterForMarineAccuracy(List<GpsPosition> positions) async => positions;
+  Future<List<GpsPosition>> filterForMarineAccuracy(
+    List<GpsPosition> positions,
+  ) async => positions;
   @override
-  Future<CourseOverGround?> calculateCourseOverGround(Duration timeWindow) async => null;
+  Future<CourseOverGround?> calculateCourseOverGround(
+    Duration timeWindow,
+  ) async => null;
   @override
-  Future<SpeedOverGround?> calculateSpeedOverGround(Duration timeWindow) async => null;
+  Future<SpeedOverGround?> calculateSpeedOverGround(
+    Duration timeWindow,
+  ) async => null;
 }
 
 class FakeLogger implements AppLogger {
@@ -143,9 +161,9 @@ class FakeLogger implements AppLogger {
 
 void main() {
   group('Integration: ChartBrowser -> ChartScreen', () {
-  late FakeDiscoveryService fakeDiscovery;
-  late FakeGpsService fakeGps;
-  late FakeLogger fakeLogger;
+    late FakeDiscoveryService fakeDiscovery;
+    late FakeGpsService fakeGps;
+    late FakeLogger fakeLogger;
 
     setUp(() {
       fakeDiscovery = FakeDiscoveryService();
@@ -154,21 +172,21 @@ void main() {
     });
 
     Chart testChart() => Chart(
-          id: 'US5CA52M',
-          title: 'San Francisco Bay',
-          scale: 25000,
-          bounds: GeographicBounds(
-            north: 37.9,
-            south: 37.7,
-            east: -122.3,
-            west: -122.5,
-          ),
-          lastUpdate: DateTime(2024, 1, 15),
-          state: 'California',
-          type: ChartType.harbor,
-          description: 'Detailed harbor chart of San Francisco Bay',
-          fileSize: 15728640,
-        );
+      id: 'US5CA52M',
+      title: 'San Francisco Bay',
+      scale: 25000,
+      bounds: GeographicBounds(
+        north: 37.9,
+        south: 37.7,
+        east: -122.3,
+        west: -122.5,
+      ),
+      lastUpdate: DateTime(2024, 1, 15),
+      state: 'California',
+      type: ChartType.harbor,
+      description: 'Detailed harbor chart of San Francisco Bay',
+      fileSize: 15728640,
+    );
 
     Widget buildApp() {
       return ProviderScope(
@@ -181,13 +199,20 @@ void main() {
           initialRoute: '/',
           onGenerateRoute: (settings) {
             if (settings.name == '/') {
-              return MaterialPageRoute(builder: (_) => const ChartBrowserScreen());
+              return MaterialPageRoute(
+                builder: (_) => const ChartBrowserScreen(),
+              );
             }
             if (settings.name == '/chart') {
               final args = settings.arguments as Map<String, dynamic>?;
               final chart = args != null ? args['chart'] as Chart? : null;
-              final chartTitle = args != null ? args['chartTitle'] as String? : null;
-              return MaterialPageRoute(builder: (_) => ChartScreen(chart: chart, chartTitle: chartTitle));
+              final chartTitle = args != null
+                  ? args['chartTitle'] as String?
+                  : null;
+              return MaterialPageRoute(
+                builder: (_) =>
+                    ChartScreen(chart: chart, chartTitle: chartTitle),
+              );
             }
             return null;
           },
@@ -195,7 +220,9 @@ void main() {
       );
     }
 
-    testWidgets('tapping a chart card navigates and shows real chart metadata', (tester) async {
+    testWidgets('tapping a chart card navigates and shows real chart metadata', (
+      tester,
+    ) async {
       // Arrange
       final chart = testChart();
       fakeDiscovery.stateCharts = [chart];
@@ -240,13 +267,19 @@ void main() {
       }
       if (chartCardKey.evaluate().isEmpty) {
         debugPrint('Chart card not found by key; dumping widget tree.');
-        debugPrint(tester.element(find.byType(ChartBrowserScreen)).toStringDeep());
+        debugPrint(
+          tester.element(find.byType(ChartBrowserScreen)).toStringDeep(),
+        );
       }
-  expect(chartCardKey, findsOneWidget, reason: 'Chart card for mocked chart should be present');
-  // Ensure the chart card is visible (it may be below the fold due to controls section height)
-  await tester.ensureVisible(chartCardKey);
-  await tester.pump();
-  await tester.tap(chartCardKey, warnIfMissed: false);
+      expect(
+        chartCardKey,
+        findsOneWidget,
+        reason: 'Chart card for mocked chart should be present',
+      );
+      // Ensure the chart card is visible (it may be below the fold due to controls section height)
+      await tester.ensureVisible(chartCardKey);
+      await tester.pump();
+      await tester.tap(chartCardKey, warnIfMissed: false);
       await tester.pumpAndSettle();
 
       // Open info dialog from ChartScreen AppBar
@@ -264,8 +297,8 @@ void main() {
       // Assert chart metadata visible
       expect(find.text('Chart Information'), findsOneWidget);
       expect(find.text('Chart Title:'), findsOneWidget);
-  // Title may appear in multiple widgets (AppBar title + status bar). Ensure at least one.
-  expect(find.text('San Francisco Bay'), findsWidgets);
+      // Title may appear in multiple widgets (AppBar title + status bar). Ensure at least one.
+      expect(find.text('San Francisco Bay'), findsWidgets);
       expect(find.text('Chart ID:'), findsOneWidget);
       expect(find.textContaining('US5CA52M'), findsOneWidget);
       expect(find.text('Scale:'), findsWidgets);

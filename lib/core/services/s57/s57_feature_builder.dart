@@ -1,5 +1,5 @@
 /// S-57 Feature Builder with Object Catalog Integration
-/// 
+///
 /// Builds S-57 features using the new object catalog and attribute services
 /// while maintaining backward compatibility with the existing S57Parser
 
@@ -24,11 +24,13 @@ class S57FeatureBuilder {
   }) {
     // Look up object class in catalog
     final objectClass = _objectCatalog.byCode(objectCode);
-    
+
     // If object class is unknown, try to map to legacy type for compatibility
     S57FeatureType legacyType;
     if (objectClass != null) {
-      legacyType = S57BackwardCompatibilityAdapter.acronymToLegacy(objectClass.acronym);
+      legacyType = S57BackwardCompatibilityAdapter.acronymToLegacy(
+        objectClass.acronym,
+      );
     } else {
       legacyType = S57FeatureType.fromCode(objectCode);
     }
@@ -56,7 +58,11 @@ class S57FeatureBuilder {
     final geometryType = _determineGeometryType(coordinates);
 
     // Generate label using object class name or legacy type
-    final label = _generateFeatureLabel(objectClass, legacyType, decodedAttributes);
+    final label = _generateFeatureLabel(
+      objectClass,
+      legacyType,
+      decodedAttributes,
+    );
 
     return S57Feature(
       recordId: recordId,
@@ -69,7 +75,9 @@ class S57FeatureBuilder {
   }
 
   /// Decode raw attributes using attribute catalog
-  Map<String, Object?> _decodeAttributes(Map<String, List<String>> rawAttributes) {
+  Map<String, Object?> _decodeAttributes(
+    Map<String, List<String>> rawAttributes,
+  ) {
     final decoded = <String, Object?>{};
 
     for (final entry in rawAttributes.entries) {
@@ -80,7 +88,10 @@ class S57FeatureBuilder {
       final attrDef = _attributeCatalog.byAcronym(acronym);
 
       // Decode using catalog
-      final decodedValue = _attributeCatalog.decodeAttribute(attrDef, rawValues);
+      final decodedValue = _attributeCatalog.decodeAttribute(
+        attrDef,
+        rawValues,
+      );
       decoded[acronym] = decodedValue;
     }
 
@@ -98,7 +109,7 @@ class S57FeatureBuilder {
     }
 
     // Check if coordinates form a closed polygon
-    if (coordinates.length >= 3 && 
+    if (coordinates.length >= 3 &&
         coordinates.first.latitude == coordinates.last.latitude &&
         coordinates.first.longitude == coordinates.last.longitude) {
       return S57GeometryType.area;
@@ -167,8 +178,10 @@ class S57FeatureBuilderFactory {
   /// Create a feature builder with initialized catalogs
   static S57FeatureBuilder create() {
     if (_objectCatalog == null || _attributeCatalog == null) {
-      throw StateError('S57FeatureBuilderFactory must be initialized before use. '
-          'Call S57FeatureBuilderFactory.initialize() first.');
+      throw StateError(
+        'S57FeatureBuilderFactory must be initialized before use. '
+        'Call S57FeatureBuilderFactory.initialize() first.',
+      );
     }
     return S57FeatureBuilder(_objectCatalog!, _attributeCatalog!);
   }

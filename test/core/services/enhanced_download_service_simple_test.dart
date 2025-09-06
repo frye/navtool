@@ -16,12 +16,7 @@ import 'package:navtool/core/error/app_error.dart';
 import '../../helpers/download_test_utils.dart';
 
 // Generate mocks for the dependencies
-@GenerateMocks([
-  HttpClientService,
-  StorageService,
-  AppLogger,
-  ErrorHandler,
-])
+@GenerateMocks([HttpClientService, StorageService, AppLogger, ErrorHandler])
 import 'enhanced_download_service_simple_test.mocks.dart';
 
 void main() {
@@ -31,31 +26,32 @@ void main() {
     late MockStorageService mockStorageService;
     late MockAppLogger mockLogger;
     late MockErrorHandler mockErrorHandler;
-    
+
     // Use real temporary directory for file operations
     late Directory tempDirectory;
     late Directory tempChartsDirectory;
-  // Mutable network suitability flag accessible to tests
-  late bool networkSuitable;
+    // Mutable network suitability flag accessible to tests
+    late bool networkSuitable;
 
-  setUp(() async {
+    setUp(() async {
       mockHttpClient = MockHttpClientService();
       mockStorageService = MockStorageService();
       mockLogger = MockAppLogger();
       mockErrorHandler = MockErrorHandler();
-      
+
       // Create real temporary directories for testing
       tempDirectory = await Directory.systemTemp.createTemp('navtool_test_');
       tempChartsDirectory = Directory(path.join(tempDirectory.path, 'charts'));
       await tempChartsDirectory.create(recursive: true);
 
       // Setup storage service to return our temp directory
-      when(mockStorageService.getChartsDirectory())
-          .thenAnswer((_) async => tempChartsDirectory);
+      when(
+        mockStorageService.getChartsDirectory(),
+      ).thenAnswer((_) async => tempChartsDirectory);
 
-  // Default network suitability to false so queue/order tests don't auto-start downloads.
-  // Individual tests that need active downloading will set this to true explicitly.
-  networkSuitable = false; // reset each test
+      // Default network suitability to false so queue/order tests don't auto-start downloads.
+      // Individual tests that need active downloading will set this to true explicitly.
+      networkSuitable = false; // reset each test
       downloadService = DownloadServiceImpl(
         httpClient: mockHttpClient,
         storageService: mockStorageService,
@@ -83,18 +79,30 @@ void main() {
     group('Queue Management', () {
       test('should add charts to queue with priority ordering', () async {
         // Act
-        await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip', priority: DownloadPriority.high);
-        await downloadService.addToQueue('chart2', 'http://example.com/chart2.zip', priority: DownloadPriority.normal);
-        await downloadService.addToQueue('chart3', 'http://example.com/chart3.zip', priority: DownloadPriority.low);
+        await downloadService.addToQueue(
+          'chart1',
+          'http://example.com/chart1.zip',
+          priority: DownloadPriority.high,
+        );
+        await downloadService.addToQueue(
+          'chart2',
+          'http://example.com/chart2.zip',
+          priority: DownloadPriority.normal,
+        );
+        await downloadService.addToQueue(
+          'chart3',
+          'http://example.com/chart3.zip',
+          priority: DownloadPriority.low,
+        );
 
         // Assert
         final queue = await downloadService.getDetailedQueue();
         expect(queue.length, 3);
-        
+
         // High priority should be first
         expect(queue.first.chartId, 'chart1');
         expect(queue.first.priority, DownloadPriority.high);
-        
+
         // Low priority should be last
         expect(queue.last.chartId, 'chart3');
         expect(queue.last.priority, DownloadPriority.low);
@@ -102,8 +110,14 @@ void main() {
 
       test('should not add duplicate charts to queue', () async {
         // Act - Add same chart twice
-        await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
-        await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
+        await downloadService.addToQueue(
+          'chart1',
+          'http://example.com/chart1.zip',
+        );
+        await downloadService.addToQueue(
+          'chart1',
+          'http://example.com/chart1.zip',
+        );
 
         // Assert
         final queue = await downloadService.getDetailedQueue();
@@ -113,8 +127,14 @@ void main() {
 
       test('should remove charts from queue', () async {
         // Arrange
-        await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
-        await downloadService.addToQueue('chart2', 'http://example.com/chart2.zip');
+        await downloadService.addToQueue(
+          'chart1',
+          'http://example.com/chart1.zip',
+        );
+        await downloadService.addToQueue(
+          'chart2',
+          'http://example.com/chart2.zip',
+        );
 
         // Act
         await downloadService.removeFromQueue('chart1');
@@ -127,8 +147,14 @@ void main() {
 
       test('should clear entire queue', () async {
         // Arrange
-        await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
-        await downloadService.addToQueue('chart2', 'http://example.com/chart2.zip');
+        await downloadService.addToQueue(
+          'chart1',
+          'http://example.com/chart1.zip',
+        );
+        await downloadService.addToQueue(
+          'chart2',
+          'http://example.com/chart2.zip',
+        );
 
         // Act
         await downloadService.clearQueue();
@@ -143,10 +169,17 @@ void main() {
       test('should start batch download for multiple charts', () async {
         // Arrange
         final chartIds = ['chart1', 'chart2', 'chart3'];
-        final urls = ['http://example.com/chart1.zip', 'http://example.com/chart2.zip', 'http://example.com/chart3.zip'];
+        final urls = [
+          'http://example.com/chart1.zip',
+          'http://example.com/chart2.zip',
+          'http://example.com/chart3.zip',
+        ];
 
         // Act
-        final batchId = await downloadService.startBatchDownload(chartIds, urls);
+        final batchId = await downloadService.startBatchDownload(
+          chartIds,
+          urls,
+        );
 
         // Assert
         expect(batchId, isNotEmpty);
@@ -162,10 +195,16 @@ void main() {
       test('should provide batch progress stream', () async {
         // Arrange
         final chartIds = ['chart1', 'chart2'];
-        final urls = ['http://example.com/chart1.zip', 'http://example.com/chart2.zip'];
+        final urls = [
+          'http://example.com/chart1.zip',
+          'http://example.com/chart2.zip',
+        ];
 
         // Act
-        final batchId = await downloadService.startBatchDownload(chartIds, urls);
+        final batchId = await downloadService.startBatchDownload(
+          chartIds,
+          urls,
+        );
         final progressStream = downloadService.getBatchProgressStream(batchId);
 
         // Assert
@@ -175,8 +214,14 @@ void main() {
       test('should handle batch download cancellation', () async {
         // Arrange
         final chartIds = ['chart1', 'chart2'];
-        final urls = ['http://example.com/chart1.zip', 'http://example.com/chart2.zip'];
-        final batchId = await downloadService.startBatchDownload(chartIds, urls);
+        final urls = [
+          'http://example.com/chart1.zip',
+          'http://example.com/chart2.zip',
+        ];
+        final batchId = await downloadService.startBatchDownload(
+          chartIds,
+          urls,
+        );
 
         // Act
         await downloadService.cancelBatchDownload(batchId);
@@ -188,22 +233,25 @@ void main() {
     });
 
     group('Download Management', () {
-      test('should provide progress streams for individual downloads', () async {
-        // Arrange
-        const chartId = 'chart1';
+      test(
+        'should provide progress streams for individual downloads',
+        () async {
+          // Arrange
+          const chartId = 'chart1';
 
-        // Act
-        final progressStream = downloadService.getDownloadProgress(chartId);
+          // Act
+          final progressStream = downloadService.getDownloadProgress(chartId);
 
-        // Assert
-        expect(progressStream, isA<Stream<double>>());
-      });
+          // Assert
+          expect(progressStream, isA<Stream<double>>());
+        },
+      );
 
       test('should handle concurrent download limits', () async {
         // Arrange - Set max concurrent downloads to 1
         await downloadService.setMaxConcurrentDownloads(1);
         final maxConcurrent = await downloadService.getMaxConcurrentDownloads();
-        
+
         // Assert
         expect(maxConcurrent, 1);
       });
@@ -215,14 +263,20 @@ void main() {
         const url = 'http://example.com/chart1.zip';
 
         // Mock a failed download that should save resume data
-        when(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          resumeFrom: anyNamed('resumeFrom')))
-            .thenThrow(DioException(
-              requestOptions: RequestOptions(path: url),
-              type: DioExceptionType.connectionTimeout,
-            ));
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+            resumeFrom: anyNamed('resumeFrom'),
+          ),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: url),
+            type: DioExceptionType.connectionTimeout,
+          ),
+        );
 
         // Act - Try to download and expect it to fail but save resume data
         try {
@@ -243,7 +297,8 @@ void main() {
     group('Background Download Support', () {
       test('should persist download state', () async {
         // Act
-        final persistedState = await downloadService.getPersistedDownloadState();
+        final persistedState = await downloadService
+            .getPersistedDownloadState();
 
         // Assert
         expect(persistedState, isA<List<DownloadProgress>>());
@@ -284,7 +339,10 @@ void main() {
 
         // Assert - Should be able to recover downloads (implementation-specific behavior)
         final queue = await downloadService.getDetailedQueue();
-        expect(queue.length, greaterThanOrEqualTo(0)); // Some may be auto-resumed, some may remain paused
+        expect(
+          queue.length,
+          greaterThanOrEqualTo(0),
+        ); // Some may be auto-resumed, some may remain paused
       });
     });
 
@@ -295,38 +353,60 @@ void main() {
         const chartId = 'chart1';
         const url = 'http://example.com/chart1.zip';
 
-        when(mockStorageService.getChartsDirectory())
-            .thenThrow(const FileSystemException('Storage unavailable'));
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenThrow(const FileSystemException('Storage unavailable'));
 
         // Act & Assert
-        expect(() => downloadService.downloadChart(chartId, url), throwsA(isA<AppError>()));
+        expect(
+          () => downloadService.downloadChart(chartId, url),
+          throwsA(isA<AppError>()),
+        );
       });
 
-      test('should handle network errors with proper error conversion', () async {
-        networkSuitable = true; // need active attempt
-        // Arrange
-        const chartId = 'chart1';
-        const url = 'http://example.com/chart1.zip';
+      test(
+        'should handle network errors with proper error conversion',
+        () async {
+          networkSuitable = true; // need active attempt
+          // Arrange
+          const chartId = 'chart1';
+          const url = 'http://example.com/chart1.zip';
 
-        when(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-          resumeFrom: anyNamed('resumeFrom')))
-            .thenThrow(DioException(
+          when(
+            mockHttpClient.downloadFile(
+              any,
+              any,
+              cancelToken: anyNamed('cancelToken'),
+              onReceiveProgress: anyNamed('onReceiveProgress'),
+              resumeFrom: anyNamed('resumeFrom'),
+            ),
+          ).thenThrow(
+            DioException(
               requestOptions: RequestOptions(path: url),
               type: DioExceptionType.connectionTimeout,
-            ));
+            ),
+          );
 
-        // Act & Assert
-        expect(() => downloadService.downloadChart(chartId, url), throwsA(isA<AppError>()));
-      });
+          // Act & Assert
+          expect(
+            () => downloadService.downloadChart(chartId, url),
+            throwsA(isA<AppError>()),
+          );
+        },
+      );
     });
 
     group('Resource Management', () {
       test('should dispose properly and clean up resources', () async {
         // Arrange - Add some items to manage
-        await downloadService.addToQueue('chart1', 'http://example.com/chart1.zip');
-        final batchId = await downloadService.startBatchDownload(['chart2'], ['http://example.com/chart2.zip']);
+        await downloadService.addToQueue(
+          'chart1',
+          'http://example.com/chart1.zip',
+        );
+        final batchId = await downloadService.startBatchDownload(
+          ['chart2'],
+          ['http://example.com/chart2.zip'],
+        );
 
         // Act
         downloadService.dispose();

@@ -48,10 +48,7 @@ class LatLngBounds {
   }
 
   /// Get the center point of the bounds
-  LatLng get center => LatLng(
-        (north + south) / 2,
-        (east + west) / 2,
-      );
+  LatLng get center => LatLng((north + south) / 2, (east + west) / 2);
 
   @override
   String toString() => 'LatLngBounds(N:$north, S:$south, E:$east, W:$west)';
@@ -104,7 +101,7 @@ enum MaritimeFeatureType {
   anchorage,
   restrictedArea,
   trafficSeparation,
-  
+
   // Hazards
   obstruction,
   cable,
@@ -247,9 +244,9 @@ class DepthContour extends LineFeature {
     required this.depth,
     super.attributes,
   }) : super(
-          type: MaritimeFeatureType.depthContour,
-          position: const LatLng(0, 0), // Will be calculated from coordinates
-        );
+         type: MaritimeFeatureType.depthContour,
+         position: const LatLng(0, 0), // Will be calculated from coordinates
+       );
 
   @override
   bool isVisibleAtScale(ChartScale scale) {
@@ -257,11 +254,11 @@ class DepthContour extends LineFeature {
     final depthInt = depth.round();
     return switch (scale) {
       ChartScale.overview => depthInt % 100 == 0, // 100m intervals
-      ChartScale.general => depthInt % 50 == 0,   // 50m intervals
-      ChartScale.coastal => depthInt % 20 == 0,   // 20m intervals
-      ChartScale.approach => depthInt % 10 == 0,  // 10m intervals
-      ChartScale.harbour => depthInt % 5 == 0,    // 5m intervals
-      ChartScale.berthing => true,                // All contours visible
+      ChartScale.general => depthInt % 50 == 0, // 50m intervals
+      ChartScale.coastal => depthInt % 20 == 0, // 20m intervals
+      ChartScale.approach => depthInt % 10 == 0, // 10m intervals
+      ChartScale.harbour => depthInt % 5 == 0, // 5m intervals
+      ChartScale.berthing => true, // All contours visible
     };
   }
 

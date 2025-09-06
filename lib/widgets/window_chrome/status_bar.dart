@@ -14,15 +14,9 @@ class StatusBar extends ConsumerWidget {
     return Container(
       height: statusBarHeight,
       decoration: BoxDecoration(
-    color: Theme.of(context)
-      .colorScheme
-      .surface
-      .withValues(alpha: 0.9),
+        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
         border: Border(
-          top: BorderSide(
-            color: Theme.of(context).dividerColor,
-            width: 1.0,
-          ),
+          top: BorderSide(color: Theme.of(context).dividerColor, width: 1.0),
         ),
       ),
       child: Row(
@@ -182,10 +176,14 @@ class StatusBar extends ConsumerWidget {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: details.map((detail) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Text(detail),
-          )).toList(),
+          children: details
+              .map(
+                (detail) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Text(detail),
+                ),
+              )
+              .toList(),
         ),
         actions: [
           TextButton(
@@ -228,19 +226,15 @@ class _StatusSegmentState extends State<_StatusSegment> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-      color: _isHovered
-  ? Colors.grey.withValues(alpha: 0.1)
-        : Colors.transparent,
+            color: _isHovered
+                ? Colors.grey.withValues(alpha: 0.1)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(4),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                widget.icon,
-                size: 14,
-                color: widget.color,
-              ),
+              Icon(widget.icon, size: 14, color: widget.color),
               const SizedBox(width: 4),
               Flexible(
                 child: Text(

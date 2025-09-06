@@ -1,5 +1,5 @@
 /// Test for S-57 RUIN Operations (Insert/Delete/Modify)
-/// 
+///
 /// Tests RUIN operation handlers without relying on binary file parsing
 
 import 'package:flutter_test/flutter_test.dart';
@@ -96,7 +96,10 @@ void main() {
         label: 'Depth Area 10-20m',
       );
 
-      final versionedFeature = FeatureVersioned(feature: originalFeature, version: 0);
+      final versionedFeature = FeatureVersioned(
+        feature: originalFeature,
+        version: 0,
+      );
       processor.featureStore.put('FOID_300', versionedFeature);
 
       // Create modification (change DRVAL1 and add new attribute)
@@ -108,7 +111,10 @@ void main() {
           const S57Coordinate(latitude: 47.62, longitude: -122.32),
           const S57Coordinate(latitude: 47.63, longitude: -122.33),
         ],
-        attributes: {'DRVAL1': 5.0, 'MODIFIED': true}, // Changed DRVAL1, added MODIFIED
+        attributes: {
+          'DRVAL1': 5.0,
+          'MODIFIED': true,
+        }, // Changed DRVAL1, added MODIFIED
         label: 'Modified Depth Area',
       );
 
@@ -134,7 +140,7 @@ void main() {
       final attributes = modifiedVersioned.feature.attributes;
       expect(attributes['DRVAL1'], equals(5.0)); // Modified
       expect(attributes['DRVAL2'], equals(20.0)); // Preserved from original
-      expect(attributes['QUASOU'], equals(6)); // Preserved from original  
+      expect(attributes['QUASOU'], equals(6)); // Preserved from original
       expect(attributes['MODIFIED'], equals(true)); // New attribute
 
       // Check updated coordinates
@@ -169,7 +175,10 @@ void main() {
       // Verify warning and no change
       expect(processor.featureStore.count, equals(1)); // Still only one feature
       expect(processor.summary.inserted, equals(0)); // No new insertion
-      expect(processor.summary.warnings.any((w) => w.contains('INSERT_EXISTS')), isTrue);
+      expect(
+        processor.summary.warnings.any((w) => w.contains('INSERT_EXISTS')),
+        isTrue,
+      );
     });
 
     test('should warn on DELETE_MISSING', () {
@@ -184,7 +193,10 @@ void main() {
 
       // Verify warning
       expect(processor.summary.deleted, equals(0));
-      expect(processor.summary.warnings.any((w) => w.contains('DELETE_MISSING')), isTrue);
+      expect(
+        processor.summary.warnings.any((w) => w.contains('DELETE_MISSING')),
+        isTrue,
+      );
     });
 
     test('should warn on MODIFY_MISSING', () {
@@ -208,7 +220,10 @@ void main() {
 
       // Verify warning
       expect(processor.summary.modified, equals(0));
-      expect(processor.summary.warnings.any((w) => w.contains('MODIFY_MISSING')), isTrue);
+      expect(
+        processor.summary.warnings.any((w) => w.contains('MODIFY_MISSING')),
+        isTrue,
+      );
     });
 
     test('should test RuinOperation enum', () {
@@ -216,7 +231,10 @@ void main() {
       expect(RuinOperation.fromCode('I'), equals(RuinOperation.insert));
       expect(RuinOperation.fromCode('D'), equals(RuinOperation.delete));
       expect(RuinOperation.fromCode('M'), equals(RuinOperation.modify));
-      expect(RuinOperation.fromCode('i'), equals(RuinOperation.insert)); // Case insensitive
+      expect(
+        RuinOperation.fromCode('i'),
+        equals(RuinOperation.insert),
+      ); // Case insensitive
 
       // Test enum from integer codes
       expect(RuinOperation.fromInt(1), equals(RuinOperation.insert));
@@ -235,7 +253,7 @@ void main() {
 
     test('should test FeatureStore operations', () {
       final store = FeatureStore();
-      
+
       // Test empty store
       expect(store.count, equals(0));
       expect(store.contains('test'), isFalse);

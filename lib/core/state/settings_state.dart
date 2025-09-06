@@ -53,11 +53,14 @@ class AppSettings {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
       isDayMode: isDayMode ?? this.isDayMode,
-      maxConcurrentDownloads: maxConcurrentDownloads ?? this.maxConcurrentDownloads,
+      maxConcurrentDownloads:
+          maxConcurrentDownloads ?? this.maxConcurrentDownloads,
       enableGpsLogging: enableGpsLogging ?? this.enableGpsLogging,
       showDebugInfo: showDebugInfo ?? this.showDebugInfo,
-      chartRenderingQuality: chartRenderingQuality ?? this.chartRenderingQuality,
-      enableBackgroundDownloads: enableBackgroundDownloads ?? this.enableBackgroundDownloads,
+      chartRenderingQuality:
+          chartRenderingQuality ?? this.chartRenderingQuality,
+      enableBackgroundDownloads:
+          enableBackgroundDownloads ?? this.enableBackgroundDownloads,
       autoSelectChart: autoSelectChart ?? this.autoSelectChart,
       preferredUnits: preferredUnits ?? this.preferredUnits,
       gpsUpdateInterval: gpsUpdateInterval ?? this.gpsUpdateInterval,
@@ -158,9 +161,9 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
   AppSettingsNotifier({
     required AppLogger logger,
     required ErrorHandler errorHandler,
-  })  : _logger = logger,
-        _errorHandler = errorHandler,
-        super(const AppSettings()) {
+  }) : _logger = logger,
+       _errorHandler = errorHandler,
+       super(const AppSettings()) {
     _initializeSettings();
   }
 
@@ -170,17 +173,21 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       // Check if we're in a test environment by checking if the Flutter binding is properly initialized
       // for platform services like SharedPreferences
       bool canAccessPlatformServices = false;
-      
+
       try {
         // Try to check if the binding supports platform services
-        await SharedPreferences.getInstance().timeout(const Duration(milliseconds: 100));
+        await SharedPreferences.getInstance().timeout(
+          const Duration(milliseconds: 100),
+        );
         canAccessPlatformServices = true;
       } catch (e) {
         // This will catch binding errors, timeout errors, or any platform service access issues
-        _logger.info('Platform services not available, using default settings (test environment)');
+        _logger.info(
+          'Platform services not available, using default settings (test environment)',
+        );
         canAccessPlatformServices = false;
       }
-      
+
       if (canAccessPlatformServices) {
         _prefs = await SharedPreferences.getInstance();
         await _loadSettings();
@@ -218,7 +225,9 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
         _logger.debug('Saved settings to storage');
       } else {
         // In test environment, just log that we would save
-        _logger.debug('Would save settings to storage (platform services unavailable)');
+        _logger.debug(
+          'Would save settings to storage (platform services unavailable)',
+        );
       }
     } catch (error, stackTrace) {
       _errorHandler.handleError(error, stackTrace);

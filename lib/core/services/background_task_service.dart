@@ -42,5 +42,6 @@ class BackgroundTaskException implements Exception {
   const BackgroundTaskException(this.message, [this.cause]);
 
   @override
-  String toString() => 'BackgroundTaskException: $message${cause != null ? ' ($cause)' : ''}';
+  String toString() =>
+      'BackgroundTaskException: $message${cause != null ? ' ($cause)' : ''}';
 }

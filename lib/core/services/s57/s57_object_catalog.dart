@@ -1,5 +1,5 @@
 /// S-57 Object Catalog models and services
-/// 
+///
 /// Provides authoritative S-57 object class and attribute definitions
 /// based on IHO S-57 Object Catalogue Edition 3.1
 
@@ -8,12 +8,7 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 
 /// S-57 attribute data types
-enum S57AttrType {
-  float,
-  int,
-  string,
-  enumType,
-}
+enum S57AttrType { float, int, string, enumType }
 
 /// S-57 object class definition
 class S57ObjectClass {
@@ -36,23 +31,20 @@ class S57ObjectClass {
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'code': code,
-      'acronym': acronym,
-      'name': name,
-    };
+    return {'code': code, 'acronym': acronym, 'name': name};
   }
 
   @override
-  String toString() => 'S57ObjectClass(code: $code, acronym: $acronym, name: $name)';
+  String toString() =>
+      'S57ObjectClass(code: $code, acronym: $acronym, name: $name)';
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     return other is S57ObjectClass &&
-           other.code == code &&
-           other.acronym == acronym &&
-           other.name == name;
+        other.code == code &&
+        other.acronym == acronym &&
+        other.name == name;
   }
 
   @override
@@ -114,16 +106,17 @@ class S57AttributeDef {
   }
 
   @override
-  String toString() => 'S57AttributeDef(acronym: $acronym, type: $type, name: $name)';
+  String toString() =>
+      'S57AttributeDef(acronym: $acronym, type: $type, name: $name)';
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     return other is S57AttributeDef &&
-           other.acronym == acronym &&
-           other.type == type &&
-           other.name == name &&
-           _mapEquals(other.domain, domain);
+        other.acronym == acronym &&
+        other.type == type &&
+        other.name == name &&
+        _mapEquals(other.domain, domain);
   }
 
   @override
@@ -141,7 +134,7 @@ class S57AttributeDef {
 }
 
 /// S-57 Object Catalog service
-/// 
+///
 /// Provides lookup functionality for official S-57 object classes and attributes
 /// with fallback handling for unknown codes/acronyms
 class S57ObjectCatalog {
@@ -154,31 +147,35 @@ class S57ObjectCatalog {
 
   /// Load catalog from asset files
   static Future<S57ObjectCatalog> loadFromAssets() async {
-    final objectClassesJson = await rootBundle.loadString('assets/s57/object_classes.json');
+    final objectClassesJson = await rootBundle.loadString(
+      'assets/s57/object_classes.json',
+    );
     final objectClassesData = jsonDecode(objectClassesJson) as List<dynamic>;
-    
+
     final byCode = <int, S57ObjectClass>{};
     final byAcronym = <String, S57ObjectClass>{};
-    
+
     for (final item in objectClassesData) {
       final objectClass = S57ObjectClass.fromJson(item as Map<String, dynamic>);
       byCode[objectClass.code] = objectClass;
       byAcronym[objectClass.acronym.toUpperCase()] = objectClass;
     }
-    
+
     return S57ObjectCatalog._(byCode, byAcronym);
   }
 
   /// Create catalog from object classes (for testing)
-  factory S57ObjectCatalog.fromObjectClasses(List<S57ObjectClass> objectClasses) {
+  factory S57ObjectCatalog.fromObjectClasses(
+    List<S57ObjectClass> objectClasses,
+  ) {
     final byCode = <int, S57ObjectClass>{};
     final byAcronym = <String, S57ObjectClass>{};
-    
+
     for (final objectClass in objectClasses) {
       byCode[objectClass.code] = objectClass;
       byAcronym[objectClass.acronym.toUpperCase()] = objectClass;
     }
-    
+
     return S57ObjectCatalog._(byCode, byAcronym);
   }
 
@@ -211,7 +208,7 @@ class S57ObjectCatalog {
 }
 
 /// S-57 Attribute Catalog service
-/// 
+///
 /// Provides lookup functionality for S-57 attribute definitions
 /// with type coercion and enum domain mapping
 class S57AttributeCatalog {
@@ -222,27 +219,31 @@ class S57AttributeCatalog {
 
   /// Load catalog from asset files
   static Future<S57AttributeCatalog> loadFromAssets() async {
-    final attributesJson = await rootBundle.loadString('assets/s57/attributes.json');
+    final attributesJson = await rootBundle.loadString(
+      'assets/s57/attributes.json',
+    );
     final attributesData = jsonDecode(attributesJson) as List<dynamic>;
-    
+
     final byAcronym = <String, S57AttributeDef>{};
-    
+
     for (final item in attributesData) {
       final attrDef = S57AttributeDef.fromJson(item as Map<String, dynamic>);
       byAcronym[attrDef.acronym.toUpperCase()] = attrDef;
     }
-    
+
     return S57AttributeCatalog._(byAcronym);
   }
 
   /// Create catalog from attribute definitions (for testing)
-  factory S57AttributeCatalog.fromAttributeDefs(List<S57AttributeDef> attributeDefs) {
+  factory S57AttributeCatalog.fromAttributeDefs(
+    List<S57AttributeDef> attributeDefs,
+  ) {
     final byAcronym = <String, S57AttributeDef>{};
-    
+
     for (final attrDef in attributeDefs) {
       byAcronym[attrDef.acronym.toUpperCase()] = attrDef;
     }
-    
+
     return S57AttributeCatalog._(byAcronym);
   }
 
@@ -282,10 +283,7 @@ class S57AttributeCatalog {
       case S57AttrType.enumType:
         final code = rawValues.first.trim();
         final label = def.domain?[code];
-        return {
-          'code': code,
-          if (label != null) 'label': label,
-        };
+        return {'code': code, if (label != null) 'label': label};
     }
   }
 }

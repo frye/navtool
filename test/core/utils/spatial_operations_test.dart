@@ -7,21 +7,30 @@ import 'dart:math' as math;
 void main() {
   group('SpatialOperations Tests', () {
     group('Point-in-Polygon Tests', () {
-      test('should correctly identify point inside simple rectangle polygon', () {
-        // Arrange
-        final polygon = [
-          const LatLng(38.0, -123.0), // NW
-          const LatLng(38.0, -122.0), // NE
-          const LatLng(37.0, -122.0), // SE
-          const LatLng(37.0, -123.0), // SW
-        ];
-        const pointInside = LatLng(37.5, -122.5);
-        const pointOutside = LatLng(39.0, -122.5);
+      test(
+        'should correctly identify point inside simple rectangle polygon',
+        () {
+          // Arrange
+          final polygon = [
+            const LatLng(38.0, -123.0), // NW
+            const LatLng(38.0, -122.0), // NE
+            const LatLng(37.0, -122.0), // SE
+            const LatLng(37.0, -123.0), // SW
+          ];
+          const pointInside = LatLng(37.5, -122.5);
+          const pointOutside = LatLng(39.0, -122.5);
 
-        // Act & Assert
-        expect(SpatialOperations.isPointInPolygon(pointInside, polygon), isTrue);
-        expect(SpatialOperations.isPointInPolygon(pointOutside, polygon), isFalse);
-      });
+          // Act & Assert
+          expect(
+            SpatialOperations.isPointInPolygon(pointInside, polygon),
+            isTrue,
+          );
+          expect(
+            SpatialOperations.isPointInPolygon(pointOutside, polygon),
+            isFalse,
+          );
+        },
+      );
 
       test('should correctly identify point on polygon boundary', () {
         // Arrange
@@ -34,7 +43,10 @@ void main() {
         const pointOnBoundary = LatLng(38.0, -122.5); // On north edge
 
         // Act & Assert
-        expect(SpatialOperations.isPointInPolygon(pointOnBoundary, polygon), isTrue);
+        expect(
+          SpatialOperations.isPointInPolygon(pointOnBoundary, polygon),
+          isTrue,
+        );
       });
 
       test('should handle complex polygons with concave shapes', () {
@@ -47,13 +59,19 @@ void main() {
           const LatLng(38.0, -123.0), // Bottom-left
           const LatLng(38.0, -124.0), // Bottom-left corner
         ];
-        
+
         const pointInside = LatLng(39.5, -123.5); // In top part
         const pointInConcavity = LatLng(38.5, -122.5); // In concave area
-        
+
         // Act & Assert
-        expect(SpatialOperations.isPointInPolygon(pointInside, polygon), isTrue);
-        expect(SpatialOperations.isPointInPolygon(pointInConcavity, polygon), isFalse);
+        expect(
+          SpatialOperations.isPointInPolygon(pointInside, polygon),
+          isTrue,
+        );
+        expect(
+          SpatialOperations.isPointInPolygon(pointInConcavity, polygon),
+          isFalse,
+        );
       });
 
       test('should handle edge case with very small polygon', () {
@@ -67,8 +85,14 @@ void main() {
         const pointOutside = LatLng(37.002, -122.002);
 
         // Act & Assert
-        expect(SpatialOperations.isPointInPolygon(pointInside, polygon), isTrue);
-        expect(SpatialOperations.isPointInPolygon(pointOutside, polygon), isFalse);
+        expect(
+          SpatialOperations.isPointInPolygon(pointInside, polygon),
+          isTrue,
+        );
+        expect(
+          SpatialOperations.isPointInPolygon(pointOutside, polygon),
+          isFalse,
+        );
       });
     });
 
@@ -81,7 +105,7 @@ void main() {
           const LatLng(37.0, -122.0),
           const LatLng(37.0, -123.0),
         ];
-        
+
         final polygon2 = [
           const LatLng(37.5, -122.5),
           const LatLng(37.5, -121.5),
@@ -90,34 +114,43 @@ void main() {
         ];
 
         // Act
-        final intersects = SpatialOperations.doPolygonsIntersect(polygon1, polygon2);
+        final intersects = SpatialOperations.doPolygonsIntersect(
+          polygon1,
+          polygon2,
+        );
 
         // Assert
         expect(intersects, isTrue);
       });
 
-      test('should detect no intersection between non-overlapping rectangles', () {
-        // Arrange
-        final polygon1 = [
-          const LatLng(38.0, -123.0),
-          const LatLng(38.0, -122.0),
-          const LatLng(37.0, -122.0),
-          const LatLng(37.0, -123.0),
-        ];
-        
-        final polygon2 = [
-          const LatLng(36.0, -121.0),
-          const LatLng(36.0, -120.0),
-          const LatLng(35.0, -120.0),
-          const LatLng(35.0, -121.0),
-        ];
+      test(
+        'should detect no intersection between non-overlapping rectangles',
+        () {
+          // Arrange
+          final polygon1 = [
+            const LatLng(38.0, -123.0),
+            const LatLng(38.0, -122.0),
+            const LatLng(37.0, -122.0),
+            const LatLng(37.0, -123.0),
+          ];
 
-        // Act
-        final intersects = SpatialOperations.doPolygonsIntersect(polygon1, polygon2);
+          final polygon2 = [
+            const LatLng(36.0, -121.0),
+            const LatLng(36.0, -120.0),
+            const LatLng(35.0, -120.0),
+            const LatLng(35.0, -121.0),
+          ];
 
-        // Assert
-        expect(intersects, isFalse);
-      });
+          // Act
+          final intersects = SpatialOperations.doPolygonsIntersect(
+            polygon1,
+            polygon2,
+          );
+
+          // Assert
+          expect(intersects, isFalse);
+        },
+      );
 
       test('should detect intersection when one polygon is inside another', () {
         // Arrange - larger outer polygon
@@ -127,7 +160,7 @@ void main() {
           const LatLng(35.0, -120.0),
           const LatLng(35.0, -125.0),
         ];
-        
+
         // Smaller inner polygon
         final innerPolygon = [
           const LatLng(38.0, -123.0),
@@ -137,34 +170,43 @@ void main() {
         ];
 
         // Act
-        final intersects = SpatialOperations.doPolygonsIntersect(outerPolygon, innerPolygon);
+        final intersects = SpatialOperations.doPolygonsIntersect(
+          outerPolygon,
+          innerPolygon,
+        );
 
         // Assert
         expect(intersects, isTrue);
       });
 
-      test('should detect intersection for polygons that share only an edge', () {
-        // Arrange - adjacent rectangles
-        final polygon1 = [
-          const LatLng(38.0, -123.0),
-          const LatLng(38.0, -122.0),
-          const LatLng(37.0, -122.0),
-          const LatLng(37.0, -123.0),
-        ];
-        
-        final polygon2 = [
-          const LatLng(38.0, -122.0), // Shares edge with polygon1
-          const LatLng(38.0, -121.0),
-          const LatLng(37.0, -121.0),
-          const LatLng(37.0, -122.0),
-        ];
+      test(
+        'should detect intersection for polygons that share only an edge',
+        () {
+          // Arrange - adjacent rectangles
+          final polygon1 = [
+            const LatLng(38.0, -123.0),
+            const LatLng(38.0, -122.0),
+            const LatLng(37.0, -122.0),
+            const LatLng(37.0, -123.0),
+          ];
 
-        // Act
-        final intersects = SpatialOperations.doPolygonsIntersect(polygon1, polygon2);
+          final polygon2 = [
+            const LatLng(38.0, -122.0), // Shares edge with polygon1
+            const LatLng(38.0, -121.0),
+            const LatLng(37.0, -121.0),
+            const LatLng(37.0, -122.0),
+          ];
 
-        // Assert
-        expect(intersects, isTrue);
-      });
+          // Act
+          final intersects = SpatialOperations.doPolygonsIntersect(
+            polygon1,
+            polygon2,
+          );
+
+          // Assert
+          expect(intersects, isTrue);
+        },
+      );
     });
 
     group('Coverage Percentage Calculation Tests', () {
@@ -176,11 +218,14 @@ void main() {
           const LatLng(37.0, -122.0),
           const LatLng(37.0, -123.0),
         ];
-        
+
         final polygon2 = List<LatLng>.from(polygon1); // Identical
 
         // Act
-        final coverage = SpatialOperations.calculateCoveragePercentage(polygon1, polygon2);
+        final coverage = SpatialOperations.calculateCoveragePercentage(
+          polygon1,
+          polygon2,
+        );
 
         // Assert
         expect(coverage, closeTo(1.0, 0.01)); // 100% coverage
@@ -194,7 +239,7 @@ void main() {
           const LatLng(36.0, -121.0),
           const LatLng(36.0, -123.0),
         ];
-        
+
         // State polygon that covers half the chart (1x2 degrees)
         final statePolygon = [
           const LatLng(38.0, -123.0),
@@ -204,7 +249,10 @@ void main() {
         ];
 
         // Act
-        final coverage = SpatialOperations.calculateCoveragePercentage(statePolygon, chartPolygon);
+        final coverage = SpatialOperations.calculateCoveragePercentage(
+          statePolygon,
+          chartPolygon,
+        );
 
         // Assert
         expect(coverage, closeTo(0.5, 0.1)); // Approximately 50% coverage
@@ -218,7 +266,7 @@ void main() {
           const LatLng(37.0, -122.0),
           const LatLng(37.0, -123.0),
         ];
-        
+
         final polygon2 = [
           const LatLng(36.0, -121.0),
           const LatLng(36.0, -120.0),
@@ -227,7 +275,10 @@ void main() {
         ];
 
         // Act
-        final coverage = SpatialOperations.calculateCoveragePercentage(polygon1, polygon2);
+        final coverage = SpatialOperations.calculateCoveragePercentage(
+          polygon1,
+          polygon2,
+        );
 
         // Assert
         expect(coverage, equals(0.0));
@@ -241,7 +292,7 @@ void main() {
           const LatLng(35.0, -120.0),
           const LatLng(35.0, -125.0),
         ];
-        
+
         // Tiny overlap at corner
         final statePolygon = [
           const LatLng(35.1, -124.9),
@@ -251,7 +302,10 @@ void main() {
         ];
 
         // Act
-        final coverage = SpatialOperations.calculateCoveragePercentage(statePolygon, chartPolygon);
+        final coverage = SpatialOperations.calculateCoveragePercentage(
+          statePolygon,
+          chartPolygon,
+        );
 
         // Assert
         expect(coverage, lessThan(0.01)); // Less than 1%
@@ -338,7 +392,8 @@ void main() {
 
         // Act & Assert
         expect(
-          () => SpatialOperations.isPointInPolygon(testPoint, singlePointPolygon),
+          () =>
+              SpatialOperations.isPointInPolygon(testPoint, singlePointPolygon),
           throwsA(isA<ArgumentError>()),
         );
       });
@@ -368,7 +423,10 @@ void main() {
         const testPoint = LatLng(37.25, -122.25);
 
         // Act
-        final result = SpatialOperations.isPointInPolygon(testPoint, collinearPolygon);
+        final result = SpatialOperations.isPointInPolygon(
+          testPoint,
+          collinearPolygon,
+        );
 
         // Assert - collinear polygon has no area, so point should be outside
         expect(result, isFalse);
@@ -385,7 +443,10 @@ void main() {
         const testPoint = LatLng(88.5, 0.0);
 
         // Act
-        final result = SpatialOperations.isPointInPolygon(testPoint, extremePolygon);
+        final result = SpatialOperations.isPointInPolygon(
+          testPoint,
+          extremePolygon,
+        );
 
         // Assert
         expect(result, isTrue);
@@ -400,19 +461,22 @@ void main() {
         const centerLat = 37.5;
         const centerLng = -122.5;
         const radius = 0.5;
-        
+
         for (int i = 0; i < numVertices; i++) {
           final angle = (i / numVertices) * 2 * math.pi;
           final lat = centerLat + radius * math.cos(angle);
           final lng = centerLng + radius * math.sin(angle);
           largePolygon.add(LatLng(lat, lng));
         }
-        
+
         const testPoint = LatLng(37.5, -122.5); // Center point
 
         // Act & measure time
         final stopwatch = Stopwatch()..start();
-        final result = SpatialOperations.isPointInPolygon(testPoint, largePolygon);
+        final result = SpatialOperations.isPointInPolygon(
+          testPoint,
+          largePolygon,
+        );
         stopwatch.stop();
 
         // Assert

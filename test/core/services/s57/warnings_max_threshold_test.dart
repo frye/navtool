@@ -4,25 +4,31 @@ import 'package:navtool/core/services/s57/s57_warning_collector.dart';
 
 void main() {
   group('S57 Max Warning Threshold', () {
-    test('should throw exception when warning threshold exceeded in strict mode', () {
-      final collector = S57WarningCollector(
-        options: const S57ParseOptions(strictMode: true, maxWarnings: 3),
-      );
+    test(
+      'should throw exception when warning threshold exceeded in strict mode',
+      () {
+        final collector = S57WarningCollector(
+          options: const S57ParseOptions(strictMode: true, maxWarnings: 3),
+        );
 
-      // Add warnings up to threshold
-      collector.warning(S57WarningCodes.unknownObjCode, 'Unknown 1');
-      collector.warning(S57WarningCodes.fieldBounds, 'Field bounds 1');
-      collector.info(S57WarningCodes.depthOutOfRange, 'Depth range 1');
+        // Add warnings up to threshold
+        collector.warning(S57WarningCodes.unknownObjCode, 'Unknown 1');
+        collector.warning(S57WarningCodes.fieldBounds, 'Field bounds 1');
+        collector.info(S57WarningCodes.depthOutOfRange, 'Depth range 1');
 
-      expect(collector.totalWarnings, equals(3));
-      expect(collector.isThresholdExceeded, isFalse);
+        expect(collector.totalWarnings, equals(3));
+        expect(collector.isThresholdExceeded, isFalse);
 
-      // Adding one more should exceed threshold and throw
-      expect(
-        () => collector.warning(S57WarningCodes.missingRequiredAttr, 'Missing attr'),
-        throwsA(isA<S57StrictModeException>()),
-      );
-    });
+        // Adding one more should exceed threshold and throw
+        expect(
+          () => collector.warning(
+            S57WarningCodes.missingRequiredAttr,
+            'Missing attr',
+          ),
+          throwsA(isA<S57StrictModeException>()),
+        );
+      },
+    );
 
     test('should include threshold warning in exception details', () {
       final collector = S57WarningCollector(
@@ -37,9 +43,12 @@ void main() {
         fail('Expected S57StrictModeException');
       } on S57StrictModeException catch (e) {
         expect(e.triggeredBy.code, equals('MAX_WARNINGS_EXCEEDED'));
-        expect(e.triggeredBy.message, contains('Maximum warning threshold (2) exceeded'));
+        expect(
+          e.triggeredBy.message,
+          contains('Maximum warning threshold (2) exceeded'),
+        );
         expect(e.triggeredBy.severity, equals(S57WarningSeverity.error));
-        
+
         // Should include original warnings plus threshold warning
         expect(e.allWarnings, hasLength(4));
         expect(e.allWarnings[3].code, equals('MAX_WARNINGS_EXCEEDED'));
@@ -74,7 +83,7 @@ void main() {
 
       expect(collector.totalWarnings, equals(100));
       expect(collector.isThresholdExceeded, isFalse);
-      
+
       // Can still add more
       collector.info(S57WarningCodes.depthOutOfRange, 'Info warning');
       expect(collector.totalWarnings, equals(101));
@@ -169,7 +178,10 @@ void main() {
       );
 
       // Collector should still have the warnings
-      expect(collector.totalWarnings, equals(4)); // 2 original + 1 new + 1 threshold
+      expect(
+        collector.totalWarnings,
+        equals(4),
+      ); // 2 original + 1 new + 1 threshold
 
       // Can clear and continue
       collector.clear();

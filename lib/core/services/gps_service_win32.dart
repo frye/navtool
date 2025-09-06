@@ -7,22 +7,23 @@ import '../logging/app_logger.dart';
 import 'gps_service.dart';
 
 /// Windows-specific GPS service implementation using Win32 API
-/// 
+///
 /// This implementation uses Windows Location API through Win32 package
 /// to provide GPS functionality without the geolocator CMake issues.
 class GpsServiceWin32 implements GpsService {
   final AppLogger _logger;
-  
+
   StreamController<GpsPosition>? _positionController;
   Timer? _locationTimer;
   bool _isTracking = false;
-  
+
   // Position history storage for enhanced features
   final List<GpsPosition> _positionHistory = [];
   final List<GpsSignalQuality> _qualityHistory = [];
-  
+
   // Constants for marine navigation standards
-  static const int _maxHistorySize = 1000; // Keep consistent with GpsServiceImpl
+  static const int _maxHistorySize =
+      1000; // Keep consistent with GpsServiceImpl
 
   GpsServiceWin32({required AppLogger logger}) : _logger = logger;
 
@@ -69,12 +70,12 @@ class GpsServiceWin32 implements GpsService {
   Future<GpsPosition?> getCurrentPosition() async {
     try {
       _logger.info('Getting current GPS position on Windows');
-      
+
       // For demo purposes, return a mock position
       // In a real implementation, this would use Windows Location API
       // through WinRT or COM interfaces
       final position = GpsPosition(
-        latitude: 37.7749,  // San Francisco coordinates as demo
+        latitude: 37.7749, // San Francisco coordinates as demo
         longitude: -122.4194,
         altitude: 10.0,
         accuracy: 5.0,
@@ -82,8 +83,10 @@ class GpsServiceWin32 implements GpsService {
         speed: 0.0,
         timestamp: DateTime.now(),
       );
-      
-      _logger.info('GPS position obtained: ${position.latitude}, ${position.longitude}');
+
+      _logger.info(
+        'GPS position obtained: ${position.latitude}, ${position.longitude}',
+      );
       return position;
     } catch (e) {
       _logger.error('Error getting current position: $e');
@@ -94,19 +97,24 @@ class GpsServiceWin32 implements GpsService {
   @override
   Future<GpsPosition?> getCurrentPositionWithFallback() async {
     try {
-      _logger.debug('Attempting to get current position with Seattle fallback on Windows');
-      
+      _logger.debug(
+        'Attempting to get current position with Seattle fallback on Windows',
+      );
+
       // First try to get real GPS position
       final realPosition = await getCurrentPosition();
       if (realPosition != null) {
-        _logger.debug('Using real GPS position: ${realPosition.latitude}, ${realPosition.longitude}');
+        _logger.debug(
+          'Using real GPS position: ${realPosition.latitude}, ${realPosition.longitude}',
+        );
         return realPosition;
       }
-      
+
       // If real position unavailable, use Seattle fallback
-      _logger.info('Location services unavailable, using Seattle fallback coordinates');
+      _logger.info(
+        'Location services unavailable, using Seattle fallback coordinates',
+      );
       return _getSeattleFallbackPosition();
-      
     } catch (e) {
       _logger.warning('Error getting position, using Seattle fallback: $e');
       return _getSeattleFallbackPosition();
@@ -114,12 +122,12 @@ class GpsServiceWin32 implements GpsService {
   }
 
   /// Creates a fallback GPS position for Seattle area
-  /// 
+  ///
   /// Uses Space Needle coordinates as a central Seattle location
   /// that will discover Pacific Northwest marine charts.
   GpsPosition _getSeattleFallbackPosition() {
     return GpsPosition(
-      latitude: 47.6062,  // Seattle Space Needle latitude
+      latitude: 47.6062, // Seattle Space Needle latitude
       longitude: -122.3321, // Seattle Space Needle longitude
       timestamp: DateTime.now(),
       altitude: 56.0, // Approximate Seattle elevation in meters
@@ -133,7 +141,7 @@ class GpsServiceWin32 implements GpsService {
   Future<void> startLocationTracking() async {
     try {
       _logger.info('Starting location tracking on Windows');
-      
+
       if (_isTracking) {
         _logger.warning('Location tracking already active');
         return;
@@ -143,7 +151,9 @@ class GpsServiceWin32 implements GpsService {
       _isTracking = true;
 
       // Start periodic location updates (every 5 seconds for demo)
-      _locationTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      _locationTimer = Timer.periodic(const Duration(seconds: 5), (
+        timer,
+      ) async {
         if (!_isTracking) {
           timer.cancel();
           return;
@@ -165,7 +175,7 @@ class GpsServiceWin32 implements GpsService {
     _isTracking = false;
     _locationTimer?.cancel();
     _locationTimer = null;
-    
+
     if (_positionController != null && !_positionController!.isClosed) {
       await _positionController!.close();
       _positionController = null;
@@ -186,16 +196,15 @@ class GpsServiceWin32 implements GpsService {
   Future<GpsSignalQuality> assessSignalQuality(GpsPosition? position) async {
     try {
       _logger.debug('Assessing GPS signal quality (Windows)');
-      
+
       if (position == null) {
         throw ArgumentError('Position cannot be null');
       }
-      
+
       final quality = GpsSignalQuality.fromAccuracy(position.accuracy);
       _logger.debug('Signal quality assessed: ${quality.strength}');
-      
+
       return quality;
-      
     } catch (error) {
       _logger.error('Error assessing signal quality', exception: error);
       rethrow;
@@ -206,13 +215,12 @@ class GpsServiceWin32 implements GpsService {
   Future<void> logPosition(GpsPosition position) async {
     try {
       _logger.debug('Logging GPS position: ${position.toCoordinateString()}');
-      
+
       _addPositionToHistory(position);
-      
+
       // Also log signal quality for this position
       final quality = await assessSignalQuality(position);
       _addQualityToHistory(quality);
-      
     } catch (error) {
       _logger.error('Error logging position', exception: error);
     }
@@ -221,11 +229,12 @@ class GpsServiceWin32 implements GpsService {
   @override
   Future<PositionHistory> getPositionHistory(Duration timeWindow) async {
     try {
-      _logger.debug('Getting position history for ${timeWindow.inMinutes} minutes');
-      
+      _logger.debug(
+        'Getting position history for ${timeWindow.inMinutes} minutes',
+      );
+
       final filteredPositions = _getPositionsInTimeWindow(timeWindow);
       return PositionHistory.fromPositions(filteredPositions);
-      
     } catch (error) {
       _logger.error('Error getting position history', exception: error);
       return _createEmptyPositionHistory(timeWindow);
@@ -233,17 +242,20 @@ class GpsServiceWin32 implements GpsService {
   }
 
   @override
-  Future<List<GpsSignalQuality>> getSignalQualityTrend(Duration timeWindow) async {
+  Future<List<GpsSignalQuality>> getSignalQualityTrend(
+    Duration timeWindow,
+  ) async {
     try {
-      _logger.debug('Getting signal quality trend for ${timeWindow.inMinutes} minutes');
-      
+      _logger.debug(
+        'Getting signal quality trend for ${timeWindow.inMinutes} minutes',
+      );
+
       final cutoffTime = DateTime.now().subtract(timeWindow);
       final filteredQualities = _qualityHistory
           .where((quality) => quality.assessmentTime.isAfter(cutoffTime))
           .toList();
-      
+
       return filteredQualities;
-      
     } catch (error) {
       _logger.error('Error getting signal quality trend', exception: error);
       return [];
@@ -254,10 +266,9 @@ class GpsServiceWin32 implements GpsService {
   Future<void> clearPositionHistory() async {
     try {
       _logger.info('Clearing GPS position history');
-      
+
       _positionHistory.clear();
       _qualityHistory.clear();
-      
     } catch (error) {
       _logger.error('Error clearing position history', exception: error);
     }
@@ -268,7 +279,6 @@ class GpsServiceWin32 implements GpsService {
     try {
       final history = await getPositionHistory(timeWindow);
       return AccuracyStatistics.fromPositions(history.positions, timeWindow);
-      
     } catch (error) {
       _logger.error('Error getting accuracy statistics', exception: error);
       return AccuracyStatistics(
@@ -287,7 +297,6 @@ class GpsServiceWin32 implements GpsService {
     try {
       final history = await getPositionHistory(analysisWindow);
       return MovementState.fromPositions(history.positions, analysisWindow);
-      
     } catch (error) {
       _logger.error('Error getting movement state', exception: error);
       return const MovementState(
@@ -302,9 +311,10 @@ class GpsServiceWin32 implements GpsService {
   @override
   Future<PositionFreshness> getPositionFreshness() async {
     try {
-      final lastPosition = _positionHistory.isNotEmpty ? _positionHistory.last : null;
+      final lastPosition = _positionHistory.isNotEmpty
+          ? _positionHistory.last
+          : null;
       return PositionFreshness.fromLastUpdate(lastPosition?.timestamp);
-      
     } catch (error) {
       _logger.error('Error getting position freshness', exception: error);
       return const PositionFreshness(
@@ -316,59 +326,72 @@ class GpsServiceWin32 implements GpsService {
   }
 
   @override
-  Future<List<GpsPosition>> filterForMarineAccuracy(List<GpsPosition> positions) async {
+  Future<List<GpsPosition>> filterForMarineAccuracy(
+    List<GpsPosition> positions,
+  ) async {
     try {
-      _logger.debug('Filtering ${positions.length} positions for marine accuracy');
-      
+      _logger.debug(
+        'Filtering ${positions.length} positions for marine accuracy',
+      );
+
       const double marineAccuracyThreshold = 10.0; // 10 meters
       final filteredPositions = positions
-          .where((position) => position.accuracy != null && position.accuracy! <= marineAccuracyThreshold)
+          .where(
+            (position) =>
+                position.accuracy != null &&
+                position.accuracy! <= marineAccuracyThreshold,
+          )
           .toList();
-      
-      _logger.debug('Filtered to ${filteredPositions.length} marine-grade positions');
+
+      _logger.debug(
+        'Filtered to ${filteredPositions.length} marine-grade positions',
+      );
       return filteredPositions;
-      
     } catch (error) {
-      _logger.error('Error filtering positions for marine accuracy', exception: error);
+      _logger.error(
+        'Error filtering positions for marine accuracy',
+        exception: error,
+      );
       return [];
     }
   }
 
   @override
-  Future<CourseOverGround?> calculateCourseOverGround(Duration timeWindow) async {
+  Future<CourseOverGround?> calculateCourseOverGround(
+    Duration timeWindow,
+  ) async {
     try {
       final history = await getPositionHistory(timeWindow);
-      
+
       if (history.positions.length < 2) {
         _logger.debug('Insufficient positions for COG calculation');
         return null;
       }
-      
+
       // Calculate bearing from first to last position for overall course
       final firstPos = history.positions.first;
       final lastPos = history.positions.last;
       final bearing = firstPos.bearingTo(lastPos);
-      
+
       // Calculate confidence based on track consistency
       double confidence = 0.5; // Base confidence
-      
+
       // Higher confidence for more positions
       if (history.positions.length >= 5) confidence += 0.2;
       if (history.positions.length >= 10) confidence += 0.1;
-      
+
       // Higher confidence for longer tracks
       if (history.totalDistance > 100) confidence += 0.1;
       if (history.totalDistance > 500) confidence += 0.1;
-      
+
       confidence = min(confidence, 1.0);
-      
+
       return CourseOverGround(
         bearing: bearing,
         confidence: confidence,
         sampleCount: history.positions.length,
         period: timeWindow,
       );
-      
     } catch (error) {
       _logger.error('Error calculating course over ground', exception: error);
       return null;
@@ -379,29 +402,28 @@ class GpsServiceWin32 implements GpsService {
   Future<SpeedOverGround?> calculateSpeedOverGround(Duration timeWindow) async {
     try {
       final history = await getPositionHistory(timeWindow);
-      
+
       if (history.positions.length < 2) {
         _logger.debug('Insufficient positions for SOG calculation');
         return null;
       }
-      
+
       double speedMs = history.averageSpeed;
       double confidence = 0.5; // Base confidence
-      
+
       // Higher confidence for more positions and longer duration
       if (history.positions.length >= 5) confidence += 0.2;
       if (history.duration.inMinutes >= 2) confidence += 0.2;
       if (history.totalDistance > 50) confidence += 0.1;
-      
+
       confidence = min(confidence, 1.0);
-      
+
       return SpeedOverGround(
         speedMetersPerSecond: speedMs,
         confidence: confidence,
         sampleCount: history.positions.length,
         period: timeWindow,
       );
-      
     } catch (error) {
       _logger.error('Error calculating speed over ground', exception: error);
       return null;
@@ -413,17 +435,19 @@ class GpsServiceWin32 implements GpsService {
   /// Adds a new position to the internal history with signal quality assessment
   void _addPositionToHistory(GpsPosition position) {
     _positionHistory.add(position);
-    
+
     // Keep history manageable (use same limit as GpsServiceImpl)
     _maintainHistorySize();
-    
-    _logger.debug('Position history now contains ${_positionHistory.length} positions');
+
+    _logger.debug(
+      'Position history now contains ${_positionHistory.length} positions',
+    );
   }
 
   /// Adds signal quality data to history tracking
   void _addQualityToHistory(GpsSignalQuality signalQuality) {
     _qualityHistory.add(signalQuality);
-    
+
     // Keep quality history synchronized with position history
     if (_qualityHistory.length > _maxHistorySize) {
       _qualityHistory.removeAt(0);
@@ -443,7 +467,7 @@ class GpsServiceWin32 implements GpsService {
   /// Gets positions within the specified time window
   List<GpsPosition> _getPositionsInTimeWindow(Duration timeWindow) {
     if (_positionHistory.isEmpty) return [];
-    
+
     final cutoffTime = DateTime.now().subtract(timeWindow);
     return _positionHistory
         .where((position) => position.timestamp.isAfter(cutoffTime))

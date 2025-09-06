@@ -42,7 +42,10 @@ void main() {
         httpClientService.configureNoaaEndpoints();
 
         // Assert
-        expect(httpClientService.client.options.baseUrl, 'https://charts.noaa.gov');
+        expect(
+          httpClientService.client.options.baseUrl,
+          'https://charts.noaa.gov',
+        );
         final headers = httpClientService.client.options.headers;
         expect(headers['User-Agent'], contains('NavTool'));
         expect(headers['Accept'], contains('application/octet-stream'));
@@ -50,8 +53,14 @@ void main() {
 
       test('should configure certificate pinning', () {
         // Act & Assert
-        expect(() => httpClientService.configureCertificatePinning(), returnsNormally);
-        verifyInfoLogged(mockLogger, 'Certificate pinning configured for secure downloads');
+        expect(
+          () => httpClientService.configureCertificatePinning(),
+          returnsNormally,
+        );
+        verifyInfoLogged(
+          mockLogger,
+          'Certificate pinning configured for secure downloads',
+        );
       });
     });
 
@@ -62,15 +71,18 @@ void main() {
         expect(httpClientService.client.interceptors, isNotEmpty);
       });
 
-      test('should have proper timeout configurations for marine environment', () {
-        // Arrange & Act
-        final options = httpClientService.client.options;
+      test(
+        'should have proper timeout configurations for marine environment',
+        () {
+          // Arrange & Act
+          final options = httpClientService.client.options;
 
-        // Assert - Marine environment requires longer timeouts
-        expect(options.connectTimeout, const Duration(seconds: 30));
-        expect(options.receiveTimeout, const Duration(minutes: 10));
-        expect(options.sendTimeout, const Duration(minutes: 5));
-      });
+          // Assert - Marine environment requires longer timeouts
+          expect(options.connectTimeout, const Duration(seconds: 30));
+          expect(options.receiveTimeout, const Duration(minutes: 10));
+          expect(options.sendTimeout, const Duration(minutes: 5));
+        },
+      );
     });
 
     group('Request Methods Tests', () {
@@ -110,7 +122,11 @@ void main() {
         httpClientService.dispose();
 
         // Assert
-        verifyDebugLogged(mockLogger, 'HTTP client disposed', expectedContext: 'HTTP');
+        verifyDebugLogged(
+          mockLogger,
+          'HTTP client disposed',
+          expectedContext: 'HTTP',
+        );
       });
     });
   });

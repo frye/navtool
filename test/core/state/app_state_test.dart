@@ -14,7 +14,7 @@ void main() {
       test('should initialize with default values', () {
         // Arrange & Act
         const state = AppState();
-        
+
         // Assert
         expect(state.isInitialized, isFalse);
         expect(state.currentChartId, isNull);
@@ -34,7 +34,7 @@ void main() {
         final customCharts = [_createTestChart('US5CA52M')];
         final customPosition = _createTestPosition();
         final customWaypoints = [_createTestWaypoint()];
-        
+
         // Act
         final state = AppState(
           isInitialized: true,
@@ -46,7 +46,7 @@ void main() {
           themeMode: AppThemeMode.dark,
           isDayMode: false,
         );
-        
+
         // Assert
         expect(state.isInitialized, isTrue);
         expect(state.currentChartId, equals('US5CA52M'));
@@ -64,24 +64,24 @@ void main() {
         // Arrange
         const initialState = AppState();
         final newPosition = _createTestPosition();
-        
+
         // Act
         final newState = initialState.copyWith(
           isInitialized: true,
           currentPosition: newPosition,
           isGpsEnabled: true,
         );
-        
+
         // Assert - Original state unchanged
         expect(initialState.isInitialized, isFalse);
         expect(initialState.currentPosition, isNull);
         expect(initialState.isGpsEnabled, isFalse);
-        
+
         // Assert - New state has updates
         expect(newState.isInitialized, isTrue);
         expect(newState.currentPosition, equals(newPosition));
         expect(newState.isGpsEnabled, isTrue);
-        
+
         // Assert - Other fields preserved
         expect(newState.themeMode, equals(initialState.themeMode));
         expect(newState.isDayMode, equals(initialState.isDayMode));
@@ -92,23 +92,23 @@ void main() {
         const initialState = AppState();
         final chart1 = _createTestChart('US5CA52M');
         final chart2 = _createTestChart('US4CA11M');
-        
+
         // Act
         final stateWithAvailable = initialState.copyWith(
           availableCharts: [chart1],
         );
-        
+
         final stateWithDownloaded = stateWithAvailable.copyWith(
           downloadedCharts: [chart2],
         );
-        
+
         // Assert
         expect(initialState.availableCharts, isEmpty);
         expect(initialState.downloadedCharts, isEmpty);
-        
+
         expect(stateWithAvailable.availableCharts, hasLength(1));
         expect(stateWithAvailable.downloadedCharts, isEmpty);
-        
+
         expect(stateWithDownloaded.availableCharts, hasLength(1));
         expect(stateWithDownloaded.downloadedCharts, hasLength(1));
       });
@@ -118,18 +118,20 @@ void main() {
         const initialState = AppState();
         final route = _createTestRoute();
         final waypoint = _createTestWaypoint();
-        
+
         // Act
         final stateWithRoute = initialState.copyWith(activeRoute: route);
-        final stateWithWaypoint = stateWithRoute.copyWith(waypoints: [waypoint]);
-        
+        final stateWithWaypoint = stateWithRoute.copyWith(
+          waypoints: [waypoint],
+        );
+
         // Assert
         expect(initialState.activeRoute, isNull);
         expect(initialState.waypoints, isEmpty);
-        
+
         expect(stateWithRoute.activeRoute, equals(route));
         expect(stateWithRoute.waypoints, isEmpty);
-        
+
         expect(stateWithWaypoint.activeRoute, equals(route));
         expect(stateWithWaypoint.waypoints, hasLength(1));
       });
@@ -138,10 +140,10 @@ void main() {
         // Arrange
         final initialPosition = _createTestPosition();
         final state = AppState(currentPosition: initialPosition);
-        
+
         // Act - copyWith preserves existing values when null not explicitly passed
         final updatedState = state.copyWith(isInitialized: true);
-        
+
         // Assert - currentPosition should be preserved
         expect(state.currentPosition, equals(initialPosition));
         expect(updatedState.currentPosition, equals(initialPosition));
@@ -153,14 +155,14 @@ void main() {
       test('should maintain state consistency for GPS', () {
         // Arrange
         const state = AppState();
-        
+
         // Act
         final gpsEnabledState = state.copyWith(
           isGpsEnabled: true,
           isLocationPermissionGranted: true,
           currentPosition: _createTestPosition(),
         );
-        
+
         // Assert - GPS state is consistent
         expect(gpsEnabledState.isGpsEnabled, isTrue);
         expect(gpsEnabledState.isLocationPermissionGranted, isTrue);
@@ -170,14 +172,14 @@ void main() {
       test('should handle theme mode transitions', () {
         // Arrange
         const state = AppState();
-        
+
         // Act & Assert - Test all theme modes
         final lightState = state.copyWith(themeMode: AppThemeMode.light);
         expect(lightState.themeMode, equals(AppThemeMode.light));
-        
+
         final darkState = lightState.copyWith(themeMode: AppThemeMode.dark);
         expect(darkState.themeMode, equals(AppThemeMode.dark));
-        
+
         final systemState = darkState.copyWith(themeMode: AppThemeMode.system);
         expect(systemState.themeMode, equals(AppThemeMode.system));
       });
@@ -186,13 +188,13 @@ void main() {
         // Arrange
         final chart = _createTestChart('US5CA52M');
         const state = AppState();
-        
+
         // Act
         final stateWithChart = state.copyWith(
           availableCharts: [chart],
           currentChartId: chart.id,
         );
-        
+
         // Assert
         expect(stateWithChart.currentChartId, equals(chart.id));
         expect(stateWithChart.availableCharts, contains(chart));
@@ -204,13 +206,13 @@ void main() {
         // Arrange
         final chart = _createTestChart('US5CA52M');
         final state = AppState(availableCharts: [chart]);
-        
+
         // Act & Assert - Lists should be immutable (const lists)
         // Note: The const [] lists in AppState are already immutable
         expect(state.availableCharts, hasLength(1));
         expect(state.downloadedCharts, isEmpty);
         expect(state.waypoints, isEmpty);
-        
+
         // Verify the lists are present and correct
         expect(state.availableCharts.first, equals(chart));
       });
@@ -219,13 +221,16 @@ void main() {
         // Arrange
         final chart = _createTestChart('US5CA52M');
         final state = AppState(availableCharts: [chart]);
-        
+
         // Act
         final newState = state.copyWith(isInitialized: true);
-        
+
         // Assert - Different instances
         expect(identical(state, newState), isFalse);
-        expect(identical(state.availableCharts, newState.availableCharts), isTrue); // Same list reference is OK for immutable data
+        expect(
+          identical(state.availableCharts, newState.availableCharts),
+          isTrue,
+        ); // Same list reference is OK for immutable data
       });
     });
 
@@ -234,21 +239,21 @@ void main() {
         // Arrange
         final position = _createTestPosition();
         final chart = _createTestChart('US5CA52M');
-        
+
         final state1 = AppState(
           isInitialized: true,
           currentPosition: position,
           availableCharts: [chart],
           isGpsEnabled: true,
         );
-        
+
         final state2 = AppState(
           isInitialized: true,
           currentPosition: position,
           availableCharts: [chart],
           isGpsEnabled: true,
         );
-        
+
         // Act & Assert
         expect(state1, equals(state2));
         // Note: hashCode may differ due to list implementations, but equality should work
@@ -259,7 +264,7 @@ void main() {
         // Arrange
         final state1 = AppState(isInitialized: true);
         final state2 = AppState(isInitialized: false);
-        
+
         // Act & Assert
         expect(state1, isNot(equals(state2)));
         expect(state1.hashCode, isNot(equals(state2.hashCode)));
@@ -271,19 +276,19 @@ void main() {
         final chart1 = _createTestChart('US5CA52M');
         final chart2 = _createTestChart('US4CA11M');
         final waypoint = _createTestWaypoint();
-        
+
         final state1 = AppState(
           availableCharts: [chart1, chart2],
           waypoints: [waypoint],
           currentPosition: position,
         );
-        
+
         final state2 = AppState(
           availableCharts: [chart1, chart2],
           waypoints: [waypoint],
           currentPosition: position,
         );
-        
+
         // Act & Assert
         expect(state1, equals(state2));
       });
@@ -298,10 +303,10 @@ void main() {
           availableCharts: [_createTestChart('US5CA52M')],
           isGpsEnabled: true,
         );
-        
+
         // Act
         final stateString = state.toString();
-        
+
         // Assert
         expect(stateString, contains('AppState'));
         expect(stateString, contains('isInitialized: true'));
@@ -328,23 +333,23 @@ void main() {
           longitude: -122.4783,
           type: WaypointType.landmark,
         );
-        
+
         // Act - Simulate marine navigation setup
         final stateWithGps = initialState.copyWith(
           isGpsEnabled: true,
           isLocationPermissionGranted: true,
           currentPosition: position,
         );
-        
+
         final stateWithChart = stateWithGps.copyWith(
           availableCharts: [chart],
           currentChartId: chart.id,
         );
-        
+
         final stateWithNavigation = stateWithChart.copyWith(
           waypoints: [waypoint],
         );
-        
+
         // Assert - Complete marine navigation state
         expect(stateWithNavigation.isGpsEnabled, isTrue);
         expect(stateWithNavigation.isLocationPermissionGranted, isTrue);
@@ -362,10 +367,10 @@ void main() {
           timestamp: DateTime.now(),
           accuracy: 2.0, // High accuracy for marine navigation
         );
-        
+
         // Act
         final state = AppState(currentPosition: highAccuracyPosition);
-        
+
         // Assert
         expect(state.currentPosition?.accuracy, lessThanOrEqualTo(5.0));
       });

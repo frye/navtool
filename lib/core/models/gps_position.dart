@@ -44,15 +44,18 @@ class GpsPosition {
   /// Calculates the distance to another GPS position in meters using the Haversine formula
   double distanceTo(GpsPosition other) {
     const double earthRadius = 6371000; // Earth's radius in meters
-    
+
     final double lat1Rad = latitude * math.pi / 180;
     final double lat2Rad = other.latitude * math.pi / 180;
     final double deltaLatRad = (other.latitude - latitude) * math.pi / 180;
     final double deltaLonRad = (other.longitude - longitude) * math.pi / 180;
 
-    final double a = math.sin(deltaLatRad / 2) * math.sin(deltaLatRad / 2) +
-        math.cos(lat1Rad) * math.cos(lat2Rad) *
-        math.sin(deltaLonRad / 2) * math.sin(deltaLonRad / 2);
+    final double a =
+        math.sin(deltaLatRad / 2) * math.sin(deltaLatRad / 2) +
+        math.cos(lat1Rad) *
+            math.cos(lat2Rad) *
+            math.sin(deltaLonRad / 2) *
+            math.sin(deltaLonRad / 2);
     final double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
 
     return earthRadius * c;
@@ -65,7 +68,8 @@ class GpsPosition {
     final double deltaLonRad = (other.longitude - longitude) * math.pi / 180;
 
     final double y = math.sin(deltaLonRad) * math.cos(lat2Rad);
-    final double x = math.cos(lat1Rad) * math.sin(lat2Rad) -
+    final double x =
+        math.cos(lat1Rad) * math.sin(lat2Rad) -
         math.sin(lat1Rad) * math.cos(lat2Rad) * math.cos(deltaLonRad);
 
     final double bearing = math.atan2(y, x) * 180 / math.pi;
@@ -86,18 +90,18 @@ class GpsPosition {
   String toCoordinateString() {
     final String latDirection = latitude >= 0 ? 'N' : 'S';
     final String lonDirection = longitude >= 0 ? 'E' : 'W';
-    
+
     final double absLat = latitude.abs();
     final double absLon = longitude.abs();
-    
+
     final int latDeg = absLat.floor();
     final double latMin = (absLat - latDeg) * 60;
-    
+
     final int lonDeg = absLon.floor();
     final double lonMin = (absLon - lonDeg) * 60;
-    
+
     return '${latDeg.toString().padLeft(2, '0')}°${latMin.toStringAsFixed(3)}\'$latDirection '
-           '${lonDeg.toString().padLeft(3, '0')}°${lonMin.toStringAsFixed(3)}\'$lonDirection';
+        '${lonDeg.toString().padLeft(3, '0')}°${lonMin.toStringAsFixed(3)}\'$lonDirection';
   }
 
   @override
@@ -126,8 +130,8 @@ class GpsPosition {
   @override
   String toString() {
     return 'GpsPosition(lat: ${latitude.toStringAsFixed(6)}, '
-           'lon: ${longitude.toStringAsFixed(6)}, '
-           'timestamp: $timestamp)';
+        'lon: ${longitude.toStringAsFixed(6)}, '
+        'timestamp: $timestamp)';
   }
 
   /// Creates a copy with optional parameter overrides

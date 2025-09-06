@@ -46,7 +46,7 @@ class NavigationRoute {
   /// Calculates the total distance of the route in meters
   double get totalDistance {
     if (waypoints.length < 2) return 0.0;
-    
+
     double total = 0.0;
     for (int i = 0; i < waypoints.length - 1; i++) {
       total += waypoints[i].distanceTo(waypoints[i + 1]);
@@ -69,11 +69,11 @@ class NavigationRoute {
   /// Finds the next waypoint in the route based on current position
   Waypoint? getNextWaypoint(GpsPosition currentPosition) {
     if (waypoints.isEmpty) return null;
-    
+
     // Find the closest waypoint that hasn't been reached
     double minDistance = double.infinity;
     Waypoint? nextWaypoint;
-    
+
     for (final waypoint in waypoints) {
       final distance = currentPosition.distanceTo(waypoint.toPosition());
       if (distance < minDistance) {
@@ -81,7 +81,7 @@ class NavigationRoute {
         nextWaypoint = waypoint;
       }
     }
-    
+
     return nextWaypoint;
   }
 
@@ -89,15 +89,15 @@ class NavigationRoute {
   double remainingDistance(GpsPosition currentPosition) {
     final nextWaypoint = getNextWaypoint(currentPosition);
     if (nextWaypoint == null) return 0.0;
-    
+
     double remaining = currentPosition.distanceTo(nextWaypoint.toPosition());
-    
+
     // Add distances between remaining waypoints
     final nextIndex = waypoints.indexOf(nextWaypoint);
     for (int i = nextIndex; i < waypoints.length - 1; i++) {
       remaining += waypoints[i].distanceTo(waypoints[i + 1]);
     }
-    
+
     return remaining;
   }
 
@@ -105,7 +105,7 @@ class NavigationRoute {
   double? getBearing(GpsPosition currentPosition) {
     final nextWaypoint = getNextWaypoint(currentPosition);
     if (nextWaypoint == null) return null;
-    
+
     return currentPosition.bearingTo(nextWaypoint.toPosition());
   }
 
@@ -149,9 +149,9 @@ class NavigationRoute {
   @override
   String toString() {
     return 'NavigationRoute(id: $id, name: $name, '
-           'waypoints: ${waypoints.length}, '
-           'distance: ${(totalDistance / 1000).toStringAsFixed(2)}km, '
-           'active: $isActive)';
+        'waypoints: ${waypoints.length}, '
+        'distance: ${(totalDistance / 1000).toStringAsFixed(2)}km, '
+        'active: $isActive)';
   }
 
   /// Creates a copy with optional parameter overrides

@@ -27,7 +27,10 @@ void main() {
       mockLogger = MockAppLogger();
     });
 
-    Widget createTestWidget({Widget? child, List<Override> overrides = const []}) {
+    Widget createTestWidget({
+      Widget? child,
+      List<Override> overrides = const [],
+    }) {
       return ProviderScope(
         overrides: [
           navigationServiceProvider.overrideWithValue(mockNavigationService),
@@ -35,32 +38,36 @@ void main() {
           loggerProvider.overrideWithValue(mockLogger),
           ...overrides,
         ],
-        child: MaterialApp(
-          home: child ?? const Scaffold(body: Text('Test')),
-        ),
+        child: MaterialApp(home: child ?? const Scaffold(body: Text('Test'))),
       );
     }
 
-    NavigationRoute createTestRoute({String? id, String? name, List<Waypoint>? waypoints}) {
+    NavigationRoute createTestRoute({
+      String? id,
+      String? name,
+      List<Waypoint>? waypoints,
+    }) {
       return NavigationRoute(
         id: id ?? 'test_route_001',
         name: name ?? 'Test Route',
-        waypoints: waypoints ?? [
-          Waypoint(
-            id: 'wp_001',
-            name: 'Start Point',
-            latitude: 37.7749,
-            longitude: -122.4194,
-            type: WaypointType.departure,
-          ),
-          Waypoint(
-            id: 'wp_002',
-            name: 'End Point',
-            latitude: 37.8000,
-            longitude: -122.4000,
-            type: WaypointType.destination,
-          ),
-        ],
+        waypoints:
+            waypoints ??
+            [
+              Waypoint(
+                id: 'wp_001',
+                name: 'Start Point',
+                latitude: 37.7749,
+                longitude: -122.4194,
+                type: WaypointType.departure,
+              ),
+              Waypoint(
+                id: 'wp_002',
+                name: 'End Point',
+                latitude: 37.8000,
+                longitude: -122.4000,
+                type: WaypointType.destination,
+              ),
+            ],
       );
     }
 
@@ -71,7 +78,9 @@ void main() {
           createTestRoute(id: 'route1', name: 'Route 1'),
           createTestRoute(id: 'route2', name: 'Route 2'),
         ];
-        when(mockStorageService.getAllRoutes()).thenAnswer((_) async => testRoutes);
+        when(
+          mockStorageService.getAllRoutes(),
+        ).thenAnswer((_) async => testRoutes);
 
         // Act
         final routes = await mockStorageService.getAllRoutes();
@@ -96,16 +105,23 @@ void main() {
 
       test('should handle storage error', () async {
         // Arrange
-        when(mockStorageService.getAllRoutes()).thenThrow(Exception('Failed to load routes'));
+        when(
+          mockStorageService.getAllRoutes(),
+        ).thenThrow(Exception('Failed to load routes'));
 
         // Act & Assert
-        expect(() => mockStorageService.getAllRoutes(), throwsA(isA<Exception>()));
+        expect(
+          () => mockStorageService.getAllRoutes(),
+          throwsA(isA<Exception>()),
+        );
       });
 
       test('should refresh routes periodically', () async {
         // Arrange
         final testRoutes = [createTestRoute()];
-        when(mockStorageService.getAllRoutes()).thenAnswer((_) async => testRoutes);
+        when(
+          mockStorageService.getAllRoutes(),
+        ).thenAnswer((_) async => testRoutes);
 
         // Act - Simulate multiple refresh calls
         await mockStorageService.getAllRoutes();
@@ -133,7 +149,9 @@ void main() {
       test('should create new route with waypoints', () async {
         // Arrange
         final testRoute = createTestRoute();
-        when(mockStorageService.getAllRoutes()).thenAnswer((_) async => [testRoute]);
+        when(
+          mockStorageService.getAllRoutes(),
+        ).thenAnswer((_) async => [testRoute]);
         when(mockStorageService.storeRoute(any)).thenAnswer((_) async {});
 
         // Act
@@ -147,10 +165,14 @@ void main() {
       test('should edit existing route', () async {
         // Arrange
         final testRoute = createTestRoute();
-        when(mockNavigationService.createRoute(any)).thenAnswer((_) async => testRoute);
+        when(
+          mockNavigationService.createRoute(any),
+        ).thenAnswer((_) async => testRoute);
 
         // Act
-        final route = await mockNavigationService.createRoute(testRoute.waypoints);
+        final route = await mockNavigationService.createRoute(
+          testRoute.waypoints,
+        );
 
         // Assert
         expect(route.waypoints, hasLength(2));
@@ -161,10 +183,14 @@ void main() {
       test('should update route waypoints', () async {
         // Arrange
         final testRoute = createTestRoute();
-        when(mockNavigationService.createRoute(any)).thenAnswer((_) async => testRoute);
+        when(
+          mockNavigationService.createRoute(any),
+        ).thenAnswer((_) async => testRoute);
 
         // Act
-        final route = await mockNavigationService.createRoute(testRoute.waypoints);
+        final route = await mockNavigationService.createRoute(
+          testRoute.waypoints,
+        );
 
         // Assert
         expect(route.waypoints, hasLength(2));
@@ -173,7 +199,9 @@ void main() {
       test('should save changes to storage', () async {
         // Arrange
         final testRoute = createTestRoute();
-        when(mockStorageService.getAllRoutes()).thenAnswer((_) async => [testRoute]);
+        when(
+          mockStorageService.getAllRoutes(),
+        ).thenAnswer((_) async => [testRoute]);
 
         // Act
         final routes = await mockStorageService.getAllRoutes();
@@ -187,7 +215,9 @@ void main() {
       test('should activate route for navigation', () async {
         // Arrange
         final testRoute = createTestRoute();
-        when(mockNavigationService.activateRoute(testRoute)).thenAnswer((_) async {});
+        when(
+          mockNavigationService.activateRoute(testRoute),
+        ).thenAnswer((_) async {});
 
         // Act
         await mockNavigationService.activateRoute(testRoute);
@@ -210,7 +240,9 @@ void main() {
       test('should delete route from storage', () async {
         // Arrange
         final testRoute = createTestRoute();
-        when(mockStorageService.deleteRoute(testRoute.id)).thenAnswer((_) async {});
+        when(
+          mockStorageService.deleteRoute(testRoute.id),
+        ).thenAnswer((_) async {});
 
         // Act
         await mockStorageService.deleteRoute(testRoute.id);
@@ -222,10 +254,15 @@ void main() {
       test('should handle delete error gracefully', () async {
         // Arrange
         final testRoute = createTestRoute();
-        when(mockStorageService.deleteRoute(testRoute.id)).thenThrow(Exception('Failed to delete'));
+        when(
+          mockStorageService.deleteRoute(testRoute.id),
+        ).thenThrow(Exception('Failed to delete'));
 
         // Act & Assert
-        expect(() => mockStorageService.deleteRoute(testRoute.id), throwsA(isA<Exception>()));
+        expect(
+          () => mockStorageService.deleteRoute(testRoute.id),
+          throwsA(isA<Exception>()),
+        );
       });
     });
 
@@ -365,8 +402,11 @@ void main() {
                 name: 'Start $index',
                 latitude: 37.7749 + (index * 0.001),
                 longitude: -122.4194 + (index * 0.001),
-                type: index == 0 ? WaypointType.departure :
-                      index == 49 ? WaypointType.destination : WaypointType.intermediate,
+                type: index == 0
+                    ? WaypointType.departure
+                    : index == 49
+                    ? WaypointType.destination
+                    : WaypointType.intermediate,
               ),
               Waypoint(
                 id: 'wp_${index}_end',
@@ -379,7 +419,9 @@ void main() {
           );
         });
 
-        when(mockStorageService.getAllRoutes()).thenAnswer((_) async => largeRouteList);
+        when(
+          mockStorageService.getAllRoutes(),
+        ).thenAnswer((_) async => largeRouteList);
 
         // Act
         final routes = await mockStorageService.getAllRoutes();
@@ -393,7 +435,9 @@ void main() {
       test('should respond quickly to route list requests', () async {
         // Arrange
         final testRoute = createTestRoute();
-        when(mockStorageService.getAllRoutes()).thenAnswer((_) async => [testRoute]);
+        when(
+          mockStorageService.getAllRoutes(),
+        ).thenAnswer((_) async => [testRoute]);
 
         // Act
         final stopwatch = Stopwatch()..start();

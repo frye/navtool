@@ -15,7 +15,10 @@ void main() {
       try {
         final state = container.read(appStateProvider);
         expect(state, isNotNull);
-        expect(state.isInitialized, true); // State should be initialized by the notifier
+        expect(
+          state.isInitialized,
+          true,
+        ); // State should be initialized by the notifier
       } finally {
         container.dispose();
       }

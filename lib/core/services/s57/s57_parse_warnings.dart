@@ -1,40 +1,40 @@
 /// S-57 Structured Warnings & Strict Mode Diagnostics
-/// 
+///
 /// Unified warning model with codes, severities, and contextual identifiers
 /// for comprehensive S-57 parsing diagnostics and error handling.
 
 /// Warning severity levels for S-57 parsing
-enum S57WarningSeverity { 
+enum S57WarningSeverity {
   /// Informational messages (e.g., auto-corrections)
-  info, 
-  
+  info,
+
   /// Non-critical issues that don't affect parsing (e.g., missing optional data)
-  warning, 
-  
+  warning,
+
   /// Critical issues that affect data integrity (e.g., malformed records)
-  error 
+  error,
 }
 
 /// Structured warning for S-57 parsing issues
-/// 
+///
 /// Provides typed warning information with severity levels and contextual
 /// identifiers for comprehensive error tracking and strict mode enforcement.
 class S57ParseWarning {
   /// Warning code for categorization (e.g., 'DIR_TRUNCATED')
   final String code;
-  
+
   /// Human-readable warning message
   final String message;
-  
+
   /// Severity level determining escalation behavior
   final S57WarningSeverity severity;
-  
+
   /// Optional record identifier (e.g., tag or record sequence number)
   final String? recordId;
-  
+
   /// Optional feature identifier (FOID or internal id)
   final String? featureId;
-  
+
   /// Timestamp when warning was generated
   final DateTime timestamp;
 
@@ -47,7 +47,8 @@ class S57ParseWarning {
   }) : timestamp = DateTime.now();
 
   @override
-  String toString() => 'S57ParseWarning(${severity.name}): [$code] $message'
+  String toString() =>
+      'S57ParseWarning(${severity.name}): [$code] $message'
       '${recordId != null ? ' (record: $recordId)' : ''}'
       '${featureId != null ? ' (feature: $featureId)' : ''}';
 
@@ -67,7 +68,7 @@ class S57ParseWarning {
 }
 
 /// Core warning codes for S-57 parsing issues
-/// 
+///
 /// Standardized codes matching the specification table for consistent
 /// warning categorization across all parsing modules.
 class S57WarningCodes {
@@ -77,40 +78,37 @@ class S57WarningCodes {
   static const String dirTruncated = 'DIR_TRUNCATED';
   static const String fieldBounds = 'FIELD_BOUNDS';
   static const String subfieldParse = 'SUBFIELD_PARSE';
-  
+
   // S-57 object and attribute validation
   static const String unknownObjCode = 'UNKNOWN_OBJ_CODE';
   static const String missingRequiredAttr = 'MISSING_REQUIRED_ATTR';
-  
+
   // Geometry validation and processing
   static const String degenerateEdge = 'DEGENERATE_EDGE';
   static const String polygonClosedAuto = 'POLYGON_CLOSED_AUTO';
-  
+
   // Update processing
   static const String updateGap = 'UPDATE_GAP';
   static const String updateRverMismatch = 'UPDATE_RVER_MISMATCH';
   static const String updateDeleteMissing = 'UPDATE_DELETE_MISSING';
   static const String updateInsertConflict = 'UPDATE_INSERT_CONFLICT';
-  
+
   // Data sanity checks
   static const String depthOutOfRange = 'DEPTH_OUT_OF_RANGE';
 }
 
 /// Configuration options for S-57 parsing behavior
-/// 
+///
 /// Controls strict mode enforcement and warning thresholds for
 /// different parsing scenarios and environments.
 class S57ParseOptions {
   /// Enable strict mode (escalate error-level warnings to exceptions)
   final bool strictMode;
-  
+
   /// Optional maximum warning threshold (null = no limit)
   final int? maxWarnings;
 
-  const S57ParseOptions({
-    this.strictMode = false,
-    this.maxWarnings,
-  });
+  const S57ParseOptions({this.strictMode = false, this.maxWarnings});
 
   /// Create options for development (permissive)
   const S57ParseOptions.development() : this(strictMode: false);
@@ -123,22 +121,22 @@ class S57ParseOptions {
 }
 
 /// Abstract interface for S-57 parsing event logging
-/// 
+///
 /// Pluggable logging interface for integration with UI/CLI systems
 /// and custom warning handling strategies.
 abstract class S57ParseLogger {
   /// Called when a warning is generated during parsing
   void onWarning(S57ParseWarning warning);
-  
+
   /// Called when file parsing begins
   void onStartFile(String path);
-  
+
   /// Called when file parsing completes
   void onFinishFile(String path, {required List<S57ParseWarning> warnings});
 }
 
 /// Default no-op logger implementation
-/// 
+///
 /// Provides silent logging for scenarios where warning tracking
 /// is not required or handled elsewhere.
 class S57NoOpLogger implements S57ParseLogger {
@@ -161,7 +159,7 @@ class S57NoOpLogger implements S57ParseLogger {
 }
 
 /// Console logger implementation for CLI applications
-/// 
+///
 /// Prints condensed warning information to console with severity-based
 /// formatting for development and debugging scenarios.
 class S57ConsoleLogger implements S57ParseLogger {
@@ -186,11 +184,19 @@ class S57ConsoleLogger implements S57ParseLogger {
   @override
   void onFinishFile(String path, {required List<S57ParseWarning> warnings}) {
     if (verbose || warnings.isNotEmpty) {
-      final errorCount = warnings.where((w) => w.severity == S57WarningSeverity.error).length;
-      final warningCount = warnings.where((w) => w.severity == S57WarningSeverity.warning).length;
-      final infoCount = warnings.where((w) => w.severity == S57WarningSeverity.info).length;
-      
-      print('Finished parsing $path: $errorCount errors, $warningCount warnings, $infoCount info');
+      final errorCount = warnings
+          .where((w) => w.severity == S57WarningSeverity.error)
+          .length;
+      final warningCount = warnings
+          .where((w) => w.severity == S57WarningSeverity.warning)
+          .length;
+      final infoCount = warnings
+          .where((w) => w.severity == S57WarningSeverity.info)
+          .length;
+
+      print(
+        'Finished parsing $path: $errorCount errors, $warningCount warnings, $infoCount info',
+      );
     }
   }
 

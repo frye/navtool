@@ -14,11 +14,11 @@ abstract class GpsService {
   Future<GpsPosition?> getCurrentPosition();
 
   /// Gets current position with Seattle fallback when location services disabled
-  /// 
+  ///
   /// This method attempts to get the real GPS position first, but if location
   /// services are disabled or permission is denied, it returns Seattle coordinates
   /// as a fallback location for chart discovery.
-  /// 
+  ///
   /// Returns:
   /// - Real GPS position if available and permission granted
   /// - Seattle fallback coordinates if location services disabled/denied
@@ -38,7 +38,7 @@ abstract class GpsService {
   Future<bool> isLocationEnabled();
 
   // Enhanced functionality for issue #53
-  
+
   /// Assesses GPS signal quality from position data
   Future<GpsSignalQuality> assessSignalQuality(GpsPosition? position);
 
@@ -64,7 +64,9 @@ abstract class GpsService {
   Future<PositionFreshness> getPositionFreshness();
 
   /// Filters positions to meet marine navigation accuracy standards
-  Future<List<GpsPosition>> filterForMarineAccuracy(List<GpsPosition> positions);
+  Future<List<GpsPosition>> filterForMarineAccuracy(
+    List<GpsPosition> positions,
+  );
 
   /// Calculates course over ground from position history
   Future<CourseOverGround?> calculateCourseOverGround(Duration timeWindow);

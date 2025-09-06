@@ -44,7 +44,7 @@ class GpsStatusWidget extends ConsumerWidget {
 
   Widget _buildGpsStatus(BuildContext context, WidgetRef ref) {
     final gpsStatus = ref.watch(gpsStatusProvider);
-    
+
     return Row(
       children: [
         Icon(
@@ -66,7 +66,7 @@ class GpsStatusWidget extends ConsumerWidget {
 
   Widget _buildPositionDisplay(BuildContext context, WidgetRef ref) {
     final positionAsync = ref.watch(gpsPositionProvider);
-    
+
     return positionAsync.when(
       data: (position) {
         if (position == null) {
@@ -124,16 +124,40 @@ class GpsStatusWidget extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              _buildCoordinateRow(context, 'Latitude:', '${position.latitude.toStringAsFixed(6)}°'),
-              _buildCoordinateRow(context, 'Longitude:', '${position.longitude.toStringAsFixed(6)}°'),
+              _buildCoordinateRow(
+                context,
+                'Latitude:',
+                '${position.latitude.toStringAsFixed(6)}°',
+              ),
+              _buildCoordinateRow(
+                context,
+                'Longitude:',
+                '${position.longitude.toStringAsFixed(6)}°',
+              ),
               if (position.altitude != null)
-                _buildCoordinateRow(context, 'Altitude:', '${position.altitude!.toStringAsFixed(1)} m'),
+                _buildCoordinateRow(
+                  context,
+                  'Altitude:',
+                  '${position.altitude!.toStringAsFixed(1)} m',
+                ),
               if (position.accuracy != null)
-                _buildCoordinateRow(context, 'Accuracy:', '±${position.accuracy!.toStringAsFixed(1)} m'),
+                _buildCoordinateRow(
+                  context,
+                  'Accuracy:',
+                  '±${position.accuracy!.toStringAsFixed(1)} m',
+                ),
               if (position.speed != null && position.speed! > 0)
-                _buildCoordinateRow(context, 'Speed:', '${(position.speed! * 1.944).toStringAsFixed(1)} knots'),
+                _buildCoordinateRow(
+                  context,
+                  'Speed:',
+                  '${(position.speed! * 1.944).toStringAsFixed(1)} knots',
+                ),
               if (position.heading != null)
-                _buildCoordinateRow(context, 'Heading:', '${position.heading!.toStringAsFixed(0)}°'),
+                _buildCoordinateRow(
+                  context,
+                  'Heading:',
+                  '${position.heading!.toStringAsFixed(0)}°',
+                ),
               const SizedBox(height: 8),
               Text(
                 'Last updated: ${_formatTime(position.timestamp)}',
@@ -216,9 +240,9 @@ class GpsStatusWidget extends ConsumerWidget {
             flex: 3,
             child: Text(
               value,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w500,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
               textAlign: TextAlign.end,
               overflow: TextOverflow.ellipsis,
             ),
@@ -230,7 +254,7 @@ class GpsStatusWidget extends ConsumerWidget {
 
   Widget _buildGpsActions(BuildContext context, WidgetRef ref) {
     final gpsService = ref.read(gpsServiceProvider);
-    
+
     return Row(
       children: [
         // Check if we need a permission request button
@@ -238,27 +262,32 @@ class GpsStatusWidget extends ConsumerWidget {
           future: gpsService.checkLocationPermission(),
           builder: (context, snapshot) {
             final hasPermission = snapshot.data ?? false;
-            
+
             if (!hasPermission) {
               return Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () async {
-                    final granted = await gpsService.requestLocationPermission();
-                    
+                    final granted = await gpsService
+                        .requestLocationPermission();
+
                     if (granted) {
                       // Refresh position after permission granted
                       ref.invalidate(gpsPositionProvider);
-                      
+
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Location permission granted! Updating position...'),
+                          content: Text(
+                            'Location permission granted! Updating position...',
+                          ),
                           duration: Duration(seconds: 2),
                         ),
                       );
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Location permission denied. Using fallback coordinates.'),
+                          content: Text(
+                            'Location permission denied. Using fallback coordinates.',
+                          ),
                           duration: Duration(seconds: 3),
                         ),
                       );
@@ -273,13 +302,13 @@ class GpsStatusWidget extends ConsumerWidget {
                 ),
               );
             }
-            
+
             return Expanded(
               child: ElevatedButton.icon(
                 onPressed: () async {
                   // Invalidate the provider to trigger a refresh
                   ref.invalidate(gpsPositionProvider);
-                  
+
                   // Show feedback to user
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -322,7 +351,10 @@ class GpsStatusWidget extends ConsumerWidget {
             Text('• macOS/Linux: Geolocator package for standard location'),
             Text('• Real GPS integration with platform-specific optimizations'),
             SizedBox(height: 12),
-            Text('Marine Navigation Features:', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              'Marine Navigation Features:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
             SizedBox(height: 4),
             Text('• High accuracy positioning'),
             Text('• Distance and bearing calculations'),

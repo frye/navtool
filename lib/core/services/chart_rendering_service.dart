@@ -17,9 +17,9 @@ class ChartRenderingService {
     required CoordinateTransform transform,
     required List<MaritimeFeature> features,
     ChartDisplayMode displayMode = ChartDisplayMode.dayMode,
-  })  : _transform = transform,
-        _features = features,
-        _displayMode = displayMode {
+  }) : _transform = transform,
+       _features = features,
+       _displayMode = displayMode {
     // Initialize default layer visibility
     _initializeLayerVisibility();
   }
@@ -34,7 +34,9 @@ class ChartRenderingService {
 
     // Get visible features sorted by render priority
     final visibleFeatures = _getVisibleFeatures();
-    visibleFeatures.sort((a, b) => a.renderPriority.compareTo(b.renderPriority));
+    visibleFeatures.sort(
+      (a, b) => a.renderPriority.compareTo(b.renderPriority),
+    );
 
     // Render features in order
     for (final feature in visibleFeatures) {
@@ -72,7 +74,7 @@ class ChartRenderingService {
   void _renderPointFeature(Canvas canvas, PointFeature feature) {
     final screenPos = _transform.latLngToScreen(feature.position);
     final symbolSize = _transform.getSymbolSizeForScale(16.0);
-    
+
     final paint = Paint()
       ..color = _getFeatureColor(feature.type)
       ..style = PaintingStyle.fill;
@@ -206,50 +208,65 @@ class ChartRenderingService {
   }
 
   /// Draw lighthouse symbol
-  void _drawLighthouseSymbol(Canvas canvas, Offset center, double size, Paint paint) {
+  void _drawLighthouseSymbol(
+    Canvas canvas,
+    Offset center,
+    double size,
+    Paint paint,
+  ) {
     // Draw lighthouse tower
     canvas.drawRect(
       Rect.fromCenter(center: center, width: size * 0.3, height: size),
       paint,
     );
-    
+
     // Draw light beam
     final beamPaint = Paint()
       ..color = Colors.yellow.withAlpha(100)
       ..style = PaintingStyle.fill;
-    
+
     canvas.drawCircle(center, size * 0.8, beamPaint);
   }
 
   /// Draw beacon symbol
-  void _drawBeaconSymbol(Canvas canvas, Offset center, double size, Paint paint) {
+  void _drawBeaconSymbol(
+    Canvas canvas,
+    Offset center,
+    double size,
+    Paint paint,
+  ) {
     canvas.drawCircle(center, size * 0.5, paint);
-    
+
     // Draw beacon shape
     final path = Path();
     path.moveTo(center.dx, center.dy - size * 0.7);
     path.lineTo(center.dx - size * 0.3, center.dy + size * 0.7);
     path.lineTo(center.dx + size * 0.3, center.dy + size * 0.7);
     path.close();
-    
+
     canvas.drawPath(path, paint);
   }
 
   /// Draw buoy symbol
   void _drawBuoySymbol(Canvas canvas, Offset center, double size, Paint paint) {
     canvas.drawCircle(center, size * 0.5, paint);
-    
+
     // Draw waves around buoy
     final wavePaint = Paint()
       ..color = paint.color.withAlpha(100)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
-    
+
     canvas.drawCircle(center, size * 0.8, wavePaint);
   }
 
   /// Draw daymark symbol
-  void _drawDaymarkSymbol(Canvas canvas, Offset center, double size, Paint paint) {
+  void _drawDaymarkSymbol(
+    Canvas canvas,
+    Offset center,
+    double size,
+    Paint paint,
+  ) {
     final path = Path();
     path.addPolygon([
       Offset(center.dx, center.dy - size * 0.5),
@@ -257,19 +274,31 @@ class ChartRenderingService {
       Offset(center.dx, center.dy + size * 0.5),
       Offset(center.dx - size * 0.5, center.dy),
     ], true);
-    
+
     canvas.drawPath(path, paint);
   }
 
   /// Draw generic point symbol
-  void _drawGenericPointSymbol(Canvas canvas, Offset center, double size, Paint paint) {
+  void _drawGenericPointSymbol(
+    Canvas canvas,
+    Offset center,
+    double size,
+    Paint paint,
+  ) {
     canvas.drawCircle(center, size * 0.4, paint);
   }
 
   /// Render text label for features
-  void _renderLabel(Canvas canvas, String text, Offset position, double symbolSize) {
+  void _renderLabel(
+    Canvas canvas,
+    String text,
+    Offset position,
+    double symbolSize,
+  ) {
     final textStyle = TextStyle(
-      color: _displayMode == ChartDisplayMode.dayMode ? Colors.black : Colors.white,
+      color: _displayMode == ChartDisplayMode.dayMode
+          ? Colors.black
+          : Colors.white,
       fontSize: 12.0,
       fontWeight: FontWeight.w500,
     );
@@ -281,7 +310,7 @@ class ChartRenderingService {
     );
 
     textPainter.layout();
-    
+
     // Position label to the right of symbol
     final labelPosition = Offset(
       position.dx + symbolSize * 0.7,
@@ -297,7 +326,11 @@ class ChartRenderingService {
 
     // Place labels at regular intervals
     const int labelInterval = 5;
-    for (int i = labelInterval; i < contour.coordinates.length; i += labelInterval) {
+    for (
+      int i = labelInterval;
+      i < contour.coordinates.length;
+      i += labelInterval
+    ) {
       final screenPos = _transform.latLngToScreen(contour.coordinates[i]);
       _renderLabel(canvas, '${contour.depth}m', screenPos, 0);
     }
@@ -311,7 +344,9 @@ class ChartRenderingService {
 
     // Calculate scale distance
     final leftPos = _transform.screenToLatLng(offset);
-    final rightPos = _transform.screenToLatLng(offset + const Offset(barWidth, 0));
+    final rightPos = _transform.screenToLatLng(
+      offset + const Offset(barWidth, 0),
+    );
     final distance = CoordinateTransform.distanceInMeters(leftPos, rightPos);
 
     // Draw scale bar background
@@ -327,10 +362,10 @@ class ChartRenderingService {
     );
 
     // Draw scale text
-    final scaleText = distance > 1000 
+    final scaleText = distance > 1000
         ? '${(distance / 1000).toStringAsFixed(1)} km'
         : '${distance.toInt()} m';
-    
+
     _renderLabel(canvas, scaleText, offset + const Offset(0, 25), 0);
   }
 
@@ -369,14 +404,15 @@ class ChartRenderingService {
   /// Get color for specific feature types
   Color _getFeatureColor(MaritimeFeatureType type) {
     final isDayMode = _displayMode == ChartDisplayMode.dayMode;
-    
+
     return switch (type) {
       MaritimeFeatureType.lighthouse => Colors.red,
       MaritimeFeatureType.beacon => Colors.green,
       MaritimeFeatureType.buoy => Colors.yellow,
       MaritimeFeatureType.daymark => Colors.black,
       MaritimeFeatureType.shoreline => isDayMode ? Colors.black : Colors.white,
-      MaritimeFeatureType.landArea => isDayMode ? const Color(0xFFF5F5DC) : const Color(0xFF2D2D2D),
+      MaritimeFeatureType.landArea =>
+        isDayMode ? const Color(0xFFF5F5DC) : const Color(0xFF2D2D2D),
       MaritimeFeatureType.cable => Colors.purple,
       MaritimeFeatureType.pipeline => Colors.brown,
       MaritimeFeatureType.anchorage => Colors.blue.withAlpha(100),
@@ -389,7 +425,7 @@ class ChartRenderingService {
   Color _getDepthContourColor(double depth) {
     final isDayMode = _displayMode == ChartDisplayMode.dayMode;
     final baseColor = isDayMode ? Colors.blue : Colors.cyan;
-    
+
     // Deeper contours are darker
     final alpha = (255 * (1.0 - (depth / 100).clamp(0.0, 1.0))).round();
     return baseColor.withAlpha(alpha.clamp(50, 255));
@@ -445,7 +481,7 @@ class ChartRenderingService {
       if (!bounds.contains(feature.position)) {
         return false;
       }
-      
+
       // Layer visibility check
       final layerName = _getLayerNameForFeature(feature.type);
       if (!(_layerVisibility[layerName] ?? true)) {
@@ -464,7 +500,11 @@ class ChartRenderingService {
   }
 
   /// Render enhanced symbol with S-52 compliance
-  void renderEnhancedSymbol(Canvas canvas, PointFeature feature, Offset position) {
+  void renderEnhancedSymbol(
+    Canvas canvas,
+    PointFeature feature,
+    Offset position,
+  ) {
     final paint = Paint()
       ..color = getSymbolColor(feature.type)
       ..style = PaintingStyle.fill;
@@ -516,10 +556,12 @@ class ChartRenderingService {
 
     for (final feature in getVisibleFeatures()) {
       final distance = _calculateDistance(
-        latLng.latitude, latLng.longitude,
-        feature.position.latitude, feature.position.longitude,
+        latLng.latitude,
+        latLng.longitude,
+        feature.position.latitude,
+        feature.position.longitude,
       );
-      
+
       if (distance < tolerance) {
         return feature;
       }
@@ -530,7 +572,7 @@ class ChartRenderingService {
   /// Get feature information
   Map<String, dynamic> getFeatureInfo(String featureId) {
     final feature = _features.firstWhere((f) => f.id == featureId);
-    
+
     return {
       'id': feature.id,
       'type': feature.type.name,
@@ -613,7 +655,7 @@ class ChartRenderingService {
         }
       }
       path.close();
-      
+
       canvas.drawPath(path, paint);
       canvas.drawPath(path, strokePaint);
     }
@@ -623,10 +665,10 @@ class ChartRenderingService {
   void renderLightCharacteristics(PointFeature lighthouse) {
     // Enhanced light rendering would show light sectors, ranges, etc.
     // For now, we'll simulate this for testing
-  // Access attributes to signal planned use in future enhanced rendering without storing
-  lighthouse.attributes['character'];
-  lighthouse.attributes['range'];
-    
+    // Access attributes to signal planned use in future enhanced rendering without storing
+    lighthouse.attributes['character'];
+    lighthouse.attributes['range'];
+
     // Implementation would draw light sectors and range circles
   }
 
@@ -648,7 +690,12 @@ class ChartRenderingService {
   }
 
   /// Calculate distance between two points in degrees
-  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+  double _calculateDistance(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
     final dLat = lat2 - lat1;
     final dLon = lon2 - lon1;
     return (dLat * dLat + dLon * dLon);
@@ -688,37 +735,57 @@ class ChartRenderingService {
   }
 
   /// Draw enhanced lighthouse symbol
-  void _drawEnhancedLighthouseSymbol(Canvas canvas, Offset center, double size, Paint paint, PointFeature feature) {
+  void _drawEnhancedLighthouseSymbol(
+    Canvas canvas,
+    Offset center,
+    double size,
+    Paint paint,
+    PointFeature feature,
+  ) {
     // Draw lighthouse base
-    final rect = Rect.fromCenter(center: center, width: size * 0.6, height: size);
+    final rect = Rect.fromCenter(
+      center: center,
+      width: size * 0.6,
+      height: size,
+    );
     canvas.drawRect(rect, paint);
-    
+
     // Draw lighthouse top
     final topPaint = Paint()..color = Colors.white;
-    canvas.drawCircle(Offset(center.dx, center.dy - size * 0.4), size * 0.15, topPaint);
-    
+    canvas.drawCircle(
+      Offset(center.dx, center.dy - size * 0.4),
+      size * 0.15,
+      topPaint,
+    );
+
     // Draw light beam if it has characteristics
     if (feature.attributes.containsKey('character')) {
       final beamPaint = Paint()
         ..color = Colors.yellow.withAlpha(100)
         ..style = PaintingStyle.fill;
-      
+
       final path = Path();
       path.moveTo(center.dx, center.dy - size * 0.4);
       path.lineTo(center.dx - size * 0.8, center.dy - size * 1.2);
       path.lineTo(center.dx + size * 0.8, center.dy - size * 1.2);
       path.close();
-      
+
       canvas.drawPath(path, beamPaint);
     }
   }
 
   /// Draw enhanced buoy symbol
-  void _drawEnhancedBuoySymbol(Canvas canvas, Offset center, double size, Paint paint, PointFeature feature) {
+  void _drawEnhancedBuoySymbol(
+    Canvas canvas,
+    Offset center,
+    double size,
+    Paint paint,
+    PointFeature feature,
+  ) {
     // Determine buoy shape from attributes
     final shape = feature.attributes['buoyShape'] as String? ?? 'cylindrical';
     final color = feature.attributes['color'] as String? ?? 'red';
-    
+
     switch (shape) {
       case 'pillar':
         _drawPillarBuoy(canvas, center, size, color);
@@ -729,7 +796,7 @@ class ChartRenderingService {
       default:
         _drawCylindricalBuoy(canvas, center, size, color);
     }
-    
+
     // Draw topmark if present
     final topmark = feature.attributes['topmark'] as String?;
     if (topmark != null) {
@@ -738,37 +805,70 @@ class ChartRenderingService {
   }
 
   /// Draw enhanced beacon symbol
-  void _drawEnhancedBeaconSymbol(Canvas canvas, Offset center, double size, Paint paint, PointFeature feature) {
+  void _drawEnhancedBeaconSymbol(
+    Canvas canvas,
+    Offset center,
+    double size,
+    Paint paint,
+    PointFeature feature,
+  ) {
     // Draw beacon structure
-    final rect = Rect.fromCenter(center: center, width: size * 0.4, height: size);
+    final rect = Rect.fromCenter(
+      center: center,
+      width: size * 0.4,
+      height: size,
+    );
     canvas.drawRect(rect, paint);
-    
+
     // Draw beacon platform
     final platformRect = Rect.fromCenter(
-      center: Offset(center.dx, center.dy + size * 0.3), 
-      width: size * 0.8, 
-      height: size * 0.2
+      center: Offset(center.dx, center.dy + size * 0.3),
+      width: size * 0.8,
+      height: size * 0.2,
     );
     canvas.drawRect(platformRect, paint);
   }
 
   /// Draw pillar buoy
-  void _drawPillarBuoy(Canvas canvas, Offset center, double size, String color) {
+  void _drawPillarBuoy(
+    Canvas canvas,
+    Offset center,
+    double size,
+    String color,
+  ) {
     final paint = Paint()..color = _getBuoyColor(color);
-    final rect = Rect.fromCenter(center: center, width: size * 0.3, height: size);
+    final rect = Rect.fromCenter(
+      center: center,
+      width: size * 0.3,
+      height: size,
+    );
     canvas.drawRect(rect, paint);
   }
 
   /// Draw spherical buoy
-  void _drawSphericalBuoy(Canvas canvas, Offset center, double size, String color) {
+  void _drawSphericalBuoy(
+    Canvas canvas,
+    Offset center,
+    double size,
+    String color,
+  ) {
     final paint = Paint()..color = _getBuoyColor(color);
     canvas.drawCircle(center, size * 0.4, paint);
   }
 
   /// Draw cylindrical buoy
-  void _drawCylindricalBuoy(Canvas canvas, Offset center, double size, String color) {
+  void _drawCylindricalBuoy(
+    Canvas canvas,
+    Offset center,
+    double size,
+    String color,
+  ) {
     final paint = Paint()..color = _getBuoyColor(color);
-    final rect = Rect.fromCenter(center: center, width: size * 0.5, height: size);
+    final rect = Rect.fromCenter(
+      center: center,
+      width: size * 0.5,
+      height: size,
+    );
     canvas.drawOval(rect, paint);
   }
 
@@ -776,7 +876,7 @@ class ChartRenderingService {
   void _drawTopmark(Canvas canvas, Offset center, double size, String topmark) {
     final paint = Paint()..color = Colors.black;
     final topCenter = Offset(center.dx, center.dy - size * 0.6);
-    
+
     switch (topmark) {
       case 'north-cardinal':
         _drawNorthCardinalTopmark(canvas, topCenter, size * 0.3, paint);
@@ -794,64 +894,84 @@ class ChartRenderingService {
   }
 
   /// Draw north cardinal topmark
-  void _drawNorthCardinalTopmark(Canvas canvas, Offset center, double size, Paint paint) {
+  void _drawNorthCardinalTopmark(
+    Canvas canvas,
+    Offset center,
+    double size,
+    Paint paint,
+  ) {
     // Two cones pointing up
     final path1 = Path();
     path1.moveTo(center.dx - size * 0.2, center.dy);
     path1.lineTo(center.dx - size * 0.1, center.dy - size);
     path1.lineTo(center.dx, center.dy);
     path1.close();
-    
+
     final path2 = Path();
     path2.moveTo(center.dx, center.dy);
     path2.lineTo(center.dx + size * 0.1, center.dy - size);
     path2.lineTo(center.dx + size * 0.2, center.dy);
     path2.close();
-    
+
     canvas.drawPath(path1, paint);
     canvas.drawPath(path2, paint);
   }
 
   /// Draw south cardinal topmark
-  void _drawSouthCardinalTopmark(Canvas canvas, Offset center, double size, Paint paint) {
+  void _drawSouthCardinalTopmark(
+    Canvas canvas,
+    Offset center,
+    double size,
+    Paint paint,
+  ) {
     // Two cones pointing down
     final path1 = Path();
     path1.moveTo(center.dx - size * 0.2, center.dy);
     path1.lineTo(center.dx - size * 0.1, center.dy + size);
     path1.lineTo(center.dx, center.dy);
     path1.close();
-    
+
     final path2 = Path();
     path2.moveTo(center.dx, center.dy);
     path2.lineTo(center.dx + size * 0.1, center.dy + size);
     path2.lineTo(center.dx + size * 0.2, center.dy);
     path2.close();
-    
+
     canvas.drawPath(path1, paint);
     canvas.drawPath(path2, paint);
   }
 
   /// Draw east cardinal topmark
-  void _drawEastCardinalTopmark(Canvas canvas, Offset center, double size, Paint paint) {
+  void _drawEastCardinalTopmark(
+    Canvas canvas,
+    Offset center,
+    double size,
+    Paint paint,
+  ) {
     // Two cones base to base
     final path1 = Path();
     path1.moveTo(center.dx, center.dy - size * 0.5);
     path1.lineTo(center.dx + size * 0.5, center.dy);
     path1.lineTo(center.dx, center.dy + size * 0.5);
     path1.close();
-    
+
     canvas.drawPath(path1, paint);
   }
 
   /// Draw west cardinal topmark
-  void _drawWestCardinalTopmark(Canvas canvas, Offset center, double size, Paint paint) {
+  void _drawWestCardinalTopmark(
+    Canvas canvas,
+    Offset center,
+    double size,
+    Paint paint,
+  ) {
     // Two cones point to point
     final path1 = Path();
     path1.moveTo(center.dx - size * 0.5, center.dy);
     path1.lineTo(center.dx, center.dy - size * 0.5);
     path1.lineTo(center.dx, center.dy + size * 0.5);
     path1.close();
-    
+
     canvas.drawPath(path1, paint);
   }
 
@@ -871,8 +991,4 @@ class ChartRenderingService {
 }
 
 /// Chart display modes for day/night navigation
-enum ChartDisplayMode {
-  dayMode,
-  nightMode,
-  duskMode,
-}
+enum ChartDisplayMode { dayMode, nightMode, duskMode }

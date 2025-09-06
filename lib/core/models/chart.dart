@@ -54,7 +54,9 @@ class ScaleRange {
       throw ArgumentError('Minimum scale must be positive');
     }
     if (max < min) {
-      throw ArgumentError('Maximum scale must be greater than or equal to minimum');
+      throw ArgumentError(
+        'Maximum scale must be greater than or equal to minimum',
+      );
     }
   }
 
@@ -140,7 +142,7 @@ class Chart {
   final String? description;
   final bool isDownloaded;
   final int? fileSize;
-  
+
   // Enhanced NOAA-specific fields
   final int edition;
   final int updateNumber;
@@ -177,10 +179,8 @@ class Chart {
   }
 
   /// Gets the display scale as a formatted string
-  String get displayScale => '1:${scale.toString().replaceAllMapped(
-    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-    (Match m) => '${m[1]},',
-  )}';
+  String get displayScale =>
+      '1:${scale.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}';
 
   /// Checks if this chart covers a specific point
   bool coversPoint(double latitude, double longitude) {
@@ -316,7 +316,9 @@ class Chart {
         east: json['bounds']['east'] as double,
         west: json['bounds']['west'] as double,
       ),
-      lastUpdate: DateTime.fromMillisecondsSinceEpoch(json['lastUpdate'] as int),
+      lastUpdate: DateTime.fromMillisecondsSinceEpoch(
+        json['lastUpdate'] as int,
+      ),
       state: json['state'] as String,
       type: ChartType.values.firstWhere((t) => t.name == json['type']),
       description: json['description'] as String?,
@@ -324,12 +326,12 @@ class Chart {
       fileSize: json['fileSize'] as int?,
       edition: json['edition'] as int? ?? 0,
       updateNumber: json['updateNumber'] as int? ?? 0,
-      source: json['source'] != null 
-        ? ChartSource.values.firstWhere((s) => s.name == json['source'])
-        : ChartSource.noaa,
+      source: json['source'] != null
+          ? ChartSource.values.firstWhere((s) => s.name == json['source'])
+          : ChartSource.noaa,
       status: json['status'] != null
-        ? ChartStatus.values.firstWhere((s) => s.name == json['status'])
-        : ChartStatus.current,
+          ? ChartStatus.values.firstWhere((s) => s.name == json['status'])
+          : ChartStatus.current,
       metadata: json['metadata'] as Map<String, dynamic>? ?? {},
     );
   }

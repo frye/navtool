@@ -5,10 +5,7 @@ import 'package:flutter/material.dart';
 class MacosStatusBar extends StatelessWidget {
   final String statusText;
 
-  const MacosStatusBar({
-    super.key,
-    required this.statusText,
-  });
+  const MacosStatusBar({super.key, required this.statusText});
 
   @override
   Widget build(BuildContext context) {

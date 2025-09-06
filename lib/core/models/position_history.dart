@@ -6,25 +6,25 @@ import 'gps_position.dart';
 class PositionHistory {
   /// List of GPS positions in chronological order
   final List<GpsPosition> positions;
-  
+
   /// Total distance traveled in meters
   final double totalDistance;
-  
+
   /// Average speed in meters per second
   final double averageSpeed;
-  
+
   /// Maximum speed recorded in meters per second
   final double maxSpeed;
-  
+
   /// Minimum speed recorded in meters per second
   final double minSpeed;
-  
+
   /// Duration covered by this history
   final Duration duration;
-  
+
   /// Starting timestamp of this history
   final DateTime? startTime;
-  
+
   /// Ending timestamp of this history
   final DateTime? endTime;
 
@@ -79,13 +79,15 @@ class PositionHistory {
 
     if (speedsFromGps.isNotEmpty) {
       // Use GPS-reported speeds if available
-      averageSpeed = speedsFromGps.reduce((a, b) => a + b) / speedsFromGps.length;
+      averageSpeed =
+          speedsFromGps.reduce((a, b) => a + b) / speedsFromGps.length;
       maxSpeed = speedsFromGps.reduce((a, b) => a > b ? a : b);
       minSpeed = speedsFromGps.reduce((a, b) => a < b ? a : b);
     } else if (duration.inSeconds > 0) {
       // Calculate speed from distance/time
       averageSpeed = totalDistance / duration.inSeconds;
-      maxSpeed = averageSpeed; // Can't determine max without instantaneous measurements
+      maxSpeed =
+          averageSpeed; // Can't determine max without instantaneous measurements
       minSpeed = averageSpeed;
     } else {
       averageSpeed = 0.0;
@@ -114,7 +116,7 @@ class PositionHistory {
     final filteredPositions = positions
         .where((position) => position.timestamp.isAfter(cutoffTime))
         .toList();
-    
+
     return PositionHistory.fromPositions(filteredPositions);
   }
 
@@ -125,7 +127,8 @@ class PositionHistory {
   double get maxSpeedKnots => maxSpeed * 1.944;
 
   /// Gets whether this track indicates significant movement
-  bool get hasSignificantMovement => totalDistance > 10.0; // More than 10 meters
+  bool get hasSignificantMovement =>
+      totalDistance > 10.0; // More than 10 meters
 
   /// Gets the average accuracy of positions (if available)
   double? get averageAccuracy {
@@ -133,9 +136,9 @@ class PositionHistory {
         .where((p) => p.accuracy != null)
         .map((p) => p.accuracy!)
         .toList();
-    
+
     if (accuracies.isEmpty) return null;
-    
+
     return accuracies.reduce((a, b) => a + b) / accuracies.length;
   }
 
@@ -145,20 +148,20 @@ class PositionHistory {
         .where((p) => p.accuracy != null)
         .map((p) => p.accuracy!)
         .toList();
-    
+
     if (accuracies.isEmpty) return null;
-    
+
     return accuracies.reduce((a, b) => a < b ? a : b);
   }
 
   /// Gets the percentage of positions that meet marine-grade accuracy
   double get marineGradePercentage {
     if (positions.isEmpty) return 0.0;
-    
+
     final marineGradeCount = positions
         .where((p) => p.accuracy != null && p.accuracy! <= 10.0)
         .length;
-    
+
     return marineGradeCount / positions.length;
   }
 
@@ -180,9 +183,9 @@ class PositionHistory {
     final durationHours = duration.inMinutes / 60.0;
 
     return 'Track: ${distanceKm.toStringAsFixed(2)}km, '
-           'Avg Speed: ${avgSpeedKnots.toStringAsFixed(1)}kts, '
-           'Duration: ${durationHours.toStringAsFixed(1)}h, '
-           'Points: ${positions.length}';
+        'Avg Speed: ${avgSpeedKnots.toStringAsFixed(1)}kts, '
+        'Duration: ${durationHours.toStringAsFixed(1)}h, '
+        'Points: ${positions.length}';
   }
 
   @override
@@ -213,19 +216,19 @@ class PositionHistory {
 class AccuracyStatistics {
   /// Average accuracy in meters
   final double averageAccuracy;
-  
+
   /// Best (lowest) accuracy recorded in meters
   final double bestAccuracy;
-  
+
   /// Worst (highest) accuracy recorded in meters
   final double worstAccuracy;
-  
+
   /// Percentage of positions meeting marine-grade accuracy (≤10m)
   final double marineGradePercentage;
-  
+
   /// Number of positions used in calculation
   final int sampleCount;
-  
+
   /// Time period these statistics cover
   final Duration period;
 
@@ -259,10 +262,11 @@ class AccuracyStatistics {
     }
 
     final accuracies = positionsWithAccuracy.map((p) => p.accuracy!).toList();
-    final averageAccuracy = accuracies.reduce((a, b) => a + b) / accuracies.length;
+    final averageAccuracy =
+        accuracies.reduce((a, b) => a + b) / accuracies.length;
     final bestAccuracy = accuracies.reduce((a, b) => a < b ? a : b);
     final worstAccuracy = accuracies.reduce((a, b) => a > b ? a : b);
-    
+
     final marineGradeCount = accuracies.where((acc) => acc <= 10.0).length;
     final marineGradePercentage = marineGradeCount / accuracies.length;
 
@@ -279,8 +283,8 @@ class AccuracyStatistics {
   @override
   String toString() {
     return 'AccuracyStats(avg: ${averageAccuracy.toStringAsFixed(1)}m, '
-           'best: ${bestAccuracy.toStringAsFixed(1)}m, '
-           'marine: ${(marineGradePercentage * 100).toStringAsFixed(0)}%)';
+        'best: ${bestAccuracy.toStringAsFixed(1)}m, '
+        'marine: ${(marineGradePercentage * 100).toStringAsFixed(0)}%)';
   }
 }
 
@@ -289,16 +293,16 @@ class AccuracyStatistics {
 class MovementState {
   /// Whether the vessel appears to be stationary
   final bool isStationary;
-  
+
   /// Average speed over the analysis period (m/s)
   final double averageSpeed;
-  
+
   /// How long the vessel has been stationary (if applicable)
   final Duration? stationaryDuration;
-  
+
   /// Confidence level in the movement assessment (0.0 to 1.0)
   final double confidence;
-  
+
   /// Radius of movement in meters (for stationary detection)
   final double movementRadius;
 
@@ -340,9 +344,13 @@ class MovementState {
     }
 
     // Calculate movement radius (maximum distance from centroid)
-    final centroidLat = positions.map((p) => p.latitude).reduce((a, b) => a + b) / positions.length;
-    final centroidLon = positions.map((p) => p.longitude).reduce((a, b) => a + b) / positions.length;
-    
+    final centroidLat =
+        positions.map((p) => p.latitude).reduce((a, b) => a + b) /
+        positions.length;
+    final centroidLon =
+        positions.map((p) => p.longitude).reduce((a, b) => a + b) /
+        positions.length;
+
     final centroid = GpsPosition(
       latitude: centroidLat,
       longitude: centroidLon,
@@ -359,10 +367,12 @@ class MovementState {
 
     // Determine if stationary (average speed < 0.5 m/s and radius < 20m)
     final isStationary = averageSpeed < 0.5 && maxDistance < 20.0;
-    
+
     // Calculate confidence based on data quality
     final hasSpeedData = speedValues.isNotEmpty;
-    final hasGoodAccuracy = positions.any((p) => p.accuracy != null && p.accuracy! <= 10.0);
+    final hasGoodAccuracy = positions.any(
+      (p) => p.accuracy != null && p.accuracy! <= 10.0,
+    );
     double confidence = 0.5;
     if (hasSpeedData) confidence += 0.3;
     if (hasGoodAccuracy) confidence += 0.2;
@@ -370,7 +380,9 @@ class MovementState {
     // Calculate stationary duration if applicable
     Duration? stationaryDuration;
     if (isStationary && positions.length >= 2) {
-      stationaryDuration = positions.last.timestamp.difference(positions.first.timestamp);
+      stationaryDuration = positions.last.timestamp.difference(
+        positions.first.timestamp,
+      );
     }
 
     return MovementState(
@@ -385,17 +397,17 @@ class MovementState {
   @override
   String toString() {
     return 'MovementState(stationary: $isStationary, '
-           'speed: ${averageSpeed.toStringAsFixed(1)}m/s, '
-           'radius: ${movementRadius.toStringAsFixed(1)}m)';
+        'speed: ${averageSpeed.toStringAsFixed(1)}m/s, '
+        'radius: ${movementRadius.toStringAsFixed(1)}m)';
   }
 }
 
 /// Enumeration of position data staleness levels
 enum StalenessLevel {
-  fresh,    // < 30 seconds old
-  recent,   // 30 seconds to 2 minutes old
-  stale,    // 2 to 10 minutes old
-  veryStale // > 10 minutes old
+  fresh, // < 30 seconds old
+  recent, // 30 seconds to 2 minutes old
+  stale, // 2 to 10 minutes old
+  veryStale, // > 10 minutes old
 }
 
 /// Information about the freshness of position data
@@ -403,13 +415,13 @@ enum StalenessLevel {
 class PositionFreshness {
   /// Time since the last position update
   final Duration lastUpdateAge;
-  
+
   /// Whether the position data is considered fresh
   final bool isFresh;
-  
+
   /// Staleness level of the position data
   final StalenessLevel stalenessLevel;
-  
+
   /// Timestamp of the last position update
   final DateTime? lastUpdateTime;
 
@@ -432,7 +444,7 @@ class PositionFreshness {
 
     final age = DateTime.now().difference(lastUpdate);
     final isFresh = age.inSeconds <= 30;
-    
+
     StalenessLevel stalenessLevel;
     if (age.inSeconds <= 30) {
       stalenessLevel = StalenessLevel.fresh;
@@ -463,13 +475,13 @@ class PositionFreshness {
 class CourseOverGround {
   /// Bearing in degrees (0-360)
   final double bearing;
-  
+
   /// Confidence in the bearing calculation (0.0 to 1.0)
   final double confidence;
-  
+
   /// Number of position samples used
   final int sampleCount;
-  
+
   /// Time period over which COG was calculated
   final Duration period;
 
@@ -491,16 +503,16 @@ class CourseOverGround {
 class SpeedOverGround {
   /// Speed in meters per second
   final double speedMetersPerSecond;
-  
+
   /// Speed in knots
   final double speedKnots;
-  
+
   /// Confidence in the speed calculation (0.0 to 1.0)
   final double confidence;
-  
+
   /// Number of position samples used
   final int sampleCount;
-  
+
   /// Time period over which SOG was calculated
   final Duration period;
 

@@ -8,11 +8,7 @@ class UserAction {
   final String? description;
   final VoidCallback action;
 
-  UserAction({
-    required this.title,
-    this.description,
-    required this.action,
-  });
+  UserAction({required this.title, this.description, required this.action});
 }
 
 /// Strategy for recovering from errors
@@ -95,7 +91,7 @@ class ErrorHandler {
   /// Handles any error, converting it to AppError if necessary
   void handleError(Object error, [StackTrace? stackTrace]) {
     final AppError appError;
-    
+
     if (error is AppError) {
       appError = error;
     } else {
@@ -106,7 +102,7 @@ class ErrorHandler {
         stackTrace: stackTrace,
       );
     }
-    
+
     logger.logError(appError);
   }
 
@@ -140,41 +136,42 @@ class ErrorHandler {
 
   /// Handles errors with automatic retry logic
   Future<T> handleWithRetry<T>(
-    Future<T> Function() operation,
-    {int maxRetries = 3, Duration delay = const Duration(seconds: 1)}
-  ) async {
+    Future<T> Function() operation, {
+    int maxRetries = 3,
+    Duration delay = const Duration(seconds: 1),
+  }) async {
     int attempts = 0;
-    
+
     while (attempts < maxRetries) {
       try {
         return await operation();
       } catch (error, stackTrace) {
         attempts++;
-        
-        final appError = error is AppError 
-            ? error 
+
+        final appError = error is AppError
+            ? error
             : AppError.create(
                 message: error.toString(),
                 type: AppErrorType.unknown,
                 originalError: error,
                 stackTrace: stackTrace,
               );
-        
+
         if (attempts >= maxRetries || !shouldRetry(appError)) {
           handleError(appError, stackTrace);
           rethrow;
         }
-        
+
         logger.warning(
           'Operation failed, retrying in ${delay.inSeconds}s (attempt $attempts/$maxRetries)',
           context: 'ErrorHandler',
           exception: error,
         );
-        
+
         await Future.delayed(delay);
       }
     }
-    
+
     throw AppError.unknown('Maximum retry attempts exceeded');
   }
 }

@@ -1,5 +1,5 @@
 /// Test for S-57 RVER Mismatch Detection
-/// 
+///
 /// Tests version tracking and mismatch detection in update sequences
 
 import 'dart:io';
@@ -31,7 +31,12 @@ void main() {
       final baseParsedData = S57ParsedData(
         metadata: S57ChartMetadata(producer: 'NOAA', version: '3.1'),
         features: [baseFeature],
-        bounds: const S57Bounds(north: 47.7, south: 47.5, east: -122.2, west: -122.4),
+        bounds: const S57Bounds(
+          north: 47.7,
+          south: 47.5,
+          east: -122.2,
+          west: -122.4,
+        ),
         spatialIndex: S57SpatialIndex(),
       );
 
@@ -41,7 +46,9 @@ void main() {
       expect(processor.summary.finalRver, equals(0)); // Base RVER
       expect(processor.featureStore.count, equals(1));
 
-      final initialVersioned = processor.featureStore.get('100'); // Record ID as FOID
+      final initialVersioned = processor.featureStore.get(
+        '100',
+      ); // Record ID as FOID
       expect(initialVersioned, isNotNull);
       expect(initialVersioned!.version, equals(0)); // Base version
     });
@@ -82,8 +89,11 @@ void main() {
       // Verify version increment
       final modifiedVersioned = processor.featureStore.get('BUOY_200');
       expect(modifiedVersioned, isNotNull);
-      expect(modifiedVersioned!.version, equals(2), 
-             reason: 'Feature version should be updated to modify RVER');
+      expect(
+        modifiedVersioned!.version,
+        equals(2),
+        reason: 'Feature version should be updated to modify RVER',
+      );
     });
 
     test('should set version on insert operations', () {
@@ -109,35 +119,41 @@ void main() {
       // Verify inserted feature has correct version
       final insertedVersioned = processor.featureStore.get('LIGHT_300');
       expect(insertedVersioned, isNotNull);
-      expect(insertedVersioned!.version, equals(3), 
-             reason: 'Inserted feature should have version from insert RVER');
+      expect(
+        insertedVersioned!.version,
+        equals(3),
+        reason: 'Inserted feature should have version from insert RVER',
+      );
     });
 
     test('should track finalRver from update sequence', () {
       // Simulate update sequence with increasing RVER
       processor.summary.finalRver = 0; // Base
-      
+
       // Apply .001 with RVER 1
       processor.summary.finalRver = 1;
       processor.summary.applied.add('SAMPLE.001');
-      
-      // Apply .002 with RVER 2  
+
+      // Apply .002 with RVER 2
       processor.summary.finalRver = 2;
       processor.summary.applied.add('SAMPLE.002');
-      
+
       // Apply .003 with RVER 3
       processor.summary.finalRver = 3;
       processor.summary.applied.add('SAMPLE.003');
 
-      expect(processor.summary.finalRver, equals(3), 
-             reason: 'Final RVER should match last applied update');
+      expect(
+        processor.summary.finalRver,
+        equals(3),
+        reason: 'Final RVER should match last applied update',
+      );
       expect(processor.summary.applied.length, equals(3));
     });
 
     test('should handle version tracking in feature lifecycle', () {
       // Test complete lifecycle: insert -> modify -> modify -> delete
       final processor = S57UpdateProcessor();
-      
+
       // 1. Insert feature with RVER 1
       final insertFeature = S57Feature(
         recordId: 400,
@@ -156,9 +172,13 @@ void main() {
       );
 
       processor.applyRuinRecord(insertRecord, 1);
-      
+
       var versioned = processor.featureStore.get('SOUND_400');
-      expect(versioned!.version, equals(1), reason: 'After insert: version should be 1');
+      expect(
+        versioned!.version,
+        equals(1),
+        reason: 'After insert: version should be 1',
+      );
 
       // 2. First modify with RVER 2
       final modify1Feature = S57Feature(
@@ -177,9 +197,13 @@ void main() {
       );
 
       processor.applyRuinRecord(modify1Record, 2);
-      
+
       versioned = processor.featureStore.get('SOUND_400');
-      expect(versioned!.version, equals(2), reason: 'After first modify: version should be 2');
+      expect(
+        versioned!.version,
+        equals(2),
+        reason: 'After first modify: version should be 2',
+      );
       expect(versioned.feature.attributes['VALSOU'], equals(18.5));
 
       // 3. Second modify with RVER 3
@@ -187,8 +211,13 @@ void main() {
         recordId: 400,
         featureType: S57FeatureType.sounding,
         geometryType: S57GeometryType.point,
-        coordinates: [const S57Coordinate(latitude: 47.51, longitude: -122.51)], // Change position
-        attributes: {'VALSOU': 17.0, 'QUASOU': 6}, // Change depth and add quality
+        coordinates: [
+          const S57Coordinate(latitude: 47.51, longitude: -122.51),
+        ], // Change position
+        attributes: {
+          'VALSOU': 17.0,
+          'QUASOU': 6,
+        }, // Change depth and add quality
       );
 
       final modify2Record = RuinRecord(
@@ -199,9 +228,13 @@ void main() {
       );
 
       processor.applyRuinRecord(modify2Record, 3);
-      
+
       versioned = processor.featureStore.get('SOUND_400');
-      expect(versioned!.version, equals(3), reason: 'After second modify: version should be 3');
+      expect(
+        versioned!.version,
+        equals(3),
+        reason: 'After second modify: version should be 3',
+      );
       expect(versioned.feature.attributes['VALSOU'], equals(17.0));
       expect(versioned.feature.attributes['QUASOU'], equals(6));
       expect(versioned.feature.coordinates[0].latitude, equals(47.51));
@@ -214,9 +247,12 @@ void main() {
       );
 
       processor.applyRuinRecord(deleteRecord, 4);
-      
-      expect(processor.featureStore.contains('SOUND_400'), isFalse, 
-             reason: 'After delete: feature should be removed');
+
+      expect(
+        processor.featureStore.contains('SOUND_400'),
+        isFalse,
+        reason: 'After delete: feature should be removed',
+      );
 
       // Verify counters
       expect(processor.summary.inserted, equals(1));
@@ -239,7 +275,9 @@ void main() {
           recordId: 2,
           featureType: S57FeatureType.sounding,
           geometryType: S57GeometryType.point,
-          coordinates: [const S57Coordinate(latitude: 47.65, longitude: -122.35)],
+          coordinates: [
+            const S57Coordinate(latitude: 47.65, longitude: -122.35),
+          ],
           attributes: {'VALSOU': 15.5},
           label: 'Sounding 15.5m',
         ),
@@ -252,7 +290,12 @@ void main() {
           creationDate: DateTime(2024, 1, 1),
         ),
         features: baseFeatures,
-        bounds: const S57Bounds(north: 47.7, south: 47.5, east: -122.2, west: -122.4),
+        bounds: const S57Bounds(
+          north: 47.7,
+          south: 47.5,
+          east: -122.2,
+          west: -122.4,
+        ),
         spatialIndex: S57SpatialIndex(),
       );
 
@@ -260,16 +303,28 @@ void main() {
 
       // Verify all base features have base version (0)
       expect(processor.featureStore.count, equals(2));
-      
+
       final feature1 = processor.featureStore.get('1');
       expect(feature1, isNotNull);
-      expect(feature1!.version, equals(0), reason: 'Base feature should have version 0');
-      
+      expect(
+        feature1!.version,
+        equals(0),
+        reason: 'Base feature should have version 0',
+      );
+
       final feature2 = processor.featureStore.get('2');
       expect(feature2, isNotNull);
-      expect(feature2!.version, equals(0), reason: 'Base feature should have version 0');
+      expect(
+        feature2!.version,
+        equals(0),
+        reason: 'Base feature should have version 0',
+      );
 
-      expect(processor.summary.finalRver, equals(0), reason: 'Base RVER should be 0');
+      expect(
+        processor.summary.finalRver,
+        equals(0),
+        reason: 'Base RVER should be 0',
+      );
     });
 
     test('should validate UpdateDataset RVER and sequence properties', () {
@@ -281,8 +336,11 @@ void main() {
         records: [],
       );
 
-      expect(updateDataset.sequenceNumber, equals(2), 
-             reason: 'Should extract sequence number from filename');
+      expect(
+        updateDataset.sequenceNumber,
+        equals(2),
+        reason: 'Should extract sequence number from filename',
+      );
       expect(updateDataset.rver, equals(2));
       expect(updateDataset.baseCellName, equals('SAMPLE'));
 
@@ -293,8 +351,11 @@ void main() {
         records: [],
       );
 
-      expect(updateDataset2.sequenceNumber, equals(15), 
-             reason: 'Should extract sequence number from different filename format');
+      expect(
+        updateDataset2.sequenceNumber,
+        equals(15),
+        reason: 'Should extract sequence number from different filename format',
+      );
 
       // Test with invalid filename
       final updateDataset3 = UpdateDataset(
@@ -303,8 +364,11 @@ void main() {
         records: [],
       );
 
-      expect(updateDataset3.sequenceNumber, equals(0), 
-             reason: 'Should return 0 for invalid filename format');
+      expect(
+        updateDataset3.sequenceNumber,
+        equals(0),
+        reason: 'Should return 0 for invalid filename format',
+      );
     });
   });
 }

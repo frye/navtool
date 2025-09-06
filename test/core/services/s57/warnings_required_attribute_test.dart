@@ -20,7 +20,7 @@ void main() {
 
       final warnings = collector.warnings;
       expect(warnings, hasLength(1));
-      
+
       final warning = warnings.first;
       expect(warning.code, equals(S57WarningCodes.missingRequiredAttr));
       expect(warning.severity, equals(S57WarningSeverity.warning));
@@ -47,7 +47,7 @@ void main() {
 
     test('should warn when buoy missing CATBOY', () {
       const buoyTypes = ['BOYLAT', 'BOYISD', 'BOYSPP'];
-      
+
       for (final buoyType in buoyTypes) {
         collector.warning(
           S57WarningCodes.missingRequiredAttr,
@@ -58,7 +58,7 @@ void main() {
       }
 
       expect(collector.totalWarnings, equals(3));
-      
+
       final warnings = collector.warnings;
       expect(warnings[0].message, contains('CATBOY for BOYLAT'));
       expect(warnings[1].message, contains('CATBOY for BOYISD'));
@@ -67,14 +67,14 @@ void main() {
 
     test('should handle multiple missing attributes for same object', () {
       const featureId = 'COMPLEX_001';
-      
+
       collector.warning(
         S57WarningCodes.missingRequiredAttr,
         'Missing required attribute DRVAL1 for DEPARE',
         recordId: 'ATTR_CHECK_001',
         featureId: featureId,
       );
-      
+
       collector.warning(
         S57WarningCodes.missingRequiredAttr,
         'Missing required attribute OBJNAM for DEPARE',
@@ -83,32 +83,37 @@ void main() {
       );
 
       expect(collector.totalWarnings, equals(2));
-      
-      final warnings = collector.getWarningsByCode(S57WarningCodes.missingRequiredAttr);
+
+      final warnings = collector.getWarningsByCode(
+        S57WarningCodes.missingRequiredAttr,
+      );
       expect(warnings, hasLength(2));
-      
+
       // Both warnings should reference the same feature
       expect(warnings.every((w) => w.featureId == featureId), isTrue);
       expect(warnings[0].message, contains('DRVAL1'));
       expect(warnings[1].message, contains('OBJNAM'));
     });
 
-    test('should work in strict mode without throwing (warnings not errors)', () {
-      final strictCollector = S57WarningCollector(
-        options: const S57ParseOptions(strictMode: true),
-      );
+    test(
+      'should work in strict mode without throwing (warnings not errors)',
+      () {
+        final strictCollector = S57WarningCollector(
+          options: const S57ParseOptions(strictMode: true),
+        );
 
-      // Missing required attributes are warnings, not errors
-      strictCollector.warning(
-        S57WarningCodes.missingRequiredAttr,
-        'Missing DRVAL1 for DEPARE',
-        recordId: 'STRICT_001',
-      );
+        // Missing required attributes are warnings, not errors
+        strictCollector.warning(
+          S57WarningCodes.missingRequiredAttr,
+          'Missing DRVAL1 for DEPARE',
+          recordId: 'STRICT_001',
+        );
 
-      expect(strictCollector.totalWarnings, equals(1));
-      expect(strictCollector.warningCount, equals(1));
-      expect(strictCollector.hasErrors, isFalse);
-    });
+        expect(strictCollector.totalWarnings, equals(1));
+        expect(strictCollector.warningCount, equals(1));
+        expect(strictCollector.hasErrors, isFalse);
+      },
+    );
 
     test('should handle complex attribute validation scenarios', () {
       // Simulate complex validation with multiple object types
@@ -151,9 +156,11 @@ void main() {
       expect(collector.totalWarnings, equals(4));
       expect(collector.warningCount, equals(4));
 
-      final warnings = collector.getWarningsByCode(S57WarningCodes.missingRequiredAttr);
+      final warnings = collector.getWarningsByCode(
+        S57WarningCodes.missingRequiredAttr,
+      );
       expect(warnings, hasLength(4));
-      
+
       // Verify all different object types are represented
       expect(warnings.any((w) => w.message.contains('DEPARE')), isTrue);
       expect(warnings.any((w) => w.message.contains('SOUNDG')), isTrue);
@@ -195,9 +202,12 @@ void main() {
       collector.info(S57WarningCodes.depthOutOfRange, 'Depth info');
 
       final summary = collector.createSummaryReport();
-      
+
       expect(summary['totalWarnings'], equals(4));
-      expect(summary['warningsByCode'][S57WarningCodes.missingRequiredAttr], equals(3));
+      expect(
+        summary['warningsByCode'][S57WarningCodes.missingRequiredAttr],
+        equals(3),
+      );
       expect(summary['warningsBySeverity']['warning'], equals(3));
       expect(summary['warningsBySeverity']['info'], equals(1));
     });
@@ -205,9 +215,9 @@ void main() {
     test('should log required attribute warnings correctly', () {
       final outputs = <String>[];
       final testLogger = TestLogger(outputs);
-      
+
       final loggedCollector = S57WarningCollector(logger: testLogger);
-      
+
       loggedCollector.warning(
         S57WarningCodes.missingRequiredAttr,
         'Missing DRVAL1 for DEPARE depth area',
@@ -244,14 +254,14 @@ void main() {
       );
 
       expect(collector.totalWarnings, equals(3));
-      
+
       final warnings = collector.warnings;
       expect(warnings[0].recordId, isNull);
       expect(warnings[0].featureId, isNull);
-      
+
       expect(warnings[1].recordId, equals('PARTIAL_001'));
       expect(warnings[1].featureId, isNull);
-      
+
       expect(warnings[2].recordId, isNull);
       expect(warnings[2].featureId, equals('FEAT_ONLY_001'));
     });
@@ -268,7 +278,9 @@ class TestLogger implements S57ParseLogger {
   void onWarning(S57ParseWarning warning) {
     final severityPrefix = _getSeverityPrefix(warning.severity);
     final contextSuffix = _getContextSuffix(warning);
-    outputs.add('$severityPrefix[${warning.code}] ${warning.message}$contextSuffix');
+    outputs.add(
+      '$severityPrefix[${warning.code}] ${warning.message}$contextSuffix',
+    );
   }
 
   @override

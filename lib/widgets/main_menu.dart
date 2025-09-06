@@ -14,21 +14,33 @@ class MainMenu extends StatelessWidget {
           menus: [
             PlatformMenuItem(
               label: 'New',
-              shortcut: const SingleActivator(LogicalKeyboardKey.keyN, control: true),
+              shortcut: const SingleActivator(
+                LogicalKeyboardKey.keyN,
+                control: true,
+              ),
               onSelected: () {
                 // TODO: Implement new functionality
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('New file functionality not implemented yet')),
+                  const SnackBar(
+                    content: Text('New file functionality not implemented yet'),
+                  ),
                 );
               },
             ),
             PlatformMenuItem(
               label: 'Open',
-              shortcut: const SingleActivator(LogicalKeyboardKey.keyO, control: true),
+              shortcut: const SingleActivator(
+                LogicalKeyboardKey.keyO,
+                control: true,
+              ),
               onSelected: () {
                 // TODO: Implement open functionality
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Open file functionality not implemented yet')),
+                  const SnackBar(
+                    content: Text(
+                      'Open file functionality not implemented yet',
+                    ),
+                  ),
                 );
               },
             ),

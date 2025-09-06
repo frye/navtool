@@ -38,19 +38,21 @@ class InMemoryStorageServiceFake implements StorageService {
 
   @override
   Future<Map<String, dynamic>> getStorageInfo() async => {
-        'charts': _chartData.length,
-        'routes': _routes.length,
-        'waypoints': _waypoints.length,
-      };
+    'charts': _chartData.length,
+    'routes': _routes.length,
+    'waypoints': _waypoints.length,
+  };
 
   @override
   Future<void> cleanupOldData() async {}
 
   @override
-  Future<int> getStorageUsage() async => _chartData.values.fold<int>(0, (int a, List<int> b) => a + b.length);
+  Future<int> getStorageUsage() async =>
+      _chartData.values.fold<int>(0, (int a, List<int> b) => a + b.length);
 
   @override
-  Future<Directory> getChartsDirectory() async => Directory.systemTemp.createTemp('charts');
+  Future<Directory> getChartsDirectory() async =>
+      Directory.systemTemp.createTemp('charts');
 
   @override
   Future<void> storeRoute(NavigationRoute route) async {
@@ -72,30 +74,38 @@ class InMemoryStorageServiceFake implements StorageService {
   }
 
   @override
-  Future<Waypoint?> loadWaypoint(String waypointId) async => _waypoints[waypointId];
+  Future<Waypoint?> loadWaypoint(String waypointId) async =>
+      _waypoints[waypointId];
 
   @override
-  Future<void> updateWaypoint(Waypoint waypoint) async => _waypoints[waypoint.id] = waypoint;
+  Future<void> updateWaypoint(Waypoint waypoint) async =>
+      _waypoints[waypoint.id] = waypoint;
 
   @override
-  Future<void> deleteWaypoint(String waypointId) async => _waypoints.remove(waypointId);
+  Future<void> deleteWaypoint(String waypointId) async =>
+      _waypoints.remove(waypointId);
 
   @override
   Future<List<Waypoint>> getAllWaypoints() async => _waypoints.values.toList();
 
   @override
-  Future<void> storeStateCellMapping(String stateName, List<String> chartCells) async {
+  Future<void> storeStateCellMapping(
+    String stateName,
+    List<String> chartCells,
+  ) async {
     _stateMappings[stateName] = List.from(chartCells);
   }
 
   @override
-  Future<List<String>?> getStateCellMapping(String stateName) async => _stateMappings[stateName];
+  Future<List<String>?> getStateCellMapping(String stateName) async =>
+      _stateMappings[stateName];
 
   @override
   Future<void> clearAllStateCellMappings() async => _stateMappings.clear();
 
   @override
-  Future<List<Chart>> getChartsInBounds(GeographicBounds bounds) async => const <Chart>[];
+  Future<List<Chart>> getChartsInBounds(GeographicBounds bounds) async =>
+      const <Chart>[];
 
   @override
   Future<int> countChartsWithInvalidBounds() async => 0; // Discovery tests expect a clean cache by default
@@ -123,7 +133,11 @@ NoaaChartDiscoveryServiceImpl createDiscoveryService({
 /// Safely asserts that a result list is not empty before accessing the first element.
 /// Provides a clearer failure message than a raw RangeError if the list is empty.
 T expectFirst<T>(List<T> items) {
-  expect(items, isNotEmpty, reason: 'Expected non-empty list before accessing first element');
+  expect(
+    items,
+    isNotEmpty,
+    reason: 'Expected non-empty list before accessing first element',
+  );
   return items.first;
 }
 
@@ -135,49 +149,59 @@ T expectFirst<T>(List<T> items) {
 /// Existing stubs are not overridden.
 void configureNoaaApiClientMock(dynamic mock) {
   // Only add stubs if not already provided so callers can override selectively.
-  when(mock.fetchChartCatalog(filters: anyNamed('filters')))
-      .thenAnswer((_) async => '{"type":"FeatureCollection","features":[]}');
+  when(
+    mock.fetchChartCatalog(filters: anyNamed('filters')),
+  ).thenAnswer((_) async => '{"type":"FeatureCollection","features":[]}');
   when(mock.getChartMetadata(any)).thenAnswer((_) async => null);
   when(mock.isChartAvailable(any)).thenAnswer((_) async => true);
-  when(mock.getDownloadProgress(any)).thenAnswer((_) => const Stream<double>.empty());
-  when(mock.downloadChart(any, any, onProgress: anyNamed('onProgress')))
-      .thenAnswer((_) async {});
+  when(
+    mock.getDownloadProgress(any),
+  ).thenAnswer((_) => const Stream<double>.empty());
+  when(
+    mock.downloadChart(any, any, onProgress: anyNamed('onProgress')),
+  ).thenAnswer((_) async {});
   when(mock.cancelDownload(any)).thenAnswer((_) async {});
 }
 
 /// Convenience to configure catalog fetch with specific charts encoded as GeoJSON.
 void stubCatalogWithCharts(dynamic mock, List<Chart> charts) {
-  final features = charts.map((c) => {
-        'type': 'Feature',
-        'geometry': {
-          'type': 'Polygon',
-          'coordinates': [
-            [
-              [c.bounds!.west, c.bounds!.south],
-              [c.bounds!.east, c.bounds!.south],
-              [c.bounds!.east, c.bounds!.north],
-              [c.bounds!.west, c.bounds!.north],
-              [c.bounds!.west, c.bounds!.south]
-            ]
-          ]
+  final features = charts
+      .map(
+        (c) => {
+          'type': 'Feature',
+          'geometry': {
+            'type': 'Polygon',
+            'coordinates': [
+              [
+                [c.bounds!.west, c.bounds!.south],
+                [c.bounds!.east, c.bounds!.south],
+                [c.bounds!.east, c.bounds!.north],
+                [c.bounds!.west, c.bounds!.north],
+                [c.bounds!.west, c.bounds!.south],
+              ],
+            ],
+          },
+          'properties': {
+            'CHART': c.id,
+            'TITLE': c.title,
+            'SCALE': c.scale,
+            'LAST_UPDATE': c.lastUpdate.toIso8601String(),
+            'STATE': c.state,
+            'USAGE': c.type.name,
+          },
         },
-        'properties': {
-          'CHART': c.id,
-          'TITLE': c.title,
-          'SCALE': c.scale,
-          'LAST_UPDATE': c.lastUpdate.toIso8601String(),
-          'STATE': c.state,
-          'USAGE': c.type.name,
-        }
-      }).toList();
-  final geoJson = '{"type":"FeatureCollection","features":${features.toString()}}';
-  when(mock.fetchChartCatalog(filters: anyNamed('filters'))).thenAnswer((_) async => geoJson);
+      )
+      .toList();
+  final geoJson =
+      '{"type":"FeatureCollection","features":${features.toString()}}';
+  when(
+    mock.fetchChartCatalog(filters: anyNamed('filters')),
+  ).thenAnswer((_) async => geoJson);
 }
 
 /// Stubs the catalog fetch to throw an error (e.g., for retry / error path tests).
 void stubCatalogError(dynamic mock, Exception error) {
-  when(mock.fetchChartCatalog(filters: anyNamed('filters')))
-      .thenThrow(error);
+  when(mock.fetchChartCatalog(filters: anyNamed('filters'))).thenThrow(error);
 }
 
 /// Stubs a specific chart cell as unavailable (returns null metadata and false availability).
@@ -188,8 +212,9 @@ void stubChartUnavailable(dynamic mock, String cellName) {
 
 /// Stubs a download operation to fail with provided exception.
 void stubDownloadFailure(dynamic mock, String cellName, Exception error) {
-  when(mock.downloadChart(cellName, any, onProgress: anyNamed('onProgress')))
-      .thenThrow(error);
+  when(
+    mock.downloadChart(cellName, any, onProgress: anyNamed('onProgress')),
+  ).thenThrow(error);
 }
 
 /// Builds an ArcGIS-style FeatureCollection JSON string containing a single
@@ -207,12 +232,9 @@ String buildArcGisMetadataFeature({
   int objectId = 1,
   GeographicBounds? bounds,
 }) {
-  final b = bounds ?? GeographicBounds(
-    north: 38.0,
-    south: 37.5,
-    east: -122.0,
-    west: -122.5,
-  );
+  final b =
+      bounds ??
+      GeographicBounds(north: 38.0, south: 37.5, east: -122.0, west: -122.5);
   final feature = {
     'attributes': {
       'DSNM': cellName,
@@ -231,9 +253,9 @@ String buildArcGisMetadataFeature({
           [b.east, b.north],
           [b.west, b.north],
           [b.west, b.south],
-        ]
-      ]
-    }
+        ],
+      ],
+    },
   };
 
   return '{"features":[${feature.toString()}]}';
@@ -241,7 +263,12 @@ String buildArcGisMetadataFeature({
 
 /// Convenience to stub `getChartMetadata` with a synthesized ArcGIS-style
 /// metadata response that the production parser will accept.
-void stubChartMetadata(dynamic mock, String cellName, {String? title, GeographicBounds? bounds}) {
+void stubChartMetadata(
+  dynamic mock,
+  String cellName, {
+  String? title,
+  GeographicBounds? bounds,
+}) {
   when(mock.getChartMetadata(cellName)).thenAnswer((_) async {
     // The real client returns a Chart, but for pure mock usage higher level
     // services might only need non-null to proceed. We simulate by decoding
@@ -253,18 +280,18 @@ void stubChartMetadata(dynamic mock, String cellName, {String? title, Geographic
       id: cellName,
       title: title ?? cellName,
       scale: 20000,
-      bounds: bounds ?? GeographicBounds(
-        north: 38.0,
-        south: 37.5,
-        east: -122.0,
-        west: -122.5,
-      ),
+      bounds:
+          bounds ??
+          GeographicBounds(
+            north: 38.0,
+            south: 37.5,
+            east: -122.0,
+            west: -122.5,
+          ),
       lastUpdate: DateTime.now(),
       state: 'Unknown',
       type: ChartType.harbor,
-      metadata: {
-        'cell_name': cellName,
-      },
+      metadata: {'cell_name': cellName},
     );
   });
 }

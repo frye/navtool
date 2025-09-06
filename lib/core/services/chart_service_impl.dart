@@ -24,27 +24,27 @@ class ChartServiceImpl implements ChartService {
   Future<Chart?> loadChart(String chartId) async {
     try {
       _logger.info('Loading chart: $chartId');
-      
+
       // Check cache first
       if (_chartCache.containsKey(chartId)) {
         _logger.info('Chart $chartId loaded from cache');
         return _chartCache[chartId];
       }
-      
+
       // Load from storage
       final chartData = await _storageService.loadChart(chartId);
       if (chartData == null) {
         _logger.info('Chart $chartId not found in storage');
         return null;
       }
-      
+
       // Parse and validate chart data
       final parsedData = await parseS57Data(chartData);
       final chart = _createChartFromParsedData(chartId, parsedData);
-      
+
       // Cache the chart
       _chartCache[chartId] = chart;
-      
+
       _logger.info('Chart $chartId loaded successfully');
       return chart;
     } catch (e) {
@@ -62,10 +62,7 @@ class ChartServiceImpl implements ChartService {
     try {
       // This would typically query a chart database or file system
       // For now, return mock data that matches test expectations
-      return [
-        _createTestChart('US5CA52M'),
-        _createTestChart('US4CA11M'),
-      ];
+      return [_createTestChart('US5CA52M'), _createTestChart('US4CA11M')];
     } catch (e) {
       _logger.error('Failed to get available charts', exception: e);
       throw AppError(
@@ -80,16 +77,19 @@ class ChartServiceImpl implements ChartService {
   Future<List<Chart>> searchCharts(String query) async {
     try {
       final allCharts = await getAvailableCharts();
-      
+
       if (query == 'NONEXISTENT_LOCATION') {
         return [];
       }
-      
+
       // Simple search implementation - in real app would be more sophisticated
-      return allCharts.where((chart) => 
-        chart.title.toLowerCase().contains(query.toLowerCase()) ||
-        chart.state.toLowerCase().contains(query.toLowerCase())
-      ).toList();
+      return allCharts
+          .where(
+            (chart) =>
+                chart.title.toLowerCase().contains(query.toLowerCase()) ||
+                chart.state.toLowerCase().contains(query.toLowerCase()),
+          )
+          .toList();
     } catch (e) {
       _logger.error('Failed to search charts with query: $query', exception: e);
       throw AppError(
@@ -122,12 +122,12 @@ class ChartServiceImpl implements ChartService {
     try {
       // Use the S-57 parser to validate
       final parsedData = S57Parser.parse(data);
-      
+
       // Validate bounds
       if (!parsedData.bounds.isValid) {
         return false;
       }
-      
+
       return true;
     } catch (e) {
       _logger.error('Error validating chart data', exception: e);
@@ -136,10 +136,13 @@ class ChartServiceImpl implements ChartService {
   }
 
   /// Create Chart object from parsed S-57 data
-  Chart _createChartFromParsedData(String chartId, Map<String, dynamic> parsedData) {
+  Chart _createChartFromParsedData(
+    String chartId,
+    Map<String, dynamic> parsedData,
+  ) {
     final bounds = parsedData['bounds'] as Map<String, double>;
     final metadata = parsedData['metadata'] as Map<String, dynamic>;
-    
+
     return Chart(
       id: chartId,
       title: 'Chart $chartId - ${metadata['producer']}',

@@ -6,13 +6,13 @@ import 'dart:math' as math;
 enum NetworkStatus {
   /// Fully connected with good quality
   connected,
-  
+
   /// No network connection
   disconnected,
-  
+
   /// Connected but with limited functionality or poor quality
   limited,
-  
+
   /// Connection status cannot be determined
   unknown,
 }
@@ -21,19 +21,19 @@ enum NetworkStatus {
 enum ConnectionQuality {
   /// Excellent connection - suitable for all operations
   excellent,
-  
+
   /// Good connection - suitable for most operations
   good,
-  
+
   /// Fair connection - may affect large downloads
   fair,
-  
+
   /// Poor connection - only small requests recommended
   poor,
-  
+
   /// Very poor connection - avoid non-critical operations
   veryPoor,
-  
+
   /// No connection available
   offline,
 }
@@ -42,16 +42,16 @@ enum ConnectionQuality {
 enum ConnectionType {
   /// High-speed wired connection
   ethernet,
-  
+
   /// WiFi connection
   wifi,
-  
+
   /// Cellular/mobile data
   cellular,
-  
+
   /// Satellite internet (common in marine environments)
   satellite,
-  
+
   /// Unknown or multiple connection types
   unknown,
 }
@@ -60,16 +60,16 @@ enum ConnectionType {
 enum ConnectionStability {
   /// Very stable connection with minimal fluctuations
   veryStable,
-  
+
   /// Stable connection with occasional minor issues
   stable,
-  
+
   /// Moderately stable with noticeable fluctuations
   moderate,
-  
+
   /// Unstable connection with frequent issues
   unstable,
-  
+
   /// Very unstable connection, frequent disconnections
   veryUnstable,
 }
@@ -78,16 +78,16 @@ enum ConnectionStability {
 enum WeatherImpactSeverity {
   /// No weather impact detected
   none,
-  
+
   /// Minor impact, slight degradation possible
   minor,
-  
+
   /// Moderate impact, noticeable performance issues
   moderate,
-  
+
   /// Severe impact, significant service disruption
   severe,
-  
+
   /// Extreme impact, service likely unavailable
   extreme,
 }
@@ -105,19 +105,19 @@ class MarineNetworkConditions {
 
   /// Overall connection quality
   final ConnectionQuality connectionQuality;
-  
+
   /// Whether connection is suitable for downloading charts
   final bool isSuitableForChartDownload;
-  
+
   /// Whether connection is suitable for API requests
   final bool isSuitableForApiRequests;
-  
+
   /// Recommended multiplier for standard timeouts
   final double recommendedTimeoutMultiplier;
-  
+
   /// Estimated connection speed in Mbps
   final double estimatedSpeed;
-  
+
   /// Current latency
   final Duration latency;
 }
@@ -132,10 +132,10 @@ class MarineTimeoutRecommendations {
 
   /// Timeout for establishing connections
   final Duration connectionTimeout;
-  
+
   /// Timeout for reading data
   final Duration readTimeout;
-  
+
   /// Timeout for writing data
   final Duration writeTimeout;
 }
@@ -150,10 +150,10 @@ class WeatherImpactAssessment {
 
   /// Severity of weather impact
   final WeatherImpactSeverity severity;
-  
+
   /// List of services likely to be affected
   final List<String> affectedServices;
-  
+
   /// Recommended actions to take
   final List<String> recommendedActions;
 }
@@ -169,13 +169,13 @@ class OfflineFallbackStrategy {
 
   /// Strategy name
   final String name;
-  
+
   /// Description of the strategy
   final String description;
-  
+
   /// Priority level (higher = more preferred)
   final int priority;
-  
+
   /// Whether this strategy is currently available
   final bool isAvailable;
 }
@@ -190,10 +190,10 @@ class DegradationPlan {
 
   /// Features to disable completely
   final List<String> disabledFeatures;
-  
+
   /// Features with reduced functionality
   final List<String> reducedFunctionality;
-  
+
   /// Operations to prioritize
   final List<String> prioritizedOperations;
 }
@@ -202,19 +202,19 @@ class DegradationPlan {
 enum MonitoringEventType {
   /// Connection status changed
   statusChange,
-  
+
   /// Quality assessment updated
   qualityUpdate,
-  
+
   /// Connection interruption detected
   interruption,
-  
+
   /// Connection restored
   restoration,
-  
+
   /// Latency spike detected
   latencySpike,
-  
+
   /// Speed degradation detected
   speedDegradation,
 }
@@ -229,10 +229,10 @@ class NetworkMonitoringEvent {
 
   /// Type of monitoring event
   final MonitoringEventType type;
-  
+
   /// When the event occurred
   final DateTime timestamp;
-  
+
   /// Additional event data
   final Map<String, dynamic> data;
 }
@@ -248,13 +248,13 @@ class ConnectionInterruption {
 
   /// When the interruption started
   final DateTime startTime;
-  
+
   /// When the interruption ended (null if ongoing)
   final DateTime? endTime;
-  
+
   /// Duration of the interruption
   final Duration duration;
-  
+
   /// Suspected cause of the interruption
   final String cause;
 }
@@ -270,26 +270,26 @@ class NetworkResilienceConfig {
 
   /// Threshold for considering connection timeout
   final Duration connectionTimeoutThreshold;
-  
+
   /// How often to assess connection quality
   final Duration qualityAssessmentInterval;
-  
+
   /// Time window for assessing connection stability
   final Duration stabilityWindowSize;
-  
+
   /// Enable marine-specific optimizations
   final bool marineOptimizations;
 }
 
 /// Network resilience utility for marine environments
-/// 
+///
 /// Provides comprehensive network monitoring, quality assessment,
 /// and marine-specific optimizations for reliable connectivity
 /// in challenging maritime conditions.
 class NetworkResilience {
   /// Creates a network resilience instance
   NetworkResilience({NetworkResilienceConfig? config})
-      : config = config ?? const NetworkResilienceConfig() {
+    : config = config ?? const NetworkResilienceConfig() {
     _initializeMonitoring();
   }
 
@@ -297,26 +297,26 @@ class NetworkResilience {
   NetworkResilienceConfig config;
 
   /// Stream controller for network status changes
-  final StreamController<NetworkStatus> _statusController = 
+  final StreamController<NetworkStatus> _statusController =
       StreamController<NetworkStatus>.broadcast();
 
   /// Stream controller for monitoring events
-  final StreamController<NetworkMonitoringEvent> _eventsController = 
+  final StreamController<NetworkMonitoringEvent> _eventsController =
       StreamController<NetworkMonitoringEvent>.broadcast();
 
   /// Stream controller for connection interruptions
-  final StreamController<ConnectionInterruption> _interruptionsController = 
+  final StreamController<ConnectionInterruption> _interruptionsController =
       StreamController<ConnectionInterruption>.broadcast();
 
   /// Current monitoring state
   bool _isMonitoring = false;
-  
+
   /// Monitoring timer
   Timer? _monitoringTimer;
-  
+
   /// Last known network status
   NetworkStatus _lastStatus = NetworkStatus.unknown;
-  
+
   /// Connection quality history for stability assessment
   final List<_QualityMeasurement> _qualityHistory = [];
 
@@ -324,10 +324,11 @@ class NetworkResilience {
   Stream<NetworkStatus> get networkStatusStream => _statusController.stream;
 
   /// Stream of monitoring events
-  Stream<NetworkMonitoringEvent> get monitoringEvents => _eventsController.stream;
+  Stream<NetworkMonitoringEvent> get monitoringEvents =>
+      _eventsController.stream;
 
   /// Stream of connection interruptions
-  Stream<ConnectionInterruption> get connectionInterruptions => 
+  Stream<ConnectionInterruption> get connectionInterruptions =>
       _interruptionsController.stream;
 
   /// Whether monitoring is currently active
@@ -370,12 +371,14 @@ class NetworkResilience {
     if (currentStatus != _lastStatus) {
       _lastStatus = currentStatus;
       _statusController.add(currentStatus);
-      
-      _emitEvent(NetworkMonitoringEvent(
-        type: MonitoringEventType.statusChange,
-        timestamp: DateTime.now(),
-        data: {'previousStatus': _lastStatus, 'currentStatus': currentStatus},
-      ));
+
+      _emitEvent(
+        NetworkMonitoringEvent(
+          type: MonitoringEventType.statusChange,
+          timestamp: DateTime.now(),
+          data: {'previousStatus': _lastStatus, 'currentStatus': currentStatus},
+        ),
+      );
     }
   }
 
@@ -393,7 +396,9 @@ class NetworkResilience {
         if (!completer.isCompleted) {
           subscription?.cancel();
           if (requireOnline) {
-            completer.completeError(TimeoutException('Connection timeout', timeout));
+            completer.completeError(
+              TimeoutException('Connection timeout', timeout),
+            );
           } else {
             completer.complete();
           }
@@ -411,7 +416,7 @@ class NetworkResilience {
     }
 
     subscription = networkStatusStream.listen((status) {
-      if (status == NetworkStatus.connected || 
+      if (status == NetworkStatus.connected ||
           status == NetworkStatus.limited) {
         timer?.cancel();
         subscription?.cancel();
@@ -451,35 +456,41 @@ class NetworkResilience {
   Future<double> measureConnectionSpeed() async {
     try {
       final stopwatch = Stopwatch()..start();
-      
+
       // Simple speed test using HTTP request
       final client = HttpClient();
       final request = await client.getUrl(Uri.parse('https://www.google.com'));
       final response = await request.close();
-      
-      final bytes = await response.fold<List<int>>([], (prev, chunk) => prev..addAll(chunk));
+
+      final bytes = await response.fold<List<int>>(
+        [],
+        (prev, chunk) => prev..addAll(chunk),
+      );
       stopwatch.stop();
-      
+
       client.close();
-      
+
       // Estimate speed (this is a rough approximation)
       final totalBytes = bytes.length;
       final totalSeconds = stopwatch.elapsedMilliseconds / 1000.0;
-      
+
       // Validate measurements to prevent NaN and division by zero
       if (totalSeconds <= 0 || totalBytes <= 0) {
         return 1.0; // Default reasonable speed for invalid measurements
       }
-      
+
       final bytesPerSecond = totalBytes / totalSeconds;
       final mbps = (bytesPerSecond * 8) / (1024 * 1024); // Convert to Mbps
-      
+
       // Ensure we return a valid number with reasonable bounds
       if (mbps.isNaN || mbps.isInfinite || mbps <= 0) {
         return 1.0; // Default reasonable speed
       }
-      
-      return math.max(0.1, math.min(1000.0, mbps)); // Clamp between 0.1 and 1000 Mbps
+
+      return math.max(
+        0.1,
+        math.min(1000.0, mbps),
+      ); // Clamp between 0.1 and 1000 Mbps
     } catch (_) {
       return 1.0; // Default reasonable speed on error
     }
@@ -489,14 +500,16 @@ class NetworkResilience {
   Future<Duration> measureLatency({String? testHost}) async {
     final host = testHost ?? 'google.com';
     final stopwatch = Stopwatch()..start();
-    
+
     try {
       await InternetAddress.lookup(host);
       stopwatch.stop();
       return Duration(milliseconds: stopwatch.elapsedMilliseconds);
     } catch (_) {
       stopwatch.stop();
-      return const Duration(milliseconds: 5000); // High latency for failed lookup
+      return const Duration(
+        milliseconds: 5000,
+      ); // High latency for failed lookup
     }
   }
 
@@ -506,7 +519,7 @@ class NetworkResilience {
     // use platform-specific APIs to detect actual connection type
     if (await isOnline()) {
       final latency = await measureLatency();
-      
+
       // Heuristic-based detection
       if (latency.inMilliseconds > 600) {
         return ConnectionType.satellite; // High latency suggests satellite
@@ -516,7 +529,7 @@ class NetworkResilience {
         return ConnectionType.wifi; // Assume WiFi for low latency
       }
     }
-    
+
     return ConnectionType.unknown;
   }
 
@@ -527,7 +540,11 @@ class NetworkResilience {
     }
 
     final recentMeasurements = _qualityHistory
-        .where((m) => DateTime.now().difference(m.timestamp) < config.stabilityWindowSize)
+        .where(
+          (m) =>
+              DateTime.now().difference(m.timestamp) <
+              config.stabilityWindowSize,
+        )
         .toList();
 
     if (recentMeasurements.length < 3) {
@@ -563,8 +580,8 @@ class NetworkResilience {
     final latency = await measureLatency();
 
     // Marine-specific assessments
-    final isSuitableForChartDownload = quality.index <= ConnectionQuality.fair.index && 
-                                      speed >= 1.0;
+    final isSuitableForChartDownload =
+        quality.index <= ConnectionQuality.fair.index && speed >= 1.0;
     final isSuitableForApiRequests = quality != ConnectionQuality.offline;
 
     // Calculate timeout multiplier based on conditions
@@ -610,23 +627,27 @@ class NetworkResilience {
     List<String> affectedServices;
     List<String> recommendedActions;
 
-    if (quality == ConnectionQuality.offline || 
+    if (quality == ConnectionQuality.offline ||
         stability == ConnectionStability.veryUnstable) {
       severity = WeatherImpactSeverity.severe;
-      affectedServices = ['Chart Downloads', 'API Requests', 'Real-time Updates'];
+      affectedServices = [
+        'Chart Downloads',
+        'API Requests',
+        'Real-time Updates',
+      ];
       recommendedActions = [
         'Wait for weather conditions to improve',
         'Use offline charts if available',
-        'Delay non-critical operations'
+        'Delay non-critical operations',
       ];
-    } else if (quality == ConnectionQuality.veryPoor || 
-               stability == ConnectionStability.unstable) {
+    } else if (quality == ConnectionQuality.veryPoor ||
+        stability == ConnectionStability.unstable) {
       severity = WeatherImpactSeverity.moderate;
       affectedServices = ['Chart Downloads', 'Large File Transfers'];
       recommendedActions = [
         'Prioritize critical operations',
         'Use smaller download chunks',
-        'Implement longer timeouts'
+        'Implement longer timeouts',
       ];
     } else {
       severity = WeatherImpactSeverity.minor;
@@ -671,7 +692,9 @@ class NetworkResilience {
   }
 
   /// Creates a degradation plan for poor connection quality
-  Future<DegradationPlan> createDegradationPlan(ConnectionQuality quality) async {
+  Future<DegradationPlan> createDegradationPlan(
+    ConnectionQuality quality,
+  ) async {
     switch (quality) {
       case ConnectionQuality.poor:
         return const DegradationPlan(
@@ -679,21 +702,33 @@ class NetworkResilience {
           reducedFunctionality: ['Chart updates', 'Route sharing'],
           prioritizedOperations: ['Navigation', 'Safety alerts'],
         );
-      
+
       case ConnectionQuality.veryPoor:
         return const DegradationPlan(
-          disabledFeatures: ['Auto-sync', 'Real-time weather', 'Chart downloads'],
-          reducedFunctionality: ['Chart updates', 'Route sharing', 'Online services'],
-          prioritizedOperations: ['Navigation', 'Safety alerts', 'Emergency communications'],
+          disabledFeatures: [
+            'Auto-sync',
+            'Real-time weather',
+            'Chart downloads',
+          ],
+          reducedFunctionality: [
+            'Chart updates',
+            'Route sharing',
+            'Online services',
+          ],
+          prioritizedOperations: [
+            'Navigation',
+            'Safety alerts',
+            'Emergency communications',
+          ],
         );
-      
+
       case ConnectionQuality.offline:
         return const DegradationPlan(
           disabledFeatures: ['All online features'],
           reducedFunctionality: [],
           prioritizedOperations: ['Offline navigation', 'Emergency procedures'],
         );
-      
+
       default:
         return const DegradationPlan(
           disabledFeatures: [],
@@ -712,24 +747,26 @@ class NetworkResilience {
 
     _monitoringTimer = Timer.periodic(monitoringInterval, (_) async {
       await checkNetworkStatus();
-      
+
       // Record quality measurement for stability assessment
       final quality = await assessConnectionQuality();
-      _qualityHistory.add(_QualityMeasurement(
-        quality: quality,
-        timestamp: DateTime.now(),
-      ));
+      _qualityHistory.add(
+        _QualityMeasurement(quality: quality, timestamp: DateTime.now()),
+      );
 
       // Keep only recent measurements
       _qualityHistory.removeWhere(
-        (m) => DateTime.now().difference(m.timestamp) > config.stabilityWindowSize,
+        (m) =>
+            DateTime.now().difference(m.timestamp) > config.stabilityWindowSize,
       );
 
-      _emitEvent(NetworkMonitoringEvent(
-        type: MonitoringEventType.qualityUpdate,
-        timestamp: DateTime.now(),
-        data: {'quality': quality.toString()},
-      ));
+      _emitEvent(
+        NetworkMonitoringEvent(
+          type: MonitoringEventType.qualityUpdate,
+          timestamp: DateTime.now(),
+          data: {'quality': quality.toString()},
+        ),
+      );
     });
   }
 
@@ -743,7 +780,7 @@ class NetworkResilience {
   /// Updates configuration at runtime
   Future<void> updateConfiguration(NetworkResilienceConfig newConfig) async {
     config = newConfig;
-    
+
     // Restart monitoring with new configuration if currently monitoring
     if (_isMonitoring) {
       stopMonitoring();
@@ -773,7 +810,7 @@ class NetworkResilience {
   /// Calculates variance for stability assessment
   double _calculateVariance(List<int> values) {
     if (values.isEmpty) return 0.0;
-    
+
     final mean = values.reduce((a, b) => a + b) / values.length;
     final squaredDiffs = values.map((x) => (x - mean) * (x - mean));
     return squaredDiffs.reduce((a, b) => a + b) / values.length;
@@ -782,10 +819,7 @@ class NetworkResilience {
 
 /// Internal class for tracking quality measurements
 class _QualityMeasurement {
-  const _QualityMeasurement({
-    required this.quality,
-    required this.timestamp,
-  });
+  const _QualityMeasurement({required this.quality, required this.timestamp});
 
   final ConnectionQuality quality;
   final DateTime timestamp;

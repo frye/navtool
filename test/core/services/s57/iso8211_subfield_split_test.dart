@@ -9,7 +9,10 @@ void main() {
       expect(coerceValue('123'), equals(123)); // Integer
       expect(coerceValue('123.45'), equals(123.45)); // Double
       expect(coerceValue('text'), equals('text')); // String
-      expect(coerceValue('  whitespace  '), equals('whitespace')); // Trimmed string
+      expect(
+        coerceValue('  whitespace  '),
+        equals('whitespace'),
+      ); // Trimmed string
       expect(coerceValue(''), equals('')); // Empty string
     });
 
@@ -25,20 +28,20 @@ void main() {
       // Create test data with subfield delimiters (0x1F)
       final testString = 'BCNCAR\u001f02\u001f150\u001f47.6789';
       final testBytes = ascii.encode(testString);
-      
+
       final result = splitAndCoerce(testBytes);
-      
+
       expect(result.length, equals(4));
       expect(result[0], equals('BCNCAR')); // String
       expect(result[1], equals(2)); // Integer
-      expect(result[2], equals(150)); // Integer  
+      expect(result[2], equals(150)); // Integer
       expect(result[3], equals(47.6789)); // Double
     });
 
     test('should handle single field without delimiters', () {
       final testBytes = ascii.encode('SOUNDG');
       final result = splitAndCoerce(testBytes);
-      
+
       expect(result.length, equals(1));
       expect(result[0], equals('SOUNDG'));
     });
@@ -47,7 +50,7 @@ void main() {
       final textBytes = ascii.encode('US5WA50M');
       final numberBytes = ascii.encode('12345');
       final floatBytes = ascii.encode('123.456');
-      
+
       expect(coerceFieldValue(textBytes), equals('US5WA50M'));
       expect(coerceFieldValue(numberBytes), equals(12345));
       expect(coerceFieldValue(floatBytes), equals(123.456));
@@ -58,9 +61,9 @@ void main() {
       final testString = 'DEPARE\u001f5.2\u001f10.8\u001f15.0';
       final testBytes = ascii.encode(testString);
       final fieldNames = ['objectType', 'minDepth', 'maxDepth', 'safetyDepth'];
-      
+
       final result = extractStructuredValues(testBytes, fieldNames);
-      
+
       expect(result['objectType'], equals('DEPARE'));
       expect(result['minDepth'], equals(5.2));
       expect(result['maxDepth'], equals(10.8));
@@ -72,13 +75,13 @@ void main() {
       final testBytes = ascii.encode(testString);
       final tooManyNames = ['field1', 'field2', 'field3', 'field4'];
       final tooFewNames = ['field1'];
-      
+
       final resultTooMany = extractStructuredValues(testBytes, tooManyNames);
       expect(resultTooMany.length, equals(2)); // Only 2 values available
       expect(resultTooMany['field1'], equals('A'));
       expect(resultTooMany['field2'], equals('B'));
       expect(resultTooMany.containsKey('field3'), isFalse);
-      
+
       final resultTooFew = extractStructuredValues(testBytes, tooFewNames);
       expect(resultTooFew.length, equals(1)); // Only 1 name provided
       expect(resultTooFew['field1'], equals('A'));
@@ -87,9 +90,9 @@ void main() {
     test('should handle empty and whitespace-only subfields', () {
       final testString = 'VALUE1\u001f\u001f  \u001fVALUE2';
       final testBytes = ascii.encode(testString);
-      
+
       final result = splitAndCoerce(testBytes);
-      
+
       expect(result.length, equals(4));
       expect(result[0], equals('VALUE1'));
       expect(result[1], equals('')); // Empty subfield
@@ -103,8 +106,12 @@ void main() {
       // Test coordinate as 32-bit signed integer scaled by 10^7
       final coordBytes = Uint8List(4);
       final byteData = ByteData.sublistView(coordBytes);
-      byteData.setInt32(0, 476789123, Endian.little); // Represents 47.6789123 degrees
-      
+      byteData.setInt32(
+        0,
+        476789123,
+        Endian.little,
+      ); // Represents 47.6789123 degrees
+
       final result = S57FieldCoercion.coerceCoordinate(coordBytes.toList());
       expect(result, isNotNull);
       expect(result!, closeTo(47.6789123, 0.0000001));
@@ -115,7 +122,7 @@ void main() {
       final depthBytes = Uint8List(4);
       final byteData = ByteData.sublistView(depthBytes);
       byteData.setInt32(0, 1523, Endian.little); // 15.23 meters
-      
+
       final result = S57FieldCoercion.coerceDepth(depthBytes.toList());
       expect(result, isNotNull);
       expect(result!, equals(15.23));
@@ -126,14 +133,14 @@ void main() {
       final id1Bytes = Uint8List(4);
       final byteData1 = ByteData.sublistView(id1Bytes);
       byteData1.setUint32(0, 12345, Endian.little);
-      
+
       final id2Bytes = Uint8List(2);
       final byteData2 = ByteData.sublistView(id2Bytes);
       byteData2.setUint16(0, 999, Endian.little);
-      
+
       final id3Bytes = [42]; // Single byte
       final id4Bytes = ascii.encode('789'); // String format
-      
+
       expect(S57FieldCoercion.coerceRecordId(id1Bytes.toList()), equals(12345));
       expect(S57FieldCoercion.coerceRecordId(id2Bytes.toList()), equals(999));
       expect(S57FieldCoercion.coerceRecordId(id3Bytes), equals(42));
@@ -145,19 +152,25 @@ void main() {
       // Single byte value
       final singleByte = [5];
       expect(S57FieldCoercion.coerceAttributeValue(singleByte), equals(5));
-      
+
       // 2-byte unsigned short
       final twoBytes = Uint8List(2);
       final byteData2 = ByteData.sublistView(twoBytes);
       byteData2.setUint16(0, 1000, Endian.little);
-      expect(S57FieldCoercion.coerceAttributeValue(twoBytes.toList()), equals(1000));
-      
+      expect(
+        S57FieldCoercion.coerceAttributeValue(twoBytes.toList()),
+        equals(1000),
+      );
+
       // 4-byte signed integer
       final fourBytes = Uint8List(4);
       final byteData4 = ByteData.sublistView(fourBytes);
       byteData4.setInt32(0, -12345, Endian.little);
-      expect(S57FieldCoercion.coerceAttributeValue(fourBytes.toList()), equals(-12345));
-      
+      expect(
+        S57FieldCoercion.coerceAttributeValue(fourBytes.toList()),
+        equals(-12345),
+      );
+
       // Complex field with subfield delimiters
       final complexBytes = ascii.encode('ATTR1\u001f123\u001f45.6');
       final complexResult = S57FieldCoercion.coerceAttributeValue(complexBytes);
@@ -172,10 +185,10 @@ void main() {
     test('should handle invalid or corrupted data gracefully', () {
       // Too short for coordinate
       expect(S57FieldCoercion.coerceCoordinate([1, 2]), isNull);
-      
+
       // Too short for depth
       expect(S57FieldCoercion.coerceDepth([1]), isNull);
-      
+
       // Empty data
       expect(S57FieldCoercion.coerceAttributeValue([]), equals(''));
     });
@@ -185,11 +198,19 @@ void main() {
       final coordBytes = Uint8List(4);
       final byteData = ByteData.sublistView(coordBytes);
       byteData.setInt32(0, 476789, Endian.little);
-      
-      final defaultScale = S57FieldCoercion.coerceCoordinate(coordBytes.toList());
-      final customScale = S57FieldCoercion.coerceCoordinate(coordBytes.toList(), scale: 1000.0);
-      
-      expect(defaultScale!, closeTo(0.0476789, 0.0000001)); // Default scale 10^7
+
+      final defaultScale = S57FieldCoercion.coerceCoordinate(
+        coordBytes.toList(),
+      );
+      final customScale = S57FieldCoercion.coerceCoordinate(
+        coordBytes.toList(),
+        scale: 1000.0,
+      );
+
+      expect(
+        defaultScale!,
+        closeTo(0.0476789, 0.0000001),
+      ); // Default scale 10^7
       expect(customScale!, closeTo(476.789, 0.001)); // Custom scale 10^3
     });
   });

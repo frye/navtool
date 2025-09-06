@@ -20,7 +20,7 @@ void main() {
 
       final warnings = collector.warnings;
       expect(warnings, hasLength(1));
-      
+
       final warning = warnings.first;
       expect(warning.code, equals(S57WarningCodes.depthOutOfRange));
       expect(warning.severity, equals(S57WarningSeverity.info));
@@ -82,9 +82,11 @@ void main() {
       expect(collector.totalWarnings, equals(4));
       expect(collector.infoCount, equals(4));
 
-      final depthWarnings = collector.getWarningsByCode(S57WarningCodes.depthOutOfRange);
+      final depthWarnings = collector.getWarningsByCode(
+        S57WarningCodes.depthOutOfRange,
+      );
       expect(depthWarnings, hasLength(4));
-      
+
       expect(depthWarnings[0].message, contains('15000.0m'));
       expect(depthWarnings[1].message, contains('-50.0m'));
       expect(depthWarnings[2].message, contains('0.001m'));
@@ -122,51 +124,58 @@ void main() {
       }
 
       expect(collector.totalWarnings, equals(3));
-      
+
       final warnings = collector.warnings;
       expect(warnings[0].message, contains('Coastal waters'));
       expect(warnings[1].message, contains('Harbor area'));
       expect(warnings[2].message, contains('River channel'));
     });
 
-    test('should handle depth attribute validation for different object types', () {
-      final objectDepthChecks = [
-        {
-          'objectType': 'SOUNDG',
-          'attribute': 'VALSOU',
-          'value': 12000.0,
-          'message': 'SOUNDG VALSOU 12000.0m exceeds typical sounding range',
-        },
-        {
-          'objectType': 'DEPARE',
-          'attribute': 'DRVAL1',
-          'value': -100.0,
-          'message': 'DEPARE DRVAL1 -100.0m indicates land elevation in depth area',
-        },
-        {
-          'objectType': 'WRECKS',
-          'attribute': 'VALSOU',
-          'value': 0.0,
-          'message': 'WRECKS VALSOU 0.0m may indicate drying wreck',
-        },
-      ];
+    test(
+      'should handle depth attribute validation for different object types',
+      () {
+        final objectDepthChecks = [
+          {
+            'objectType': 'SOUNDG',
+            'attribute': 'VALSOU',
+            'value': 12000.0,
+            'message': 'SOUNDG VALSOU 12000.0m exceeds typical sounding range',
+          },
+          {
+            'objectType': 'DEPARE',
+            'attribute': 'DRVAL1',
+            'value': -100.0,
+            'message':
+                'DEPARE DRVAL1 -100.0m indicates land elevation in depth area',
+          },
+          {
+            'objectType': 'WRECKS',
+            'attribute': 'VALSOU',
+            'value': 0.0,
+            'message': 'WRECKS VALSOU 0.0m may indicate drying wreck',
+          },
+        ];
 
-      for (final check in objectDepthChecks) {
-        collector.info(
-          S57WarningCodes.depthOutOfRange,
-          check['message'] as String,
-          recordId: '${check['objectType']}_DEPTH_CHECK',
-          featureId: '${check['objectType']}_${check['value']}'.replaceAll('.', '_'),
-        );
-      }
+        for (final check in objectDepthChecks) {
+          collector.info(
+            S57WarningCodes.depthOutOfRange,
+            check['message'] as String,
+            recordId: '${check['objectType']}_DEPTH_CHECK',
+            featureId: '${check['objectType']}_${check['value']}'.replaceAll(
+              '.',
+              '_',
+            ),
+          );
+        }
 
-      expect(collector.totalWarnings, equals(3));
-      
-      final warnings = collector.warnings;
-      expect(warnings[0].message, contains('SOUNDG VALSOU'));
-      expect(warnings[1].message, contains('DEPARE DRVAL1'));
-      expect(warnings[2].message, contains('WRECKS VALSOU'));
-    });
+        expect(collector.totalWarnings, equals(3));
+
+        final warnings = collector.warnings;
+        expect(warnings[0].message, contains('SOUNDG VALSOU'));
+        expect(warnings[1].message, contains('DEPARE DRVAL1'));
+        expect(warnings[2].message, contains('WRECKS VALSOU'));
+      },
+    );
 
     test('should track depth sanity check statistics', () {
       // Add various warning types including depth checks
@@ -176,9 +185,12 @@ void main() {
       collector.warning(S57WarningCodes.missingRequiredAttr, 'Missing attr');
 
       final summary = collector.createSummaryReport();
-      
+
       expect(summary['totalWarnings'], equals(4));
-      expect(summary['warningsByCode'][S57WarningCodes.depthOutOfRange], equals(2));
+      expect(
+        summary['warningsByCode'][S57WarningCodes.depthOutOfRange],
+        equals(2),
+      );
       expect(summary['warningsBySeverity']['info'], equals(3));
       expect(summary['warningsBySeverity']['warning'], equals(1));
     });
@@ -186,9 +198,9 @@ void main() {
     test('should log depth sanity warnings correctly', () {
       final outputs = <String>[];
       final testLogger = TestLogger(outputs);
-      
+
       final loggedCollector = S57WarningCollector(logger: testLogger);
-      
+
       loggedCollector.info(
         S57WarningCodes.depthOutOfRange,
         'Sounding depth 8000.0m exceeds expected continental shelf range',
@@ -200,21 +212,27 @@ void main() {
       expect(outputs.first, contains('INFO:'));
       expect(outputs.first, contains('[DEPTH_OUT_OF_RANGE]'));
       expect(outputs.first, contains('8000.0m exceeds expected'));
-      expect(outputs.first, contains('(record:LOG_DEPTH_001, feature:SOUNDG_LOG_001)'));
+      expect(
+        outputs.first,
+        contains('(record:LOG_DEPTH_001, feature:SOUNDG_LOG_001)'),
+      );
     });
 
     test('should handle depth precision and unit conversion warnings', () {
       final precisionScenarios = [
         {
-          'message': 'Depth precision 0.00001m exceeds sensor accuracy - possible over-precision',
+          'message':
+              'Depth precision 0.00001m exceeds sensor accuracy - possible over-precision',
           'featureId': 'PRECISION_001',
         },
         {
-          'message': 'Depth unit conversion: 500 fathoms = 914.4m - unusually deep for charted area',
+          'message':
+              'Depth unit conversion: 500 fathoms = 914.4m - unusually deep for charted area',
           'featureId': 'FATHOMS_001',
         },
         {
-          'message': 'Depth value 12.345678m has excessive decimal places - rounded to 12.3m',
+          'message':
+              'Depth value 12.345678m has excessive decimal places - rounded to 12.3m',
           'featureId': 'DECIMAL_001',
         },
       ];
@@ -228,7 +246,7 @@ void main() {
       }
 
       expect(collector.totalWarnings, equals(3));
-      
+
       final warnings = collector.warnings;
       expect(warnings[0].message, contains('precision 0.00001m'));
       expect(warnings[1].message, contains('500 fathoms'));
@@ -280,7 +298,7 @@ void main() {
       }
 
       expect(collector.totalWarnings, equals(3));
-      
+
       final warnings = collector.warnings;
       expect(warnings[0].message, contains('Mediterranean Sea'));
       expect(warnings[1].message, contains('Great Lakes'));
@@ -289,10 +307,7 @@ void main() {
 
     test('should handle edge cases with depth validation', () {
       // Test with minimal context
-      collector.info(
-        S57WarningCodes.depthOutOfRange,
-        'Depth out of range',
-      );
+      collector.info(S57WarningCodes.depthOutOfRange, 'Depth out of range');
 
       // Test with partial context
       collector.info(
@@ -302,7 +317,7 @@ void main() {
       );
 
       expect(collector.totalWarnings, equals(2));
-      
+
       final warnings = collector.warnings;
       expect(warnings[0].recordId, isNull);
       expect(warnings[0].featureId, isNull);
@@ -313,23 +328,26 @@ void main() {
     test('should work with file processing context', () {
       final outputs = <String>[];
       final testLogger = TestLogger(outputs);
-      
+
       final loggedCollector = S57WarningCollector(logger: testLogger);
-      
+
       loggedCollector.startFile('/charts/bathymetry/US5CN11M.000');
-      
+
       loggedCollector.info(
         S57WarningCodes.depthOutOfRange,
         'Deep ocean sounding requires verification',
         featureId: 'SOUNDG_VERIFY_001',
       );
-      
+
       loggedCollector.finishFile('/charts/bathymetry/US5CN11M.000');
 
       expect(outputs, hasLength(3));
       expect(outputs[0], contains('Starting: /charts/bathymetry/US5CN11M.000'));
       expect(outputs[1], contains('[DEPTH_OUT_OF_RANGE]'));
-      expect(outputs[2], contains('Finished: /charts/bathymetry/US5CN11M.000 (1 warnings)'));
+      expect(
+        outputs[2],
+        contains('Finished: /charts/bathymetry/US5CN11M.000 (1 warnings)'),
+      );
     });
   });
 }
@@ -344,7 +362,9 @@ class TestLogger implements S57ParseLogger {
   void onWarning(S57ParseWarning warning) {
     final severityPrefix = _getSeverityPrefix(warning.severity);
     final contextSuffix = _getContextSuffix(warning);
-    outputs.add('$severityPrefix[${warning.code}] ${warning.message}$contextSuffix');
+    outputs.add(
+      '$severityPrefix[${warning.code}] ${warning.message}$contextSuffix',
+    );
   }
 
   @override

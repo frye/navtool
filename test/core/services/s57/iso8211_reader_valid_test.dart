@@ -20,25 +20,28 @@ void main() {
 
     test('should parse all valid records from fixture', () {
       final records = reader.readAll().toList();
-      
+
       // Should get 3 valid records (DDR + 2 data records), malformed record skipped
       expect(records.length, equals(3));
-      expect(reader.warnings.length, equals(1)); // One warning for malformed record
+      expect(
+        reader.warnings.length,
+        equals(1),
+      ); // One warning for malformed record
     });
 
     test('should parse DDR record correctly', () {
       final records = reader.readAll().toList();
       final ddr = records.first;
-      
+
       expect(ddr.recordLength, equals(72));
       expect(ddr.baseAddress, equals(53));
       expect(ddr.fieldTags, containsAll(['DSID', 'DSPM']));
-      
+
       // Verify DSID field contains chart ID
       final dsidData = ddr.getFieldData('DSID');
       expect(dsidData, isNotNull);
       expect(String.fromCharCodes(dsidData!), equals('US5WA50M'));
-      
+
       // Verify DSPM field contains date
       final dspmData = ddr.getFieldData('DSPM');
       expect(dspmData, isNotNull);
@@ -48,15 +51,15 @@ void main() {
     test('should parse first data record correctly', () {
       final records = reader.readAll().toList();
       final dataRecordA = records[1];
-      
+
       expect(dataRecordA.recordLength, equals(71));
       expect(dataRecordA.fieldTags, containsAll(['FOID', 'FT01']));
-      
+
       // Verify FOID field
       final foidData = dataRecordA.getFieldData('FOID');
       expect(foidData, isNotNull);
       expect(String.fromCharCodes(foidData!), equals('001'));
-      
+
       // Verify FT01 field with subfield delimiters
       final ft01Data = dataRecordA.getFieldData('FT01');
       expect(ft01Data, isNotNull);
@@ -68,10 +71,10 @@ void main() {
     test('should parse second data record correctly', () {
       final records = reader.readAll().toList();
       final dataRecordB = records[2];
-      
+
       expect(dataRecordB.recordLength, equals(55));
       expect(dataRecordB.fieldTags, contains('FT02'));
-      
+
       // Verify FT02 field
       final ft02Data = dataRecordB.getFieldData('FT02');
       expect(ft02Data, isNotNull);
@@ -84,13 +87,13 @@ void main() {
     test('should provide directory entry information', () {
       final records = reader.readAll().toList();
       final ddr = records.first;
-      
+
       expect(ddr.directory.length, equals(2));
-      
+
       final dsidEntry = ddr.directory.firstWhere((e) => e.tag == 'DSID');
       expect(dsidEntry.length, equals(8));
       expect(dsidEntry.position, equals(0));
-      
+
       final dspmEntry = ddr.directory.firstWhere((e) => e.tag == 'DSPM');
       expect(dspmEntry.length, equals(8));
       expect(dspmEntry.position, equals(9)); // After DSID + terminator
@@ -99,11 +102,11 @@ void main() {
     test('should handle hasField and getFieldData methods correctly', () {
       final records = reader.readAll().toList();
       final ddr = records.first;
-      
+
       expect(ddr.hasField('DSID'), isTrue);
       expect(ddr.hasField('DSPM'), isTrue);
       expect(ddr.hasField('NONEXISTENT'), isFalse);
-      
+
       expect(ddr.getFieldData('DSID'), isNotNull);
       expect(ddr.getFieldData('NONEXISTENT'), isNull);
     });

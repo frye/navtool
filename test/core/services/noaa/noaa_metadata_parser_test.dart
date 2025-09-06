@@ -33,13 +33,15 @@ void main() {
               'type': 'Feature',
               'geometry': {
                 'type': 'Polygon',
-                'coordinates': [[
-                  [-123.0, 37.0],
-                  [-122.0, 37.0],
-                  [-122.0, 38.0],
-                  [-123.0, 38.0],
-                  [-123.0, 37.0]
-                ]]
+                'coordinates': [
+                  [
+                    [-123.0, 37.0],
+                    [-122.0, 37.0],
+                    [-122.0, 38.0],
+                    [-123.0, 38.0],
+                    [-123.0, 37.0],
+                  ],
+                ],
               },
               'properties': {
                 'CHART': 'US5CA52M',
@@ -47,20 +49,22 @@ void main() {
                 'SCALE': 25000,
                 'LAST_UPDATE': '2024-01-15T00:00:00Z',
                 'STATE': 'California',
-                'USAGE': 'Harbor'
-              }
+                'USAGE': 'Harbor',
+              },
             },
             {
               'type': 'Feature',
               'geometry': {
                 'type': 'Polygon',
-                'coordinates': [[
-                  [-119.0, 33.0],
-                  [-118.0, 33.0],
-                  [-118.0, 34.0],
-                  [-119.0, 34.0],
-                  [-119.0, 33.0]
-                ]]
+                'coordinates': [
+                  [
+                    [-119.0, 33.0],
+                    [-118.0, 33.0],
+                    [-118.0, 34.0],
+                    [-119.0, 34.0],
+                    [-119.0, 33.0],
+                  ],
+                ],
               },
               'properties': {
                 'CHART': 'US4CA11M',
@@ -68,10 +72,10 @@ void main() {
                 'SCALE': 50000,
                 'LAST_UPDATE': '2024-01-10T00:00:00Z',
                 'STATE': 'California',
-                'USAGE': 'Harbor'
-              }
-            }
-          ]
+                'USAGE': 'Harbor',
+              },
+            },
+          ],
         };
 
         // Act
@@ -79,7 +83,7 @@ void main() {
 
         // Assert
         expect(result, hasLength(2));
-        
+
         final chart1 = result[0];
         expect(chart1.id, equals('US5CA52M'));
         expect(chart1.title, equals('San Francisco Bay'));
@@ -100,10 +104,7 @@ void main() {
 
       test('should handle empty GeoJSON feature collection', () async {
         // Arrange
-        final geoJsonData = {
-          'type': 'FeatureCollection',
-          'features': []
-        };
+        final geoJsonData = {'type': 'FeatureCollection', 'features': []};
 
         // Act
         final result = await parser.parseGeoJsonToCharts(geoJsonData);
@@ -114,61 +115,71 @@ void main() {
         expectNoErrorLogs(mockLogger);
       });
 
-      test('should skip invalid features with missing required properties', () async {
-        // Arrange
-        final geoJsonData = {
-          'type': 'FeatureCollection',
-          'features': [
-            {
-              'type': 'Feature',
-              'geometry': {
-                'type': 'Polygon',
-                'coordinates': [[
-                  [-123.0, 37.0],
-                  [-122.0, 37.0],
-                  [-122.0, 38.0],
-                  [-123.0, 38.0],
-                  [-123.0, 37.0]
-                ]]
+      test(
+        'should skip invalid features with missing required properties',
+        () async {
+          // Arrange
+          final geoJsonData = {
+            'type': 'FeatureCollection',
+            'features': [
+              {
+                'type': 'Feature',
+                'geometry': {
+                  'type': 'Polygon',
+                  'coordinates': [
+                    [
+                      [-123.0, 37.0],
+                      [-122.0, 37.0],
+                      [-122.0, 38.0],
+                      [-123.0, 38.0],
+                      [-123.0, 37.0],
+                    ],
+                  ],
+                },
+                'properties': {
+                  'CHART': 'US5CA52M',
+                  'TITLE': 'San Francisco Bay',
+                  // Missing SCALE, LAST_UPDATE, STATE, USAGE
+                },
               },
-              'properties': {
-                'CHART': 'US5CA52M',
-                'TITLE': 'San Francisco Bay',
-                // Missing SCALE, LAST_UPDATE, STATE, USAGE
-              }
-            },
-            {
-              'type': 'Feature',
-              'geometry': {
-                'type': 'Polygon',
-                'coordinates': [[
-                  [-119.0, 33.0],
-                  [-118.0, 33.0],
-                  [-118.0, 34.0],
-                  [-119.0, 34.0],
-                  [-119.0, 33.0]
-                ]]
+              {
+                'type': 'Feature',
+                'geometry': {
+                  'type': 'Polygon',
+                  'coordinates': [
+                    [
+                      [-119.0, 33.0],
+                      [-118.0, 33.0],
+                      [-118.0, 34.0],
+                      [-119.0, 34.0],
+                      [-119.0, 33.0],
+                    ],
+                  ],
+                },
+                'properties': {
+                  'CHART': 'US4CA11M',
+                  'TITLE': 'Los Angeles Harbor',
+                  'SCALE': 50000,
+                  'LAST_UPDATE': '2024-01-10T00:00:00Z',
+                  'STATE': 'California',
+                  'USAGE': 'Harbor',
+                },
               },
-              'properties': {
-                'CHART': 'US4CA11M',
-                'TITLE': 'Los Angeles Harbor',
-                'SCALE': 50000,
-                'LAST_UPDATE': '2024-01-10T00:00:00Z',
-                'STATE': 'California',
-                'USAGE': 'Harbor'
-              }
-            }
-          ]
-        };
+            ],
+          };
 
-        // Act
-        final result = await parser.parseGeoJsonToCharts(geoJsonData);
+          // Act
+          final result = await parser.parseGeoJsonToCharts(geoJsonData);
 
-        // Assert
-        expect(result, hasLength(1));
-        expect(result[0].id, equals('US4CA11M'));
-        verifyWarningLogged(mockLogger, 'Skipping chart feature with missing required properties: US5CA52M');
-      });
+          // Assert
+          expect(result, hasLength(1));
+          expect(result[0].id, equals('US4CA11M'));
+          verifyWarningLogged(
+            mockLogger,
+            'Skipping chart feature with missing required properties: US5CA52M',
+          );
+        },
+      );
 
       test('should handle various chart types from USAGE property', () async {
         // Arrange
@@ -179,13 +190,15 @@ void main() {
               'type': 'Feature',
               'geometry': {
                 'type': 'Polygon',
-                'coordinates': [[
-                  [-123.0, 37.0],
-                  [-122.0, 37.0],
-                  [-122.0, 38.0],
-                  [-123.0, 38.0],
-                  [-123.0, 37.0]
-                ]]
+                'coordinates': [
+                  [
+                    [-123.0, 37.0],
+                    [-122.0, 37.0],
+                    [-122.0, 38.0],
+                    [-123.0, 38.0],
+                    [-123.0, 37.0],
+                  ],
+                ],
               },
               'properties': {
                 'CHART': 'US5CA52M',
@@ -193,10 +206,10 @@ void main() {
                 'SCALE': 25000,
                 'LAST_UPDATE': '2024-01-15T00:00:00Z',
                 'STATE': 'California',
-                'USAGE': 'Overview'
-              }
-            }
-          ]
+                'USAGE': 'Overview',
+              },
+            },
+          ],
         };
 
         // Act
@@ -208,19 +221,19 @@ void main() {
         expectNoErrorLogs(mockLogger);
       });
 
-      test('should throw MetadataParsingException for invalid GeoJSON structure', () async {
-        // Arrange
-        final invalidGeoJson = {
-          'type': 'InvalidType',
-          'features': []
-        };
+      test(
+        'should throw MetadataParsingException for invalid GeoJSON structure',
+        () async {
+          // Arrange
+          final invalidGeoJson = {'type': 'InvalidType', 'features': []};
 
-        // Act & Assert
-        expect(
-          () async => await parser.parseGeoJsonToCharts(invalidGeoJson),
-          throwsA(isA<MetadataParsingException>()),
-        );
-      });
+          // Act & Assert
+          expect(
+            () async => await parser.parseGeoJsonToCharts(invalidGeoJson),
+            throwsA(isA<MetadataParsingException>()),
+          );
+        },
+      );
 
       test('should handle invalid geometry gracefully', () async {
         // Arrange
@@ -231,7 +244,7 @@ void main() {
               'type': 'Feature',
               'geometry': {
                 'type': 'Point', // Invalid for chart bounds
-                'coordinates': [-122.0, 37.0]
+                'coordinates': [-122.0, 37.0],
               },
               'properties': {
                 'CHART': 'US5CA52M',
@@ -239,10 +252,10 @@ void main() {
                 'SCALE': 25000,
                 'LAST_UPDATE': '2024-01-15T00:00:00Z',
                 'STATE': 'California',
-                'USAGE': 'Harbor'
-              }
-            }
-          ]
+                'USAGE': 'Harbor',
+              },
+            },
+          ],
         };
 
         // Act
@@ -250,35 +263,71 @@ void main() {
 
         // Assert
         expect(result, isEmpty);
-        verifyWarningLogged(mockLogger, 'Skipping chart feature with invalid geometry: US5CA52M');
+        verifyWarningLogged(
+          mockLogger,
+          'Skipping chart feature with invalid geometry: US5CA52M',
+        );
       });
     });
 
     group('parseChartUsageToType', () {
       test('should map usage strings to chart types correctly', () {
         // Act & Assert
-        expect(parser.parseChartUsageToType('Harbor'), equals(ChartType.harbor));
-        expect(parser.parseChartUsageToType('Approach'), equals(ChartType.approach));
-        expect(parser.parseChartUsageToType('Coastal'), equals(ChartType.coastal));
-        expect(parser.parseChartUsageToType('General'), equals(ChartType.general));
-        expect(parser.parseChartUsageToType('Overview'), equals(ChartType.overview));
-        expect(parser.parseChartUsageToType('Berthing'), equals(ChartType.berthing));
+        expect(
+          parser.parseChartUsageToType('Harbor'),
+          equals(ChartType.harbor),
+        );
+        expect(
+          parser.parseChartUsageToType('Approach'),
+          equals(ChartType.approach),
+        );
+        expect(
+          parser.parseChartUsageToType('Coastal'),
+          equals(ChartType.coastal),
+        );
+        expect(
+          parser.parseChartUsageToType('General'),
+          equals(ChartType.general),
+        );
+        expect(
+          parser.parseChartUsageToType('Overview'),
+          equals(ChartType.overview),
+        );
+        expect(
+          parser.parseChartUsageToType('Berthing'),
+          equals(ChartType.berthing),
+        );
         expectNoErrorLogs(mockLogger);
       });
 
       test('should handle case-insensitive usage strings', () {
         // Act & Assert
-        expect(parser.parseChartUsageToType('harbor'), equals(ChartType.harbor));
-        expect(parser.parseChartUsageToType('HARBOR'), equals(ChartType.harbor));
-        expect(parser.parseChartUsageToType('HaRbOr'), equals(ChartType.harbor));
+        expect(
+          parser.parseChartUsageToType('harbor'),
+          equals(ChartType.harbor),
+        );
+        expect(
+          parser.parseChartUsageToType('HARBOR'),
+          equals(ChartType.harbor),
+        );
+        expect(
+          parser.parseChartUsageToType('HaRbOr'),
+          equals(ChartType.harbor),
+        );
         expectNoErrorLogs(mockLogger);
       });
 
       test('should default to harbor for unknown usage strings', () {
         // Act & Assert
-        expect(parser.parseChartUsageToType('Unknown'), equals(ChartType.harbor));
+        expect(
+          parser.parseChartUsageToType('Unknown'),
+          equals(ChartType.harbor),
+        );
         expect(parser.parseChartUsageToType(''), equals(ChartType.harbor));
-        expect(parser.parseChartUsageToType('invalid'), equals(ChartType.harbor));
+        expect(
+          parser.parseChartUsageToType('invalid'),
+          equals(ChartType.harbor),
+        );
         expectNoErrorLogs(mockLogger);
       });
     });
@@ -288,13 +337,15 @@ void main() {
         // Arrange
         final geometry = {
           'type': 'Polygon',
-          'coordinates': [[
-            [-123.0, 37.0],
-            [-122.0, 37.0],
-            [-122.0, 38.0],
-            [-123.0, 38.0],
-            [-123.0, 37.0]
-          ]]
+          'coordinates': [
+            [
+              [-123.0, 37.0],
+              [-122.0, 37.0],
+              [-122.0, 38.0],
+              [-123.0, 38.0],
+              [-123.0, 37.0],
+            ],
+          ],
         };
 
         // Act
@@ -313,21 +364,25 @@ void main() {
         final geometry = {
           'type': 'MultiPolygon',
           'coordinates': [
-            [[
-              [-123.0, 37.0],
-              [-122.0, 37.0],
-              [-122.0, 38.0],
-              [-123.0, 38.0],
-              [-123.0, 37.0]
-            ]],
-            [[
-              [-121.0, 36.0],
-              [-120.0, 36.0],
-              [-120.0, 37.0],
-              [-121.0, 37.0],
-              [-121.0, 36.0]
-            ]]
-          ]
+            [
+              [
+                [-123.0, 37.0],
+                [-122.0, 37.0],
+                [-122.0, 38.0],
+                [-123.0, 38.0],
+                [-123.0, 37.0],
+              ],
+            ],
+            [
+              [
+                [-121.0, 36.0],
+                [-120.0, 36.0],
+                [-120.0, 37.0],
+                [-121.0, 37.0],
+                [-121.0, 36.0],
+              ],
+            ],
+          ],
         };
 
         // Act
@@ -341,29 +396,34 @@ void main() {
         expectNoErrorLogs(mockLogger);
       });
 
-      test('should throw InvalidGeometryException for unsupported geometry types', () {
-        // Arrange
-        final geometry = {
-          'type': 'Point',
-          'coordinates': [-122.0, 37.0]
-        };
+      test(
+        'should throw InvalidGeometryException for unsupported geometry types',
+        () {
+          // Arrange
+          final geometry = {
+            'type': 'Point',
+            'coordinates': [-122.0, 37.0],
+          };
 
-        // Act & Assert
-        expect(
-          () => parser.extractBoundsFromGeometry(geometry),
-          throwsA(isA<InvalidGeometryException>()),
-        );
-      });
+          // Act & Assert
+          expect(
+            () => parser.extractBoundsFromGeometry(geometry),
+            throwsA(isA<InvalidGeometryException>()),
+          );
+        },
+      );
 
       test('should throw InvalidGeometryException for invalid coordinates', () {
         // Arrange
         final geometry = {
           'type': 'Polygon',
-          'coordinates': [[
-            [-123.0], // Missing latitude
-            [-122.0, 37.0],
-            [-122.0, 38.0]
-          ]]
+          'coordinates': [
+            [
+              [-123.0], // Missing latitude
+              [-122.0, 37.0],
+              [-122.0, 38.0],
+            ],
+          ],
         };
 
         // Act & Assert
@@ -383,7 +443,7 @@ void main() {
           'SCALE': 25000,
           'LAST_UPDATE': '2024-01-15T00:00:00Z',
           'STATE': 'California',
-          'USAGE': 'Harbor'
+          'USAGE': 'Harbor',
         };
 
         // Act
@@ -417,7 +477,7 @@ void main() {
           'SCALE': 25000,
           'LAST_UPDATE': '2024-01-15T00:00:00Z',
           'STATE': 'California',
-          'USAGE': 'Harbor'
+          'USAGE': 'Harbor',
         };
 
         // Act

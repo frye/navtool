@@ -21,7 +21,7 @@ void main() {
     test('should register chartServiceProvider successfully', () {
       // Act
       final chartService = container.read(chartServiceProvider);
-      
+
       // Assert
       expect(chartService, isA<ChartService>());
       expect(chartService, isNotNull);
@@ -30,7 +30,7 @@ void main() {
     test('should register navigationServiceProvider successfully', () {
       // Act
       final navigationService = container.read(navigationServiceProvider);
-      
+
       // Assert
       expect(navigationService, isA<NavigationService>());
       expect(navigationService, isNotNull);
@@ -39,7 +39,7 @@ void main() {
     test('should register settingsServiceProvider successfully', () {
       // Act
       final settingsService = container.read(settingsServiceProvider);
-      
+
       // Assert
       expect(settingsService, isA<SettingsService>());
       expect(settingsService, isNotNull);

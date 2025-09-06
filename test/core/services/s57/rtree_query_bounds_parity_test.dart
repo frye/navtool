@@ -12,11 +12,11 @@ void main() {
 
     setUpAll(() {
       testFeatures = _createVariedTestFeatures();
-      
+
       // Create both index types
       linearIndex = S57SpatialIndex();
       linearIndex.addFeatures(testFeatures);
-      
+
       rtreeIndex = S57SpatialTree.bulkLoad(testFeatures);
     });
 
@@ -40,12 +40,18 @@ void main() {
         linearResults.sort((a, b) => a.recordId.compareTo(b.recordId));
         rtreeResults.sort((a, b) => a.recordId.compareTo(b.recordId));
 
-        expect(rtreeResults.length, equals(linearResults.length),
-               reason: 'Result count mismatch for bounds $bounds');
+        expect(
+          rtreeResults.length,
+          equals(linearResults.length),
+          reason: 'Result count mismatch for bounds $bounds',
+        );
 
         for (int i = 0; i < linearResults.length; i++) {
-          expect(rtreeResults[i].recordId, equals(linearResults[i].recordId),
-                 reason: 'Feature ID mismatch at index $i for bounds $bounds');
+          expect(
+            rtreeResults[i].recordId,
+            equals(linearResults[i].recordId),
+            reason: 'Feature ID mismatch at index $i for bounds $bounds',
+          );
         }
       }
     });
@@ -66,19 +72,34 @@ void main() {
         final lon = pointData[1];
         final radius = pointData[2];
 
-        final linearResults = linearIndex.queryPoint(lat, lon, radiusDegrees: radius);
-        final rtreeResults = rtreeIndex.queryPoint(lat, lon, radiusDegrees: radius);
+        final linearResults = linearIndex.queryPoint(
+          lat,
+          lon,
+          radiusDegrees: radius,
+        );
+        final rtreeResults = rtreeIndex.queryPoint(
+          lat,
+          lon,
+          radiusDegrees: radius,
+        );
 
         // Sort by record ID for comparison
         linearResults.sort((a, b) => a.recordId.compareTo(b.recordId));
         rtreeResults.sort((a, b) => a.recordId.compareTo(b.recordId));
 
-        expect(rtreeResults.length, equals(linearResults.length),
-               reason: 'Result count mismatch for point ($lat, $lon) radius $radius');
+        expect(
+          rtreeResults.length,
+          equals(linearResults.length),
+          reason: 'Result count mismatch for point ($lat, $lon) radius $radius',
+        );
 
         for (int i = 0; i < linearResults.length; i++) {
-          expect(rtreeResults[i].recordId, equals(linearResults[i].recordId),
-                 reason: 'Feature ID mismatch at index $i for point ($lat, $lon) radius $radius');
+          expect(
+            rtreeResults[i].recordId,
+            equals(linearResults[i].recordId),
+            reason:
+                'Feature ID mismatch at index $i for point ($lat, $lon) radius $radius',
+          );
         }
       }
     });
@@ -99,12 +120,18 @@ void main() {
         linearResults.sort((a, b) => a.recordId.compareTo(b.recordId));
         rtreeResults.sort((a, b) => a.recordId.compareTo(b.recordId));
 
-        expect(rtreeResults.length, equals(linearResults.length),
-               reason: 'Result count mismatch for type $type');
+        expect(
+          rtreeResults.length,
+          equals(linearResults.length),
+          reason: 'Result count mismatch for type $type',
+        );
 
         for (int i = 0; i < linearResults.length; i++) {
-          expect(rtreeResults[i].recordId, equals(linearResults[i].recordId),
-                 reason: 'Feature ID mismatch at index $i for type $type');
+          expect(
+            rtreeResults[i].recordId,
+            equals(linearResults[i].recordId),
+            reason: 'Feature ID mismatch at index $i for type $type',
+          );
         }
       }
     });
@@ -117,12 +144,18 @@ void main() {
       linearResults.sort((a, b) => a.recordId.compareTo(b.recordId));
       rtreeResults.sort((a, b) => a.recordId.compareTo(b.recordId));
 
-      expect(rtreeResults.length, equals(linearResults.length),
-             reason: 'Result count mismatch for navigation aids');
+      expect(
+        rtreeResults.length,
+        equals(linearResults.length),
+        reason: 'Result count mismatch for navigation aids',
+      );
 
       for (int i = 0; i < linearResults.length; i++) {
-        expect(rtreeResults[i].recordId, equals(linearResults[i].recordId),
-               reason: 'Feature ID mismatch at index $i for navigation aids');
+        expect(
+          rtreeResults[i].recordId,
+          equals(linearResults[i].recordId),
+          reason: 'Feature ID mismatch at index $i for navigation aids',
+        );
       }
     });
 
@@ -134,12 +167,18 @@ void main() {
       linearResults.sort((a, b) => a.recordId.compareTo(b.recordId));
       rtreeResults.sort((a, b) => a.recordId.compareTo(b.recordId));
 
-      expect(rtreeResults.length, equals(linearResults.length),
-             reason: 'Result count mismatch for depth features');
+      expect(
+        rtreeResults.length,
+        equals(linearResults.length),
+        reason: 'Result count mismatch for depth features',
+      );
 
       for (int i = 0; i < linearResults.length; i++) {
-        expect(rtreeResults[i].recordId, equals(linearResults[i].recordId),
-               reason: 'Feature ID mismatch at index $i for depth features');
+        expect(
+          rtreeResults[i].recordId,
+          equals(linearResults[i].recordId),
+          reason: 'Feature ID mismatch at index $i for depth features',
+        );
       }
     });
 
@@ -160,14 +199,19 @@ void main() {
 
     test('should return identical feature counts and types', () {
       expect(rtreeIndex.featureCount, equals(linearIndex.featureCount));
-      expect(rtreeIndex.presentFeatureTypes, equals(linearIndex.presentFeatureTypes));
-      
-      final linearFeatures = List<S57Feature>.from(linearIndex.getAllFeatures());
+      expect(
+        rtreeIndex.presentFeatureTypes,
+        equals(linearIndex.presentFeatureTypes),
+      );
+
+      final linearFeatures = List<S57Feature>.from(
+        linearIndex.getAllFeatures(),
+      );
       final rtreeFeatures = List<S57Feature>.from(rtreeIndex.getAllFeatures());
-      
+
       linearFeatures.sort((a, b) => a.recordId.compareTo(b.recordId));
       rtreeFeatures.sort((a, b) => a.recordId.compareTo(b.recordId));
-      
+
       expect(rtreeFeatures.length, equals(linearFeatures.length));
       for (int i = 0; i < linearFeatures.length; i++) {
         expect(rtreeFeatures[i].recordId, equals(linearFeatures[i].recordId));
@@ -226,7 +270,7 @@ List<S57Feature> _createVariedTestFeatures() {
       attributes: {'category': 'natural'},
     ),
 
-    // Areas  
+    // Areas
     S57Feature(
       recordId: 6,
       featureType: S57FeatureType.depthArea,
@@ -236,7 +280,10 @@ List<S57Feature> _createVariedTestFeatures() {
         const S57Coordinate(latitude: 47.65, longitude: -122.35),
         const S57Coordinate(latitude: 47.65, longitude: -122.34),
         const S57Coordinate(latitude: 47.64, longitude: -122.34),
-        const S57Coordinate(latitude: 47.64, longitude: -122.35), // Close polygon
+        const S57Coordinate(
+          latitude: 47.64,
+          longitude: -122.35,
+        ), // Close polygon
       ],
       attributes: {'depth_range': '5-10m'},
     ),

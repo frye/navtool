@@ -25,17 +25,17 @@ void main() {
       // Assert
       expect(geometry.type, equals(S57GeometryType.point));
       expect(expectedType, equals('point'));
-      
+
       // Verify coordinates
       expect(geometry.rings.length, equals(1));
       expect(geometry.rings.first.length, equals(1));
-      
+
       final actualCoord = geometry.rings.first.first;
       final expectedCoord = expectedCoords.first;
-      
+
       expect(actualCoord.x, equals(expectedCoord[0]));
       expect(actualCoord.y, equals(expectedCoord[1]));
-      
+
       // Verify no warnings for valid point
       expect(fixtures.store.warnings, isEmpty);
     });
@@ -53,7 +53,7 @@ void main() {
       expect(geometry.type, equals(S57GeometryType.point));
       expect(fixtures.store.warnings, isNotEmpty);
       expect(fixtures.store.warnings.first, contains('Missing node 999'));
-      
+
       // Should use synthetic fallback
       final coord = geometry.rings.first.first;
       expect(coord.x, equals(0.0));
@@ -70,8 +70,11 @@ void main() {
       // Assert
       expect(geometry.type, equals(S57GeometryType.point));
       expect(fixtures.store.warnings, isNotEmpty);
-      expect(fixtures.store.warnings.first, contains('Empty spatial pointer list'));
-      
+      expect(
+        fixtures.store.warnings.first,
+        contains('Empty spatial pointer list'),
+      );
+
       // Should use synthetic fallback
       final coord = geometry.rings.first.first;
       expect(coord.x, equals(0.0));
@@ -104,7 +107,7 @@ void main() {
       expect(geometry.type, equals(S57GeometryType.point));
       expect(geometry.rings.length, equals(1));
       expect(geometry.rings.first.length, equals(1));
-      
+
       final actualCoord = geometry.rings.first.first;
       expect(actualCoord.x, equals(5.5));
       expect(actualCoord.y, equals(7.3));

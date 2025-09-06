@@ -1,5 +1,5 @@
 /// S-57 Warning Collection and Strict Mode Enforcement
-/// 
+///
 /// Manages warning accumulation, threshold checking, and strict mode
 /// exception handling for S-57 parsing operations.
 
@@ -13,32 +13,34 @@ class S57StrictModeException implements Exception {
   const S57StrictModeException(this.triggeredBy, this.allWarnings);
 
   @override
-  String toString() => 'S57StrictModeException: ${triggeredBy.message} '
+  String toString() =>
+      'S57StrictModeException: ${triggeredBy.message} '
       '(${allWarnings.length} total warnings)';
 }
 
 /// Warning collection service with strict mode enforcement
-/// 
+///
 /// Accumulates warnings during parsing and enforces strict mode policies
 /// including error escalation and threshold checking.
 class S57WarningCollector {
   final S57ParseOptions _options;
   final S57ParseLogger _logger;
   final List<S57ParseWarning> _warnings = [];
-  
-  S57WarningCollector({
-    S57ParseOptions? options,
-    S57ParseLogger? logger,
-  }) : _options = options ?? const S57ParseOptions(),
-       _logger = logger ?? const S57NoOpLogger();
+
+  S57WarningCollector({S57ParseOptions? options, S57ParseLogger? logger})
+    : _options = options ?? const S57ParseOptions(),
+      _logger = logger ?? const S57NoOpLogger();
 
   /// Get all collected warnings (immutable copy)
   List<S57ParseWarning> get warnings => List.unmodifiable(_warnings);
 
   /// Get warning count by severity
-  int get errorCount => _warnings.where((w) => w.severity == S57WarningSeverity.error).length;
-  int get warningCount => _warnings.where((w) => w.severity == S57WarningSeverity.warning).length;
-  int get infoCount => _warnings.where((w) => w.severity == S57WarningSeverity.info).length;
+  int get errorCount =>
+      _warnings.where((w) => w.severity == S57WarningSeverity.error).length;
+  int get warningCount =>
+      _warnings.where((w) => w.severity == S57WarningSeverity.warning).length;
+  int get infoCount =>
+      _warnings.where((w) => w.severity == S57WarningSeverity.info).length;
 
   /// Total warning count
   int get totalWarnings => _warnings.length;
@@ -53,7 +55,7 @@ class S57WarningCollector {
   }
 
   /// Add a warning with automatic strict mode checking
-  /// 
+  ///
   /// Throws [S57StrictModeException] if strict mode is enabled and:
   /// - Warning has error severity, OR
   /// - Warning count exceeds maxWarnings threshold
@@ -81,7 +83,8 @@ class S57WarningCollector {
       if (isThresholdExceeded) {
         final thresholdWarning = S57ParseWarning(
           code: 'MAX_WARNINGS_EXCEEDED',
-          message: 'Maximum warning threshold (${_options.maxWarnings}) exceeded',
+          message:
+              'Maximum warning threshold (${_options.maxWarnings}) exceeded',
           severity: S57WarningSeverity.error,
         );
         _warnings.add(thresholdWarning);
@@ -101,8 +104,13 @@ class S57WarningCollector {
     String message, {
     String? recordId,
     String? featureId,
-  }) => warn(code, S57WarningSeverity.error, message, 
-            recordId: recordId, featureId: featureId);
+  }) => warn(
+    code,
+    S57WarningSeverity.error,
+    message,
+    recordId: recordId,
+    featureId: featureId,
+  );
 
   /// Convenience method for warning-level warnings
   void warning(
@@ -110,8 +118,13 @@ class S57WarningCollector {
     String message, {
     String? recordId,
     String? featureId,
-  }) => warn(code, S57WarningSeverity.warning, message, 
-            recordId: recordId, featureId: featureId);
+  }) => warn(
+    code,
+    S57WarningSeverity.warning,
+    message,
+    recordId: recordId,
+    featureId: featureId,
+  );
 
   /// Convenience method for info-level warnings
   void info(
@@ -119,8 +132,13 @@ class S57WarningCollector {
     String message, {
     String? recordId,
     String? featureId,
-  }) => warn(code, S57WarningSeverity.info, message, 
-            recordId: recordId, featureId: featureId);
+  }) => warn(
+    code,
+    S57WarningSeverity.info,
+    message,
+    recordId: recordId,
+    featureId: featureId,
+  );
 
   /// Clear all warnings
   void clear() {
@@ -158,7 +176,7 @@ class S57WarningCollector {
 
     for (final warning in _warnings) {
       warningsByCode[warning.code] = (warningsByCode[warning.code] ?? 0) + 1;
-      warningsBySeverity[warning.severity.name] = 
+      warningsBySeverity[warning.severity.name] =
           (warningsBySeverity[warning.severity.name] ?? 0) + 1;
     }
 

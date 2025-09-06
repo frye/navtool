@@ -55,15 +55,12 @@ void main() {
               const LatLng(37.7649, -122.3994),
               const LatLng(37.7849, -122.3994),
               const LatLng(37.7849, -122.4094),
-            ]
+            ],
           ],
         ),
         const DepthContour(
           id: 'depth_10m',
-          coordinates: [
-            LatLng(37.7649, -122.4094),
-            LatLng(37.7749, -122.4194),
-          ],
+          coordinates: [LatLng(37.7649, -122.4094), LatLng(37.7749, -122.4194)],
           depth: 10.0,
         ),
       ];
@@ -175,10 +172,26 @@ void main() {
     group('Feature Type Handling', () {
       test('should handle all maritime feature types', () {
         final allFeatureTypes = [
-          const PointFeature(id: '1', type: MaritimeFeatureType.lighthouse, position: testCenter),
-          const PointFeature(id: '2', type: MaritimeFeatureType.beacon, position: testCenter),
-          const PointFeature(id: '3', type: MaritimeFeatureType.buoy, position: testCenter),
-          const PointFeature(id: '4', type: MaritimeFeatureType.daymark, position: testCenter),
+          const PointFeature(
+            id: '1',
+            type: MaritimeFeatureType.lighthouse,
+            position: testCenter,
+          ),
+          const PointFeature(
+            id: '2',
+            type: MaritimeFeatureType.beacon,
+            position: testCenter,
+          ),
+          const PointFeature(
+            id: '3',
+            type: MaritimeFeatureType.buoy,
+            position: testCenter,
+          ),
+          const PointFeature(
+            id: '4',
+            type: MaritimeFeatureType.daymark,
+            position: testCenter,
+          ),
           LineFeature(
             id: '5',
             type: MaritimeFeatureType.shoreline,
@@ -201,19 +214,37 @@ void main() {
             id: '8',
             type: MaritimeFeatureType.landArea,
             position: testCenter,
-            coordinates: [[testCenter, const LatLng(37.8, -122.4), const LatLng(37.8, -122.3)]],
+            coordinates: [
+              [
+                testCenter,
+                const LatLng(37.8, -122.4),
+                const LatLng(37.8, -122.3),
+              ],
+            ],
           ),
           AreaFeature(
             id: '9',
             type: MaritimeFeatureType.anchorage,
             position: testCenter,
-            coordinates: [[testCenter, const LatLng(37.8, -122.4), const LatLng(37.8, -122.3)]],
+            coordinates: [
+              [
+                testCenter,
+                const LatLng(37.8, -122.4),
+                const LatLng(37.8, -122.3),
+              ],
+            ],
           ),
           AreaFeature(
             id: '10',
             type: MaritimeFeatureType.restrictedArea,
             position: testCenter,
-            coordinates: [[testCenter, const LatLng(37.8, -122.4), const LatLng(37.8, -122.3)]],
+            coordinates: [
+              [
+                testCenter,
+                const LatLng(37.8, -122.4),
+                const LatLng(37.8, -122.3),
+              ],
+            ],
           ),
         ];
 
@@ -295,7 +326,9 @@ void main() {
             id: 'single_area',
             type: MaritimeFeatureType.landArea,
             position: testCenter,
-            coordinates: [[testCenter]], // Single coordinate
+            coordinates: [
+              [testCenter],
+            ], // Single coordinate
           ),
         ];
 

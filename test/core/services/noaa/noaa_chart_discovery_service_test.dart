@@ -12,7 +12,12 @@ import 'package:navtool/core/services/storage_service.dart';
 import '../../../helpers/noaa_test_utils.dart';
 
 // Generate mocks for dependencies
-@GenerateMocks([ChartCatalogService, StateRegionMappingService, AppLogger, StorageService])
+@GenerateMocks([
+  ChartCatalogService,
+  StateRegionMappingService,
+  AppLogger,
+  StorageService,
+])
 import 'noaa_chart_discovery_service_test.mocks.dart';
 
 void main() {
@@ -20,15 +25,15 @@ void main() {
     late NoaaChartDiscoveryServiceImpl discoveryService;
     late MockChartCatalogService mockCatalogService;
     late MockStateRegionMappingService mockMappingService;
-  late MockAppLogger mockLogger;
-  late MockStorageService mockStorageService;
+    late MockAppLogger mockLogger;
+    late MockStorageService mockStorageService;
 
     setUp(() {
       mockCatalogService = MockChartCatalogService();
       mockMappingService = MockStateRegionMappingService();
-  mockLogger = MockAppLogger();
-  mockStorageService = MockStorageService();
-      
+      mockLogger = MockAppLogger();
+      mockStorageService = MockStorageService();
+
       discoveryService = createDiscoveryService(
         catalogService: mockCatalogService,
         mappingService: mockMappingService,
@@ -47,7 +52,12 @@ void main() {
             id: 'US5CA52M',
             title: 'San Francisco Bay',
             scale: 25000,
-            bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
+            bounds: GeographicBounds(
+              north: 38.0,
+              south: 37.0,
+              east: -122.0,
+              west: -123.0,
+            ),
             lastUpdate: DateTime(2024, 1, 15),
             state: 'California',
             type: ChartType.harbor,
@@ -56,7 +66,12 @@ void main() {
             id: 'US4CA11M',
             title: 'Los Angeles Harbor',
             scale: 50000,
-            bounds: GeographicBounds(north: 34.0, south: 33.0, east: -118.0, west: -119.0),
+            bounds: GeographicBounds(
+              north: 34.0,
+              south: 33.0,
+              east: -118.0,
+              west: -119.0,
+            ),
             lastUpdate: DateTime(2024, 1, 10),
             state: 'California',
             type: ChartType.harbor,
@@ -64,15 +79,19 @@ void main() {
         ];
 
         // Mock bootstrap method
-        when(mockCatalogService.ensureCatalogBootstrapped())
-            .thenAnswer((_) async {});
+        when(
+          mockCatalogService.ensureCatalogBootstrapped(),
+        ).thenAnswer((_) async {});
 
-        when(mockMappingService.getChartCellsForState(stateName))
-            .thenAnswer((_) async => chartCells);
-        when(mockCatalogService.getCachedChart('US5CA52M'))
-            .thenAnswer((_) async => expectedCharts[0]);
-        when(mockCatalogService.getCachedChart('US4CA11M'))
-            .thenAnswer((_) async => expectedCharts[1]);
+        when(
+          mockMappingService.getChartCellsForState(stateName),
+        ).thenAnswer((_) async => chartCells);
+        when(
+          mockCatalogService.getCachedChart('US5CA52M'),
+        ).thenAnswer((_) async => expectedCharts[0]);
+        when(
+          mockCatalogService.getCachedChart('US4CA11M'),
+        ).thenAnswer((_) async => expectedCharts[1]);
 
         // Act
         final result = await discoveryService.discoverChartsByState(stateName);
@@ -89,13 +108,15 @@ void main() {
       test('should return empty list for state with no charts', () async {
         // Arrange
         const stateName = 'Nevada';
-        
+
         // Mock bootstrap method
-        when(mockCatalogService.ensureCatalogBootstrapped())
-            .thenAnswer((_) async {});
-        
-        when(mockMappingService.getChartCellsForState(stateName))
-            .thenAnswer((_) async => <String>[]);
+        when(
+          mockCatalogService.ensureCatalogBootstrapped(),
+        ).thenAnswer((_) async {});
+
+        when(
+          mockMappingService.getChartCellsForState(stateName),
+        ).thenAnswer((_) async => <String>[]);
 
         // Act
         final result = await discoveryService.discoverChartsByState(stateName);
@@ -114,22 +135,31 @@ void main() {
           id: 'US5CA52M',
           title: 'San Francisco Bay',
           scale: 25000,
-          bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
+          bounds: GeographicBounds(
+            north: 38.0,
+            south: 37.0,
+            east: -122.0,
+            west: -123.0,
+          ),
           lastUpdate: DateTime(2024, 1, 15),
           state: 'California',
           type: ChartType.harbor,
         );
 
         // Mock bootstrap method
-        when(mockCatalogService.ensureCatalogBootstrapped())
-            .thenAnswer((_) async {});
+        when(
+          mockCatalogService.ensureCatalogBootstrapped(),
+        ).thenAnswer((_) async {});
 
-        when(mockMappingService.getChartCellsForState(stateName))
-            .thenAnswer((_) async => chartCells);
-        when(mockCatalogService.getCachedChart('US5CA52M'))
-            .thenAnswer((_) async => availableChart);
-        when(mockCatalogService.getCachedChart('US4CA11M'))
-            .thenAnswer((_) async => null); // Not cached
+        when(
+          mockMappingService.getChartCellsForState(stateName),
+        ).thenAnswer((_) async => chartCells);
+        when(
+          mockCatalogService.getCachedChart('US5CA52M'),
+        ).thenAnswer((_) async => availableChart);
+        when(
+          mockCatalogService.getCachedChart('US4CA11M'),
+        ).thenAnswer((_) async => null); // Not cached
 
         // Act
         final result = await discoveryService.discoverChartsByState(stateName);
@@ -142,13 +172,15 @@ void main() {
       test('should throw AppError when mapping service fails', () async {
         // Arrange
         const stateName = 'California';
-        
+
         // Mock bootstrap method
-        when(mockCatalogService.ensureCatalogBootstrapped())
-            .thenAnswer((_) async {});
-        
-        when(mockMappingService.getChartCellsForState(stateName))
-            .thenThrow(AppError.storage('Failed to get chart cells'));
+        when(
+          mockCatalogService.ensureCatalogBootstrapped(),
+        ).thenAnswer((_) async {});
+
+        when(
+          mockMappingService.getChartCellsForState(stateName),
+        ).thenThrow(AppError.storage('Failed to get chart cells'));
 
         // Act & Assert
         expect(
@@ -163,7 +195,7 @@ void main() {
           () async => await discoveryService.discoverChartsByState(''),
           throwsA(isA<ArgumentError>()),
         );
-        
+
         expect(
           () async => await discoveryService.discoverChartsByState('   '),
           throwsA(isA<ArgumentError>()),
@@ -180,15 +212,21 @@ void main() {
             id: 'US5CA52M',
             title: 'San Francisco Bay',
             scale: 25000,
-            bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
+            bounds: GeographicBounds(
+              north: 38.0,
+              south: 37.0,
+              east: -122.0,
+              west: -123.0,
+            ),
             lastUpdate: DateTime(2024, 1, 15),
             state: 'California',
             type: ChartType.harbor,
           ),
         ];
 
-        when(mockCatalogService.searchCharts(query))
-            .thenAnswer((_) async => expectedCharts);
+        when(
+          mockCatalogService.searchCharts(query),
+        ).thenAnswer((_) async => expectedCharts);
 
         // Act
         final result = await discoveryService.searchCharts(query);
@@ -208,23 +246,34 @@ void main() {
             id: 'US5CA52M',
             title: 'San Francisco Bay',
             scale: 25000,
-            bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
+            bounds: GeographicBounds(
+              north: 38.0,
+              south: 37.0,
+              east: -122.0,
+              west: -123.0,
+            ),
             lastUpdate: DateTime(2024, 1, 15),
             state: 'California',
             type: ChartType.harbor,
           ),
         ];
 
-        when(mockCatalogService.searchChartsWithFilters(query, filters))
-            .thenAnswer((_) async => expectedCharts);
+        when(
+          mockCatalogService.searchChartsWithFilters(query, filters),
+        ).thenAnswer((_) async => expectedCharts);
 
         // Act
-        final result = await discoveryService.searchCharts(query, filters: filters);
+        final result = await discoveryService.searchCharts(
+          query,
+          filters: filters,
+        );
 
         // Assert
         expect(result, hasLength(1));
         expect(result[0].type, equals(ChartType.harbor));
-        verify(mockCatalogService.searchChartsWithFilters(query, filters)).called(1);
+        verify(
+          mockCatalogService.searchChartsWithFilters(query, filters),
+        ).called(1);
       });
 
       test('should validate query input', () async {
@@ -244,14 +293,20 @@ void main() {
           id: chartId,
           title: 'San Francisco Bay',
           scale: 25000,
-          bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
+          bounds: GeographicBounds(
+            north: 38.0,
+            south: 37.0,
+            east: -122.0,
+            west: -123.0,
+          ),
           lastUpdate: DateTime(2024, 1, 15),
           state: 'California',
           type: ChartType.harbor,
         );
 
-        when(mockCatalogService.getChartById(chartId))
-            .thenAnswer((_) async => expectedChart);
+        when(
+          mockCatalogService.getChartById(chartId),
+        ).thenAnswer((_) async => expectedChart);
 
         // Act
         final result = await discoveryService.getChartMetadata(chartId);
@@ -267,8 +322,9 @@ void main() {
         // Arrange
         const chartId = 'INVALID_ID';
 
-        when(mockCatalogService.getChartById(chartId))
-            .thenAnswer((_) async => null);
+        when(
+          mockCatalogService.getChartById(chartId),
+        ).thenAnswer((_) async => null);
 
         // Act
         final result = await discoveryService.getChartMetadata(chartId);
@@ -296,16 +352,23 @@ void main() {
           id: 'US5CA52M',
           title: 'San Francisco Bay',
           scale: 25000,
-          bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
+          bounds: GeographicBounds(
+            north: 38.0,
+            south: 37.0,
+            east: -122.0,
+            west: -123.0,
+          ),
           lastUpdate: DateTime(2024, 1, 15),
           state: 'California',
           type: ChartType.harbor,
         );
 
-        when(mockMappingService.getChartCellsForState(stateName))
-            .thenAnswer((_) async => chartCells);
-        when(mockCatalogService.getCachedChart('US5CA52M'))
-            .thenAnswer((_) async => expectedChart);
+        when(
+          mockMappingService.getChartCellsForState(stateName),
+        ).thenAnswer((_) async => chartCells);
+        when(
+          mockCatalogService.getCachedChart('US5CA52M'),
+        ).thenAnswer((_) async => expectedChart);
 
         // Act
         final stream = discoveryService.watchChartsForState(stateName);
@@ -328,8 +391,9 @@ void main() {
     group('refreshCatalog', () {
       test('should refresh catalog without force', () async {
         // Arrange
-        when(mockCatalogService.refreshCatalog(force: false))
-            .thenAnswer((_) async => true);
+        when(
+          mockCatalogService.refreshCatalog(force: false),
+        ).thenAnswer((_) async => true);
 
         // Act
         final result = await discoveryService.refreshCatalog();
@@ -341,8 +405,9 @@ void main() {
 
       test('should refresh catalog with force', () async {
         // Arrange
-        when(mockCatalogService.refreshCatalog(force: true))
-            .thenAnswer((_) async => true);
+        when(
+          mockCatalogService.refreshCatalog(force: true),
+        ).thenAnswer((_) async => true);
 
         // Act
         final result = await discoveryService.refreshCatalog(force: true);
@@ -354,8 +419,9 @@ void main() {
 
       test('should handle refresh failures', () async {
         // Arrange
-        when(mockCatalogService.refreshCatalog(force: false))
-            .thenThrow(AppError.network('Network error'));
+        when(
+          mockCatalogService.refreshCatalog(force: false),
+        ).thenThrow(AppError.network('Network error'));
 
         // Act & Assert
         expect(

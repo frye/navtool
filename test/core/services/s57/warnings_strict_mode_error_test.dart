@@ -4,26 +4,35 @@ import 'package:navtool/core/services/s57/s57_warning_collector.dart';
 
 void main() {
   group('S57 Strict Mode Error Handling', () {
-    test('should throw exception on first error-level warning in strict mode', () {
-      final collector = S57WarningCollector(
-        options: const S57ParseOptions(strictMode: true),
-      );
+    test(
+      'should throw exception on first error-level warning in strict mode',
+      () {
+        final collector = S57WarningCollector(
+          options: const S57ParseOptions(strictMode: true),
+        );
 
-      // Add a warning (should not throw)
-      collector.warning(S57WarningCodes.unknownObjCode, 'Unknown object code 999');
-      
-      // Add info (should not throw)
-      collector.info(S57WarningCodes.depthOutOfRange, 'Depth value unusual');
+        // Add a warning (should not throw)
+        collector.warning(
+          S57WarningCodes.unknownObjCode,
+          'Unknown object code 999',
+        );
 
-      expect(collector.totalWarnings, equals(2));
-      expect(collector.hasErrors, isFalse);
+        // Add info (should not throw)
+        collector.info(S57WarningCodes.depthOutOfRange, 'Depth value unusual');
 
-      // Add error-level warning (should throw in strict mode)
-      expect(
-        () => collector.error(S57WarningCodes.leaderLenMismatch, 'Leader length inconsistent'),
-        throwsA(isA<S57StrictModeException>()),
-      );
-    });
+        expect(collector.totalWarnings, equals(2));
+        expect(collector.hasErrors, isFalse);
+
+        // Add error-level warning (should throw in strict mode)
+        expect(
+          () => collector.error(
+            S57WarningCodes.leaderLenMismatch,
+            'Leader length inconsistent',
+          ),
+          throwsA(isA<S57StrictModeException>()),
+        );
+      },
+    );
 
     test('should include triggering warning in exception', () {
       final collector = S57WarningCollector(
@@ -33,13 +42,16 @@ void main() {
       collector.warning(S57WarningCodes.fieldBounds, 'Field exceeds bounds');
 
       try {
-        collector.error(S57WarningCodes.badBaseAddr, 'Invalid base address pointer');
+        collector.error(
+          S57WarningCodes.badBaseAddr,
+          'Invalid base address pointer',
+        );
         fail('Expected S57StrictModeException to be thrown');
       } on S57StrictModeException catch (e) {
         expect(e.triggeredBy.code, equals(S57WarningCodes.badBaseAddr));
         expect(e.triggeredBy.message, equals('Invalid base address pointer'));
         expect(e.triggeredBy.severity, equals(S57WarningSeverity.error));
-        
+
         expect(e.allWarnings, hasLength(2));
         expect(e.allWarnings[0].code, equals(S57WarningCodes.fieldBounds));
         expect(e.allWarnings[1].code, equals(S57WarningCodes.badBaseAddr));
@@ -66,7 +78,10 @@ void main() {
         options: const S57ParseOptions(strictMode: true),
       );
 
-      collector.warning(S57WarningCodes.subfieldParse, 'Subfield delimiter issue');
+      collector.warning(
+        S57WarningCodes.subfieldParse,
+        'Subfield delimiter issue',
+      );
       collector.info(S57WarningCodes.polygonClosedAuto, 'Auto-closed polygon');
 
       try {
@@ -75,10 +90,13 @@ void main() {
       } on S57StrictModeException catch (e) {
         // Verify all warnings are preserved in exception
         expect(e.allWarnings, hasLength(3));
-        
+
         // Verify warnings are accessible in correct order
         expect(e.allWarnings[0].code, equals(S57WarningCodes.subfieldParse));
-        expect(e.allWarnings[1].code, equals(S57WarningCodes.polygonClosedAuto));
+        expect(
+          e.allWarnings[1].code,
+          equals(S57WarningCodes.polygonClosedAuto),
+        );
         expect(e.allWarnings[2].code, equals(S57WarningCodes.updateGap));
       }
     });
@@ -91,7 +109,10 @@ void main() {
       collector.warning(S57WarningCodes.fieldBounds, 'Field bounds warning');
 
       try {
-        collector.error(S57WarningCodes.updateRverMismatch, 'RVER sequence broken');
+        collector.error(
+          S57WarningCodes.updateRverMismatch,
+          'RVER sequence broken',
+        );
         fail('Expected exception');
       } on S57StrictModeException catch (e) {
         final message = e.toString();
@@ -112,7 +133,10 @@ void main() {
 
       // Should throw
       expect(
-        () => collector.error(S57WarningCodes.dirTruncated, 'Directory corrupted'),
+        () => collector.error(
+          S57WarningCodes.dirTruncated,
+          'Directory corrupted',
+        ),
         throwsA(isA<S57StrictModeException>()),
       );
     });
@@ -141,7 +165,7 @@ void main() {
       final devCollector = S57WarningCollector(
         options: const S57ParseOptions.development(),
       );
-      
+
       devCollector.error(S57WarningCodes.badBaseAddr, 'Should not throw');
       expect(devCollector.errorCount, equals(1));
 
@@ -149,7 +173,7 @@ void main() {
       final prodCollector = S57WarningCollector(
         options: const S57ParseOptions.production(),
       );
-      
+
       expect(
         () => prodCollector.error(S57WarningCodes.badBaseAddr, 'Should throw'),
         throwsA(isA<S57StrictModeException>()),
@@ -159,7 +183,7 @@ void main() {
       final testCollector = S57WarningCollector(
         options: const S57ParseOptions.testing(),
       );
-      
+
       expect(
         () => testCollector.error(S57WarningCodes.badBaseAddr, 'Should throw'),
         throwsA(isA<S57StrictModeException>()),
@@ -209,7 +233,12 @@ void main() {
         fail('Expected exception');
       } on S57StrictModeException catch (e) {
         expect(e.allWarnings, hasLength(6));
-        expect(e.allWarnings.sublist(0, 5).every((w) => w.severity == S57WarningSeverity.warning), isTrue);
+        expect(
+          e.allWarnings
+              .sublist(0, 5)
+              .every((w) => w.severity == S57WarningSeverity.warning),
+          isTrue,
+        );
         expect(e.allWarnings.last.severity, equals(S57WarningSeverity.error));
       }
     });

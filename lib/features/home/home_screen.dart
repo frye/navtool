@@ -17,7 +17,9 @@ class HomeScreen extends ConsumerWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         // Determine if we're on a desktop or mobile/tablet layout
-        final isDesktop = constraints.maxWidth > 800 || defaultTargetPlatform == TargetPlatform.linux ||
+        final isDesktop =
+            constraints.maxWidth > 800 ||
+            defaultTargetPlatform == TargetPlatform.linux ||
             defaultTargetPlatform == TargetPlatform.windows ||
             defaultTargetPlatform == TargetPlatform.macOS;
 
@@ -69,7 +71,9 @@ class HomeScreen extends ConsumerWidget {
                       Text(
                         'Marine Navigation and Routing Application',
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface.withAlpha(180),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withAlpha(180),
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -80,7 +84,10 @@ class HomeScreen extends ConsumerWidget {
                             width: double.infinity,
                             child: ElevatedButton.icon(
                               onPressed: () {
-                                Navigator.pushNamed(context, AppRoutes.chartBrowser);
+                                Navigator.pushNamed(
+                                  context,
+                                  AppRoutes.chartBrowser,
+                                );
                               },
                               icon: const Icon(Icons.add),
                               label: const Text('New Chart'),
@@ -91,7 +98,10 @@ class HomeScreen extends ConsumerWidget {
                             width: double.infinity,
                             child: OutlinedButton.icon(
                               onPressed: () {
-                                Navigator.pushNamed(context, AppRoutes.chartBrowser);
+                                Navigator.pushNamed(
+                                  context,
+                                  AppRoutes.chartBrowser,
+                                );
                               },
                               icon: const Icon(Icons.folder_open),
                               label: const Text('Open Chart'),
@@ -140,7 +150,9 @@ class HomeScreen extends ConsumerWidget {
                     Text(
                       'Marine Navigation and Routing Application',
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurface.withAlpha(180),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withAlpha(180),
                       ),
                     ),
                     const SizedBox(height: 32),
@@ -149,7 +161,10 @@ class HomeScreen extends ConsumerWidget {
                       children: [
                         ElevatedButton.icon(
                           onPressed: () {
-                            Navigator.pushNamed(context, AppRoutes.chartBrowser);
+                            Navigator.pushNamed(
+                              context,
+                              AppRoutes.chartBrowser,
+                            );
                           },
                           icon: const Icon(Icons.add),
                           label: const Text('New Chart'),
@@ -157,7 +172,10 @@ class HomeScreen extends ConsumerWidget {
                         const SizedBox(width: 16),
                         OutlinedButton.icon(
                           onPressed: () {
-                            Navigator.pushNamed(context, AppRoutes.chartBrowser);
+                            Navigator.pushNamed(
+                              context,
+                              AppRoutes.chartBrowser,
+                            );
                           },
                           icon: const Icon(Icons.folder_open),
                           label: const Text('Open Chart'),
@@ -194,9 +212,8 @@ class HomeScreen extends ConsumerWidget {
                               Expanded(
                                 child: Text(
                                   'Status',
-                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  style: Theme.of(context).textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.bold),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -238,10 +255,7 @@ class HomeScreen extends ConsumerWidget {
             const AppIcon(size: 24),
             const SizedBox(width: 12),
             const Expanded(
-              child: Text(
-                'NavTool',
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: Text('NavTool', overflow: TextOverflow.ellipsis),
             ),
           ],
         ),
@@ -263,10 +277,11 @@ class HomeScreen extends ConsumerWidget {
                   Flexible(
                     child: Text(
                       'NavTool',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -303,7 +318,9 @@ class HomeScreen extends ConsumerWidget {
               onTap: () {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Route planning functionality coming soon!')),
+                  const SnackBar(
+                    content: Text('Route planning functionality coming soon!'),
+                  ),
                 );
               },
             ),

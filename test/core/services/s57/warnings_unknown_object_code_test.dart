@@ -20,7 +20,7 @@ void main() {
 
       final warnings = collector.warnings;
       expect(warnings, hasLength(1));
-      
+
       final warning = warnings.first;
       expect(warning.code, equals(S57WarningCodes.unknownObjCode));
       expect(warning.severity, equals(S57WarningSeverity.warning));
@@ -35,13 +35,13 @@ void main() {
         'Unknown object code 888',
         recordId: 'FRID_001',
       );
-      
+
       collector.warning(
         S57WarningCodes.unknownObjCode,
         'Unknown object code 999',
         recordId: 'FRID_002',
       );
-      
+
       collector.warning(
         S57WarningCodes.unknownObjCode,
         'Unknown object code 777',
@@ -51,9 +51,11 @@ void main() {
       expect(collector.totalWarnings, equals(3));
       expect(collector.warningCount, equals(3));
 
-      final unknownWarnings = collector.getWarningsByCode(S57WarningCodes.unknownObjCode);
+      final unknownWarnings = collector.getWarningsByCode(
+        S57WarningCodes.unknownObjCode,
+      );
       expect(unknownWarnings, hasLength(3));
-      
+
       expect(unknownWarnings[0].message, contains('888'));
       expect(unknownWarnings[1].message, contains('999'));
       expect(unknownWarnings[2].message, contains('777'));
@@ -66,7 +68,7 @@ void main() {
         'Unknown object code 999',
         recordId: 'FRID_001',
       );
-      
+
       collector.warning(
         S57WarningCodes.unknownObjCode,
         'Unknown object code 999', // Same code, different record
@@ -74,10 +76,12 @@ void main() {
       );
 
       expect(collector.totalWarnings, equals(2));
-      
-      final unknownWarnings = collector.getWarningsByCode(S57WarningCodes.unknownObjCode);
+
+      final unknownWarnings = collector.getWarningsByCode(
+        S57WarningCodes.unknownObjCode,
+      );
       expect(unknownWarnings, hasLength(2));
-      
+
       // Both warnings should be present (no deduplication)
       expect(unknownWarnings[0].recordId, equals('FRID_001'));
       expect(unknownWarnings[1].recordId, equals('FRID_002'));
@@ -121,10 +125,16 @@ void main() {
       collector.info(S57WarningCodes.depthOutOfRange, 'Depth info');
 
       final summary = collector.createSummaryReport();
-      
+
       expect(summary['totalWarnings'], equals(3));
-      expect(summary['warningsByCode'][S57WarningCodes.unknownObjCode], equals(2));
-      expect(summary['warningsByCode'][S57WarningCodes.depthOutOfRange], equals(1));
+      expect(
+        summary['warningsByCode'][S57WarningCodes.unknownObjCode],
+        equals(2),
+      );
+      expect(
+        summary['warningsByCode'][S57WarningCodes.depthOutOfRange],
+        equals(1),
+      );
       expect(summary['warningsBySeverity']['warning'], equals(2));
       expect(summary['warningsBySeverity']['info'], equals(1));
     });
@@ -132,9 +142,9 @@ void main() {
     test('should work with console logger for unknown codes', () {
       final outputs = <String>[];
       final testLogger = TestLogger(outputs);
-      
+
       final loggedCollector = S57WarningCollector(logger: testLogger);
-      
+
       loggedCollector.warning(
         S57WarningCodes.unknownObjCode,
         'Object code 888 not recognized',
@@ -165,7 +175,7 @@ void main() {
       }
 
       expect(collector.totalWarnings, equals(3));
-      
+
       final warnings = collector.warnings;
       expect(warnings[0].message, contains('negative object code'));
       expect(warnings[1].message, contains('zero object code'));
@@ -197,7 +207,9 @@ class TestLogger implements S57ParseLogger {
   void onWarning(S57ParseWarning warning) {
     final severityPrefix = _getSeverityPrefix(warning.severity);
     final contextSuffix = _getContextSuffix(warning);
-    outputs.add('$severityPrefix[${warning.code}] ${warning.message}$contextSuffix');
+    outputs.add(
+      '$severityPrefix[${warning.code}] ${warning.message}$contextSuffix',
+    );
   }
 
   @override

@@ -24,17 +24,17 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
   bool _isLoading = false;
   String? _errorMessage;
   Timer? _searchDebouncer;
-  
+
   // Scale filtering
   double _minScale = 1000;
   double _maxScale = 10000000;
   bool _scaleFilterEnabled = false;
-  
-  // Date filtering  
+
+  // Date filtering
   DateTime? _startDate;
   DateTime? _endDate;
   bool _dateFilterEnabled = false;
-  
+
   // List of US coastal states that have NOAA charts
   static const List<String> _coastalStates = [
     'Alabama',
@@ -87,7 +87,8 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
         final typeName = gpsSvc.runtimeType.toString();
         final isMock = typeName.contains('Mock');
         if (!isMock) {
-          allowDiscovery = false; // Avoid real GPS in tests (causes pumpAndSettle hang)
+          allowDiscovery =
+              false; // Avoid real GPS in tests (causes pumpAndSettle hang)
         }
       } catch (_) {
         allowDiscovery = false;
@@ -136,18 +137,22 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
               ? Container(
                   key: const ValueKey('selected-count-bar'),
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   color: Theme.of(context).colorScheme.primaryContainer,
                   child: Text(
                     '${_selectedChartIds.length} selected',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onPrimaryContainer,
-                        ),
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
                   ),
                 )
               : const SizedBox.shrink();
 
-          final bool compact = constraints.maxHeight > 0 && constraints.maxHeight < 300;
+          final bool compact =
+              constraints.maxHeight > 0 && constraints.maxHeight < 300;
 
           // Wrap everything in a SingleChildScrollView and force the inner content list to shrinkWrap
           return SafeArea(
@@ -193,10 +198,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                       prefixIcon: Icon(Icons.map),
                     ),
                     items: _coastalStates.map((state) {
-                      return DropdownMenuItem(
-                        value: state,
-                        child: Text(state),
-                      );
+                      return DropdownMenuItem(value: state, child: Text(state));
                     }).toList(),
                     onChanged: _onStateSelected,
                   ),
@@ -204,9 +206,9 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
               ),
             ],
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Search field
           Semantics(
             label: 'Search charts by name or description',
@@ -225,9 +227,9 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
               onChanged: _onSearchChanged,
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Chart type filter chips
           Semantics(
             label: 'Filter charts by type',
@@ -238,33 +240,42 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                 return FilterChip(
                   label: Text(type.displayName),
                   selected: isSelected,
-                  onSelected: (selected) => _onChartTypeFilterChanged(type, selected),
+                  onSelected: (selected) =>
+                      _onChartTypeFilterChanged(type, selected),
                 );
               }).toList(),
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Scale filtering section
           _buildScaleFilterSection(),
-          
+
           const SizedBox(height: 16),
-          
-          // Date filtering section  
+
+          // Date filtering section
           _buildDateFilterSection(),
         ],
       ),
     );
   }
 
-  Widget _buildContentSection({bool shrinkWrap = false, bool allowCompactLoading = false, bool compactEmpty = false}) {
+  Widget _buildContentSection({
+    bool shrinkWrap = false,
+    bool allowCompactLoading = false,
+    bool compactEmpty = false,
+  }) {
     // If no state explicitly selected but charts (e.g., via GPS discovery) are available, skip empty state.
-    if (_selectedState == null && _charts.isEmpty && !_isLoading && _errorMessage == null) {
+    if (_selectedState == null &&
+        _charts.isEmpty &&
+        !_isLoading &&
+        _errorMessage == null) {
       return _buildEmptyState(
         icon: Icons.map_outlined,
         title: 'Select a State',
-        message: 'Choose a US state from the dropdown above to browse available charts.',
+        message:
+            'Choose a US state from the dropdown above to browse available charts.',
         compact: compactEmpty,
       );
     }
@@ -277,7 +288,11 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: const [
-              SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
               SizedBox(width: 12),
               Text('Loading charts...'),
             ],
@@ -318,7 +333,8 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
         return ChartCard(
           chart: chart,
           isSelected: _selectedChartIds.contains(chart.id),
-          onSelectionChanged: (selected) => _onChartSelectionChanged(chart.id, selected ?? false),
+          onSelectionChanged: (selected) =>
+              _onChartSelectionChanged(chart.id, selected ?? false),
           onTap: () => _onChartTapped(chart),
           onInfoTap: () => _showChartDetails(chart),
         );
@@ -339,31 +355,26 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
         Icon(
           icon,
           size: compact ? 32 : 64,
-      color: Theme.of(context)
-        .colorScheme
-        .onSurface
-  .withValues(alpha: 0.4),
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
         ),
         SizedBox(height: compact ? 8 : 16),
         Text(
           title,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-        color: Theme.of(context)
-          .colorScheme
-          .onSurface
-          .withValues(alpha: 0.6),
-              ),
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.6),
+          ),
           textAlign: TextAlign.center,
         ),
         SizedBox(height: compact ? 4 : 8),
         Text(
           message,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-        color: Theme.of(context)
-          .colorScheme
-          .onSurface
-          .withValues(alpha: 0.6),
-              ),
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.6),
+          ),
           textAlign: TextAlign.center,
         ),
       ],
@@ -376,10 +387,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
       );
     }
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: content,
-      ),
+      child: Padding(padding: const EdgeInsets.all(32), child: content),
     );
   }
 
@@ -390,11 +398,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.error,
-              size: 64,
-              color: Colors.red,
-            ),
+            const Icon(Icons.error, size: 64, color: Colors.red),
             const SizedBox(height: 16),
             const Text(
               'Failed to load charts',
@@ -445,7 +449,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     setState(() {
       _searchQuery = query;
     });
-    
+
     // Debounce search
     _searchDebouncer?.cancel();
     _searchDebouncer = Timer(const Duration(milliseconds: 300), () {
@@ -480,10 +484,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     Navigator.pushNamed(
       context,
       '/chart',
-      arguments: {
-        'chart': chart,
-        'chartTitle': chart.title,
-      },
+      arguments: {'chart': chart, 'chartTitle': chart.title},
     );
   }
 
@@ -505,14 +506,16 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
       // Get GPS service and discovery service
       final gpsService = ref.read(gpsServiceProvider);
       final discoveryService = ref.read(noaaChartDiscoveryServiceProvider);
-      
+
       // Get current position with Seattle fallback
       final position = await gpsService.getCurrentPositionWithFallback();
-      
+
       if (position != null) {
         // Discover charts based on location
-        final charts = await discoveryService.discoverChartsByLocation(position);
-        
+        final charts = await discoveryService.discoverChartsByLocation(
+          position,
+        );
+
         if (mounted) {
           setState(() {
             _charts = charts;
@@ -525,7 +528,8 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
         if (mounted) {
           setState(() {
             _isLoading = false;
-            _errorMessage = 'Unable to determine location. Please select a state manually.';
+            _errorMessage =
+                'Unable to determine location. Please select a state manually.';
           });
         }
       }
@@ -534,7 +538,8 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = 'Location discovery failed. Please select a state manually.';
+          _errorMessage =
+              'Location discovery failed. Please select a state manually.';
         });
       }
     }
@@ -549,7 +554,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     try {
       final discoveryService = ref.read(noaaChartDiscoveryServiceProvider);
       final charts = await discoveryService.discoverChartsByState(state);
-      
+
       if (mounted) {
         setState(() {
           _charts = charts;
@@ -575,23 +580,26 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
 
     try {
       final discoveryService = ref.read(noaaChartDiscoveryServiceProvider);
-      discoveryService.searchCharts(
-        _searchQuery,
-        filters: _selectedState != null ? {'state': _selectedState!} : null,
-      ).then((searchResults) {
-        if (mounted) {
-          setState(() {
-            _charts = searchResults;
+      discoveryService
+          .searchCharts(
+            _searchQuery,
+            filters: _selectedState != null ? {'state': _selectedState!} : null,
+          )
+          .then((searchResults) {
+            if (mounted) {
+              setState(() {
+                _charts = searchResults;
+              });
+              _filterCharts();
+            }
+          })
+          .catchError((error) {
+            if (mounted) {
+              setState(() {
+                _errorMessage = error.toString();
+              });
+            }
           });
-          _filterCharts();
-        }
-      }).catchError((error) {
-        if (mounted) {
-          setState(() {
-            _errorMessage = error.toString();
-          });
-        }
-      });
     } catch (error) {
       setState(() {
         _errorMessage = error.toString();
@@ -603,35 +611,39 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     setState(() {
       _filteredCharts = _charts.where((chart) {
         // Filter by chart type
-        if (_selectedChartTypes.isNotEmpty && !_selectedChartTypes.contains(chart.type)) {
+        if (_selectedChartTypes.isNotEmpty &&
+            !_selectedChartTypes.contains(chart.type)) {
           return false;
         }
-        
+
         // Filter by scale range
         if (_scaleFilterEnabled) {
           if (chart.scale < _minScale || chart.scale > _maxScale) {
             return false;
           }
         }
-        
+
         // Filter by date range
         if (_dateFilterEnabled) {
           if (_startDate != null && chart.lastUpdate.isBefore(_startDate!)) {
             return false;
           }
-          if (_endDate != null && chart.lastUpdate.isAfter(_endDate!.add(const Duration(days: 1)))) {
+          if (_endDate != null &&
+              chart.lastUpdate.isAfter(
+                _endDate!.add(const Duration(days: 1)),
+              )) {
             return false;
           }
         }
-        
+
         // Filter by search query
         if (_searchQuery.isNotEmpty) {
           final query = _searchQuery.toLowerCase();
           return chart.title.toLowerCase().contains(query) ||
-                 chart.id.toLowerCase().contains(query) ||
-                 (chart.description?.toLowerCase().contains(query) ?? false);
+              chart.id.toLowerCase().contains(query) ||
+              (chart.description?.toLowerCase().contains(query) ?? false);
         }
-        
+
         return true;
       }).toList();
     });
@@ -648,7 +660,9 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
 
     try {
       final downloadService = ref.read(downloadServiceProvider);
-      final selectedCharts = _charts.where((chart) => _selectedChartIds.contains(chart.id)).toList();
+      final selectedCharts = _charts
+          .where((chart) => _selectedChartIds.contains(chart.id))
+          .toList();
       // Enqueue without awaiting sequentially
       for (final chart in selectedCharts) {
         final downloadUrl = 'https://charts.noaa.gov/ENCs/${chart.id}.zip';
@@ -681,10 +695,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
       context: context,
       isScrollControlled: true,
       builder: (ctx) {
-        return const SizedBox(
-          height: 500,
-          child: DownloadManagerPanel(),
-        );
+        return const SizedBox(height: 500, child: DownloadManagerPanel());
       },
     );
   }
@@ -695,10 +706,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            Icon(
-              Icons.map,
-              color: Theme.of(context).colorScheme.primary,
-            ),
+            Icon(Icons.map, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 8),
             const Expanded(child: Text('Chart Details')),
           ],
@@ -718,18 +726,17 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                     children: [
                       Text(
                         chart.title,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'ID: ${chart.id}',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context)
-                .colorScheme
-                .onPrimaryContainer
-                .withValues(alpha: 0.8),
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onPrimaryContainer
+                              .withValues(alpha: 0.8),
                         ),
                       ),
                     ],
@@ -737,7 +744,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              
+
               // Chart metadata
               _buildDetailRow('Type', chart.type.displayName),
               _buildDetailRow('Scale', chart.displayScale),
@@ -747,15 +754,15 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
               _buildDetailRow('Edition', chart.edition.toString()),
               if (chart.updateNumber > 0)
                 _buildDetailRow('Update', chart.updateNumber.toString()),
-              
+
               const SizedBox(height: 12),
-              
+
               // Geographic bounds
               Text(
                 'Coverage Area',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               Card(
@@ -763,30 +770,42 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                   padding: const EdgeInsets.all(12),
                   child: Column(
                     children: [
-                      _buildDetailRow('North', '${chart.bounds.north.toStringAsFixed(4)}°'),
-                      _buildDetailRow('South', '${chart.bounds.south.toStringAsFixed(4)}°'),
-                      _buildDetailRow('East', '${chart.bounds.east.toStringAsFixed(4)}°'),
-                      _buildDetailRow('West', '${chart.bounds.west.toStringAsFixed(4)}°'),
+                      _buildDetailRow(
+                        'North',
+                        '${chart.bounds.north.toStringAsFixed(4)}°',
+                      ),
+                      _buildDetailRow(
+                        'South',
+                        '${chart.bounds.south.toStringAsFixed(4)}°',
+                      ),
+                      _buildDetailRow(
+                        'East',
+                        '${chart.bounds.east.toStringAsFixed(4)}°',
+                      ),
+                      _buildDetailRow(
+                        'West',
+                        '${chart.bounds.west.toStringAsFixed(4)}°',
+                      ),
                     ],
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 12),
-              
+
               // Additional information
               _buildDetailRow('Last Updated', _formatDate(chart.lastUpdate)),
               if (chart.fileSize != null)
                 _buildDetailRow('File Size', _formatFileSize(chart.fileSize!)),
               _buildDetailRow('Downloaded', chart.isDownloaded ? 'Yes' : 'No'),
-              
+
               if (chart.description != null) ...[
                 const SizedBox(height: 12),
                 Text(
                   'Description',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 Card(
@@ -799,15 +818,15 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                   ),
                 ),
               ],
-              
+
               // Metadata
               if (chart.metadata.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text(
                   'Additional Metadata',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 Card(
@@ -815,9 +834,14 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: chart.metadata.entries.map((entry) =>
-                        _buildDetailRow(entry.key, entry.value.toString())
-                      ).toList(),
+                      children: chart.metadata.entries
+                          .map(
+                            (entry) => _buildDetailRow(
+                              entry.key,
+                              entry.value.toString(),
+                            ),
+                          )
+                          .toList(),
                     ),
                   ),
                 ),
@@ -834,24 +858,27 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
             ElevatedButton(
               onPressed: () async {
                 Navigator.of(context).pop();
-                
+
                 try {
                   final downloadService = ref.read(downloadServiceProvider);
-                  final downloadUrl = 'https://charts.noaa.gov/ENCs/${chart.id}.zip';
-                  
+                  final downloadUrl =
+                      'https://charts.noaa.gov/ENCs/${chart.id}.zip';
+
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('Starting download of ${chart.title}...'),
                       duration: const Duration(seconds: 2),
                     ),
                   );
-                  
+
                   await downloadService.downloadChart(chart.id, downloadUrl);
-                  
+
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Successfully started download of ${chart.title}'),
+                        content: Text(
+                          'Successfully started download of ${chart.title}',
+                        ),
                         duration: const Duration(seconds: 3),
                         backgroundColor: Colors.green,
                       ),
@@ -861,7 +888,9 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Failed to download ${chart.title}: $error'),
+                        content: Text(
+                          'Failed to download ${chart.title}: $error',
+                        ),
                         duration: const Duration(seconds: 5),
                         backgroundColor: Colors.red,
                       ),
@@ -1005,9 +1034,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                     child: OutlinedButton(
                       onPressed: () => _selectEndDate(),
                       child: Text(
-                        _endDate == null
-                            ? 'End Date'
-                            : _formatDate(_endDate!),
+                        _endDate == null ? 'End Date' : _formatDate(_endDate!),
                       ),
                     ),
                   ),
@@ -1034,7 +1061,8 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
   Future<void> _selectStartDate() async {
     final pickedDate = await showDatePicker(
       context: context,
-      initialDate: _startDate ?? DateTime.now().subtract(const Duration(days: 365)),
+      initialDate:
+          _startDate ?? DateTime.now().subtract(const Duration(days: 365)),
       firstDate: DateTime(2000),
       lastDate: DateTime.now(),
     );
@@ -1083,7 +1111,8 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (bytes < 1024 * 1024 * 1024)
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
@@ -1099,18 +1128,14 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
               '$label:',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 fontWeight: FontWeight.w600,
-        color: Theme.of(context)
-          .colorScheme
-          .onSurface
-          .withValues(alpha: 0.7),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.7),
               ),
             ),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
           ),
         ],
       ),

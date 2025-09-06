@@ -1,5 +1,5 @@
 /// S-57 Update Processing Models
-/// 
+///
 /// Data models for handling sequential S-57 update files (.001, .002, etc.)
 /// Implements RUIN (Insert/Delete/Modify) operations with version tracking
 
@@ -10,10 +10,7 @@ class FeatureVersioned {
   final S57Feature feature;
   int version; // increment on modify
 
-  FeatureVersioned({
-    required this.feature,
-    required this.version,
-  });
+  FeatureVersioned({required this.feature, required this.version});
 
   /// Update the feature with new data (for modify operations)
   void updateFeature(S57Feature newFeature, int newVersion) {
@@ -23,16 +20,22 @@ class FeatureVersioned {
       featureType: newFeature.featureType,
       geometryType: newFeature.geometryType,
       coordinates: newFeature.coordinates,
-      attributes: {...feature.attributes, ...newFeature.attributes}, // Merge attributes
+      attributes: {
+        ...feature.attributes,
+        ...newFeature.attributes,
+      }, // Merge attributes
       label: newFeature.label,
     );
-    
+
     // Replace the feature reference (this requires recreating the object)
-    throw UnsupportedError('FeatureVersioned.updateFeature requires recreating the wrapper object');
+    throw UnsupportedError(
+      'FeatureVersioned.updateFeature requires recreating the wrapper object',
+    );
   }
 
   @override
-  String toString() => 'FeatureVersioned(feature: ${feature.recordId}, version: $version)';
+  String toString() =>
+      'FeatureVersioned(feature: ${feature.recordId}, version: $version)';
 }
 
 /// RUIN operation types
@@ -46,19 +49,27 @@ enum RuinOperation {
 
   static RuinOperation fromCode(String code) {
     switch (code.toUpperCase()) {
-      case 'I': return RuinOperation.insert;
-      case 'D': return RuinOperation.delete; 
-      case 'M': return RuinOperation.modify;
-      default: throw ArgumentError('Unknown RUIN operation: $code');
+      case 'I':
+        return RuinOperation.insert;
+      case 'D':
+        return RuinOperation.delete;
+      case 'M':
+        return RuinOperation.modify;
+      default:
+        throw ArgumentError('Unknown RUIN operation: $code');
     }
   }
 
   static RuinOperation fromInt(int code) {
     switch (code) {
-      case 1: return RuinOperation.insert;
-      case 2: return RuinOperation.delete;
-      case 3: return RuinOperation.modify;
-      default: throw ArgumentError('Unknown RUIN operation code: $code');
+      case 1:
+        return RuinOperation.insert;
+      case 2:
+        return RuinOperation.delete;
+      case 3:
+        return RuinOperation.modify;
+      default:
+        throw ArgumentError('Unknown RUIN operation code: $code');
     }
   }
 }
@@ -78,7 +89,8 @@ class RuinRecord {
   });
 
   @override
-  String toString() => 'RuinRecord(foid: $foid, operation: ${operation.code}, hasFeature: ${feature != null})';
+  String toString() =>
+      'RuinRecord(foid: $foid, operation: ${operation.code}, hasFeature: ${feature != null})';
 }
 
 /// Update dataset representing a single update file (.001, .002, etc.)
@@ -109,7 +121,8 @@ class UpdateDataset {
   }
 
   @override
-  String toString() => 'UpdateDataset(name: $name, rver: $rver, records: ${records.length})';
+  String toString() =>
+      'UpdateDataset(name: $name, rver: $rver, records: ${records.length})';
 }
 
 /// Summary of applied updates
@@ -152,7 +165,7 @@ class UpdateSummary {
   @override
   String toString() {
     return 'UpdateSummary(inserted: $inserted, modified: $modified, deleted: $deleted, '
-           'finalRver: $finalRver, applied: $applied, warnings: ${warnings.length})';
+        'finalRver: $finalRver, applied: $applied, warnings: ${warnings.length})';
   }
 }
 
@@ -236,21 +249,13 @@ class FoidHelper {
         // Fall back to simple parsing
       }
     }
-    
+
     // Fallback: treat entire string as feature_id
     try {
       final id = int.parse(foid);
-      return {
-        'agency': 0,
-        'feature_id': id,
-        'subdivision': 0,
-      };
+      return {'agency': 0, 'feature_id': id, 'subdivision': 0};
     } catch (e) {
-      return {
-        'agency': 0,
-        'feature_id': foid.hashCode,
-        'subdivision': 0,
-      };
+      return {'agency': 0, 'feature_id': foid.hashCode, 'subdivision': 0};
     }
   }
 }

@@ -20,7 +20,7 @@ void main() {
 
       final warnings = collector.warnings;
       expect(warnings, hasLength(1));
-      
+
       final warning = warnings.first;
       expect(warning.code, equals(S57WarningCodes.degenerateEdge));
       expect(warning.severity, equals(S57WarningSeverity.warning));
@@ -63,9 +63,11 @@ void main() {
       expect(collector.totalWarnings, equals(3));
       expect(collector.warningCount, equals(3));
 
-      final edgeWarnings = collector.getWarningsByCode(S57WarningCodes.degenerateEdge);
+      final edgeWarnings = collector.getWarningsByCode(
+        S57WarningCodes.degenerateEdge,
+      );
       expect(edgeWarnings, hasLength(3));
-      
+
       expect(edgeWarnings[0].featureId, equals('EDGE_001'));
       expect(edgeWarnings[1].featureId, equals('EDGE_002'));
       expect(edgeWarnings[2].featureId, equals('EDGE_003'));
@@ -85,22 +87,25 @@ void main() {
       expect(warning.featureId, equals('COASTLINE_SEGMENT_001'));
     });
 
-    test('should work in strict mode without throwing (warnings not errors)', () {
-      final strictCollector = S57WarningCollector(
-        options: const S57ParseOptions(strictMode: true),
-      );
+    test(
+      'should work in strict mode without throwing (warnings not errors)',
+      () {
+        final strictCollector = S57WarningCollector(
+          options: const S57ParseOptions(strictMode: true),
+        );
 
-      // Degenerate edges are warnings, not errors
-      strictCollector.warning(
-        S57WarningCodes.degenerateEdge,
-        'Degenerate edge detected',
-        featureId: 'EDGE_STRICT_001',
-      );
+        // Degenerate edges are warnings, not errors
+        strictCollector.warning(
+          S57WarningCodes.degenerateEdge,
+          'Degenerate edge detected',
+          featureId: 'EDGE_STRICT_001',
+        );
 
-      expect(strictCollector.totalWarnings, equals(1));
-      expect(strictCollector.warningCount, equals(1));
-      expect(strictCollector.hasErrors, isFalse);
-    });
+        expect(strictCollector.totalWarnings, equals(1));
+        expect(strictCollector.warningCount, equals(1));
+        expect(strictCollector.hasErrors, isFalse);
+      },
+    );
 
     test('should handle edge validation in different geometry types', () {
       final geometryTypes = [
@@ -120,10 +125,12 @@ void main() {
       }
 
       expect(collector.totalWarnings, equals(4));
-      
-      final warnings = collector.getWarningsByCode(S57WarningCodes.degenerateEdge);
+
+      final warnings = collector.getWarningsByCode(
+        S57WarningCodes.degenerateEdge,
+      );
       expect(warnings, hasLength(4));
-      
+
       expect(warnings.any((w) => w.message.contains('COASTLINE')), isTrue);
       expect(warnings.any((w) => w.message.contains('DEPTH_CONTOUR')), isTrue);
       expect(warnings.any((w) => w.message.contains('TRAFFIC_LANE')), isTrue);
@@ -148,13 +155,19 @@ void main() {
       collector.warning(S57WarningCodes.degenerateEdge, 'Edge 1 degenerate');
       collector.warning(S57WarningCodes.degenerateEdge, 'Edge 2 degenerate');
       collector.warning(S57WarningCodes.degenerateEdge, 'Edge 3 degenerate');
-      collector.warning(S57WarningCodes.missingRequiredAttr, 'Missing attribute');
+      collector.warning(
+        S57WarningCodes.missingRequiredAttr,
+        'Missing attribute',
+      );
       collector.info(S57WarningCodes.depthOutOfRange, 'Depth info');
 
       final summary = collector.createSummaryReport();
-      
+
       expect(summary['totalWarnings'], equals(5));
-      expect(summary['warningsByCode'][S57WarningCodes.degenerateEdge], equals(3));
+      expect(
+        summary['warningsByCode'][S57WarningCodes.degenerateEdge],
+        equals(3),
+      );
       expect(summary['warningsBySeverity']['warning'], equals(4));
       expect(summary['warningsBySeverity']['info'], equals(1));
     });
@@ -162,9 +175,9 @@ void main() {
     test('should log degenerate edge warnings correctly', () {
       final outputs = <String>[];
       final testLogger = TestLogger(outputs);
-      
+
       final loggedCollector = S57WarningCollector(logger: testLogger);
-      
+
       loggedCollector.warning(
         S57WarningCodes.degenerateEdge,
         'Edge has insufficient nodes for line geometry',
@@ -176,19 +189,24 @@ void main() {
       expect(outputs.first, contains('WARN:'));
       expect(outputs.first, contains('[DEGENERATE_EDGE]'));
       expect(outputs.first, contains('insufficient nodes'));
-      expect(outputs.first, contains('(record:EDGE_LOG_001, feature:LINE_001)'));
+      expect(
+        outputs.first,
+        contains('(record:EDGE_LOG_001, feature:LINE_001)'),
+      );
     });
 
     test('should handle complex edge topology scenarios', () {
       // Simulate complex topology validation
       final complexScenarios = [
         {
-          'message': 'Edge forms self-loop with single point - topologically invalid',
+          'message':
+              'Edge forms self-loop with single point - topologically invalid',
           'edgeId': 'SELF_LOOP_001',
           'recordId': 'TOPO_001',
         },
         {
-          'message': 'Edge has coincident start and end nodes but no intermediate geometry',
+          'message':
+              'Edge has coincident start and end nodes but no intermediate geometry',
           'edgeId': 'COINCIDENT_001',
           'recordId': 'TOPO_002',
         },
@@ -209,7 +227,7 @@ void main() {
       }
 
       expect(collector.totalWarnings, equals(3));
-      
+
       final warnings = collector.warnings;
       expect(warnings[0].message, contains('self-loop'));
       expect(warnings[1].message, contains('coincident start and end'));
@@ -231,7 +249,7 @@ void main() {
       );
 
       expect(collector.totalWarnings, equals(2));
-      
+
       final warnings = collector.warnings;
       expect(warnings[0].recordId, isNull);
       expect(warnings[0].featureId, isNull);
@@ -251,7 +269,9 @@ class TestLogger implements S57ParseLogger {
   void onWarning(S57ParseWarning warning) {
     final severityPrefix = _getSeverityPrefix(warning.severity);
     final contextSuffix = _getContextSuffix(warning);
-    outputs.add('$severityPrefix[${warning.code}] ${warning.message}$contextSuffix');
+    outputs.add(
+      '$severityPrefix[${warning.code}] ${warning.message}$contextSuffix',
+    );
   }
 
   @override

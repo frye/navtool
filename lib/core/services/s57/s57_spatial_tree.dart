@@ -8,10 +8,7 @@ class RTreeConfig {
   final int maxNodeEntries;
   final bool forceLinear;
 
-  const RTreeConfig({
-    this.maxNodeEntries = 16,
-    this.forceLinear = false,
-  });
+  const RTreeConfig({this.maxNodeEntries = 16, this.forceLinear = false});
 }
 
 /// Bounding box for R-tree entries
@@ -67,9 +64,9 @@ class Bounds {
   /// Check if this bounds intersects with another bounds
   bool intersects(Bounds other) {
     return minX <= other.maxX &&
-           maxX >= other.minX &&
-           minY <= other.maxY &&
-           maxY >= other.minY;
+        maxX >= other.minX &&
+        minY <= other.maxY &&
+        maxY >= other.minY;
   }
 
   /// Check if this bounds contains a point
@@ -92,12 +89,7 @@ class Bounds {
 
   /// Convert to S57Bounds
   S57Bounds toS57Bounds() {
-    return S57Bounds(
-      north: maxY,
-      south: minY,
-      east: maxX,
-      west: minX,
-    );
+    return S57Bounds(north: maxY, south: minY, east: maxX, west: minX);
   }
 
   @override
@@ -110,11 +102,7 @@ class RTreeEntry {
   final int? featureId;
   final RTreeNode? child;
 
-  const RTreeEntry({
-    required this.mbr,
-    this.featureId,
-    this.child,
-  });
+  const RTreeEntry({required this.mbr, this.featureId, this.child});
 
   /// Create leaf entry for feature
   factory RTreeEntry.forFeature(int featureId, Bounds bounds) {
@@ -136,7 +124,7 @@ class RTreeNode {
   late Bounds mbr;
 
   RTreeNode({required this.isLeaf, List<RTreeEntry>? entries})
-      : entries = entries ?? <RTreeEntry>[] {
+    : entries = entries ?? <RTreeEntry>[] {
     _updateMBR();
   }
 
@@ -189,16 +177,22 @@ class S57SpatialTree implements SpatialIndex {
   final Map<S57FeatureType, List<S57Feature>> _featuresByType = {};
   RTreeNode? _root;
 
-  S57SpatialTree({RTreeConfig? config}) : config = config ?? const RTreeConfig();
+  S57SpatialTree({RTreeConfig? config})
+    : config = config ?? const RTreeConfig();
 
   /// Create R-tree using bulk load from features
-  factory S57SpatialTree.bulkLoad(List<S57Feature> features, {RTreeConfig? config}) {
+  factory S57SpatialTree.bulkLoad(
+    List<S57Feature> features, {
+    RTreeConfig? config,
+  }) {
     final tree = S57SpatialTree(config: config);
     if (features.isNotEmpty) {
       // Populate feature maps
       for (final feature in features) {
         tree._features[feature.recordId] = feature;
-        tree._featuresByType.putIfAbsent(feature.featureType, () => []).add(feature);
+        tree._featuresByType
+            .putIfAbsent(feature.featureType, () => [])
+            .add(feature);
       }
       tree._bulkLoad(features);
     }
@@ -209,7 +203,7 @@ class S57SpatialTree implements SpatialIndex {
   void addFeature(S57Feature feature) {
     _features[feature.recordId] = feature;
     _featuresByType.putIfAbsent(feature.featureType, () => []).add(feature);
-    
+
     // For incremental insert, rebuild if we have a root
     // (Simple implementation - could be optimized with proper R-tree insert)
     if (_root != null) {
@@ -223,7 +217,7 @@ class S57SpatialTree implements SpatialIndex {
       _features[feature.recordId] = feature;
       _featuresByType.putIfAbsent(feature.featureType, () => []).add(feature);
     }
-    
+
     if (features.isNotEmpty) {
       _bulkLoad(_features.values.toList());
     }
@@ -239,11 +233,11 @@ class S57SpatialTree implements SpatialIndex {
   @override
   List<S57Feature> queryBounds(S57Bounds bounds) {
     if (_root == null) return [];
-    
+
     final queryBounds = Bounds.fromS57(bounds);
     final resultIds = <int>[];
     _queryBoundsRecursive(_root!, queryBounds, resultIds);
-    
+
     return resultIds
         .where((id) => _features.containsKey(id))
         .map((id) => _features[id]!)
@@ -251,28 +245,37 @@ class S57SpatialTree implements SpatialIndex {
   }
 
   @override
-  List<S57Feature> queryPoint(double latitude, double longitude, {double radiusDegrees = 0.01}) {
+  List<S57Feature> queryPoint(
+    double latitude,
+    double longitude, {
+    double radiusDegrees = 0.01,
+  }) {
     final expandedBounds = S57Bounds(
       north: latitude + radiusDegrees,
       south: latitude - radiusDegrees,
       east: longitude + radiusDegrees,
       west: longitude - radiusDegrees,
     );
-    
+
     final candidates = queryBounds(expandedBounds);
     final results = <S57Feature>[];
-    
+
     // Refine by exact distance for point features
     for (final feature in candidates) {
       for (final coord in feature.coordinates) {
-        final distance = _calculateDistance(latitude, longitude, coord.latitude, coord.longitude);
+        final distance = _calculateDistance(
+          latitude,
+          longitude,
+          coord.latitude,
+          coord.longitude,
+        );
         if (distance <= radiusDegrees) {
           results.add(feature);
           break;
         }
       }
     }
-    
+
     return results;
   }
 
@@ -284,7 +287,7 @@ class S57SpatialTree implements SpatialIndex {
   @override
   List<S57Feature> queryTypes(Set<S57FeatureType> types, {S57Bounds? bounds}) {
     final results = <S57Feature>[];
-    
+
     for (final type in types) {
       final typedFeatures = queryByType(type);
       if (bounds != null) {
@@ -298,7 +301,7 @@ class S57SpatialTree implements SpatialIndex {
         results.addAll(typedFeatures);
       }
     }
-    
+
     return results;
   }
 
@@ -314,7 +317,7 @@ class S57SpatialTree implements SpatialIndex {
       S57FeatureType.lighthouse,
       S57FeatureType.daymark,
     };
-    
+
     return queryTypes(navTypes);
   }
 
@@ -325,7 +328,7 @@ class S57SpatialTree implements SpatialIndex {
       S57FeatureType.depthArea,
       S57FeatureType.sounding,
     };
-    
+
     return queryTypes(depthTypes);
   }
 
@@ -358,12 +361,7 @@ class S57SpatialTree implements SpatialIndex {
       }
     }
 
-    return S57Bounds(
-      north: maxLat,
-      south: minLat,
-      east: maxLon,
-      west: minLon,
-    );
+    return S57Bounds(north: maxLat, south: minLat, east: maxLon, west: minLon);
   }
 
   /// Bulk load features using STR (Sort-Tile-Recursive) algorithm
@@ -376,11 +374,13 @@ class S57SpatialTree implements SpatialIndex {
     // Create indexed features with MBRs
     final indexedFeatures = <IndexedFeature>[];
     for (final feature in features) {
-      indexedFeatures.add(IndexedFeature(
-        id: feature.recordId,
-        feature: feature,
-        bounds: Bounds.fromFeature(feature),
-      ));
+      indexedFeatures.add(
+        IndexedFeature(
+          id: feature.recordId,
+          feature: feature,
+          bounds: Bounds.fromFeature(feature),
+        ),
+      );
     }
 
     // Build R-tree using STR
@@ -393,7 +393,9 @@ class S57SpatialTree implements SpatialIndex {
       // Create leaf node
       final node = RTreeNode(isLeaf: true);
       for (final indexedFeature in features) {
-        node.addEntry(RTreeEntry.forFeature(indexedFeature.id, indexedFeature.bounds));
+        node.addEntry(
+          RTreeEntry.forFeature(indexedFeature.id, indexedFeature.bounds),
+        );
       }
       return node;
     }
@@ -435,19 +437,19 @@ class S57SpatialTree implements SpatialIndex {
     // If we have too many child nodes, we need to group them into parent nodes
     if (childNodes.length > config.maxNodeEntries) {
       final groupedNodes = <RTreeNode>[];
-      
+
       // Group child nodes into parent nodes
       for (int i = 0; i < childNodes.length; i += config.maxNodeEntries) {
         final groupEnd = min(i + config.maxNodeEntries, childNodes.length);
         final group = childNodes.sublist(i, groupEnd);
-        
+
         final parentNode = RTreeNode(isLeaf: false);
         for (final child in group) {
           parentNode.addEntry(RTreeEntry.forChild(child, child.mbr));
         }
         groupedNodes.add(parentNode);
       }
-      
+
       // If we still have too many nodes, recurse with the groups
       if (groupedNodes.length > config.maxNodeEntries) {
         final parentNode = RTreeNode(isLeaf: false);
@@ -470,7 +472,11 @@ class S57SpatialTree implements SpatialIndex {
   }
 
   /// Recursive bounds query implementation
-  void _queryBoundsRecursive(RTreeNode node, Bounds queryBounds, List<int> results) {
+  void _queryBoundsRecursive(
+    RTreeNode node,
+    Bounds queryBounds,
+    List<int> results,
+  ) {
     for (final entry in node.entries) {
       if (!entry.mbr.intersects(queryBounds)) continue;
 
@@ -496,7 +502,12 @@ class S57SpatialTree implements SpatialIndex {
   }
 
   /// Calculate approximate distance between two points in degrees
-  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+  double _calculateDistance(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
     final dLat = lat2 - lat1;
     final dLon = lon2 - lon1;
     return sqrt(dLat * dLat + dLon * dLon);
@@ -508,7 +519,9 @@ class S57SpatialTree implements SpatialIndex {
       recordId: 0,
       featureType: S57FeatureType.unknown,
       geometryType: S57GeometryType.point,
-      coordinates: [S57Coordinate(latitude: bounds.minY, longitude: bounds.minX)],
+      coordinates: [
+        S57Coordinate(latitude: bounds.minY, longitude: bounds.minX),
+      ],
       attributes: const {},
     );
   }
@@ -521,8 +534,9 @@ class SpatialIndexFactory {
   /// Create appropriate spatial index based on feature count and configuration
   static SpatialIndex create(List<S57Feature> features, {RTreeConfig? config}) {
     final effectiveConfig = config ?? const RTreeConfig();
-    
-    if (features.length < _linearFallbackThreshold || effectiveConfig.forceLinear) {
+
+    if (features.length < _linearFallbackThreshold ||
+        effectiveConfig.forceLinear) {
       // Use linear implementation for small datasets
       final index = S57SpatialIndex();
       index.addFeatures(features);

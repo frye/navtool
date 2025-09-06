@@ -14,10 +14,10 @@ class GeographicBounds {
     required double south,
     required double east,
     required double west,
-  })  : north = north,
-        south = south,
-        east = east,
-        west = west {
+  }) : north = north,
+       south = south,
+       east = east,
+       west = west {
     // Structural relationship validations (must be a non-empty box)
     if (north <= south) {
       throw ArgumentError('North must be greater than south');
@@ -59,10 +59,8 @@ class GeographicBounds {
   }) => GeographicBounds._raw(north, south, east, west);
 
   /// Calculates the center point of the bounds
-  ({double latitude, double longitude}) get center => (
-    latitude: (north + south) / 2,
-    longitude: (east + west) / 2,
-  );
+  ({double latitude, double longitude}) get center =>
+      (latitude: (north + south) / 2, longitude: (east + west) / 2);
 
   /// Calculates the width (longitude difference) of the bounds
   double get width => east - west;
@@ -71,13 +69,13 @@ class GeographicBounds {
   double get height => north - south;
 
   /// Checks if a point is within these bounds
-  /// 
+  ///
   /// Can be called with either:
   /// - `contains(GpsPosition position)`
   /// - `contains(double latitude, double longitude)`
   bool contains(dynamic latitudeOrPosition, [double? longitude]) {
     double lat, lon;
-    
+
     if (latitudeOrPosition is GpsPosition) {
       lat = latitudeOrPosition.latitude;
       lon = latitudeOrPosition.longitude;
@@ -85,13 +83,12 @@ class GeographicBounds {
       lat = latitudeOrPosition;
       lon = longitude;
     } else {
-      throw ArgumentError('Invalid arguments. Use contains(GpsPosition) or contains(latitude, longitude)');
+      throw ArgumentError(
+        'Invalid arguments. Use contains(GpsPosition) or contains(latitude, longitude)',
+      );
     }
-    
-    return lat >= south && 
-           lat <= north && 
-           lon >= west && 
-           lon <= east;
+
+    return lat >= south && lat <= north && lon >= west && lon <= east;
   }
 
   /// Calculates the area of the bounds in square degrees
@@ -109,10 +106,7 @@ class GeographicBounds {
 
   @override
   int get hashCode =>
-      north.hashCode ^
-      south.hashCode ^
-      east.hashCode ^
-      west.hashCode;
+      north.hashCode ^ south.hashCode ^ east.hashCode ^ west.hashCode;
 
   @override
   String toString() {

@@ -14,12 +14,7 @@ import 'dart:typed_data';
 import 'dart:convert';
 
 // Generate mocks
-@GenerateMocks([
-  CacheService,
-  HttpClientService,
-  StorageService,
-  AppLogger,
-])
+@GenerateMocks([CacheService, HttpClientService, StorageService, AppLogger])
 import 'state_region_mapping_service_test.mocks.dart';
 
 void main() {
@@ -35,7 +30,7 @@ void main() {
       mockHttpClient = MockHttpClientService();
       mockStorageService = MockStorageService();
       mockLogger = MockAppLogger();
-      
+
       mappingService = StateRegionMappingServiceImpl(
         cacheService: mockCacheService,
         httpClient: mockHttpClient,
@@ -45,95 +40,135 @@ void main() {
     });
 
     group('Spatial Intersection Logic', () {
-      test('should compute chart cells for state using spatial intersection', () async {
-        // Arrange
-        const stateName = 'California';
-        
-        // Mock charts in storage
-        final testCharts = [
-          _createTestChart(
-            id: 'US5CA52M',
-            bounds: GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
-          ),
-          _createTestChart(
-            id: 'US4CA11M', 
-            bounds: GeographicBounds(north: 34.0, south: 33.0, east: -118.0, west: -119.0),
-          ),
-          _createTestChart(
-            id: 'US4FL48M', // Florida chart - should not intersect
-            bounds: GeographicBounds(north: 26.0, south: 25.0, east: -80.0, west: -81.0),
-          ),
-        ];
+      test(
+        'should compute chart cells for state using spatial intersection',
+        () async {
+          // Arrange
+          const stateName = 'California';
 
-        // Mock database cache miss
-        when(mockStorageService.getStateCellMapping(stateName))
-            .thenAnswer((_) async => null);
-        
-        // Mock memory cache miss
-        when(mockCacheService.get(any)).thenAnswer((_) async => null);
-        
-        // Mock charts in bounds lookup
-        when(mockStorageService.getChartsInBounds(any))
-            .thenAnswer((_) async => testCharts);
-            
-        // Mock storing mapping
-        when(mockStorageService.storeStateCellMapping(any, any))
-            .thenAnswer((_) async {});
+          // Mock charts in storage
+          final testCharts = [
+            _createTestChart(
+              id: 'US5CA52M',
+              bounds: GeographicBounds(
+                north: 38.0,
+                south: 37.0,
+                east: -122.0,
+                west: -123.0,
+              ),
+            ),
+            _createTestChart(
+              id: 'US4CA11M',
+              bounds: GeographicBounds(
+                north: 34.0,
+                south: 33.0,
+                east: -118.0,
+                west: -119.0,
+              ),
+            ),
+            _createTestChart(
+              id: 'US4FL48M', // Florida chart - should not intersect
+              bounds: GeographicBounds(
+                north: 26.0,
+                south: 25.0,
+                east: -80.0,
+                west: -81.0,
+              ),
+            ),
+          ];
 
-        // Act
-        final result = await mappingService.getChartCellsForState(stateName);
+          // Mock database cache miss
+          when(
+            mockStorageService.getStateCellMapping(stateName),
+          ).thenAnswer((_) async => null);
 
-        // Assert
-        expect(result, hasLength(2)); // Only California charts
-        expect(result, contains('US5CA52M'));
-        expect(result, contains('US4CA11M'));
-        expect(result, isNot(contains('US4FL48M')));
-      });
+          // Mock memory cache miss
+          when(mockCacheService.get(any)).thenAnswer((_) async => null);
 
-      test('should calculate coverage percentage for partially overlapping charts', () async {
-        // Arrange
-        const stateName = 'California';
-        
-        // Chart that partially overlaps with California
-        final partialChart = _createTestChart(
-          id: 'US_PARTIAL',
-          bounds: GeographicBounds(north: 42.5, south: 41.5, east: -114.0, west: -125.0),
-        );
+          // Mock charts in bounds lookup
+          when(
+            mockStorageService.getChartsInBounds(any),
+          ).thenAnswer((_) async => testCharts);
 
-        // Mock database and cache misses
-        when(mockStorageService.getStateCellMapping(stateName))
-            .thenAnswer((_) async => null);
-        when(mockCacheService.get(any)).thenAnswer((_) async => null);
-        when(mockStorageService.getChartsInBounds(any))
-            .thenAnswer((_) async => [partialChart]);
-        when(mockStorageService.storeStateCellMapping(any, any))
-            .thenAnswer((_) async {});
+          // Mock storing mapping
+          when(
+            mockStorageService.storeStateCellMapping(any, any),
+          ).thenAnswer((_) async {});
 
-        // Act
-        final result = await mappingService.getChartCellsForState(stateName);
+          // Act
+          final result = await mappingService.getChartCellsForState(stateName);
 
-        // Assert - should include charts with meaningful coverage (>1%)
-        expect(result, contains('US_PARTIAL'));
-      });
+          // Assert
+          expect(result, hasLength(2)); // Only California charts
+          expect(result, contains('US5CA52M'));
+          expect(result, contains('US4CA11M'));
+          expect(result, isNot(contains('US4FL48M')));
+        },
+      );
+
+      test(
+        'should calculate coverage percentage for partially overlapping charts',
+        () async {
+          // Arrange
+          const stateName = 'California';
+
+          // Chart that partially overlaps with California
+          final partialChart = _createTestChart(
+            id: 'US_PARTIAL',
+            bounds: GeographicBounds(
+              north: 42.5,
+              south: 41.5,
+              east: -114.0,
+              west: -125.0,
+            ),
+          );
+
+          // Mock database and cache misses
+          when(
+            mockStorageService.getStateCellMapping(stateName),
+          ).thenAnswer((_) async => null);
+          when(mockCacheService.get(any)).thenAnswer((_) async => null);
+          when(
+            mockStorageService.getChartsInBounds(any),
+          ).thenAnswer((_) async => [partialChart]);
+          when(
+            mockStorageService.storeStateCellMapping(any, any),
+          ).thenAnswer((_) async {});
+
+          // Act
+          final result = await mappingService.getChartCellsForState(stateName);
+
+          // Assert - should include charts with meaningful coverage (>1%)
+          expect(result, contains('US_PARTIAL'));
+        },
+      );
 
       test('should exclude charts with minimal coverage percentage', () async {
         // Arrange
         const stateName = 'California';
-        
+
         // Chart with minimal overlap (should have <1% coverage)
         final minimalChart = _createTestChart(
           id: 'US_MINIMAL',
-          bounds: GeographicBounds(north: 32.51, south: 32.50, east: -114.0, west: -114.1),
+          bounds: GeographicBounds(
+            north: 32.51,
+            south: 32.50,
+            east: -114.0,
+            west: -114.1,
+          ),
         );
 
         // Mock database and cache misses
-        when(mockStorageService.getStateCellMapping(stateName))
-            .thenAnswer((_) async => null);
+        when(
+          mockStorageService.getStateCellMapping(stateName),
+        ).thenAnswer((_) async => null);
         when(mockCacheService.get(any)).thenAnswer((_) async => null);
-        when(mockStorageService.getChartsInBounds(any))
-            .thenAnswer((_) async => [minimalChart]);
-        when(mockStorageService.storeStateCellMapping(any, any))
-            .thenAnswer((_) async {});
+        when(
+          mockStorageService.getChartsInBounds(any),
+        ).thenAnswer((_) async => [minimalChart]);
+        when(
+          mockStorageService.storeStateCellMapping(any, any),
+        ).thenAnswer((_) async {});
 
         // Act
         final result = await mappingService.getChartCellsForState(stateName);
@@ -145,21 +180,29 @@ void main() {
       test('should handle charts spanning multiple states', () async {
         // Arrange
         const stateName = 'California';
-        
+
         // Chart spanning California and Nevada
         final spanningChart = _createTestChart(
           id: 'US_SPANNING',
-          bounds: GeographicBounds(north: 40.0, south: 36.0, east: -114.0, west: -120.0),
+          bounds: GeographicBounds(
+            north: 40.0,
+            south: 36.0,
+            east: -114.0,
+            west: -120.0,
+          ),
         );
 
         // Mock database and cache misses
-        when(mockStorageService.getStateCellMapping(stateName))
-            .thenAnswer((_) async => null);
+        when(
+          mockStorageService.getStateCellMapping(stateName),
+        ).thenAnswer((_) async => null);
         when(mockCacheService.get(any)).thenAnswer((_) async => null);
-        when(mockStorageService.getChartsInBounds(any))
-            .thenAnswer((_) async => [spanningChart]);
-        when(mockStorageService.storeStateCellMapping(any, any))
-            .thenAnswer((_) async {});
+        when(
+          mockStorageService.getChartsInBounds(any),
+        ).thenAnswer((_) async => [spanningChart]);
+        when(
+          mockStorageService.storeStateCellMapping(any, any),
+        ).thenAnswer((_) async {});
 
         // Act
         final result = await mappingService.getChartCellsForState(stateName);
@@ -195,11 +238,13 @@ void main() {
         await mappingService.getStateBounds(stateName);
 
         // Assert
-        verify(mockCacheService.store(
-          'state_bounds_$stateName',
-          any,
-          maxAge: const Duration(hours: 24),
-        )).called(1);
+        verify(
+          mockCacheService.store(
+            'state_bounds_$stateName',
+            any,
+            maxAge: const Duration(hours: 24),
+          ),
+        ).called(1);
       });
 
       test('should return cached state boundary data when available', () async {
@@ -213,9 +258,10 @@ void main() {
         };
         final encodedData = jsonEncode(cachedBounds);
         final cachedBytes = Uint8List.fromList(utf8.encode(encodedData));
-        
-        when(mockCacheService.get('state_bounds_$stateName'))
-            .thenAnswer((_) async => cachedBytes);
+
+        when(
+          mockCacheService.get('state_bounds_$stateName'),
+        ).thenAnswer((_) async => cachedBytes);
 
         // Act
         final bounds = await mappingService.getStateBounds(stateName);
@@ -224,7 +270,9 @@ void main() {
         expect(bounds, isNotNull);
         expect(bounds!.north, equals(42.0));
         verify(mockCacheService.get('state_bounds_$stateName')).called(1);
-        verifyNever(mockCacheService.store(any, any, maxAge: anyNamed('maxAge')));
+        verifyNever(
+          mockCacheService.store(any, any, maxAge: anyNamed('maxAge')),
+        );
       });
 
       test('should return null for unsupported states', () async {
@@ -241,47 +289,59 @@ void main() {
     });
 
     group('Database Persistence', () {
-      test('should persist computed state-chart mappings to database', () async {
-        // Arrange
-        const stateName = 'California';
-        final chartCells = ['US5CA52M', 'US4CA11M'];
-        
-        // Mock database and cache misses
-        when(mockStorageService.getStateCellMapping(stateName))
-            .thenAnswer((_) async => null);
-        when(mockCacheService.get(any)).thenAnswer((_) async => null);
-        when(mockStorageService.getChartsInBounds(any))
-            .thenAnswer((_) async => [
+      test(
+        'should persist computed state-chart mappings to database',
+        () async {
+          // Arrange
+          const stateName = 'California';
+          final chartCells = ['US5CA52M', 'US4CA11M'];
+
+          // Mock database and cache misses
+          when(
+            mockStorageService.getStateCellMapping(stateName),
+          ).thenAnswer((_) async => null);
+          when(mockCacheService.get(any)).thenAnswer((_) async => null);
+          when(mockStorageService.getChartsInBounds(any)).thenAnswer(
+            (_) async => [
               _createTestChart(id: 'US5CA52M'),
               _createTestChart(id: 'US4CA11M'),
-            ]);
-        when(mockStorageService.storeStateCellMapping(any, any))
-            .thenAnswer((_) async {});
+            ],
+          );
+          when(
+            mockStorageService.storeStateCellMapping(any, any),
+          ).thenAnswer((_) async {});
 
-        // Act
-        final result = await mappingService.getChartCellsForState(stateName);
+          // Act
+          final result = await mappingService.getChartCellsForState(stateName);
 
-        // Assert
-        expect(result, equals(chartCells));
-        verify(mockStorageService.storeStateCellMapping(stateName, chartCells)).called(1);
-      });
+          // Assert
+          expect(result, equals(chartCells));
+          verify(
+            mockStorageService.storeStateCellMapping(stateName, chartCells),
+          ).called(1);
+        },
+      );
 
-      test('should load cached mappings from database when available', () async {
-        // Arrange
-        const stateName = 'California';
-        final cachedCells = ['US5CA52M', 'US4CA11M'];
-        
-        when(mockStorageService.getStateCellMapping(stateName))
-            .thenAnswer((_) async => cachedCells);
+      test(
+        'should load cached mappings from database when available',
+        () async {
+          // Arrange
+          const stateName = 'California';
+          final cachedCells = ['US5CA52M', 'US4CA11M'];
 
-        // Act
-        final result = await mappingService.getChartCellsForState(stateName);
+          when(
+            mockStorageService.getStateCellMapping(stateName),
+          ).thenAnswer((_) async => cachedCells);
 
-        // Assert
-        expect(result, equals(cachedCells));
-        verify(mockStorageService.getStateCellMapping(stateName)).called(1);
-        verifyNever(mockStorageService.getChartsInBounds(any));
-      });
+          // Act
+          final result = await mappingService.getChartCellsForState(stateName);
+
+          // Assert
+          expect(result, equals(cachedCells));
+          verify(mockStorageService.getStateCellMapping(stateName)).called(1);
+          verifyNever(mockStorageService.getChartsInBounds(any));
+        },
+      );
 
       test('should update existing mappings when refreshed', () async {
         // Arrange
@@ -292,18 +352,23 @@ void main() {
         await mappingService.updateStateCellMapping(stateName, newMapping);
 
         // Assert
-        verify(mockStorageService.storeStateCellMapping(stateName, newMapping)).called(1);
-        verify(mockCacheService.store(
-          'state_cells_$stateName',
-          any,
-          maxAge: const Duration(hours: 24),
-        )).called(1);
+        verify(
+          mockStorageService.storeStateCellMapping(stateName, newMapping),
+        ).called(1);
+        verify(
+          mockCacheService.store(
+            'state_cells_$stateName',
+            any,
+            maxAge: const Duration(hours: 24),
+          ),
+        ).called(1);
       });
 
       test('should clear all state mappings from database and cache', () async {
         // Mock methods
-        when(mockStorageService.clearAllStateCellMappings())
-            .thenAnswer((_) async {});
+        when(
+          mockStorageService.clearAllStateCellMappings(),
+        ).thenAnswer((_) async {});
         when(mockCacheService.clear()).thenAnswer((_) async => true);
 
         // Act
@@ -322,12 +387,14 @@ void main() {
         final cachedCells = ['US5CA52M', 'US4CA11M'];
         final encodedData = jsonEncode(cachedCells);
         final cachedBytes = Uint8List.fromList(utf8.encode(encodedData));
-        
+
         // Mock database cache miss, but memory cache hit
-        when(mockStorageService.getStateCellMapping(stateName))
-            .thenAnswer((_) async => null);
-        when(mockCacheService.get('state_cells_$stateName'))
-            .thenAnswer((_) async => cachedBytes);
+        when(
+          mockStorageService.getStateCellMapping(stateName),
+        ).thenAnswer((_) async => null);
+        when(
+          mockCacheService.get('state_cells_$stateName'),
+        ).thenAnswer((_) async => cachedBytes);
 
         // Act
         final result1 = await mappingService.getChartCellsForState(stateName);
@@ -340,55 +407,68 @@ void main() {
         verifyNever(mockStorageService.getChartsInBounds(any));
       });
 
-      test('should compute and cache results for uncached state queries', () async {
-        // Arrange
-        const stateName = 'Florida';
-        final floridaChart = _createTestChart(
-          id: 'US4FL48M',
-          bounds: GeographicBounds(
-            north: 25.8,  // Florida Keys area
-            south: 25.0,
-            east: -80.0,
-            west: -81.0,
-          ),
-        );
-        final testCharts = [floridaChart];
-        
-        // Mock database and cache misses
-        when(mockStorageService.getStateCellMapping(stateName))
-            .thenAnswer((_) async => null);
-        when(mockCacheService.get(any)).thenAnswer((_) async => null);
-        when(mockStorageService.getChartsInBounds(any))
-            .thenAnswer((_) async => testCharts);
-        when(mockStorageService.storeStateCellMapping(any, any))
-            .thenAnswer((_) async {});
-        when(mockCacheService.store(any, any, maxAge: anyNamed('maxAge')))
-            .thenAnswer((_) async {});
+      test(
+        'should compute and cache results for uncached state queries',
+        () async {
+          // Arrange
+          const stateName = 'Florida';
+          final floridaChart = _createTestChart(
+            id: 'US4FL48M',
+            bounds: GeographicBounds(
+              north: 25.8, // Florida Keys area
+              south: 25.0,
+              east: -80.0,
+              west: -81.0,
+            ),
+          );
+          final testCharts = [floridaChart];
 
-        // Act
-        final result = await mappingService.getChartCellsForState(stateName);
+          // Mock database and cache misses
+          when(
+            mockStorageService.getStateCellMapping(stateName),
+          ).thenAnswer((_) async => null);
+          when(mockCacheService.get(any)).thenAnswer((_) async => null);
+          when(
+            mockStorageService.getChartsInBounds(any),
+          ).thenAnswer((_) async => testCharts);
+          when(
+            mockStorageService.storeStateCellMapping(any, any),
+          ).thenAnswer((_) async {});
+          when(
+            mockCacheService.store(any, any, maxAge: anyNamed('maxAge')),
+          ).thenAnswer((_) async {});
 
-        // Assert
-        expect(result, contains('US4FL48M'));
-        verify(mockStorageService.getChartsInBounds(any)).called(1);
-        verify(mockStorageService.storeStateCellMapping(stateName, any)).called(1);
-        verify(mockCacheService.store(
-          'state_cells_$stateName',
-          any,
-          maxAge: const Duration(hours: 24),
-        )).called(1);
-      });
+          // Act
+          final result = await mappingService.getChartCellsForState(stateName);
+
+          // Assert
+          expect(result, contains('US4FL48M'));
+          verify(mockStorageService.getChartsInBounds(any)).called(1);
+          verify(
+            mockStorageService.storeStateCellMapping(stateName, any),
+          ).called(1);
+          verify(
+            mockCacheService.store(
+              'state_cells_$stateName',
+              any,
+              maxAge: const Duration(hours: 24),
+            ),
+          ).called(1);
+        },
+      );
     });
 
     group('Error Handling', () {
       test('should handle storage service errors gracefully', () async {
         // Arrange
         const stateName = 'California';
-        when(mockStorageService.getStateCellMapping(stateName))
-            .thenAnswer((_) async => null);
+        when(
+          mockStorageService.getStateCellMapping(stateName),
+        ).thenAnswer((_) async => null);
         when(mockCacheService.get(any)).thenAnswer((_) async => null);
-        when(mockStorageService.getChartsInBounds(any))
-            .thenThrow(Exception('Database error'));
+        when(
+          mockStorageService.getChartsInBounds(any),
+        ).thenThrow(Exception('Database error'));
 
         // Act & Assert
         expect(
@@ -400,17 +480,21 @@ void main() {
       test('should handle cache service errors gracefully', () async {
         // Arrange
         const stateName = 'California';
-        
+
         // Mock database miss and cache error
-        when(mockStorageService.getStateCellMapping(stateName))
-            .thenAnswer((_) async => null);
+        when(
+          mockStorageService.getStateCellMapping(stateName),
+        ).thenAnswer((_) async => null);
         when(mockCacheService.get(any)).thenThrow(Exception('Cache error'));
-        when(mockStorageService.getChartsInBounds(any))
-            .thenAnswer((_) async => [_createTestChart(id: 'US5CA52M')]);
-        when(mockStorageService.storeStateCellMapping(any, any))
-            .thenAnswer((_) async {});
-        when(mockCacheService.store(any, any, maxAge: anyNamed('maxAge')))
-            .thenAnswer((_) async {});
+        when(
+          mockStorageService.getChartsInBounds(any),
+        ).thenAnswer((_) async => [_createTestChart(id: 'US5CA52M')]);
+        when(
+          mockStorageService.storeStateCellMapping(any, any),
+        ).thenAnswer((_) async {});
+        when(
+          mockCacheService.store(any, any, maxAge: anyNamed('maxAge')),
+        ).thenAnswer((_) async {});
 
         // Act
         final result = await mappingService.getChartCellsForState(stateName);
@@ -419,21 +503,25 @@ void main() {
         expect(result, contains('US5CA52M'));
       });
 
-      test('should throw StateNotSupportedException for invalid states', () async {
-        // Arrange
-        const stateName = 'InvalidState';
-        
-        // Mock database and cache misses
-        when(mockStorageService.getStateCellMapping(stateName))
-            .thenAnswer((_) async => null);
-        when(mockCacheService.get(any)).thenAnswer((_) async => null);
+      test(
+        'should throw StateNotSupportedException for invalid states',
+        () async {
+          // Arrange
+          const stateName = 'InvalidState';
 
-        // Act & Assert
-        expect(
-          () => mappingService.getChartCellsForState(stateName),
-          throwsA(isA<AppError>()),
-        );
-      });
+          // Mock database and cache misses
+          when(
+            mockStorageService.getStateCellMapping(stateName),
+          ).thenAnswer((_) async => null);
+          when(mockCacheService.get(any)).thenAnswer((_) async => null);
+
+          // Act & Assert
+          expect(
+            () => mappingService.getChartCellsForState(stateName),
+            throwsA(isA<AppError>()),
+          );
+        },
+      );
     });
 
     group('Supported States', () {
@@ -459,7 +547,7 @@ void main() {
         expect(states, contains('Georgia'));
         expect(states, contains('Louisiana'));
         expect(states, contains('Oregon'));
-        
+
         // Should not contain inland states
         expect(states, isNot(contains('Nebraska')));
         expect(states, isNot(contains('Nevada')));
@@ -469,20 +557,14 @@ void main() {
 }
 
 // Helper functions
-Chart _createTestChart({
-  String? id,
-  GeographicBounds? bounds,
-}) {
+Chart _createTestChart({String? id, GeographicBounds? bounds}) {
   return Chart(
     id: id ?? 'US5CA52M',
     title: 'Test Chart ${id ?? 'Default'}',
     scale: 25000,
-    bounds: bounds ?? GeographicBounds(
-      north: 38.0,
-      south: 37.0,
-      east: -122.0,
-      west: -123.0,
-    ),
+    bounds:
+        bounds ??
+        GeographicBounds(north: 38.0, south: 37.0, east: -122.0, west: -123.0),
     lastUpdate: DateTime.now(),
     state: 'California',
     type: ChartType.harbor,
@@ -493,7 +575,7 @@ Chart _createTestChart({
 class StateNotSupportedException implements Exception {
   final String message;
   StateNotSupportedException(this.message);
-  
+
   @override
   String toString() => 'StateNotSupportedException: $message';
 }

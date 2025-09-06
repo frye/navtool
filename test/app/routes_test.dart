@@ -29,24 +29,28 @@ void main() {
       mockDiscoveryService = MockNoaaChartDiscoveryService();
       mockLogger = MockAppLogger();
       mockGpsService = MockGpsService();
-      
+
       // Setup default GPS service behavior
-      when(mockGpsService.getCurrentPosition()).thenAnswer((_) async => 
-        GpsPosition(
+      when(mockGpsService.getCurrentPosition()).thenAnswer(
+        (_) async => GpsPosition(
           latitude: 37.7749,
           longitude: -122.4194,
           accuracy: 5.0,
           timestamp: DateTime.now(),
-        )
+        ),
       );
       when(mockGpsService.isLocationEnabled()).thenAnswer((_) async => true);
-      when(mockGpsService.checkLocationPermission()).thenAnswer((_) async => true);
+      when(
+        mockGpsService.checkLocationPermission(),
+      ).thenAnswer((_) async => true);
     });
 
     Widget createTestApp() {
       return ProviderScope(
         overrides: [
-          noaaChartDiscoveryServiceProvider.overrideWithValue(mockDiscoveryService),
+          noaaChartDiscoveryServiceProvider.overrideWithValue(
+            mockDiscoveryService,
+          ),
           loggerProvider.overrideWithValue(mockLogger),
           gpsServiceProvider.overrideWithValue(mockGpsService),
         ],
@@ -57,7 +61,9 @@ void main() {
       );
     }
 
-    testWidgets('should have all required routes defined', (WidgetTester tester) async {
+    testWidgets('should have all required routes defined', (
+      WidgetTester tester,
+    ) async {
       // Test that all routes are properly defined
       expect(AppRoutes.routes.containsKey(AppRoutes.home), isTrue);
       expect(AppRoutes.routes.containsKey(AppRoutes.about), isTrue);
@@ -65,7 +71,9 @@ void main() {
       expect(AppRoutes.routes.containsKey(AppRoutes.chartBrowser), isTrue);
     });
 
-    testWidgets('should navigate to chart browser from home route', (WidgetTester tester) async {
+    testWidgets('should navigate to chart browser from home route', (
+      WidgetTester tester,
+    ) async {
       // Arrange
       await tester.pumpWidget(createTestApp());
       await tester.pumpAndSettle();
@@ -83,11 +91,15 @@ void main() {
       }
     });
 
-    testWidgets('should navigate directly to chart browser route', (WidgetTester tester) async {
+    testWidgets('should navigate directly to chart browser route', (
+      WidgetTester tester,
+    ) async {
       // Arrange
       final app = ProviderScope(
         overrides: [
-          noaaChartDiscoveryServiceProvider.overrideWithValue(mockDiscoveryService),
+          noaaChartDiscoveryServiceProvider.overrideWithValue(
+            mockDiscoveryService,
+          ),
           loggerProvider.overrideWithValue(mockLogger),
         ],
         child: MaterialApp(
@@ -105,7 +117,9 @@ void main() {
       expect(find.text('Chart Browser'), findsOneWidget);
     });
 
-    testWidgets('should have correct route constants', (WidgetTester tester) async {
+    testWidgets('should have correct route constants', (
+      WidgetTester tester,
+    ) async {
       // Test that route constants are correct
       expect(AppRoutes.home, equals('/'));
       expect(AppRoutes.about, equals('/about'));

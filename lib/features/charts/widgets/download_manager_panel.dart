@@ -28,20 +28,29 @@ class DownloadManagerPanel extends ConsumerWidget {
             children: [
               const Icon(Icons.cloud_download),
               const SizedBox(width: 8),
-              const Text('Download Manager', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Text(
+                'Download Manager',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
               const Spacer(),
               Tooltip(
                 message: 'Pause All',
                 child: IconButton(
                   icon: const Icon(Icons.pause_circle),
-                  onPressed: () { queueNotifier.pauseAll(); downloadService.pauseAllDownloads(); },
+                  onPressed: () {
+                    queueNotifier.pauseAll();
+                    downloadService.pauseAllDownloads();
+                  },
                 ),
               ),
               Tooltip(
                 message: 'Resume All',
                 child: IconButton(
                   icon: const Icon(Icons.play_circle),
-                  onPressed: () { queueNotifier.resumeAll(); downloadService.resumeAllDownloads(); },
+                  onPressed: () {
+                    queueNotifier.resumeAll();
+                    downloadService.resumeAllDownloads();
+                  },
                 ),
               ),
             ],
@@ -54,9 +63,13 @@ class DownloadManagerPanel extends ConsumerWidget {
               children: [
                 if (active.isNotEmpty) _section(context, ref, 'Active', active),
                 if (queued.isNotEmpty) _section(context, ref, 'Queued', queued),
-                if (completed.isNotEmpty) _section(context, ref, 'Completed', completed),
+                if (completed.isNotEmpty)
+                  _section(context, ref, 'Completed', completed),
                 if (failed.isNotEmpty) _section(context, ref, 'Failed', failed),
-                if (active.isEmpty && queued.isEmpty && completed.isEmpty && failed.isEmpty)
+                if (active.isEmpty &&
+                    queued.isEmpty &&
+                    completed.isEmpty &&
+                    failed.isEmpty)
                   const Padding(
                     padding: EdgeInsets.all(24),
                     child: Center(child: Text('No downloads yet.')),
@@ -69,7 +82,12 @@ class DownloadManagerPanel extends ConsumerWidget {
     );
   }
 
-  Widget _section(BuildContext context, WidgetRef ref, String title, List<DownloadProgress> items) {
+  Widget _section(
+    BuildContext context,
+    WidgetRef ref,
+    String title,
+    List<DownloadProgress> items,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Column(
@@ -87,18 +105,22 @@ class DownloadManagerPanel extends ConsumerWidget {
     final pct = (progress.progress * 100).toStringAsFixed(1);
     String subtitle;
     if (progress.status == DownloadStatus.failed) {
-      final cat = progress.errorCategory != null ? '[${progress.errorCategory}] ' : '';
+      final cat = progress.errorCategory != null
+          ? '[${progress.errorCategory}] '
+          : '';
       subtitle = '$cat${progress.errorMessage ?? 'Failed'}';
     } else if (progress.status == DownloadStatus.completed) {
       subtitle = 'Completed';
     } else {
-      final speed = progress.bytesPerSecond != null && progress.bytesPerSecond! > 0
+      final speed =
+          progress.bytesPerSecond != null && progress.bytesPerSecond! > 0
           ? _formatSpeed(progress.bytesPerSecond!)
           : '';
       final eta = progress.etaSeconds != null && progress.etaSeconds! > 0
           ? ' • ETA ${_formatEta(progress.etaSeconds!)}'
           : '';
-      subtitle = '${progress.status.name} • $pct%${speed.isNotEmpty ? ' • $speed' : ''}$eta';
+      subtitle =
+          '${progress.status.name} • $pct%${speed.isNotEmpty ? ' • $speed' : ''}$eta';
     }
     final service = ref.read(downloadServiceProvider);
     final queueNotifier = ref.read(downloadQueueProvider.notifier);
@@ -110,7 +132,9 @@ class DownloadManagerPanel extends ConsumerWidget {
     }
     return ListTile(
       dense: true,
-      title: Text(progress.chartId + (queuePos != null ? '  (#$queuePos in queue)' : '')),
+      title: Text(
+        progress.chartId + (queuePos != null ? '  (#$queuePos in queue)' : ''),
+      ),
       subtitle: Text(subtitle),
       trailing: SizedBox(
         width: 140,
@@ -122,8 +146,8 @@ class DownloadManagerPanel extends ConsumerWidget {
                 value: progress.status == DownloadStatus.completed
                     ? 1
                     : progress.progress == 0
-                        ? null
-                        : progress.progress,
+                    ? null
+                    : progress.progress,
               ),
             ),
             const SizedBox(width: 6),
@@ -134,7 +158,11 @@ class DownloadManagerPanel extends ConsumerWidget {
     );
   }
 
-  Widget _actions(DownloadProgress p, DownloadService service, DownloadQueueNotifier notifier) {
+  Widget _actions(
+    DownloadProgress p,
+    DownloadService service,
+    DownloadQueueNotifier notifier,
+  ) {
     if (p.status == DownloadStatus.completed) {
       return const SizedBox(width: 0);
     }
@@ -142,14 +170,20 @@ class DownloadManagerPanel extends ConsumerWidget {
       return IconButton(
         icon: const Icon(Icons.pause, size: 18),
         tooltip: 'Pause',
-        onPressed: () { notifier.pauseDownload(p.chartId); service.pauseDownload(p.chartId); },
+        onPressed: () {
+          notifier.pauseDownload(p.chartId);
+          service.pauseDownload(p.chartId);
+        },
       );
     }
     if (p.status == DownloadStatus.paused) {
       return IconButton(
         icon: const Icon(Icons.play_arrow, size: 18),
         tooltip: 'Resume',
-        onPressed: () { notifier.resumeDownload(p.chartId); service.resumeDownload(p.chartId); },
+        onPressed: () {
+          notifier.resumeDownload(p.chartId);
+          service.resumeDownload(p.chartId);
+        },
       );
     }
     if (p.status == DownloadStatus.failed) {
@@ -159,7 +193,9 @@ class DownloadManagerPanel extends ConsumerWidget {
         onPressed: () {
           notifier.resumeDownload(p.chartId);
           service.getResumeData(p.chartId).then((data) {
-            final url = data?.originalUrl ?? 'https://charts.noaa.gov/ENCs/${p.chartId}.zip';
+            final url =
+                data?.originalUrl ??
+                'https://charts.noaa.gov/ENCs/${p.chartId}.zip';
             service.addToQueue(p.chartId, url);
           });
         },
@@ -169,7 +205,10 @@ class DownloadManagerPanel extends ConsumerWidget {
       return IconButton(
         icon: const Icon(Icons.cancel, size: 18),
         tooltip: 'Cancel',
-        onPressed: () { notifier.cancelDownload(p.chartId); service.cancelDownload(p.chartId); },
+        onPressed: () {
+          notifier.cancelDownload(p.chartId);
+          service.cancelDownload(p.chartId);
+        },
       );
     }
     return const SizedBox.shrink();

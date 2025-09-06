@@ -11,7 +11,7 @@ enum BatchDownloadStatus {
   paused,
   completed,
   cancelled,
-  failed
+  failed,
 }
 
 /// Queue item with priority and metadata
@@ -97,7 +97,8 @@ class DownloadErrorCode {
   static const int networkTimeout = 3;
   static const int network = 4;
   static const int storage = 5;
-  static const int rangeNotSupported = 6; // reserved for future explicit signaling
+  static const int rangeNotSupported =
+      6; // reserved for future explicit signaling
   static const int unknown = 99;
 }
 
@@ -121,7 +122,11 @@ class DownloadNotification {
 /// Service interface for enhanced download operations
 abstract class DownloadService {
   /// Downloads a chart from the specified URL
-  Future<void> downloadChart(String chartId, String url, {String? expectedChecksum});
+  Future<void> downloadChart(
+    String chartId,
+    String url, {
+    String? expectedChecksum,
+  });
 
   /// Pauses an ongoing download
   Future<void> pauseDownload(String chartId);
@@ -143,9 +148,11 @@ abstract class DownloadService {
   Stream<double> progressStream(String chartId) => getDownloadProgress(chartId);
 
   // New enhanced methods for queue management
-  
+
   /// Adds a chart to the download queue with priority
-  Future<void> addToQueue(String chartId, String url, {
+  Future<void> addToQueue(
+    String chartId,
+    String url, {
     DownloadPriority priority = DownloadPriority.normal,
     String? expectedChecksum,
   });
@@ -160,9 +167,11 @@ abstract class DownloadService {
   Future<List<QueueItem>> getDetailedQueue();
 
   // Batch download operations
-  
+
   /// Starts a batch download for multiple charts
-  Future<String> startBatchDownload(List<String> chartIds, List<String> urls, {
+  Future<String> startBatchDownload(
+    List<String> chartIds,
+    List<String> urls, {
     DownloadPriority priority = DownloadPriority.normal,
   });
 
@@ -182,7 +191,7 @@ abstract class DownloadService {
   Future<void> cancelBatchDownload(String batchId);
 
   // Background download support
-  
+
   /// Gets persisted download state for recovery
   Future<List<DownloadProgress>> getPersistedDownloadState();
 
@@ -202,7 +211,7 @@ abstract class DownloadService {
   Future<void> setMaxConcurrentDownloads(int maxConcurrent);
 
   // Resume support
-  
+
   /// Gets resume data for a chart
   Future<ResumeData?> getResumeData(String chartId);
 

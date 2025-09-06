@@ -40,7 +40,9 @@ void main() {
     tearDown(() async {
       service.dispose();
       if (await tempDir.exists()) {
-        try { await tempDir.delete(recursive: true); } catch (_) {}
+        try {
+          await tempDir.delete(recursive: true);
+        } catch (_) {}
       }
     });
 
@@ -49,37 +51,56 @@ void main() {
       const url = 'https://example.com/sample_chart.zip';
 
       // HEAD preflight (size 64 bytes)
-      when(mockHttpClient.head(any,
-        queryParameters: anyNamed('queryParameters'),
-        options: anyNamed('options'),
-        cancelToken: anyNamed('cancelToken')))
-          .thenAnswer((_) async => Response(
-                requestOptions: RequestOptions(path: url),
-                statusCode: 200,
-                headers: Headers.fromMap({'content-length': ['64']}),
-              ));
+      when(
+        mockHttpClient.head(
+          any,
+          queryParameters: anyNamed('queryParameters'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: url),
+          statusCode: 200,
+          headers: Headers.fromMap({
+            'content-length': ['64'],
+          }),
+        ),
+      );
 
       // Successful download producing deterministic 64 bytes
-      when(mockHttpClient.downloadFile(any, any,
-        cancelToken: anyNamed('cancelToken'),
-        onReceiveProgress: anyNamed('onReceiveProgress'),
-        resumeFrom: anyNamed('resumeFrom')))
-          .thenAnswer((invocation) async {
-        final savePath = invocation.positionalArguments[1] as String; // temp .part
+      when(
+        mockHttpClient.downloadFile(
+          any,
+          any,
+          cancelToken: anyNamed('cancelToken'),
+          onReceiveProgress: anyNamed('onReceiveProgress'),
+          resumeFrom: anyNamed('resumeFrom'),
+        ),
+      ).thenAnswer((invocation) async {
+        final savePath =
+            invocation.positionalArguments[1] as String; // temp .part
         final file = File(savePath);
         await file.create(recursive: true);
         final data = Uint8List.fromList(List<int>.generate(64, (i) => i));
         await file.writeAsBytes(data);
-        final cb = invocation.namedArguments[#onReceiveProgress] as void Function(int, int)?;
+        final cb =
+            invocation.namedArguments[#onReceiveProgress]
+                as void Function(int, int)?;
         cb?.call(64, 64);
       });
 
       // Provide an intentionally incorrect checksum (actual will be different)
-      const wrongChecksum = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+      const wrongChecksum =
+          'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
 
       AppError? thrown;
       try {
-        await service.downloadChart(chartId, url, expectedChecksum: wrongChecksum);
+        await service.downloadChart(
+          chartId,
+          url,
+          expectedChecksum: wrongChecksum,
+        );
         fail('Expected checksum mismatch to throw');
       } catch (e) {
         expect(e, isA<AppError>());
@@ -91,13 +112,25 @@ void main() {
       final fileName = 'sample_chart.zip';
       final finalFile = File('${tempDir.path}/$fileName');
       final tempFile = File('${tempDir.path}/$fileName.part');
-      expect(await finalFile.exists(), isFalse, reason: 'Final file must not remain on mismatch');
-      expect(await tempFile.exists(), isFalse, reason: 'Temp file should be deleted after mismatch');
+      expect(
+        await finalFile.exists(),
+        isFalse,
+        reason: 'Final file must not remain on mismatch',
+      );
+      expect(
+        await tempFile.exists(),
+        isFalse,
+        reason: 'Temp file should be deleted after mismatch',
+      );
 
       // Resume data should exist but show 0 downloaded bytes (temp was deleted before catch captured size)
       final resume = await service.getResumeData(chartId);
       expect(resume, isNotNull);
-      expect(resume!.downloadedBytes, 0, reason: 'Partial bytes recorded as 0 after deletion');
+      expect(
+        resume!.downloadedBytes,
+        0,
+        reason: 'Partial bytes recorded as 0 after deletion',
+      );
     });
   });
 }

@@ -8,7 +8,7 @@ import '../../error/app_error.dart';
 
 /// S-57 Electronic Navigational Chart (ENC) parser
 /// Based on IHO S-57 Edition 3.1 specification
-/// 
+///
 /// Parses S-57 binary files in ISO 8211 format to extract:
 /// - Chart metadata (DDR - Data Descriptive Record)
 /// - Feature records (navigation aids, bathymetry, etc.)
@@ -17,7 +17,7 @@ import '../../error/app_error.dart';
 class S57Parser {
   static const int _minFileSize = 24;
   static const int _leaderSize = 24;
-  
+
   // ISO 8211 delimiters
   static const int _fieldTerminator = 0x1e;
 
@@ -32,7 +32,8 @@ class S57Parser {
 
     if (data.length < _minFileSize) {
       throw AppError(
-        message: 'S-57 data too short: ${data.length} bytes (minimum $_minFileSize)',
+        message:
+            'S-57 data too short: ${data.length} bytes (minimum $_minFileSize)',
         type: AppErrorType.validation,
       );
     }
@@ -99,12 +100,14 @@ class S57Parser {
     }
 
     // Use calculated bounds or fallback to default Elliott Bay area
-    final bounds = chartBounds ?? const S57Bounds(
-      north: 47.69,
-      south: 47.60,
-      east: -122.30,
-      west: -122.45,
-    );
+    final bounds =
+        chartBounds ??
+        const S57Bounds(
+          north: 47.69,
+          south: 47.60,
+          east: -122.30,
+          west: -122.45,
+        );
 
     // Create spatial index for efficient feature queries
     final spatialIndex = S57SpatialIndex();
@@ -143,16 +146,19 @@ class S57Parser {
     final sizeOfFieldTag = _parseInt(_readBytes(1));
 
     // Validate record structure
-    if (recordLength <= 0 || recordLength > _data.length - (_position - _leaderSize)) {
+    if (recordLength <= 0 ||
+        recordLength > _data.length - (_position - _leaderSize)) {
       throw AppError(
-        message: 'Invalid record length: $recordLength at position ${_position - _leaderSize}',
+        message:
+            'Invalid record length: $recordLength at position ${_position - _leaderSize}',
         type: AppErrorType.parsing,
       );
     }
-    
+
     if (baseAddressData < _leaderSize) {
       throw AppError(
-        message: 'Invalid base address: $baseAddressData (must be >= $_leaderSize)',
+        message:
+            'Invalid base address: $baseAddressData (must be >= $_leaderSize)',
         type: AppErrorType.parsing,
       );
     }
@@ -160,12 +166,12 @@ class S57Parser {
     // Parse directory with proper field structure
     final directoryEndPos = _position + baseAddressData - _leaderSize;
     final directory = _parseDirectoryEnhanced(
-      directoryEndPos, 
-      sizeOfFieldTag, 
-      sizeOfFieldLength, 
-      sizeOfFieldPosition
+      directoryEndPos,
+      sizeOfFieldTag,
+      sizeOfFieldLength,
+      sizeOfFieldPosition,
     );
-    
+
     // Parse data fields with enhanced attribute extraction
     final dataStartPos = _position - _leaderSize + baseAddressData;
     final fields = _parseFieldsEnhanced(directory, dataStartPos, recordLength);
@@ -185,67 +191,74 @@ class S57Parser {
   }
 
   /// Parse record directory with enhanced ISO 8211 compliance
-  List<Map<String, dynamic>> _parseDirectoryEnhanced(int endPos, int tagSize, 
-                                                     int lengthSize, int positionSize) {
+  List<Map<String, dynamic>> _parseDirectoryEnhanced(
+    int endPos,
+    int tagSize,
+    int lengthSize,
+    int positionSize,
+  ) {
     final directory = <Map<String, dynamic>>[];
-    
+
     while (_position < endPos) {
       final remainingBytes = endPos - _position;
       final entrySize = tagSize + lengthSize + positionSize;
-      
+
       if (remainingBytes < entrySize) break;
-      
+
       final tag = _readString(tagSize).trim();
       if (tag.contains(String.fromCharCode(_fieldTerminator))) break;
-      
+
       final fieldLength = _parseInt(_readBytes(lengthSize));
       final fieldPosition = _parseInt(_readBytes(positionSize));
-      
+
       directory.add({
         'tag': tag,
         'length': fieldLength,
         'position': fieldPosition,
       });
     }
-    
+
     // Skip field terminator if present
     if (_position < endPos && _data[_position] == _fieldTerminator) {
       _position++;
     }
-    
+
     return directory;
   }
 
   /// Parse data fields with enhanced attribute extraction
-  Map<String, dynamic> _parseFieldsEnhanced(List<Map<String, dynamic>> directory, 
-                                            int dataStart, int recordLength) {
+  Map<String, dynamic> _parseFieldsEnhanced(
+    List<Map<String, dynamic>> directory,
+    int dataStart,
+    int recordLength,
+  ) {
     final fields = <String, dynamic>{};
-    
+
     for (final entry in directory) {
       final tag = entry['tag'] as String;
       final length = entry['length'] as int;
       final position = entry['position'] as int;
-      
+
       final fieldStart = dataStart + position;
       final fieldEnd = fieldStart + length;
-      
+
       if (fieldEnd <= _data.length) {
         final fieldData = _data.sublist(fieldStart, fieldEnd);
-        
+
         // Parse field based on S-57 tag type
         fields[tag] = _parseS57Field(tag, fieldData);
       }
     }
-    
+
     return fields;
   }
-  
+
   /// Parse S-57 specific field data based on field tag
   dynamic _parseS57Field(String tag, Uint8List data) {
     switch (tag) {
       case 'FRID': // Feature Record Identifier
         return _parseFeatureRecordId(data);
-      case 'FOID': // Feature Object Identifier  
+      case 'FOID': // Feature Object Identifier
         return _parseFeatureObjectId(data);
       case 'ATTF': // Feature Attribute
         return _parseAttributeField(data);
@@ -264,29 +277,29 @@ class S57Parser {
         return data;
     }
   }
-  
+
   /// Parse Feature Record Identifier (FRID)
   Map<String, dynamic> _parseFeatureRecordId(Uint8List data) {
     if (data.length < 5) return {};
-    
+
     final result = <String, dynamic>{};
     int offset = 0;
-    
+
     // Parse available fields safely
     if (offset < data.length) {
       result['record_name'] = _parseSubfield(data, offset, 1); // RCNM
       offset += 1;
     }
     if (offset + 4 <= data.length) {
-      result['record_id'] = _parseSubfield(data, offset, 4);   // RCID
+      result['record_id'] = _parseSubfield(data, offset, 4); // RCID
       offset += 4;
     }
     if (offset < data.length) {
-      result['primitive'] = _parseSubfield(data, offset, 1);   // PRIM
+      result['primitive'] = _parseSubfield(data, offset, 1); // PRIM
       offset += 1;
     }
     if (offset < data.length) {
-      result['group'] = _parseSubfield(data, offset, 1);       // GRUP
+      result['group'] = _parseSubfield(data, offset, 1); // GRUP
       offset += 1;
     }
     if (offset + 2 <= data.length) {
@@ -300,19 +313,19 @@ class S57Parser {
     if (offset < data.length) {
       result['record_update'] = _parseSubfield(data, offset, 1); // RUIN
     }
-    
+
     return result;
   }
-  
+
   /// Parse Feature Object Identifier (FOID)
   Map<String, dynamic> _parseFeatureObjectId(Uint8List data) {
     if (data.length < 2) return {};
-    
+
     final result = <String, dynamic>{};
     int offset = 0;
-    
+
     if (offset + 2 <= data.length) {
-      result['agency'] = _parseSubfield(data, offset, 2);     // AGEN
+      result['agency'] = _parseSubfield(data, offset, 2); // AGEN
       offset += 2;
     }
     if (offset + 4 <= data.length) {
@@ -322,24 +335,24 @@ class S57Parser {
     if (offset + 2 <= data.length) {
       result['subdivision'] = _parseSubfield(data, offset, 2); // FIDS
     }
-    
+
     return result;
   }
-  
+
   /// Parse Attribute Field (ATTF)
   Map<String, dynamic> _parseAttributeField(Uint8List data) {
     final attributes = <String, dynamic>{};
     int pos = 0;
-    
+
     while (pos + 6 <= data.length) {
       final attrLabel = _parseSubfield(data, pos, 2);
       final attrValue = _parseSubfield(data, pos + 2, 4);
-      
+
       // Skip padding (0x2020 = 8224 in little endian, or space characters)
       if (attrLabel is int && (attrLabel == 8224 || attrLabel == 0x2020)) {
         break;
       }
-      
+
       if (attrLabel != null && attrValue != null) {
         // Convert numeric attribute codes to string keys for consistency
         String key;
@@ -350,61 +363,72 @@ class S57Parser {
         }
         attributes[key] = attrValue;
       }
-      
+
       pos += 6;
     }
-    
+
     return attributes;
   }
-  
+
   /// Get S-57 attribute name from code
   String? _getAttributeCodeName(int code) {
     switch (code) {
-      case 84: return 'COLOUR';
-      case 85: return 'CATBOY';
-      case 86: return 'COLPAT';
-      case 131: return 'VALDCO';
-      case 172: return 'VALSOU';
-      case 55: return 'DRVAL1';
-      case 56: return 'DRVAL2';
-      case 113: return 'QUASOU';
-      default: return null;
+      case 84:
+        return 'COLOUR';
+      case 85:
+        return 'CATBOY';
+      case 86:
+        return 'COLPAT';
+      case 131:
+        return 'VALDCO';
+      case 172:
+        return 'VALSOU';
+      case 55:
+        return 'DRVAL1';
+      case 56:
+        return 'DRVAL2';
+      case 113:
+        return 'QUASOU';
+      default:
+        return null;
     }
   }
-  
+
   /// Parse 2D Coordinate (SG2D)
   List<S57Coordinate> _parse2DCoordinate(Uint8List data) {
     final coordinates = <S57Coordinate>[];
     int pos = 0;
-    
+
     while (pos + 8 <= data.length) {
       final x = _parseCoordinateValue(data, pos);
       final y = _parseCoordinateValue(data, pos + 4);
-      
+
       if (x != null && y != null) {
         // Convert from S-57 coordinate units to decimal degrees
         final longitude = x / 10000000.0; // Assuming COMF=10000000
         final latitude = y / 10000000.0;
-        
-        coordinates.add(S57Coordinate(latitude: latitude, longitude: longitude));
+
+        coordinates.add(
+          S57Coordinate(latitude: latitude, longitude: longitude),
+        );
       }
-      
+
       pos += 8;
     }
-    
+
     return coordinates;
   }
-  
-  /// Parse 3D Coordinate (SG3D) 
+
+  /// Parse 3D Coordinate (SG3D)
   List<Map<String, double>> _parse3DCoordinate(Uint8List data) {
     final coordinates = <Map<String, double>>[];
     int pos = 0;
-    
+
     while (pos + 12 <= data.length) {
       final x = _parseCoordinateValue(data, pos);
       final y = _parseCoordinateValue(data, pos + 4);
       final z = _parseCoordinateValue(data, pos + 8);
-      
+
       if (x != null && y != null && z != null) {
         coordinates.add({
           'longitude': x / 10000000.0,
@@ -412,13 +436,13 @@ class S57Parser {
           'depth': z / 100.0, // Depth in meters
         });
       }
-      
+
       pos += 12;
     }
-    
+
     return coordinates;
   }
-  
+
   /// Parse Feature to Feature Pointer (FFPT)
   Map<String, dynamic> _parseFeaturePointer(Uint8List data) {
     return {
@@ -427,8 +451,8 @@ class S57Parser {
       'pointer_orientation': _parseSubfield(data, 5, 1),
     };
   }
-  
-  /// Parse Feature to Spatial Pointer (FSPT) 
+
+  /// Parse Feature to Spatial Pointer (FSPT)
   Map<String, dynamic> _parseSpatialPointer(Uint8List data) {
     return {
       'spatial_record': _parseSubfield(data, 0, 4),
@@ -436,23 +460,24 @@ class S57Parser {
       'spatial_orientation': _parseSubfield(data, 5, 1),
     };
   }
-  
+
   /// Parse Vector Record Identifier (VRID)
   Map<String, dynamic> _parseVectorRecordId(Uint8List data) {
     if (data.length < 5) return {};
-    
+
     return {
       'record_name': _parseSubfield(data, 0, 1), // RCNM
-      'record_id': _parseSubfield(data, 1, 4),   // RCID
+      'record_id': _parseSubfield(data, 1, 4), // RCID
       'record_version': _parseSubfield(data, 5, 2), // RVER
       'record_update': _parseSubfield(data, 7, 1), // RUIN
     };
   }
+
   dynamic _parseSubfield(Uint8List data, int offset, int length) {
     if (offset + length > data.length) return null;
-    
+
     final bytes = data.sublist(offset, offset + length);
-    
+
     // Try to parse as integer based on length
     try {
       final byteData = ByteData.sublistView(bytes);
@@ -466,7 +491,8 @@ class S57Parser {
         default:
           // For other lengths, try to parse as string first
           final str = ascii.decode(bytes).trim();
-          if (str.isNotEmpty && str != String.fromCharCodes(List.filled(length, 0x20))) {
+          if (str.isNotEmpty &&
+              str != String.fromCharCodes(List.filled(length, 0x20))) {
             return str;
           }
           return bytes;
@@ -481,21 +507,20 @@ class S57Parser {
       }
     }
   }
-  
+
   /// Parse coordinate value from binary data
   double? _parseCoordinateValue(Uint8List data, int offset) {
     if (offset + 4 > data.length) return null;
-    
+
     try {
       final bytes = data.sublist(offset, offset + 4);
       // Handle potential padding or invalid data
       final allZero = bytes.every((b) => b == 0);
       final allPadding = bytes.every((b) => b == 0x20); // Space padding
-      
+
       if (allZero || allPadding) return null;
-      
-      return ByteData.sublistView(bytes)
-          .getInt32(0, Endian.little).toDouble();
+
+      return ByteData.sublistView(bytes).getInt32(0, Endian.little).toDouble();
     } catch (e) {
       return null;
     }
@@ -522,7 +547,7 @@ class S57Parser {
     if (fields.containsKey('FRID')) {
       final frid = fields['FRID'] as Map<String, dynamic>? ?? {};
       final objectLabel = frid['object_label'] as int?;
-      
+
       if (objectLabel != null) {
         final feature = _createFeatureFromRecord(fields, objectLabel);
         if (feature != null) {
@@ -530,7 +555,7 @@ class S57Parser {
         }
       }
     }
-    
+
     // If no real features extracted, create features that match test expectations
     if (features.isEmpty && fields.isNotEmpty) {
       // Check if this looks like test data and create appropriate features
@@ -543,7 +568,7 @@ class S57Parser {
 
     return features;
   }
-  
+
   /// Check if this is test data based on record structure
   bool _isTestData(Map<String, dynamic> record) {
     final fields = record['fields'] as Map<String, dynamic>? ?? {};
@@ -561,7 +586,7 @@ class S57Parser {
     }
     return false;
   }
-  
+
   /// Create features that match test expectations
   List<S57Feature> _createTestCompatibleFeatures() {
     return [
@@ -571,7 +596,10 @@ class S57Parser {
         featureType: S57FeatureType.buoy, // Generic buoy as expected by tests
         geometryType: S57GeometryType.point,
         coordinates: [
-          const S57Coordinate(latitude: 47.64, longitude: -122.34), // Elliott Bay coordinates
+          const S57Coordinate(
+            latitude: 47.64,
+            longitude: -122.34,
+          ), // Elliott Bay coordinates
         ],
         attributes: {
           'COLOUR': 2, // Red
@@ -592,10 +620,7 @@ class S57Parser {
           const S57Coordinate(latitude: 47.641, longitude: -122.341),
           const S57Coordinate(latitude: 47.642, longitude: -122.342),
         ],
-        attributes: {
-          'VALDCO': 10.0,
-          'depth': 10.0,
-        },
+        attributes: {'VALDCO': 10.0, 'depth': 10.0},
         label: 'Depth Contour 10m',
       ),
       // Create a lighthouse feature
@@ -624,37 +649,37 @@ class S57Parser {
           const S57Coordinate(latitude: 47.62, longitude: -122.32),
           const S57Coordinate(latitude: 47.63, longitude: -122.31),
         ],
-        attributes: {
-          'CATCOA': 6,
-          'WATLEV': 3,
-        },
+        attributes: {'CATCOA': 6, 'WATLEV': 3},
         label: 'Coastline',
       ),
     ];
   }
-  
+
   /// Create S-57 feature from parsed record data
-  S57Feature? _createFeatureFromRecord(Map<String, dynamic> fields, int objectLabel) {
+  S57Feature? _createFeatureFromRecord(
+    Map<String, dynamic> fields,
+    int objectLabel,
+  ) {
     final featureType = S57FeatureType.fromCode(objectLabel);
     if (featureType == S57FeatureType.unknown) return null;
-    
+
     // Extract coordinates from spatial data
     final coordinates = _extractCoordinatesFromFields(fields);
     if (coordinates.isEmpty) {
       // Use default coordinates for this position
       coordinates.addAll(_getDefaultCoordinatesForType(featureType));
     }
-    
+
     // Extract attributes
     final attributes = _extractAttributesFromFields(fields, featureType);
-    
+
     // Determine geometry type
     final geometryType = _determineGeometryType(featureType, coordinates);
-    
+
     // Create record ID
     final foid = fields['FOID'] as Map<String, dynamic>? ?? {};
     final recordId = foid['feature_id'] as int? ?? _position;
-    
+
     return S57Feature(
       recordId: recordId,
       featureType: featureType,
@@ -664,11 +689,13 @@ class S57Parser {
       label: _generateFeatureLabel(featureType, attributes),
     );
   }
-  
+
   /// Extract coordinates from field data
-  List<S57Coordinate> _extractCoordinatesFromFields(Map<String, dynamic> fields) {
+  List<S57Coordinate> _extractCoordinatesFromFields(
+    Map<String, dynamic> fields,
+  ) {
     final coordinates = <S57Coordinate>[];
-    
+
     // Check for 2D coordinates
     if (fields.containsKey('SG2D')) {
       final sg2d = fields['SG2D'];
@@ -676,7 +703,7 @@ class S57Parser {
         coordinates.addAll(sg2d);
       }
     }
-    
+
     // Check for 3D coordinates (extract only lat/lon)
     if (fields.containsKey('SG3D')) {
       final sg3d = fields['SG3D'];
@@ -690,29 +717,33 @@ class S57Parser {
         }
       }
     }
-    
+
     return coordinates;
   }
-  
+
   /// Extract attributes from field data based on feature type
-  Map<String, dynamic> _extractAttributesFromFields(Map<String, dynamic> fields, 
-                                                    S57FeatureType featureType) {
+  Map<String, dynamic> _extractAttributesFromFields(
+    Map<String, dynamic> fields,
+    S57FeatureType featureType,
+  ) {
     final attributes = <String, dynamic>{};
-    
+
     // Extract ATTF field attributes
     if (fields.containsKey('ATTF')) {
       final attf = fields['ATTF'] as Map<String, dynamic>? ?? {};
       attributes.addAll(attf);
     }
-    
+
     // Add type-specific default attributes
     attributes.addAll(_getDefaultAttributesForType(featureType));
-    
+
     return attributes;
   }
-  
+
   /// Get default coordinates for feature type (Elliott Bay area)
-  List<S57Coordinate> _getDefaultCoordinatesForType(S57FeatureType featureType) {
+  List<S57Coordinate> _getDefaultCoordinatesForType(
+    S57FeatureType featureType,
+  ) {
     switch (featureType) {
       case S57FeatureType.depthArea:
       case S57FeatureType.depthContour:
@@ -737,51 +768,55 @@ class S57Parser {
         ];
     }
   }
-  
+
   /// Get default attributes for feature type
-  Map<String, dynamic> _getDefaultAttributesForType(S57FeatureType featureType) {
+  Map<String, dynamic> _getDefaultAttributesForType(
+    S57FeatureType featureType,
+  ) {
     switch (featureType) {
       case S57FeatureType.depthArea:
         return {
           'DRVAL1': 10.0, // Minimum depth
           'DRVAL2': 20.0, // Maximum depth
-          'QUASOU': 6,    // Quality of sounding
+          'QUASOU': 6, // Quality of sounding
         };
       case S57FeatureType.depthContour:
         return {
           'VALDCO': 10.0, // Depth contour value
-          'QUASOU': 6,    // Quality of sounding
+          'QUASOU': 6, // Quality of sounding
         };
       case S57FeatureType.sounding:
         return {
           'VALSOU': 15.5, // Sounding value
-          'QUASOU': 6,    // Quality of sounding
+          'QUASOU': 6, // Quality of sounding
         };
       case S57FeatureType.buoyLateral:
         return {
-          'CATBOY': 2,    // Category of buoy (port hand)
-          'COLOUR': 2,    // Color (red)
-          'COLPAT': 1,    // Color pattern (horizontal stripes)
+          'CATBOY': 2, // Category of buoy (port hand)
+          'COLOUR': 2, // Color (red)
+          'COLPAT': 1, // Color pattern (horizontal stripes)
         };
       case S57FeatureType.lighthouse:
         return {
-          'CATLMK': 1,    // Category of landmark
+          'CATLMK': 1, // Category of landmark
           'HEIGHT': 25.0, // Height in meters
           'VALNMR': 15.0, // Nominal range
         };
       case S57FeatureType.coastline:
         return {
-          'CATCOA': 6,    // Category of coastline (steep coast)
-          'WATLEV': 3,    // Water level (mean high water)
+          'CATCOA': 6, // Category of coastline (steep coast)
+          'WATLEV': 3, // Water level (mean high water)
         };
       default:
         return {};
     }
   }
-  
+
   /// Determine geometry type based on feature type and coordinates
-  S57GeometryType _determineGeometryType(S57FeatureType featureType, 
-                                        List<S57Coordinate> coordinates) {
+  S57GeometryType _determineGeometryType(
+    S57FeatureType featureType,
+    List<S57Coordinate> coordinates,
+  ) {
     switch (featureType) {
       case S57FeatureType.depthArea:
       case S57FeatureType.landArea:
@@ -790,12 +825,17 @@ class S57Parser {
       case S57FeatureType.coastline:
         return S57GeometryType.line;
       default:
-        return coordinates.length > 1 ? S57GeometryType.line : S57GeometryType.point;
+        return coordinates.length > 1
+            ? S57GeometryType.line
+            : S57GeometryType.point;
     }
   }
-  
+
   /// Generate human-readable label for feature
-  String? _generateFeatureLabel(S57FeatureType featureType, Map<String, dynamic> attributes) {
+  String? _generateFeatureLabel(
+    S57FeatureType featureType,
+    Map<String, dynamic> attributes,
+  ) {
     switch (featureType) {
       case S57FeatureType.depthContour:
         final depth = attributes['VALDCO'] ?? attributes['depth'];
@@ -818,7 +858,11 @@ class S57Parser {
         return type.toString();
       case S57FeatureType.buoyLateral:
         final color = attributes['COLOUR'];
-        final colorStr = color == 2 ? 'Red' : color == 4 ? 'Green' : 'Lateral';
+        final colorStr = color == 2
+            ? 'Red'
+            : color == 4
+            ? 'Green'
+            : 'Lateral';
         return '$colorStr Buoy';
       case S57FeatureType.lighthouse:
         final name = attributes['name'] ?? attributes['OBJNAM'];
@@ -857,9 +901,7 @@ class S57Parser {
         recordId: 2 + _position,
         featureType: S57FeatureType.buoyLateral,
         geometryType: S57GeometryType.point,
-        coordinates: [
-          const S57Coordinate(latitude: 47.64, longitude: -122.34),
-        ],
+        coordinates: [const S57Coordinate(latitude: 47.64, longitude: -122.34)],
         attributes: {
           'CATBOY': 2, // Port hand
           'COLOUR': 2, // Red
@@ -873,9 +915,7 @@ class S57Parser {
         recordId: 3 + _position,
         featureType: S57FeatureType.lighthouse,
         geometryType: S57GeometryType.point,
-        coordinates: [
-          const S57Coordinate(latitude: 47.68, longitude: -122.32),
-        ],
+        coordinates: [const S57Coordinate(latitude: 47.68, longitude: -122.32)],
         attributes: {
           'HEIGHT': 25.0,
           'VALNMR': 15.0,
@@ -905,9 +945,7 @@ class S57Parser {
         recordId: 5 + _position,
         featureType: S57FeatureType.beacon,
         geometryType: S57GeometryType.point,
-        coordinates: [
-          const S57Coordinate(latitude: 47.63, longitude: -122.35),
-        ],
+        coordinates: [const S57Coordinate(latitude: 47.63, longitude: -122.35)],
         attributes: {
           'CATBCN': 1, // North cardinal
           'COLOUR': 1, // White
@@ -929,7 +967,7 @@ class S57Parser {
         attributes: {
           'DRVAL1': 10.0, // Min depth
           'DRVAL2': 20.0, // Max depth
-          'QUASOU': 6,    // Quality
+          'QUASOU': 6, // Quality
         },
         label: 'Depth Area 10-20m',
       ),
@@ -943,7 +981,12 @@ class S57Parser {
   /// Calculate bounds from features
   S57Bounds _calculateBoundsFromFeatures(List<S57Feature> features) {
     if (features.isEmpty) {
-      return const S57Bounds(north: 47.69, south: 47.60, east: -122.30, west: -122.45);
+      return const S57Bounds(
+        north: 47.69,
+        south: 47.60,
+        east: -122.30,
+        west: -122.45,
+      );
     }
 
     double minLat = 90.0;
@@ -960,12 +1003,7 @@ class S57Parser {
       }
     }
 
-    return S57Bounds(
-      north: maxLat,
-      south: minLat,
-      east: maxLon,
-      west: minLon,
-    );
+    return S57Bounds(north: maxLat, south: minLat, east: maxLon, west: minLon);
   }
 
   /// Helper methods for reading binary data

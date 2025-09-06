@@ -30,12 +30,17 @@ void main() {
         await fileSystemService.initialize();
 
         // Assert
-        verifyInfoLogged(mockLogger, 'FileSystemService initialized successfully');
+        verifyInfoLogged(
+          mockLogger,
+          'FileSystemService initialized successfully',
+        );
       });
 
       test('should handle initialization errors gracefully', () async {
         // Arrange
-        when(mockLogger.error(any, exception: anyNamed('exception'))).thenReturn(null);
+        when(
+          mockLogger.error(any, exception: anyNamed('exception')),
+        ).thenReturn(null);
 
         // Act & Assert
         // The service should not throw even if path_provider fails
@@ -46,7 +51,8 @@ void main() {
     group('Directory Management Tests', () {
       test('should get application documents directory', () async {
         // Act
-        final directory = await fileSystemService.getApplicationDocumentsDirectory();
+        final directory = await fileSystemService
+            .getApplicationDocumentsDirectory();
 
         // Assert
         expect(directory, isA<Directory>());
@@ -55,7 +61,8 @@ void main() {
 
       test('should get application support directory', () async {
         // Act
-        final directory = await fileSystemService.getApplicationSupportDirectory();
+        final directory = await fileSystemService
+            .getApplicationSupportDirectory();
 
         // Assert
         expect(directory, isA<Directory>());
@@ -101,7 +108,7 @@ void main() {
       test('should create directory if it does not exist', () async {
         // Arrange
         final directory = await fileSystemService.getChartsDirectory();
-        
+
         // Act
         final result = await fileSystemService.ensureDirectoryExists(directory);
 
@@ -118,7 +125,10 @@ void main() {
         const content = 'test chart content';
 
         // Act
-        final file = await fileSystemService.writeChartFile(fileName, content.codeUnits);
+        final file = await fileSystemService.writeChartFile(
+          fileName,
+          content.codeUnits,
+        );
 
         // Assert
         expect(file, isA<File>());
@@ -133,7 +143,10 @@ void main() {
         // Arrange
         const fileName = 'test_chart.000';
         const content = 'test chart content';
-        final file = await fileSystemService.writeChartFile(fileName, content.codeUnits);
+        final file = await fileSystemService.writeChartFile(
+          fileName,
+          content.codeUnits,
+        );
 
         // Act
         final readContent = await fileSystemService.readChartFile(fileName);
@@ -149,7 +162,10 @@ void main() {
         // Arrange
         const fileName = 'test_chart.000';
         const content = 'test chart content';
-        final file = await fileSystemService.writeChartFile(fileName, content.codeUnits);
+        final file = await fileSystemService.writeChartFile(
+          fileName,
+          content.codeUnits,
+        );
         expect(file.existsSync(), isTrue);
 
         // Act
@@ -169,7 +185,10 @@ void main() {
         expect(await fileSystemService.chartFileExists(fileName), isFalse);
 
         // Create file
-        final file = await fileSystemService.writeChartFile(fileName, content.codeUnits);
+        final file = await fileSystemService.writeChartFile(
+          fileName,
+          content.codeUnits,
+        );
 
         // Act & Assert - File should exist now
         expect(await fileSystemService.chartFileExists(fileName), isTrue);
@@ -182,7 +201,10 @@ void main() {
         // Arrange
         const fileName = 'test_chart.000';
         const content = 'test chart content';
-        final file = await fileSystemService.writeChartFile(fileName, content.codeUnits);
+        final file = await fileSystemService.writeChartFile(
+          fileName,
+          content.codeUnits,
+        );
 
         // Act
         final size = await fileSystemService.getChartFileSize(fileName);
@@ -246,8 +268,14 @@ void main() {
         const routeName1 = 'test_route_1';
         const routeName2 = 'test_route_2';
         const routeData = '{"test":"data"}';
-        final file1 = await fileSystemService.exportRoute(routeName1, routeData);
-        final file2 = await fileSystemService.exportRoute(routeName2, routeData);
+        final file1 = await fileSystemService.exportRoute(
+          routeName1,
+          routeData,
+        );
+        final file2 = await fileSystemService.exportRoute(
+          routeName2,
+          routeData,
+        );
 
         // Act
         final routeFiles = await fileSystemService.listRouteFiles();
@@ -336,7 +364,9 @@ void main() {
       test('should log errors when file operations fail', () async {
         // Arrange
         const invalidFileName = '/invalid/path/file.000';
-        when(mockLogger.error(any, exception: anyNamed('exception'))).thenReturn(null);
+        when(
+          mockLogger.error(any, exception: anyNamed('exception')),
+        ).thenReturn(null);
 
         // Act & Assert
         try {
@@ -358,14 +388,14 @@ void main() {
         // Assert - Directories should be created and accessible
         expect(chartsDir.existsSync(), isTrue);
         expect(routesDir.existsSync(), isTrue);
-        
+
         // Test that we can write to these directories
         final testFile1 = File('${chartsDir.path}/security_test.tmp');
         final testFile2 = File('${routesDir.path}/security_test.tmp');
-        
+
         await testFile1.writeAsString('test');
         await testFile2.writeAsString('test');
-        
+
         expect(testFile1.existsSync(), isTrue);
         expect(testFile2.existsSync(), isTrue);
 

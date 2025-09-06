@@ -21,17 +21,11 @@ class AboutAppDialog extends StatelessWidget {
         children: [
           Text(
             'NavTool',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           Text(
             'Marine Navigation and Routing Application',
-            style: TextStyle(
-              fontSize: 14,
-              fontStyle: FontStyle.italic,
-            ),
+            style: TextStyle(fontSize: 14, fontStyle: FontStyle.italic),
           ),
           SizedBox(height: 8),
           VersionText(),
@@ -45,11 +39,23 @@ class AboutAppDialog extends StatelessWidget {
             'Features:',
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
-          Text('• Electronic Chart Display (ECDIS)', style: TextStyle(fontSize: 12)),
-          Text('• Route Planning and Optimization', style: TextStyle(fontSize: 12)),
+          Text(
+            '• Electronic Chart Display (ECDIS)',
+            style: TextStyle(fontSize: 12),
+          ),
+          Text(
+            '• Route Planning and Optimization',
+            style: TextStyle(fontSize: 12),
+          ),
           Text('• Weather Routing (GRIB Data)', style: TextStyle(fontSize: 12)),
-          Text('• GPS Integration and Tracking', style: TextStyle(fontSize: 12)),
-          Text('• Cross-platform Desktop Support', style: TextStyle(fontSize: 12)),
+          Text(
+            '• GPS Integration and Tracking',
+            style: TextStyle(fontSize: 12),
+          ),
+          Text(
+            '• Cross-platform Desktop Support',
+            style: TextStyle(fontSize: 12),
+          ),
           SizedBox(height: 12),
           Text(
             'Built with Flutter for optimal performance across desktop platforms.',

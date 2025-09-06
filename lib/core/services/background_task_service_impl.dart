@@ -19,10 +19,10 @@ class BackgroundTaskServiceImpl implements BackgroundTaskService {
     required DownloadService downloadService,
     required GpsService gpsService,
     required AppLogger logger,
-  })  : _workmanager = workmanager ?? Workmanager(),
-        _downloadService = downloadService,
-        _gpsService = gpsService,
-        _logger = logger;
+  }) : _workmanager = workmanager ?? Workmanager(),
+       _downloadService = downloadService,
+       _gpsService = gpsService,
+       _logger = logger;
 
   @override
   Future<void> initialize({bool isDebugMode = false}) async {
@@ -34,7 +34,10 @@ class BackgroundTaskServiceImpl implements BackgroundTaskService {
       _logger.info('Background task service initialized');
     } catch (e) {
       _logger.error('Failed to initialize background task service: $e');
-      throw BackgroundTaskException('Failed to initialize workmanager', e is Exception ? e : Exception(e.toString()));
+      throw BackgroundTaskException(
+        'Failed to initialize workmanager',
+        e is Exception ? e : Exception(e.toString()),
+      );
     }
   }
 
@@ -54,7 +57,10 @@ class BackgroundTaskServiceImpl implements BackgroundTaskService {
       _logger.info('Chart download task registered');
     } catch (e) {
       _logger.error('Failed to register chart download task: $e');
-      throw BackgroundTaskException('Failed to register chart download task', e is Exception ? e : Exception(e.toString()));
+      throw BackgroundTaskException(
+        'Failed to register chart download task',
+        e is Exception ? e : Exception(e.toString()),
+      );
     }
   }
 
@@ -70,7 +76,10 @@ class BackgroundTaskServiceImpl implements BackgroundTaskService {
       _logger.info('Chart download scheduled for chart: $chartId');
     } catch (e) {
       _logger.error('Failed to schedule chart download for $chartId: $e');
-      throw BackgroundTaskException('Failed to schedule chart download', e is Exception ? e : Exception(e.toString()));
+      throw BackgroundTaskException(
+        'Failed to schedule chart download',
+        e is Exception ? e : Exception(e.toString()),
+      );
     }
   }
 
@@ -78,11 +87,16 @@ class BackgroundTaskServiceImpl implements BackgroundTaskService {
   Future<void> cancelChartDownload(String chartId) async {
     try {
       await _workmanager.cancelByUniqueName('downloadChart_$chartId');
-      _activeTaskCount = (_activeTaskCount - 1).clamp(0, double.infinity).toInt();
+      _activeTaskCount = (_activeTaskCount - 1)
+          .clamp(0, double.infinity)
+          .toInt();
       _logger.info('Chart download cancelled for chart: $chartId');
     } catch (e) {
       _logger.error('Failed to cancel chart download for $chartId: $e');
-      throw BackgroundTaskException('Failed to cancel chart download', e is Exception ? e : Exception(e.toString()));
+      throw BackgroundTaskException(
+        'Failed to cancel chart download',
+        e is Exception ? e : Exception(e.toString()),
+      );
     }
   }
 
@@ -95,14 +109,18 @@ class BackgroundTaskServiceImpl implements BackgroundTaskService {
         frequency: const Duration(minutes: 15),
         constraints: Constraints(
           networkType: NetworkType.not_required,
-          requiresBatteryNotLow: false, // GPS tracking is critical for marine safety
+          requiresBatteryNotLow:
+              false, // GPS tracking is critical for marine safety
         ),
       );
       _activeTaskCount++;
       _logger.info('GPS tracking task registered');
     } catch (e) {
       _logger.error('Failed to register GPS tracking task: $e');
-      throw BackgroundTaskException('Failed to register GPS tracking task', e is Exception ? e : Exception(e.toString()));
+      throw BackgroundTaskException(
+        'Failed to register GPS tracking task',
+        e is Exception ? e : Exception(e.toString()),
+      );
     }
   }
 
@@ -119,7 +137,10 @@ class BackgroundTaskServiceImpl implements BackgroundTaskService {
       _logger.info('Route recording started for route: $routeId');
     } catch (e) {
       _logger.error('Failed to start route recording for $routeId: $e');
-      throw BackgroundTaskException('Failed to start route recording', e is Exception ? e : Exception(e.toString()));
+      throw BackgroundTaskException(
+        'Failed to start route recording',
+        e is Exception ? e : Exception(e.toString()),
+      );
     }
   }
 
@@ -127,11 +148,16 @@ class BackgroundTaskServiceImpl implements BackgroundTaskService {
   Future<void> stopRouteRecording(String routeId) async {
     try {
       await _workmanager.cancelByUniqueName('routeRecording_$routeId');
-      _activeTaskCount = (_activeTaskCount - 1).clamp(0, double.infinity).toInt();
+      _activeTaskCount = (_activeTaskCount - 1)
+          .clamp(0, double.infinity)
+          .toInt();
       _logger.info('Route recording stopped for route: $routeId');
     } catch (e) {
       _logger.error('Failed to stop route recording for $routeId: $e');
-      throw BackgroundTaskException('Failed to stop route recording', e is Exception ? e : Exception(e.toString()));
+      throw BackgroundTaskException(
+        'Failed to stop route recording',
+        e is Exception ? e : Exception(e.toString()),
+      );
     }
   }
 
@@ -151,7 +177,10 @@ class BackgroundTaskServiceImpl implements BackgroundTaskService {
       _logger.info('Weather update task registered');
     } catch (e) {
       _logger.error('Failed to register weather update task: $e');
-      throw BackgroundTaskException('Failed to register weather update task', e is Exception ? e : Exception(e.toString()));
+      throw BackgroundTaskException(
+        'Failed to register weather update task',
+        e is Exception ? e : Exception(e.toString()),
+      );
     }
   }
 
@@ -163,7 +192,10 @@ class BackgroundTaskServiceImpl implements BackgroundTaskService {
       _logger.info('All background tasks cancelled');
     } catch (e) {
       _logger.error('Failed to cancel all background tasks: $e');
-      throw BackgroundTaskException('Failed to cancel all tasks', e is Exception ? e : Exception(e.toString()));
+      throw BackgroundTaskException(
+        'Failed to cancel all tasks',
+        e is Exception ? e : Exception(e.toString()),
+      );
     }
   }
 
@@ -192,7 +224,10 @@ void callbackDispatcher() {
       case 'weatherUpdate':
         return await _handleWeatherUpdateTask(inputData);
       default:
-        _backgroundLogger?.warning('Unknown background task: $task', context: 'BackgroundTask');
+        _backgroundLogger?.warning(
+          'Unknown background task: $task',
+          context: 'BackgroundTask',
+        );
         return false;
     }
   });
@@ -204,12 +239,19 @@ AppLogger? _backgroundLogger;
 /// Handle periodic chart download task
 Future<bool> _handleChartDownloadTask(Map<String, dynamic>? inputData) async {
   try {
-    _backgroundLogger?.info('Executing background chart download task', context: 'BackgroundTask');
+    _backgroundLogger?.info(
+      'Executing background chart download task',
+      context: 'BackgroundTask',
+    );
     // TODO: Implement chart download queue processing
     // This would check for pending downloads and process them
     return true;
   } catch (e) {
-    _backgroundLogger?.error('Chart download task failed', context: 'BackgroundTask', exception: e);
+    _backgroundLogger?.error(
+      'Chart download task failed',
+      context: 'BackgroundTask',
+      exception: e,
+    );
     return false;
   }
 }
@@ -219,14 +261,24 @@ Future<bool> _handleSingleChartDownload(Map<String, dynamic>? inputData) async {
   try {
     final chartId = inputData?['chartId'] as String?;
     if (chartId == null) {
-      _backgroundLogger?.warning('No chartId provided for single chart download', context: 'BackgroundTask');
+      _backgroundLogger?.warning(
+        'No chartId provided for single chart download',
+        context: 'BackgroundTask',
+      );
       return false;
     }
-    _backgroundLogger?.info('Executing background download for chart: $chartId', context: 'BackgroundTask');
+    _backgroundLogger?.info(
+      'Executing background download for chart: $chartId',
+      context: 'BackgroundTask',
+    );
     // TODO: Implement single chart download
     return true;
   } catch (e) {
-    _backgroundLogger?.error('Single chart download task failed', context: 'BackgroundTask', exception: e);
+    _backgroundLogger?.error(
+      'Single chart download task failed',
+      context: 'BackgroundTask',
+      exception: e,
+    );
     return false;
   }
 }
@@ -234,12 +286,19 @@ Future<bool> _handleSingleChartDownload(Map<String, dynamic>? inputData) async {
 /// Handle GPS tracking task
 Future<bool> _handleGpsTrackingTask(Map<String, dynamic>? inputData) async {
   try {
-    _backgroundLogger?.info('Executing background GPS tracking task', context: 'BackgroundTask');
+    _backgroundLogger?.info(
+      'Executing background GPS tracking task',
+      context: 'BackgroundTask',
+    );
     // TODO: Implement GPS position logging
     // This would get current position and store it for tracking
     return true;
   } catch (e) {
-    _backgroundLogger?.error('GPS tracking task failed', context: 'BackgroundTask', exception: e);
+    _backgroundLogger?.error(
+      'GPS tracking task failed',
+      context: 'BackgroundTask',
+      exception: e,
+    );
     return false;
   }
 }
@@ -249,15 +308,25 @@ Future<bool> _handleRouteRecordingTask(Map<String, dynamic>? inputData) async {
   try {
     final routeId = inputData?['routeId'] as String?;
     if (routeId == null) {
-      _backgroundLogger?.warning('No routeId provided for route recording', context: 'BackgroundTask');
+      _backgroundLogger?.warning(
+        'No routeId provided for route recording',
+        context: 'BackgroundTask',
+      );
       return false;
     }
-    _backgroundLogger?.info('Executing background route recording for route: $routeId', context: 'BackgroundTask');
+    _backgroundLogger?.info(
+      'Executing background route recording for route: $routeId',
+      context: 'BackgroundTask',
+    );
     // TODO: Implement route recording
     // This would get current position and add it to the route track
     return true;
   } catch (e) {
-    _backgroundLogger?.error('Route recording task failed', context: 'BackgroundTask', exception: e);
+    _backgroundLogger?.error(
+      'Route recording task failed',
+      context: 'BackgroundTask',
+      exception: e,
+    );
     return false;
   }
 }
@@ -265,12 +334,19 @@ Future<bool> _handleRouteRecordingTask(Map<String, dynamic>? inputData) async {
 /// Handle weather update task
 Future<bool> _handleWeatherUpdateTask(Map<String, dynamic>? inputData) async {
   try {
-    _backgroundLogger?.info('Executing background weather update task', context: 'BackgroundTask');
+    _backgroundLogger?.info(
+      'Executing background weather update task',
+      context: 'BackgroundTask',
+    );
     // TODO: Implement weather data updates
     // This would fetch latest weather data for the user's location
     return true;
   } catch (e) {
-    _backgroundLogger?.error('Weather update task failed', context: 'BackgroundTask', exception: e);
+    _backgroundLogger?.error(
+      'Weather update task failed',
+      context: 'BackgroundTask',
+      exception: e,
+    );
     return false;
   }
 }

@@ -17,7 +17,11 @@ class FakeTicker {
     }
   }
 
-  Future<void> pumpUntil(bool Function() predicate, {int maxTicks = 100, int step = 1}) async {
+  Future<void> pumpUntil(
+    bool Function() predicate, {
+    int maxTicks = 100,
+    int step = 1,
+  }) async {
     for (var i = 0; i < maxTicks; i += step) {
       if (predicate()) return;
       advance(step);
@@ -29,7 +33,9 @@ class FakeTicker {
   void dispose() => _controller.close();
 }
 
-@Deprecated('Use waitForCondition in flakiness_guard.dart for diagnostics and adaptive backoff')
+@Deprecated(
+  'Use waitForCondition in flakiness_guard.dart for diagnostics and adaptive backoff',
+)
 /// Poll-based predicate wait (legacy). Prefer using waitForCondition in
 /// flakiness_guard.dart for richer diagnostics and adaptive backoff.
 Future<void> waitForPredicate(

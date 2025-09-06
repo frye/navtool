@@ -17,7 +17,7 @@ import 'package:navtool/core/models/retry_policy.dart';
 import '../../integration/noaa_api_integration_test.mocks.dart';
 
 /// Comprehensive tests for NOAA API exception handling and error scenarios
-/// 
+///
 /// These tests verify proper error handling, recovery, and resilience
 /// patterns in marine network environments.
 void main() {
@@ -36,11 +36,14 @@ void main() {
       test('should handle connection timeout gracefully', () async {
         // Arrange
         final mockHttpClient = MockHttpClientService();
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
-              requestOptions: RequestOptions(path: '/test'),
-              type: DioExceptionType.connectionTimeout,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: '/test'),
+            type: DioExceptionType.connectionTimeout,
+          ),
+        );
 
         final testContainer = ProviderContainer(
           overrides: [
@@ -63,11 +66,14 @@ void main() {
       test('should handle receive timeout gracefully', () async {
         // Arrange
         final mockHttpClient = MockHttpClientService();
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
-              requestOptions: RequestOptions(path: '/test'),
-              type: DioExceptionType.receiveTimeout,
-            ));
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: '/test'),
+            type: DioExceptionType.receiveTimeout,
+          ),
+        );
 
         final testContainer = ProviderContainer(
           overrides: [
@@ -90,15 +96,18 @@ void main() {
       test('should handle server errors appropriately', () async {
         // Arrange
         final mockHttpClient = MockHttpClientService();
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: '/test'),
+            type: DioExceptionType.badResponse,
+            response: Response(
               requestOptions: RequestOptions(path: '/test'),
-              type: DioExceptionType.badResponse,
-              response: Response(
-                requestOptions: RequestOptions(path: '/test'),
-                statusCode: 500,
-              ),
-            ));
+              statusCode: 500,
+            ),
+          ),
+        );
 
         final testContainer = ProviderContainer(
           overrides: [
@@ -121,15 +130,18 @@ void main() {
       test('should handle rate limiting errors', () async {
         // Arrange
         final mockHttpClient = MockHttpClientService();
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenThrow(DioException(
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: '/test'),
+            type: DioExceptionType.badResponse,
+            response: Response(
               requestOptions: RequestOptions(path: '/test'),
-              type: DioExceptionType.badResponse,
-              response: Response(
-                requestOptions: RequestOptions(path: '/test'),
-                statusCode: 429,
-              ),
-            ));
+              statusCode: 429,
+            ),
+          ),
+        );
 
         final testContainer = ProviderContainer(
           overrides: [
@@ -155,10 +167,12 @@ void main() {
         // Arrange
         final testContainer = ProviderContainer(
           overrides: [
-            circuitBreakerProvider.overrideWith((ref) => CircuitBreaker(
-              failureThreshold: 2,
-              timeout: const Duration(seconds: 1),
-            )),
+            circuitBreakerProvider.overrideWith(
+              (ref) => CircuitBreaker(
+                failureThreshold: 2,
+                timeout: const Duration(seconds: 1),
+              ),
+            ),
           ],
         );
 
@@ -194,10 +208,12 @@ void main() {
         // Arrange
         final testContainer = ProviderContainer(
           overrides: [
-            circuitBreakerProvider.overrideWith((ref) => CircuitBreaker(
-              failureThreshold: 1,
-              timeout: const Duration(milliseconds: 100),
-            )),
+            circuitBreakerProvider.overrideWith(
+              (ref) => CircuitBreaker(
+                failureThreshold: 1,
+                timeout: const Duration(milliseconds: 100),
+              ),
+            ),
           ],
         );
 
@@ -402,25 +418,26 @@ void main() {
         // Arrange - simulate intermittent connectivity
         final mockHttpClient = MockHttpClientService();
         var callCount = 0;
-        
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async {
-              callCount++;
-              if (callCount % 3 == 0) {
-                // Every 3rd call succeeds
-                return Response(
-                  requestOptions: RequestOptions(path: ''),
-                  data: '{"type":"FeatureCollection","features":[]}',
-                  statusCode: 200,
-                );
-              } else {
-                // Other calls fail with timeout
-                throw DioException(
-                  requestOptions: RequestOptions(path: '/test'),
-                  type: DioExceptionType.connectionTimeout,
-                );
-              }
-            });
+
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer((_) async {
+          callCount++;
+          if (callCount % 3 == 0) {
+            // Every 3rd call succeeds
+            return Response(
+              requestOptions: RequestOptions(path: ''),
+              data: '{"type":"FeatureCollection","features":[]}',
+              statusCode: 200,
+            );
+          } else {
+            // Other calls fail with timeout
+            throw DioException(
+              requestOptions: RequestOptions(path: '/test'),
+              type: DioExceptionType.connectionTimeout,
+            );
+          }
+        });
 
         final testContainer = ProviderContainer(
           overrides: [
@@ -442,7 +459,7 @@ void main() {
               // Expected intermittent failures
               expect(e, isA<NetworkConnectivityException>());
             }
-            
+
             // Small delay between requests
             await Future.delayed(const Duration(milliseconds: 50));
           }
@@ -458,16 +475,17 @@ void main() {
       test('should handle low-bandwidth marine connections', () async {
         // Arrange - simulate slow responses
         final mockHttpClient = MockHttpClientService();
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async {
-              // Simulate slow marine connection
-              await Future.delayed(const Duration(milliseconds: 100));
-              return Response(
-                requestOptions: RequestOptions(path: ''),
-                data: '{"type":"FeatureCollection","features":[]}',
-                statusCode: 200,
-              );
-            });
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer((_) async {
+          // Simulate slow marine connection
+          await Future.delayed(const Duration(milliseconds: 100));
+          return Response(
+            requestOptions: RequestOptions(path: ''),
+            data: '{"type":"FeatureCollection","features":[]}',
+            statusCode: 200,
+          );
+        });
 
         final testContainer = ProviderContainer(
           overrides: [
@@ -484,7 +502,10 @@ void main() {
 
           // Assert
           expect(result, isNotEmpty);
-          expect(endTime.difference(startTime).inMilliseconds, greaterThanOrEqualTo(100));
+          expect(
+            endTime.difference(startTime).inMilliseconds,
+            greaterThanOrEqualTo(100),
+          );
         } finally {
           testContainer.dispose();
         }
@@ -494,33 +515,38 @@ void main() {
         // Arrange - simulate weather disruption pattern
         final mockHttpClient = MockHttpClientService();
         var callCount = 0;
-        
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async {
-              callCount++;
-              if (callCount <= 3) {
-                // Initial failures during weather event
-                throw DioException(
-                  requestOptions: RequestOptions(path: '/test'),
-                  type: DioExceptionType.connectionError,
-                );
-              } else {
-                // Recovery after weather passes
-                return Response(
-                  requestOptions: RequestOptions(path: ''),
-                  data: '{"type":"FeatureCollection","features":[]}',
-                  statusCode: 200,
-                );
-              }
-            });
+
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer((_) async {
+          callCount++;
+          if (callCount <= 3) {
+            // Initial failures during weather event
+            throw DioException(
+              requestOptions: RequestOptions(path: '/test'),
+              type: DioExceptionType.connectionError,
+            );
+          } else {
+            // Recovery after weather passes
+            return Response(
+              requestOptions: RequestOptions(path: ''),
+              data: '{"type":"FeatureCollection","features":[]}',
+              statusCode: 200,
+            );
+          }
+        });
 
         final testContainer = ProviderContainer(
           overrides: [
             httpClientServiceProvider.overrideWith((ref) => mockHttpClient),
-            circuitBreakerProvider.overrideWith((ref) => CircuitBreaker(
-              failureThreshold: 5, // Higher threshold for weather events
-              timeout: const Duration(milliseconds: 200), // Faster recovery test
-            )),
+            circuitBreakerProvider.overrideWith(
+              (ref) => CircuitBreaker(
+                failureThreshold: 5, // Higher threshold for weather events
+                timeout: const Duration(
+                  milliseconds: 200,
+                ), // Faster recovery test
+              ),
+            ),
           ],
         );
 
@@ -543,7 +569,10 @@ void main() {
 
           // Assert - should eventually recover
           expect(result, isNotNull);
-          expect(circuitBreaker.state, CircuitState.closed); // Should remain operational
+          expect(
+            circuitBreaker.state,
+            CircuitState.closed,
+          ); // Should remain operational
         } finally {
           testContainer.dispose();
         }
@@ -555,10 +584,12 @@ void main() {
         // Arrange
         final testContainer = ProviderContainer(
           overrides: [
-            circuitBreakerProvider.overrideWith((ref) => CircuitBreaker(
-              failureThreshold: 2,
-              timeout: const Duration(milliseconds: 100),
-            )),
+            circuitBreakerProvider.overrideWith(
+              (ref) => CircuitBreaker(
+                failureThreshold: 2,
+                timeout: const Duration(milliseconds: 100),
+              ),
+            ),
           ],
         );
 
@@ -599,25 +630,26 @@ void main() {
         // Arrange - simulate mixed success/failure pattern
         final mockHttpClient = MockHttpClientService();
         var callCount = 0;
-        
-        when(mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')))
-            .thenAnswer((_) async {
-              callCount++;
-              if (callCount % 2 == 0) {
-                // Every other call succeeds
-                return Response(
-                  requestOptions: RequestOptions(path: ''),
-                  data: '{"type":"FeatureCollection","features":[]}',
-                  statusCode: 200,
-                );
-              } else {
-                // Intermittent failures
-                throw DioException(
-                  requestOptions: RequestOptions(path: '/test'),
-                  type: DioExceptionType.connectionTimeout,
-                );
-              }
-            });
+
+        when(
+          mockHttpClient.get(any, queryParameters: anyNamed('queryParameters')),
+        ).thenAnswer((_) async {
+          callCount++;
+          if (callCount % 2 == 0) {
+            // Every other call succeeds
+            return Response(
+              requestOptions: RequestOptions(path: ''),
+              data: '{"type":"FeatureCollection","features":[]}',
+              statusCode: 200,
+            );
+          } else {
+            // Intermittent failures
+            throw DioException(
+              requestOptions: RequestOptions(path: '/test'),
+              type: DioExceptionType.connectionTimeout,
+            );
+          }
+        });
 
         final testContainer = ProviderContainer(
           overrides: [

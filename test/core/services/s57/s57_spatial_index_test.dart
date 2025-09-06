@@ -15,7 +15,7 @@ void main() {
     group('Feature Management', () {
       test('should add features to index', () {
         spatialIndex.addFeatures(testFeatures);
-        
+
         expect(spatialIndex.featureCount, equals(testFeatures.length));
         expect(spatialIndex.getAllFeatures(), hasLength(testFeatures.length));
       });
@@ -23,16 +23,16 @@ void main() {
       test('should clear all features', () {
         spatialIndex.addFeatures(testFeatures);
         expect(spatialIndex.featureCount, greaterThan(0));
-        
+
         spatialIndex.clear();
-        
+
         expect(spatialIndex.featureCount, equals(0));
         expect(spatialIndex.getAllFeatures(), isEmpty);
       });
 
       test('should track feature types', () {
         spatialIndex.addFeatures(testFeatures);
-        
+
         final types = spatialIndex.presentFeatureTypes;
         expect(types, contains(S57FeatureType.buoy));
         expect(types, contains(S57FeatureType.depthContour));
@@ -52,11 +52,11 @@ void main() {
           east: -122.30,
           west: -122.40,
         );
-        
+
         final results = spatialIndex.queryBounds(bounds);
-        
+
         expect(results, isNotEmpty);
-        
+
         // All results should be within bounds
         for (final feature in results) {
           bool withinBounds = false;
@@ -77,11 +77,15 @@ void main() {
         const testLat = 47.65;
         const testLon = -122.35;
         const radius = 0.05; // degrees
-        
-        final results = spatialIndex.queryPoint(testLat, testLon, radiusDegrees: radius);
-        
+
+        final results = spatialIndex.queryPoint(
+          testLat,
+          testLon,
+          radiusDegrees: radius,
+        );
+
         expect(results, isNotEmpty);
-        
+
         // All results should be within radius
         for (final feature in results) {
           bool withinRadius = false;
@@ -101,15 +105,15 @@ void main() {
       test('should query features by type', () {
         final buoys = spatialIndex.queryByType(S57FeatureType.buoy);
         final contours = spatialIndex.queryByType(S57FeatureType.depthContour);
-        
+
         expect(buoys, isNotEmpty);
         expect(contours, isNotEmpty);
-        
+
         // Verify all results are of correct type
         for (final buoy in buoys) {
           expect(buoy.featureType, equals(S57FeatureType.buoy));
         }
-        
+
         for (final contour in contours) {
           expect(contour.featureType, equals(S57FeatureType.depthContour));
         }
@@ -117,9 +121,9 @@ void main() {
 
       test('should query navigation aids', () {
         final navAids = spatialIndex.queryNavigationAids();
-        
+
         expect(navAids, isNotEmpty);
-        
+
         // All results should be navigation aids
         for (final feature in navAids) {
           expect([
@@ -133,9 +137,9 @@ void main() {
 
       test('should query depth features', () {
         final depthFeatures = spatialIndex.queryDepthFeatures();
-        
+
         expect(depthFeatures, isNotEmpty);
-        
+
         // All results should be depth-related
         for (final feature in depthFeatures) {
           expect([
@@ -149,12 +153,12 @@ void main() {
     group('Bounds Calculation', () {
       test('should calculate bounds from features', () {
         spatialIndex.addFeatures(testFeatures);
-        
+
         final bounds = spatialIndex.calculateBounds();
-        
+
         expect(bounds, isNotNull);
         expect(bounds!.isValid, isTrue);
-        
+
         // Bounds should encompass all features
         for (final feature in testFeatures) {
           for (final coord in feature.coordinates) {
@@ -175,22 +179,26 @@ void main() {
     group('Performance', () {
       test('should handle large number of features efficiently', () {
         final largeFeatureSet = _createLargeTestFeatureSet(1000);
-        
+
         final stopwatch = Stopwatch()..start();
         spatialIndex.addFeatures(largeFeatureSet);
         stopwatch.stop();
-        
+
         // Indexing should be fast
         expect(stopwatch.elapsedMilliseconds, lessThan(100));
-        
+
         // Query should be efficient
         stopwatch.reset();
         stopwatch.start();
-        
-        final results = spatialIndex.queryPoint(47.65, -122.35, radiusDegrees: 0.1);
-        
+
+        final results = spatialIndex.queryPoint(
+          47.65,
+          -122.35,
+          radiusDegrees: 0.1,
+        );
+
         stopwatch.stop();
-        
+
         // Query should complete in reasonable time
         expect(stopwatch.elapsedMilliseconds, lessThan(50));
         expect(results, isNotEmpty);
@@ -211,7 +219,7 @@ List<S57Feature> _createTestFeatures() {
       attributes: {'type': 'lateral', 'color': 'red'},
       label: 'Red Buoy 2',
     ),
-    
+
     // Depth contour
     S57Feature(
       recordId: 2,
@@ -225,7 +233,7 @@ List<S57Feature> _createTestFeatures() {
       attributes: {'depth': 10.0},
       label: '10m Contour',
     ),
-    
+
     // West Point Lighthouse
     S57Feature(
       recordId: 3,
@@ -235,7 +243,7 @@ List<S57Feature> _createTestFeatures() {
       attributes: {'height': 25.0, 'range': 15.0},
       label: 'West Point Light',
     ),
-    
+
     // Beacon
     S57Feature(
       recordId: 4,
@@ -245,7 +253,7 @@ List<S57Feature> _createTestFeatures() {
       attributes: {'type': 'starboard'},
       label: 'Green Beacon',
     ),
-    
+
     // Shoreline
     S57Feature(
       recordId: 5,
@@ -265,25 +273,27 @@ List<S57Feature> _createTestFeatures() {
 /// Create a large set of test features for performance testing
 List<S57Feature> _createLargeTestFeatureSet(int count) {
   final features = <S57Feature>[];
-  
+
   // Generate features in Elliott Bay area
   const baseLat = 47.65;
   const baseLon = -122.35;
   const range = 0.1; // degrees
-  
+
   for (int i = 0; i < count; i++) {
     final lat = baseLat + (i % 100) * range / 100;
     final lon = baseLon + (i ~/ 100) * range / 100;
-    
-    features.add(S57Feature(
-      recordId: i,
-      featureType: S57FeatureType.values[i % S57FeatureType.values.length],
-      geometryType: S57GeometryType.point,
-      coordinates: [S57Coordinate(latitude: lat, longitude: lon)],
-      attributes: {'test_id': i},
-      label: 'Test Feature $i',
-    ));
+
+    features.add(
+      S57Feature(
+        recordId: i,
+        featureType: S57FeatureType.values[i % S57FeatureType.values.length],
+        geometryType: S57GeometryType.point,
+        coordinates: [S57Coordinate(latitude: lat, longitude: lon)],
+        attributes: {'test_id': i},
+        label: 'Test Feature $i',
+      ),
+    );
   }
-  
+
   return features;
 }

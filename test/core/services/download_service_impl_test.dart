@@ -38,10 +38,11 @@ void main() {
 
       // Create temporary directory for test files
       tempDir = await Directory.systemTemp.createTemp('navtool_test_downloads');
-      
+
       // Mock storage service to return temp directory
-      when(mockStorageService.getChartsDirectory())
-          .thenAnswer((_) async => tempDir);
+      when(
+        mockStorageService.getChartsDirectory(),
+      ).thenAnswer((_) async => tempDir);
 
       // Centralized HTTP head/get/download stubs (fractional progress 0..1 via bytes)
       configureDownloadHttpClientMock(mockHttpClient);
@@ -66,22 +67,26 @@ void main() {
         const chartId = 'US5CA52M';
         const url = 'https://charts.noaa.gov/ENCs/US5CA52M.zip';
         final testFile = File('${tempDir.path}/US5CA52M.zip');
-        
+
         // Mock successful file download
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-        )).thenAnswer((invocation) async {
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenAnswer((invocation) async {
           // Simulate file creation
           await testFile.writeAsBytes([1, 2, 3, 4, 5]);
-          
+
           // Simulate progress callbacks
-          final onProgress = invocation.namedArguments[#onReceiveProgress] as Function(int, int)?;
+          final onProgress =
+              invocation.namedArguments[#onReceiveProgress]
+                  as Function(int, int)?;
           if (onProgress != null) {
             onProgress(1, 5); // 20% progress
-            onProgress(3, 5); // 60% progress  
+            onProgress(3, 5); // 60% progress
             onProgress(5, 5); // 100% progress
           }
           return null;
@@ -91,29 +96,41 @@ void main() {
         await downloadService.downloadChart(chartId, url);
 
         // Assert
-        verifyInfoLogged(mockLogger, 'Starting download for chart: $chartId', expectedContext: 'Download');
-        verifyInfoLogged(mockLogger, 'Chart download completed: $chartId', expectedContext: 'Download');
+        verifyInfoLogged(
+          mockLogger,
+          'Starting download for chart: $chartId',
+          expectedContext: 'Download',
+        );
+        verifyInfoLogged(
+          mockLogger,
+          'Chart download completed: $chartId',
+          expectedContext: 'Download',
+        );
 
-        verify(mockHttpClient.downloadFile(
-          url,
-          argThat(contains('US5CA52M.zip')),
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-        )).called(1);
+        verify(
+          mockHttpClient.downloadFile(
+            url,
+            argThat(contains('US5CA52M.zip')),
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).called(1);
       });
 
       test('should handle download failure gracefully', () async {
         // Arrange
         const chartId = 'INVALID_CHART';
         const url = 'https://invalid.url/chart.zip';
-        
+
         // Mock download failure
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-        )).thenThrow(AppError.network('Download failed'));
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenThrow(AppError.network('Download failed'));
 
         // Act & Assert
         await expectLater(
@@ -122,7 +139,11 @@ void main() {
         );
 
         // Verify the download started (info log should be called)
-        verifyInfoLogged(mockLogger, 'Starting download for chart: $chartId', expectedContext: 'Download');
+        verifyInfoLogged(
+          mockLogger,
+          'Starting download for chart: $chartId',
+          expectedContext: 'Download',
+        );
 
         // Verify error handling was called
         verify(mockErrorHandler.handleError(any, any)).called(1);
@@ -134,22 +155,33 @@ void main() {
         final testFile = File('${tempDir.path}/US5CA52M.zip');
 
         reset(mockHttpClient);
-        when(mockHttpClient.head(any,
-                queryParameters: anyNamed('queryParameters'),
-                options: anyNamed('options'),
-                cancelToken: anyNamed('cancelToken')))
-            .thenAnswer((_) async => Response(
-                  requestOptions: RequestOptions(path: url),
-                  statusCode: 200,
-                  headers: Headers.fromMap({'content-length': ['100']}),
-                ));
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-        )).thenAnswer((invocation) async {
-          final onProgress = invocation.namedArguments[#onReceiveProgress] as void Function(int,int)?;
+        when(
+          mockHttpClient.head(
+            any,
+            queryParameters: anyNamed('queryParameters'),
+            options: anyNamed('options'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(path: url),
+            statusCode: 200,
+            headers: Headers.fromMap({
+              'content-length': ['100'],
+            }),
+          ),
+        );
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenAnswer((invocation) async {
+          final onProgress =
+              invocation.namedArguments[#onReceiveProgress]
+                  as void Function(int, int)?;
           onProgress?.call(25, 100);
           onProgress?.call(75, 100);
           onProgress?.call(100, 100);
@@ -158,7 +190,9 @@ void main() {
         });
 
         await downloadService.downloadChart(chartId, url);
-        final snapshot = await downloadService.getDownloadProgress(chartId).first;
+        final snapshot = await downloadService
+            .getDownloadProgress(chartId)
+            .first;
         expect(snapshot, inInclusiveRange(0.0, 1.0));
         expectProgressCloseTo(snapshot, 1.0);
         expect(await testFile.exists(), isTrue);
@@ -216,33 +250,40 @@ void main() {
         );
 
         // Act
-        final downloadFuture = downloadService.downloadChart(chartId, 'https://test.com/chart.zip');
+        final downloadFuture = downloadService.downloadChart(
+          chartId,
+          'https://test.com/chart.zip',
+        );
         await Future.delayed(const Duration(milliseconds: 30));
         await downloadService.pauseDownload(chartId);
-        
+
         // Wait for download to complete/cancel
         try {
           await downloadFuture;
         } catch (_) {
           // Expected cancellation
         }
-        
+
         // Assert
-        verifyInfoLogged(mockLogger, 'Download paused: $chartId', expectedContext: 'Download');
+        verifyInfoLogged(
+          mockLogger,
+          'Download paused: $chartId',
+          expectedContext: 'Download',
+        );
       });
 
-    test('should resume download with error message', () async {
-      // Arrange - The resume method should throw because no URL is provided
-      const chartId = 'test-chart';
+      test('should resume download with error message', () async {
+        // Arrange - The resume method should throw because no URL is provided
+        const chartId = 'test-chart';
 
-      // Act & Assert - Resume should throw AppError for missing URL
-      await expectLater(
-        downloadService.resumeDownload(chartId),
-        throwsA(isA<AppError>()),
-      );
-    });
+        // Act & Assert - Resume should throw AppError for missing URL
+        await expectLater(
+          downloadService.resumeDownload(chartId),
+          throwsA(isA<AppError>()),
+        );
+      });
 
-    test('should cancel download successfully', () async {
+      test('should cancel download successfully', () async {
         // Arrange
         const chartId = 'US5CA52M';
         // Slow download to allow cancellation before completion
@@ -256,10 +297,13 @@ void main() {
         );
 
         // Act
-        final downloadFuture = downloadService.downloadChart(chartId, 'https://test.com/chart.zip');
+        final downloadFuture = downloadService.downloadChart(
+          chartId,
+          'https://test.com/chart.zip',
+        );
         await Future.delayed(const Duration(milliseconds: 30));
         await downloadService.cancelDownload(chartId);
-        
+
         try {
           await downloadFuture;
         } catch (_) {
@@ -267,7 +311,11 @@ void main() {
         }
 
         // Assert
-        verifyInfoLogged(mockLogger, 'Download cancelled: $chartId', expectedContext: 'Download');
+        verifyInfoLogged(
+          mockLogger,
+          'Download cancelled: $chartId',
+          expectedContext: 'Download',
+        );
       });
     });
 
@@ -277,34 +325,43 @@ void main() {
         const chartId = 'US5CA52M';
         final testFile = File('${tempDir.path}/US5CA52M.zip');
 
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-        )).thenAnswer((invocation) async {
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenAnswer((invocation) async {
           await testFile.writeAsBytes([1, 2, 3, 4, 5]);
           return null;
         });
 
         // Act
         final progressStream = downloadService.getDownloadProgress(chartId);
-        
+
         // Assert
         expect(progressStream, isA<Stream<double>>());
       });
 
-      test('should emit initial 0.0 for unknown chart (lazy stream seed)', () async {
-        // Arrange
-        const unknownChartId = 'UNKNOWN_CHART';
+      test(
+        'should emit initial 0.0 for unknown chart (lazy stream seed)',
+        () async {
+          // Arrange
+          const unknownChartId = 'UNKNOWN_CHART';
 
-        // Act
-        final progressStream = downloadService.getDownloadProgress(unknownChartId);
-        final first = await progressStream.first.timeout(const Duration(milliseconds: 200));
+          // Act
+          final progressStream = downloadService.getDownloadProgress(
+            unknownChartId,
+          );
+          final first = await progressStream.first.timeout(
+            const Duration(milliseconds: 200),
+          );
 
-        // Assert
-        expect(first, 0.0);
-      });
+          // Assert
+          expect(first, 0.0);
+        },
+      );
     });
 
     group('Error Handling', () {
@@ -313,15 +370,19 @@ void main() {
         const chartId = 'US5CA52M';
         const url = 'https://invalid.url/chart.zip';
 
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-        )).thenThrow(DioException(
-          requestOptions: RequestOptions(path: url),
-          type: DioExceptionType.connectionError,
-        ));
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: url),
+            type: DioExceptionType.connectionError,
+          ),
+        );
 
         // Act & Assert - The service wraps DioException in AppError
         await expectLater(
@@ -337,8 +398,9 @@ void main() {
         const chartId = 'US5CA52M';
         const url = 'https://charts.noaa.gov/ENCs/US5CA52M.zip';
 
-        when(mockStorageService.getChartsDirectory())
-            .thenThrow(AppError.storage('Storage not available'));
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenThrow(AppError.storage('Storage not available'));
 
         // Act & Assert
         await expectLater(
@@ -353,12 +415,14 @@ void main() {
         const url = 'https://charts.noaa.gov/ENCs/US5CA52M.zip';
 
         // Mock download success but no file created (simulates filesystem error)
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-        )).thenAnswer((_) async {}); // Don't create file
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenAnswer((_) async {}); // Don't create file
 
         // Act & Assert
         await expectLater(
@@ -374,29 +438,33 @@ void main() {
         const chartId = 'LARGE_CHART';
         const url = 'https://charts.noaa.gov/ENCs/LargeChart.zip';
         final testFile = File('${tempDir.path}/LargeChart.zip');
-        
+
         // Create large test file (simulating 10MB chart)
         final largeData = List.generate(10 * 1024 * 1024, (i) => i % 256);
-        
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-        )).thenAnswer((invocation) async {
-          final onProgress = invocation.namedArguments[#onReceiveProgress] as Function(int, int)?;
-          
+
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenAnswer((invocation) async {
+          final onProgress =
+              invocation.namedArguments[#onReceiveProgress]
+                  as Function(int, int)?;
+
           // Simulate chunked download progress
           final totalSize = largeData.length;
           final chunkSize = 1024 * 1024; // 1MB chunks
-          
+
           for (int i = 0; i < totalSize; i += chunkSize) {
             final end = (i + chunkSize < totalSize) ? i + chunkSize : totalSize;
             onProgress?.call(end, totalSize);
             // Yield to event loop without real time delay
             await Future(() {});
           }
-          
+
           await testFile.writeAsBytes(largeData);
         });
 
@@ -406,7 +474,10 @@ void main() {
         stopwatch.stop();
 
         // Assert
-        expect(stopwatch.elapsedMilliseconds, lessThan(5000)); // Should complete within 5 seconds
+        expect(
+          stopwatch.elapsedMilliseconds,
+          lessThan(5000),
+        ); // Should complete within 5 seconds
         expect(await testFile.exists(), isTrue);
         expect(await testFile.length(), equals(largeData.length));
       });
@@ -419,14 +490,16 @@ void main() {
         const url = 'https://charts.noaa.gov/ENCs/US5CA52M.zip';
         final testFile = File('${tempDir.path}/US5CA52M.zip');
 
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-        )).thenAnswer((invocation) async {
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenAnswer((invocation) async {
           final filePath = invocation.positionalArguments[1] as String;
-            expect(filePath, contains('US5CA52M.zip'));
+          expect(filePath, contains('US5CA52M.zip'));
           await testFile.writeAsBytes([1, 2, 3, 4, 5]);
         });
 
@@ -434,12 +507,14 @@ void main() {
         await downloadService.downloadChart(chartId, url);
 
         // Assert
-        verify(mockHttpClient.downloadFile(
-          url,
-          argThat(contains('US5CA52M.zip')),
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-        )).called(1);
+        verify(
+          mockHttpClient.downloadFile(
+            url,
+            argThat(contains('US5CA52M.zip')),
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).called(1);
       });
 
       test('should clean up partial downloads on cancellation', () async {
@@ -447,12 +522,14 @@ void main() {
         const chartId = 'US5CA52M';
         const url = 'https://charts.noaa.gov/ENCs/US5CA52M.zip';
 
-        when(mockHttpClient.downloadFile(
-          any,
-          any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress'),
-        )).thenAnswer((invocation) async {
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenAnswer((invocation) async {
           // Simulate cancellation during download
           throw DioException(
             requestOptions: RequestOptions(path: url),

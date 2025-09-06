@@ -12,10 +12,7 @@ import 'status_bar.dart';
 class CustomWindowChrome extends StatefulWidget {
   final Widget child;
 
-  const CustomWindowChrome({
-    super.key,
-    required this.child,
-  });
+  const CustomWindowChrome({super.key, required this.child});
 
   @override
   State<CustomWindowChrome> createState() => _CustomWindowChromeState();
@@ -55,7 +52,10 @@ class _CustomTitleBar extends StatelessWidget {
     return GestureDetector(
       onPanStart: (details) {
         // Use logger instead of print to respect avoid_print lint
-        logger.debug('Starting drag from title bar background', context: 'WindowChrome');
+        logger.debug(
+          'Starting drag from title bar background',
+          context: 'WindowChrome',
+        );
         windowManager.startDragging();
       },
       onDoubleTap: () async {
@@ -101,7 +101,10 @@ class _CustomTitleBar extends StatelessWidget {
 
   Widget _buildAppIcon() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 4.0), // Reduced padding
+      padding: const EdgeInsets.symmetric(
+        horizontal: 6.0,
+        vertical: 4.0,
+      ), // Reduced padding
       child: Image.asset(
         'assets/icons/app_icon.png',
         width: 20.0, // Reduced from 24.0
@@ -174,14 +177,12 @@ class _WindowControlButtonState extends State<_WindowControlButton> {
 
   @override
   Widget build(BuildContext context) {
-  final backgroundColor = _isHovered
-    ? (widget.isClose
-      ? Colors.red
-      : Colors.grey.withValues(alpha: 0.2))
-    : Colors.transparent;
-    
-    final iconColor = _isHovered && widget.isClose 
-        ? Colors.white 
+    final backgroundColor = _isHovered
+        ? (widget.isClose ? Colors.red : Colors.grey.withValues(alpha: 0.2))
+        : Colors.transparent;
+
+    final iconColor = _isHovered && widget.isClose
+        ? Colors.white
         : Theme.of(context).colorScheme.onSurface;
 
     return MouseRegion(
@@ -192,9 +193,7 @@ class _WindowControlButtonState extends State<_WindowControlButton> {
         child: Container(
           width: 46,
           height: 32, // Match the title bar height
-          decoration: BoxDecoration(
-            color: backgroundColor,
-          ),
+          decoration: BoxDecoration(color: backgroundColor),
           child: Icon(
             widget.icon,
             size: 14, // Reduced from 16

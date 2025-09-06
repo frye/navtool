@@ -43,18 +43,21 @@ void main() {
       mockChartsDirectory = MockDirectory();
 
       // Setup default storage service behavior
-      when(mockStorageService.getChartsDirectory())
-          .thenAnswer((_) async => mockChartsDirectory);
+      when(
+        mockStorageService.getChartsDirectory(),
+      ).thenAnswer((_) async => mockChartsDirectory);
       when(mockChartsDirectory.path).thenReturn('/test/charts');
-      when(mockChartsDirectory.create(recursive: true))
-          .thenAnswer((_) async => mockChartsDirectory);
+      when(
+        mockChartsDirectory.create(recursive: true),
+      ).thenAnswer((_) async => mockChartsDirectory);
 
       downloadService = DownloadServiceImpl(
         httpClient: mockHttpClient,
         storageService: mockStorageService,
         logger: mockLogger,
         errorHandler: mockErrorHandler,
-        networkSuitabilityProbe: () async => false, // keep items queued for persistence assertions
+        networkSuitabilityProbe: () async =>
+            false, // keep items queued for persistence assertions
       );
       configureDownloadHttpClientMock(mockHttpClient);
     });
@@ -66,16 +69,20 @@ void main() {
         final stateFile = File('${tempDir.path}/.download_state.json');
 
         // Override the charts directory to point to our temp directory
-        when(mockStorageService.getChartsDirectory())
-            .thenAnswer((_) async => tempDir);
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenAnswer((_) async => tempDir);
 
         const chartId = 'chart1';
         const url = 'http://example.com/chart1.zip';
 
         // Add item to queue
-        await downloadService.addToQueue(chartId, url, 
+        await downloadService.addToQueue(
+          chartId,
+          url,
           priority: DownloadPriority.high,
-          expectedChecksum: 'test_checksum');
+          expectedChecksum: 'test_checksum',
+        );
 
         // Act
         await downloadService.getPersistedDownloadState();
@@ -98,7 +105,7 @@ void main() {
         expect(queue[0]['expectedChecksum'], 'test_checksum');
 
         // Cleanup
-          await retryDeleteDirectory(tempDir);
+        await retryDeleteDirectory(tempDir);
       });
 
       test('should load download state from disk', () async {
@@ -116,7 +123,7 @@ void main() {
               'totalBytes': 1000,
               'downloadedBytes': 500,
               'lastUpdated': DateTime.now().toIso8601String(),
-            }
+            },
           },
           'resumeData': {
             'chart1': {
@@ -125,7 +132,7 @@ void main() {
               'downloadedBytes': 500,
               'lastAttempt': DateTime.now().toIso8601String(),
               'checksum': 'test_checksum',
-            }
+            },
           },
           'queue': [
             {
@@ -134,24 +141,29 @@ void main() {
               'priority': 'normal',
               'addedAt': DateTime.now().toIso8601String(),
               'expectedChecksum': null,
-            }
+            },
           ],
         };
 
-  await stateFile.writeAsString(jsonEncode(testState));
-  // Create corresponding partial file so resume sweep retains metadata
-  final partFile = File('${tempDir.path}/chart1.zip.part');
-  await partFile.writeAsBytes(List.filled(500, 1));
+        await stateFile.writeAsString(jsonEncode(testState));
+        // Create corresponding partial file so resume sweep retains metadata
+        final partFile = File('${tempDir.path}/chart1.zip.part');
+        await partFile.writeAsBytes(List.filled(500, 1));
 
         // Override the charts directory to point to our temp directory
-        when(mockStorageService.getChartsDirectory())
-            .thenAnswer((_) async => tempDir);
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenAnswer((_) async => tempDir);
 
         // Act
         await downloadService.recoverDownloads([]);
 
         // Assert
-        verifyInfoLogged(mockLogger, 'Download state loaded from disk', expectedContext: 'Download');
+        verifyInfoLogged(
+          mockLogger,
+          'Download state loaded from disk',
+          expectedContext: 'Download',
+        );
 
         // Verify queue is loaded
         final queue = await downloadService.getDetailedQueue();
@@ -160,7 +172,7 @@ void main() {
         expect(queue[0].url, 'http://example.com/chart2.zip');
 
         // Cleanup
-          await retryDeleteDirectory(tempDir);
+        await retryDeleteDirectory(tempDir);
       });
 
       test('should handle missing state file gracefully', () async {
@@ -168,17 +180,18 @@ void main() {
         final tempDir = Directory.systemTemp.createTempSync('download_test_');
 
         // Override the charts directory to point to our temp directory (no state file)
-        when(mockStorageService.getChartsDirectory())
-            .thenAnswer((_) async => tempDir);
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenAnswer((_) async => tempDir);
 
         // Act
         await downloadService.recoverDownloads([]);
 
         // Assert
-  verifyDebugLogged(mockLogger, 'No persistent download state found');
+        verifyDebugLogged(mockLogger, 'No persistent download state found');
 
         // Cleanup
-          await retryDeleteDirectory(tempDir);
+        await retryDeleteDirectory(tempDir);
       });
 
       test('should handle corrupted state file gracefully', () async {
@@ -190,17 +203,22 @@ void main() {
         await stateFile.writeAsString('invalid json content');
 
         // Override the charts directory to point to our temp directory
-        when(mockStorageService.getChartsDirectory())
-            .thenAnswer((_) async => tempDir);
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenAnswer((_) async => tempDir);
 
         // Act
         await downloadService.recoverDownloads([]);
 
         // Assert
-        verifyWarningLogged(mockLogger, 'Failed to load download state', expectedContext: 'Download');
+        verifyWarningLogged(
+          mockLogger,
+          'Failed to load download state',
+          expectedContext: 'Download',
+        );
 
         // Cleanup
-          await retryDeleteDirectory(tempDir);
+        await retryDeleteDirectory(tempDir);
       });
     });
 
@@ -210,21 +228,28 @@ void main() {
         final tempDir = Directory.systemTemp.createTempSync('download_test_');
 
         // Override the charts directory to point to our temp directory
-        when(mockStorageService.getChartsDirectory())
-            .thenAnswer((_) async => tempDir);
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenAnswer((_) async => tempDir);
 
         const chartId = 'chart1';
         const url = 'http://example.com/chart1.zip';
         const checksum = 'test_checksum';
 
         // Simulate a download failure to trigger resume data saving
-        when(mockHttpClient.downloadFile(any, any,
-          cancelToken: anyNamed('cancelToken'),
-          onReceiveProgress: anyNamed('onReceiveProgress')))
-            .thenThrow(DioException(
-              requestOptions: RequestOptions(path: url),
-              type: DioExceptionType.connectionTimeout,
-            ));
+        when(
+          mockHttpClient.downloadFile(
+            any,
+            any,
+            cancelToken: anyNamed('cancelToken'),
+            onReceiveProgress: anyNamed('onReceiveProgress'),
+          ),
+        ).thenThrow(
+          DioException(
+            requestOptions: RequestOptions(path: url),
+            type: DioExceptionType.connectionTimeout,
+          ),
+        );
 
         // Reconfigure service to allow network suitability so direct download call doesn't block
         downloadService = DownloadServiceImpl(
@@ -238,7 +263,11 @@ void main() {
 
         // Act - invoke download (will throw due to mocked timeout)
         try {
-          await downloadService.downloadChart(chartId, url, expectedChecksum: checksum);
+          await downloadService.downloadChart(
+            chartId,
+            url,
+            expectedChecksum: checksum,
+          );
           fail('Expected downloadChart to throw');
         } catch (_) {
           // Expected - continue to assertions
@@ -260,7 +289,7 @@ void main() {
         expect(resumeData[chartId]['checksum'], checksum);
 
         // Cleanup
-          await retryDeleteDirectory(tempDir);
+        await retryDeleteDirectory(tempDir);
       });
 
       test('should restore resume data on recovery', () async {
@@ -281,7 +310,7 @@ void main() {
               'downloadedBytes': 500,
               'lastAttempt': DateTime.now().toIso8601String(),
               'checksum': checksum,
-            }
+            },
           },
           'queue': <dynamic>[],
         };
@@ -289,8 +318,9 @@ void main() {
         await stateFile.writeAsString(jsonEncode(testState));
 
         // Override the charts directory to point to our temp directory
-        when(mockStorageService.getChartsDirectory())
-            .thenAnswer((_) async => tempDir);
+        when(
+          mockStorageService.getChartsDirectory(),
+        ).thenAnswer((_) async => tempDir);
 
         // Recreate service instance to ensure clean state and proper directory binding
         downloadService = DownloadServiceImpl(
@@ -307,15 +337,17 @@ void main() {
         // Allow any asynchronous persistence follow-ups (should be minimal)
         await Future.delayed(const Duration(milliseconds: 20));
 
-  // Assert - state file still exists; recovery completed without exception
-  final reloadedFile = File('${tempDir.path}/.download_state.json');
-  expect(await reloadedFile.exists(), isTrue);
-  final reloadedJson = jsonDecode(await reloadedFile.readAsString()) as Map<String, dynamic>;
-  // Resume data presence may be pruned by stale sweep if environment differs; just ensure structure exists
-  expect(reloadedJson.containsKey('resumeData'), isTrue);
+        // Assert - state file still exists; recovery completed without exception
+        final reloadedFile = File('${tempDir.path}/.download_state.json');
+        expect(await reloadedFile.exists(), isTrue);
+        final reloadedJson =
+            jsonDecode(await reloadedFile.readAsString())
+                as Map<String, dynamic>;
+        // Resume data presence may be pruned by stale sweep if environment differs; just ensure structure exists
+        expect(reloadedJson.containsKey('resumeData'), isTrue);
 
         // Cleanup
-          await retryDeleteDirectory(tempDir);
+        await retryDeleteDirectory(tempDir);
       });
     });
   });
