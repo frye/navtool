@@ -1,0 +1,139 @@
+{
+  "description": "S-57 Primitive test data for geometry assembly tests",
+  "comment": "Contains nodes, edges, and FSPT data for DEPARE (area), COALNE (line), and SOUNDG (point) test scenarios",
+  
+  "nodes": {
+    "1": {"id": 1, "x": 0.0, "y": 0.0},
+    "2": {"id": 2, "x": 10.0, "y": 0.0},
+    "3": {"id": 3, "x": 10.0, "y": 10.0},
+    "4": {"id": 4, "x": 0.0, "y": 10.0}
+  },
+  
+  "edges": {
+    "1": {
+      "id": 1,
+      "nodes": [
+        {"id": 1, "x": 0.0, "y": 0.0},
+        {"id": 2, "x": 10.0, "y": 0.0}
+      ]
+    },
+    "2": {
+      "id": 2, 
+      "nodes": [
+        {"id": 2, "x": 10.0, "y": 0.0},
+        {"id": 3, "x": 10.0, "y": 10.0}
+      ]
+    },
+    "3": {
+      "id": 3,
+      "nodes": [
+        {"id": 3, "x": 10.0, "y": 10.0},
+        {"id": 4, "x": 0.0, "y": 10.0}
+      ]
+    },
+    "4": {
+      "id": 4,
+      "nodes": [
+        {"id": 4, "x": 0.0, "y": 10.0},
+        {"id": 1, "x": 0.0, "y": 0.0}
+      ]
+    }
+  },
+
+  "features": {
+    "DEPARE": {
+      "description": "Depth Area polygon formed by edges E1,E2,E3,E4",
+      "pointers": [
+        {"refId": 1, "isEdge": true, "reverse": false},
+        {"refId": 2, "isEdge": true, "reverse": false},
+        {"refId": 3, "isEdge": true, "reverse": false},
+        {"refId": 4, "isEdge": true, "reverse": false}
+      ],
+      "expected_geometry": "polygon",
+      "expected_coordinates": [
+        [0.0, 0.0],
+        [10.0, 0.0],
+        [10.0, 10.0],
+        [0.0, 10.0],
+        [0.0, 0.0]
+      ]
+    },
+    
+    "COALNE": {
+      "description": "Coastline formed by edges E1+E2 with E2 reversed for orientation test",
+      "pointers": [
+        {"refId": 1, "isEdge": true, "reverse": false},
+        {"refId": 2, "isEdge": true, "reverse": true}
+      ],
+      "expected_geometry": "line",
+      "expected_coordinates": [
+        [0.0, 0.0],
+        [10.0, 0.0],
+        [10.0, 10.0],
+        [10.0, 0.0]
+      ],
+      "note": "E2 reversed creates non-contiguous line segment as per S-57 specification"
+    },
+    
+    "COALNE_CONTIGUOUS": {
+      "description": "Contiguous coastline formed by edges E1+E2 without reversal",
+      "pointers": [
+        {"refId": 1, "isEdge": true, "reverse": false},
+        {"refId": 2, "isEdge": true, "reverse": false}
+      ],
+      "expected_geometry": "line",
+      "expected_coordinates": [
+        [0.0, 0.0],
+        [10.0, 0.0],
+        [10.0, 10.0]
+      ],
+      "note": "Demonstrates proper coordinate stitching when edges are contiguous"
+    },
+    
+    "SOUNDG": {
+      "description": "Sounding point referencing single node N3",
+      "pointers": [
+        {"refId": 3, "isEdge": false, "reverse": false}
+      ],
+      "expected_geometry": "point",
+      "expected_coordinates": [
+        [10.0, 10.0]
+      ]
+    }
+  },
+
+  "test_scenarios": {
+    "stitching_test": {
+      "description": "Tests edge stitching without duplicate coordinates",
+      "edges_used": ["E1", "E2"],
+      "expected_no_duplicate_at": [10.0, 0.0]
+    },
+    
+    "degenerate_edge": {
+      "description": "Edge with single node for degeneracy testing",
+      "id": 99,
+      "nodes": [
+        {"id": 1, "x": 0.0, "y": 0.0}
+      ]
+    },
+    
+    "missing_primitive": {
+      "description": "Reference to non-existent primitive ID 999",
+      "pointers": [
+        {"refId": 999, "isEdge": true, "reverse": false}
+      ]
+    },
+    
+    "self_intersection_polygon": {
+      "description": "Bow-tie polygon for self-intersection test",
+      "nodes": [
+        {"id": 10, "x": 0.0, "y": 0.0},
+        {"id": 11, "x": 2.0, "y": 2.0},
+        {"id": 12, "x": 2.0, "y": 0.0},
+        {"id": 13, "x": 0.0, "y": 2.0},
+        {"id": 10, "x": 0.0, "y": 0.0}
+      ],
+      "expected_self_intersection": true
+    }
+  }
+}

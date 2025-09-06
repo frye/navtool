@@ -257,3 +257,187 @@ class S57ParsedData {
     return spatialIndex.queryDepthFeatures();
   }
 }
+
+/// S-57 Node primitive (isolated spatial point)
+class S57Node {
+  final int id;
+  final double x;
+  final double y;
+
+  const S57Node({
+    required this.id,
+    required this.x,
+    required this.y,
+  });
+
+  /// Convert to S57Coordinate for compatibility with existing code
+  S57Coordinate toCoordinate() {
+    return S57Coordinate(latitude: y, longitude: x);
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is S57Node && other.id == id && other.x == x && other.y == y;
+  }
+
+  @override
+  int get hashCode => Object.hash(id, x, y);
+
+  @override
+  String toString() => 'S57Node(id: $id, x: $x, y: $y)';
+}
+
+/// S-57 Edge primitive (chain of connected nodes)  
+class S57Edge {
+  final int id;
+  final List<S57Node> nodes;
+
+  const S57Edge({
+    required this.id,
+    required this.nodes,
+  });
+
+  /// Get coordinates as list for geometry construction
+  List<S57Coordinate> toCoordinates() {
+    return nodes.map((node) => node.toCoordinate()).toList();
+  }
+
+  /// Check if edge is degenerate (less than 2 nodes)
+  bool get isDegenerate => nodes.length < 2;
+
+  @override
+  bool operator ==(Object other) {
+    return other is S57Edge && other.id == id && _listEquals(other.nodes, nodes);
+  }
+
+  @override
+  int get hashCode => Object.hash(id, nodes);
+
+  @override
+  String toString() => 'S57Edge(id: $id, nodes: ${nodes.length})';
+
+  bool _listEquals<T>(List<T> a, List<T> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+}
+
+/// S-57 Spatial Pointer from FSPT/VRPT records
+class S57SpatialPointer {
+  final int refId;        // Target node or edge ID
+  final bool isEdge;      // True if edge primitive, false if node
+  final bool reverse;     // Orientation flag - reverse coordinate sequence if true
+
+  const S57SpatialPointer({
+    required this.refId,
+    required this.isEdge,
+    required this.reverse,
+  });
+
+  /// Create from parsed FSPT field data
+  factory S57SpatialPointer.fromFspt(Map<String, dynamic> fsptData) {
+    final spatialRecord = fsptData['spatial_record'] as int? ?? 0;
+    final spatialType = fsptData['spatial_type'] as int? ?? 0;
+    final spatialOrientation = fsptData['spatial_orientation'] as int? ?? 0;
+
+    return S57SpatialPointer(
+      refId: spatialRecord,
+      isEdge: spatialType == 2, // S-57 convention: 1=node, 2=edge
+      reverse: spatialOrientation == 2, // S-57 convention: 1=forward, 2=reverse
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is S57SpatialPointer &&
+        other.refId == refId &&
+        other.isEdge == isEdge &&
+        other.reverse == reverse;
+  }
+
+  @override
+  int get hashCode => Object.hash(refId, isEdge, reverse);
+
+  @override
+  String toString() => 'S57SpatialPointer(refId: $refId, isEdge: $isEdge, reverse: $reverse)';
+}
+
+/// Coordinate wrapper for geometry assembly
+class Coordinate {
+  final double x;
+  final double y;
+
+  const Coordinate(this.x, this.y);
+
+  /// Create from S57Coordinate
+  factory Coordinate.fromS57(S57Coordinate coord) {
+    return Coordinate(coord.longitude, coord.latitude);
+  }
+
+  /// Convert to S57Coordinate
+  S57Coordinate toS57() {
+    return S57Coordinate(latitude: y, longitude: x);
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is Coordinate && other.x == x && other.y == y;
+  }
+
+  @override
+  int get hashCode => Object.hash(x, y);
+
+  @override
+  String toString() => 'Coordinate($x, $y)';
+}
+
+/// Generic S-57 geometry result from assembly process
+class S57Geometry {
+  final S57GeometryType type;
+  final List<List<Coordinate>> rings; // Point: single ring with one coord, Line: single ring, Polygon: multiple rings
+
+  const S57Geometry({
+    required this.type,
+    required this.rings,
+  });
+
+  /// Create point geometry
+  factory S57Geometry.point(Coordinate coord) {
+    return S57Geometry(
+      type: S57GeometryType.point,
+      rings: [[coord]],
+    );
+  }
+
+  /// Create line geometry
+  factory S57Geometry.line(List<Coordinate> coords) {
+    return S57Geometry(
+      type: S57GeometryType.line,
+      rings: [coords],
+    );
+  }
+
+  /// Create polygon geometry
+  factory S57Geometry.polygon(List<List<Coordinate>> rings) {
+    return S57Geometry(
+      type: S57GeometryType.area,
+      rings: rings,
+    );
+  }
+
+  /// Get all coordinates as flat list
+  List<Coordinate> get allCoordinates {
+    return rings.expand((ring) => ring).toList();
+  }
+
+  /// Convert to legacy S57Coordinate list for backward compatibility
+  List<S57Coordinate> toS57Coordinates() {
+    return allCoordinates.map((coord) => coord.toS57()).toList();
+  }
+
+  @override
+  String toString() => 'S57Geometry(type: $type, rings: ${rings.length})';
+}
