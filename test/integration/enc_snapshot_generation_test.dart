@@ -173,7 +173,33 @@ void main() {
       expect(EncTestUtilities.isSnapshotGenerationAllowed, isFalse);
     });
     
-    testWidgets('should validate generated snapshot can be used for comparison', (tester) async {
+    testWidgets('should generate example golden snapshots when enabled', (tester) async {
+      if (!EncTestUtilities.isSnapshotGenerationAllowed) {
+        print('Skipping snapshot generation - set ALLOW_SNAPSHOT_GEN=1 to enable');
+        print('This test would generate example golden snapshots for:');
+        print('  - US5WA50M (Harbor chart)');
+        print('  - US3WA01M (Coastal chart)');
+        return;
+      }
+      
+      print('Generating example golden snapshots...');
+      
+      // Generate example snapshots for both charts
+      await EncTestUtilities.createExampleSnapshots();
+      
+      // Verify snapshots were created
+      final primarySnapshot = await EncTestUtilities.loadSnapshot(EncTestUtilities.primaryChartId);
+      final secondarySnapshot = await EncTestUtilities.loadSnapshot(EncTestUtilities.secondaryChartId);
+      
+      expect(primarySnapshot, isNotNull, 
+          reason: 'Primary chart snapshot should be generated');
+      expect(secondarySnapshot, isNotNull, 
+          reason: 'Secondary chart snapshot should be generated');
+      
+      print('✓ Generated snapshots for both charts');
+      print('  Primary: ${primarySnapshot!.cellId} (${primarySnapshot.featureFrequency.length} feature types)');
+      print('  Secondary: ${secondarySnapshot!.cellId} (${secondarySnapshot.featureFrequency.length} feature types)');
+    });
       if (!EncTestUtilities.isSnapshotGenerationAllowed) {
         print('Skipping comparison validation test - set ALLOW_SNAPSHOT_GEN=1 to enable');
         return;
