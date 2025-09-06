@@ -277,8 +277,8 @@ class EncTestUtilities {
     for (final feature in parsedData.features) {
       if (feature.featureType == S57FeatureType.depthArea) {
         totalDepthFeatures++;
-        final drval1 = feature.attributes['DRVAL1'] as double?;
-        final drval2 = feature.attributes['DRVAL2'] as double?;
+        final drval1 = _parseNumericDepth(feature.attributes['DRVAL1'], 'DEPARE DRVAL1', feature.recordId, warnings);
+        final drval2 = _parseNumericDepth(feature.attributes['DRVAL2'], 'DEPARE DRVAL2', feature.recordId, warnings);
         
         if (drval1 != null && (drval1 < minDepth || drval1 > maxDepth)) {
           warnings.add('DEPARE DRVAL1 out of range: ${drval1}m (feature ${feature.recordId})');
@@ -291,7 +291,7 @@ class EncTestUtilities {
         }
       } else if (feature.featureType == S57FeatureType.sounding) {
         totalDepthFeatures++;
-        final valsou = feature.attributes['VALSOU'] as double?;
+        final valsou = _parseNumericDepth(feature.attributes['VALSOU'], 'SOUNDG VALSOU', feature.recordId, warnings);
         
         if (valsou != null && (valsou < minDepth || valsou > maxDepth)) {
           warnings.add('SOUNDG VALSOU out of range: ${valsou}m (feature ${feature.recordId})');
@@ -307,6 +307,26 @@ class EncTestUtilities {
       minDepth: minDepth,
       maxDepth: maxDepth,
     );
+  }
+
+  /// Attempt to parse a depth-related numeric attribute. Accepts int, double, or numeric strings.
+  /// Returns null for missing or unparseable values and records a warning for invalid formats.
+  static double? _parseNumericDepth(Object? raw, String label, int recordId, List<String> warnings) {
+    if (raw == null) {
+      return null; // missing is acceptable
+    }
+    if (raw is double) return raw;
+    if (raw is int) return raw.toDouble();
+    if (raw is String) {
+      final cleaned = raw.trim();
+      if (cleaned.isEmpty) return null;
+      final parsed = double.tryParse(cleaned);
+      if (parsed != null) return parsed;
+      warnings.add('$label has non-numeric value "$raw" (feature $recordId)');
+      return null;
+    }
+    warnings.add('$label has unsupported value type ${raw.runtimeType} (feature $recordId)');
+    return null;
   }
   
   /// Check if snapshot generation is allowed

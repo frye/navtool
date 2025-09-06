@@ -201,52 +201,45 @@ void main() {
       print('  Primary: ${primarySnapshot!.cellId} (${primarySnapshot.featureFrequency.length} feature types)');
       print('  Secondary: ${secondarySnapshot!.cellId} (${secondarySnapshot.featureFrequency.length} feature types)');
     });
+    testWidgets('should validate snapshot comparison logic when enabled', (tester) async {
       if (!EncTestUtilities.isSnapshotGenerationAllowed) {
         print('Skipping comparison validation test - set ALLOW_SNAPSHOT_GEN=1 to enable');
         return;
       }
-      
+
       const testMetadata = EncMetadata(
         cellId: 'COMPARISON_TEST',
         editionNumber: 1,
         updateNumber: 0,
         usageBand: 5,
       );
-      
+
       final originalFrequencies = {
         'DEPARE': 100,
         'COALNE': 10,
         'LIGHTS': 5,
       };
-      
+
       const testChartId = 'COMPARISON_TEST';
       final testSnapshotFile = File('test/fixtures/golden/${testChartId.toLowerCase()}_freq.json');
-      
-      // Clean up
+
       if (testSnapshotFile.existsSync()) {
         await testSnapshotFile.delete();
       }
-      
-      // Generate snapshot
+
       await EncTestUtilities.generateSnapshot(testChartId, testMetadata, originalFrequencies);
-      
-      // Load the generated snapshot
       final snapshot = await EncTestUtilities.loadSnapshot(testChartId);
       expect(snapshot, isNotNull);
-      
-      // Test comparison with identical data
+
       final identicalComparison = EncTestUtilities.compareWithSnapshot(
         originalFrequencies,
         snapshot!,
         tolerancePercent: 10.0,
       );
-      
       expect(identicalComparison.isSuccess, isTrue);
       expect(identicalComparison.featuresOutOfTolerance, equals(0));
-      
       print('Generated snapshot comparison validation passed');
-      
-      // Clean up
+
       await testSnapshotFile.delete();
     });
   });

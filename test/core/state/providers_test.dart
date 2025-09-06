@@ -13,6 +13,9 @@ import 'package:navtool/core/models/geographic_bounds.dart';
 /// Comprehensive tests for Riverpod providers
 /// Tests provider creation, computed providers, and state selectors
 void main() {
+  // Ensure Flutter binding is initialized for any platform channel usage
+  // (e.g., SharedPreferences in AppSettingsNotifier initialization)
+  TestWidgetsFlutterBinding.ensureInitialized();
   group('Providers Tests', () {
     late ProviderContainer container;
 
