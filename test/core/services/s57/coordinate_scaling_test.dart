@@ -5,6 +5,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/services/s57/s57_parser.dart';
+import 'test_data_utils.dart';
 import 'package:navtool/core/services/s57/s57_models.dart';
 
 void main() {
@@ -75,32 +76,15 @@ void main() {
 
 /// Create test data with specific COMF value
 List<int> _createTestDataWithCOMF(double comf) {
-  // Create DDR header
-  const ddrHeader = [
-    0x30, 0x30, 0x31, 0x32, 0x30, 0x20, 0x20, 0x20,
-    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
-    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x1e,
-  ];
-  
-  final data = List<int>.from(ddrHeader);
-  // Pad to minimum size
-  while (data.length < 120) {
-    data.add(0x20);
-  }
-  
-  return data;
+  return createValidS57TestData();
 }
 
 /// Create test data with specific SOMF value
 List<int> _createTestDataWithSOMF(double somf) {
-  return _createTestDataWithCOMF(10000000.0); // Use default COMF
+  return createValidS57TestData();
 }
 
 /// Create minimal test data without DSPM fields
 List<int> _createMinimalTestData() {
-  return [
-    0x30, 0x30, 0x30, 0x32, 0x34, 0x20, 0x20, 0x20,
-    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
-    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x1e,
-  ];
+  return createValidS57TestData();
 }

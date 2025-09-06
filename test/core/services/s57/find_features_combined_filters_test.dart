@@ -5,6 +5,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/services/s57/s57_parser.dart';
+import 'test_data_utils.dart';
 import 'package:navtool/core/services/s57/s57_models.dart';
 
 void main() {
@@ -185,18 +186,5 @@ void main() {
 
 /// Create test data with various features for comprehensive testing
 List<int> _createTestDataWithVariousFeatures() {
-  // Create S-57 structure that generates diverse feature set
-  const ddrHeader = [
-    0x30, 0x30, 0x31, 0x32, 0x30, 0x20, 0x20, 0x20,
-    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
-    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x1e,
-  ];
-  
-  final data = List<int>.from(ddrHeader);
-  // Pad to minimum size to trigger synthetic feature generation
-  while (data.length < 120) {
-    data.add(0x20);
-  }
-  
-  return data;
+  return createValidS57TestData();
 }
