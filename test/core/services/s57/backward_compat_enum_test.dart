@@ -96,10 +96,10 @@ void main() {
     test('should provide mapping statistics for validation', () {
       final stats = S57BackwardCompatibilityAdapter.getMappingStats();
       
-      expect(stats, containsKey('total_legacy_types'));
-      expect(stats, containsKey('mapped_to_official'));
-      expect(stats, containsKey('official_acronyms'));
-      expect(stats, containsKey('unknown_mappings'));
+      expect(stats.keys, contains('total_legacy_types'));
+      expect(stats.keys, contains('mapped_to_official'));
+      expect(stats.keys, contains('official_acronyms'));
+      expect(stats.keys, contains('unknown_mappings'));
       
       // Should have reasonable coverage
       final totalTypes = stats['total_legacy_types'] as int;

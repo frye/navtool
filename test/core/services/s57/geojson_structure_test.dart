@@ -16,7 +16,7 @@ void main() {
       
       // Should be a FeatureCollection
       expect(geoJson['type'], equals('FeatureCollection'));
-      expect(geoJson, containsKey('features'));
+      expect(geoJson.keys, contains('features'));
       expect(geoJson['features'], isA<List>());
       
       print('GeoJSON type: ${geoJson['type']}');
@@ -35,19 +35,19 @@ void main() {
         
         // Required GeoJSON Feature properties
         expect(feature['type'], equals('Feature'));
-        expect(feature, containsKey('id'));
-        expect(feature, containsKey('properties'));
-        expect(feature, containsKey('geometry'));
+        expect(feature.keys, contains('id'));
+        expect(feature.keys, contains('properties'));
+        expect(feature.keys, contains('geometry'));
         
         // Properties should contain typeAcronym and attrs
         final properties = feature['properties'] as Map<String, dynamic>;
-        expect(properties, containsKey('typeAcronym'));
-        expect(properties, containsKey('attrs'));
+        expect(properties.keys, contains('typeAcronym'));
+        expect(properties.keys, contains('attrs'));
         
         // Geometry should have type and coordinates
         final geometry = feature['geometry'] as Map<String, dynamic>;
-        expect(geometry, containsKey('type'));
-        expect(geometry, containsKey('coordinates'));
+        expect(geometry.keys, contains('type'));
+        expect(geometry.keys, contains('coordinates'));
         
         print('Sample feature ID: ${feature['id']}');
         print('Sample type acronym: ${properties['typeAcronym']}');
@@ -149,10 +149,10 @@ void main() {
         final attrs = properties['attrs'] as Map<String, dynamic>;
         
         // Should not contain internal rendering keys
-        expect(attrs, isNot(containsKey('type')));
-        expect(attrs, isNot(containsKey('color')));
-        expect(attrs, isNot(containsKey('name')));
-        expect(attrs, isNot(containsKey('height')));
+        expect(attrs.keys, isNot(contains('type')));
+        expect(attrs.keys, isNot(contains('color')));
+        expect(attrs.keys, isNot(contains('name')));
+        expect(attrs.keys, isNot(contains('height')));
         
         print('Filtered attributes: ${attrs.keys}');
       }
