@@ -1,5 +1,6 @@
 /// S-57 data models for Electronic Navigational Chart (ENC) parsing
 /// Based on IHO S-57 Edition 3.1 specification
+library;
 
 import 's57_spatial_index.dart';
 
@@ -180,6 +181,19 @@ class S57ChartMetadata {
   final String? title;
   final int? scale;
   final S57Bounds? bounds;
+  
+  // Enhanced metadata fields from DSID/DSPM records
+  final String? cellId;
+  final int? usageBand;
+  final int? editionNumber;
+  final int? updateNumber;
+  final DateTime? issueDate;
+  final int? compilationScale;
+  final String? horizontalDatum;
+  final String? verticalDatum;
+  final String? soundingDatum;
+  final double? comf; // Coordinate multiplication factor
+  final double? somf; // Sounding multiplication factor
 
   const S57ChartMetadata({
     required this.producer,
@@ -189,6 +203,17 @@ class S57ChartMetadata {
     this.title,
     this.scale,
     this.bounds,
+    this.cellId,
+    this.usageBand,
+    this.editionNumber,
+    this.updateNumber,
+    this.issueDate,
+    this.compilationScale,
+    this.horizontalDatum,
+    this.verticalDatum,
+    this.soundingDatum,
+    this.comf,
+    this.somf,
   });
 
   Map<String, dynamic> toMap() {
@@ -200,6 +225,17 @@ class S57ChartMetadata {
       'title': title,
       'scale': scale,
       'bounds': bounds?.toMap(),
+      'cell_id': cellId,
+      'usage_band': usageBand,
+      'edition_number': editionNumber,
+      'update_number': updateNumber,
+      'issue_date': issueDate?.toIso8601String(),
+      'compilation_scale': compilationScale,
+      'horizontal_datum': horizontalDatum,
+      'vertical_datum': verticalDatum,
+      'sounding_datum': soundingDatum,
+      'comf': comf,
+      'somf': somf,
     };
   }
 }
@@ -255,6 +291,166 @@ class S57ParsedData {
   /// Query depth features using spatial index
   List<S57Feature> queryDepthFeatures() {
     return spatialIndex.queryDepthFeatures();
+  }
+
+  /// Find features with flexible filtering options
+  /// 
+  /// Filters are combined with AND logic:
+  /// - types: Filter by S-57 acronyms (e.g., {'DEPARE','SOUNDG'})
+  /// - bounds: Geographic bounding box filter
+  /// - textQuery: Case-insensitive substring search on OBJNAM attribute
+  /// - limit: Maximum number of results (applied after spatial ordering)
+  List<S57Feature> findFeatures({
+    Set<String>? types,
+    S57Bounds? bounds,
+    String? textQuery,
+    int? limit,
+  }) {
+    var results = List<S57Feature>.from(features);
+
+    // Filter by feature types (acronyms)
+    if (types != null && types.isNotEmpty) {
+      results = results.where((feature) {
+        return types.contains(feature.featureType.acronym);
+      }).toList();
+    }
+
+    // Filter by geographic bounds
+    if (bounds != null) {
+      results = results.where((feature) {
+        return feature.coordinates.any((coord) {
+          return coord.latitude >= bounds.south &&
+                 coord.latitude <= bounds.north &&
+                 coord.longitude >= bounds.west &&
+                 coord.longitude <= bounds.east;
+        });
+      }).toList();
+    }
+
+    // Filter by text query on OBJNAM attribute
+    if (textQuery != null && textQuery.isNotEmpty) {
+      final query = textQuery.toLowerCase();
+      results = results.where((feature) {
+        final objnam = feature.attributes['OBJNAM']?.toString();
+        return objnam != null && objnam.toLowerCase().contains(query);
+      }).toList();
+    }
+
+    // Apply limit
+    if (limit != null && limit > 0) {
+      results = results.take(limit).toList();
+    }
+
+    return results;
+  }
+
+  /// Get summary counts by feature type acronym
+  Map<String, int> summary() {
+    final counts = <String, int>{};
+    for (final feature in features) {
+      final acronym = feature.featureType.acronym;
+      counts[acronym] = (counts[acronym] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  /// Export features as GeoJSON FeatureCollection
+  /// 
+  /// - types: Optional filter by S-57 acronyms
+  /// - bounds: Optional geographic bounds filter
+  /// Returns FeatureCollection with WGS84 coordinates
+  Map<String, dynamic> toGeoJson({
+    Set<String>? types,
+    S57Bounds? bounds,
+  }) {
+    // Get filtered features
+    final filteredFeatures = findFeatures(types: types, bounds: bounds);
+
+    // Convert to GeoJSON features
+    final geoJsonFeatures = filteredFeatures.map((feature) {
+      return _featureToGeoJson(feature);
+    }).toList();
+
+    return {
+      'type': 'FeatureCollection',
+      'features': geoJsonFeatures,
+    };
+  }
+
+  /// Convert S57Feature to GeoJSON Feature
+  Map<String, dynamic> _featureToGeoJson(S57Feature feature) {
+    return {
+      'type': 'Feature',
+      'id': feature.recordId.toString(),
+      'properties': {
+        'typeAcronym': feature.featureType.acronym,
+        'attrs': _filterAttributes(feature.attributes),
+      },
+      'geometry': _coordinatesToGeoJsonGeometry(
+        feature.coordinates,
+        feature.geometryType,
+      ),
+    };
+  }
+
+  /// Filter attributes for GeoJSON export (remove internal keys)
+  Map<String, dynamic> _filterAttributes(Map<String, dynamic> attributes) {
+    final filtered = <String, dynamic>{};
+    for (final entry in attributes.entries) {
+      // Skip internal rendering keys
+      if (!['type', 'color', 'name', 'height'].contains(entry.key)) {
+        final value = entry.value;
+        // Convert enum attributes to {code, label} format if needed
+        if (value is Map && value.containsKey('code') && value.containsKey('label')) {
+          filtered[entry.key] = value;
+        } else {
+          filtered[entry.key] = value;
+        }
+      }
+    }
+    return filtered;
+  }
+
+  /// Convert S57 coordinates to GeoJSON geometry
+  Map<String, dynamic> _coordinatesToGeoJsonGeometry(
+    List<S57Coordinate> coordinates,
+    S57GeometryType geometryType,
+  ) {
+    switch (geometryType) {
+      case S57GeometryType.point:
+        if (coordinates.isEmpty) {
+          return {'type': 'Point', 'coordinates': [0.0, 0.0]};
+        }
+        final coord = coordinates.first;
+        return {
+          'type': 'Point',
+          'coordinates': [coord.longitude, coord.latitude],
+        };
+
+      case S57GeometryType.line:
+        final lineCoords = coordinates
+            .map((c) => [c.longitude, c.latitude])
+            .toList();
+        return {
+          'type': 'LineString',
+          'coordinates': lineCoords,
+        };
+
+      case S57GeometryType.area:
+        final ringCoords = coordinates
+            .map((c) => [c.longitude, c.latitude])
+            .toList();
+        // Ensure ring is closed
+        if (ringCoords.isNotEmpty && 
+            (ringCoords.first[0] != ringCoords.last[0] ||
+             ringCoords.first[1] != ringCoords.last[1])) {
+          ringCoords.add([ringCoords.first[0], ringCoords.first[1]]);
+        }
+        return {
+          'type': 'Polygon',
+          'coordinates': [ringCoords],
+        };
+    }
   }
 }
 

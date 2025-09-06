@@ -53,6 +53,7 @@ class S57Parser {
 
   final Uint8List _data;
   int _position = 0;
+  S57ChartMetadata? _metadata; // Chart metadata for coordinate scaling
 
   S57Parser._(List<int> data) : _data = Uint8List.fromList(data);
 
@@ -61,6 +62,7 @@ class S57Parser {
     // Parse first record (DDR + in synthetic test data also contains feature fields)
     final ddrRecord = _parseRecord();
     final metadata = _extractMetadataFromDDR(ddrRecord);
+    _metadata = metadata; // Store for coordinate scaling
 
     final features = <S57Feature>[];
     S57Bounds? chartBounds;
@@ -399,14 +401,17 @@ class S57Parser {
     final coordinates = <S57Coordinate>[];
     int pos = 0;
 
+    // Get COMF from metadata, default to 10000000.0 if not available
+    final comf = _metadata?.comf ?? 10000000.0;
+
     while (pos + 8 <= data.length) {
       final x = _parseCoordinateValue(data, pos);
       final y = _parseCoordinateValue(data, pos + 4);
 
       if (x != null && y != null) {
-        // Convert from S-57 coordinate units to decimal degrees
-        final longitude = x / 10000000.0; // Assuming COMF=10000000
-        final latitude = y / 10000000.0;
+        // Convert from S-57 coordinate units to decimal degrees using dynamic COMF
+        final longitude = x / comf;
+        final latitude = y / comf;
 
         coordinates.add(
           S57Coordinate(latitude: latitude, longitude: longitude),
@@ -424,6 +429,10 @@ class S57Parser {
     final coordinates = <Map<String, double>>[];
     int pos = 0;
 
+    // Get COMF and SOMF from metadata
+    final comf = _metadata?.comf ?? 10000000.0;
+    final somf = _metadata?.somf ?? 10.0;
+
     while (pos + 12 <= data.length) {
       final x = _parseCoordinateValue(data, pos);
       final y = _parseCoordinateValue(data, pos + 4);
@@ -431,9 +440,9 @@ class S57Parser {
 
       if (x != null && y != null && z != null) {
         coordinates.add({
-          'longitude': x / 10000000.0,
-          'latitude': y / 10000000.0,
-          'depth': z / 100.0, // Depth in meters
+          'longitude': x / comf,
+          'latitude': y / comf,
+          'depth': z / somf, // Depth in meters using SOMF
         });
       }
 
@@ -528,12 +537,84 @@ class S57Parser {
 
   /// Extract metadata from DDR (Data Descriptive Record)
   S57ChartMetadata _extractMetadataFromDDR(Map<String, dynamic> record) {
+    final fields = record['fields'] as Map<String, dynamic>? ?? {};
+    
+    // Extract DSID (Dataset Identification) fields
+    String? cellId;
+    int? editionNumber;
+    int? updateNumber;
+    DateTime? issueDate;
+    
+    if (fields.containsKey('DSID')) {
+      final dsid = fields['DSID'];
+      if (dsid is Uint8List) {
+        try {
+          final dsidStr = ascii.decode(dsid).trim();
+          // Extract cell ID from dataset name (first part before spaces)
+          final parts = dsidStr.split(' ');
+          if (parts.isNotEmpty) {
+            cellId = parts.first;
+          }
+          
+          // Try to extract edition and update numbers from string
+          final editionMatch = RegExp(r'Edition\s*(\d+)', caseSensitive: false).firstMatch(dsidStr);
+          if (editionMatch != null) {
+            editionNumber = int.tryParse(editionMatch.group(1)!);
+          }
+          
+          final updateMatch = RegExp(r'Update\s*(\d+)', caseSensitive: false).firstMatch(dsidStr);
+          if (updateMatch != null) {
+            updateNumber = int.tryParse(updateMatch.group(1)!);
+          }
+        } catch (_) {
+          // Ignore parsing errors
+        }
+      }
+    }
+    
+    // Extract DSPM (Dataset Parameter) fields
+    int? compilationScale;
+    String? horizontalDatum;
+    String? verticalDatum;
+    String? soundingDatum;
+    double? comf = 10000000.0; // Default COMF for ENC charts
+    double? somf = 10.0; // Default SOMF for soundings
+    
+    if (fields.containsKey('DSPM')) {
+      final dspm = fields['DSPM'];
+      if (dspm is Map<String, dynamic>) {
+        compilationScale = dspm['CSCL'] as int?;
+        horizontalDatum = dspm['HDAT'] as String? ?? 'WGS84';
+        verticalDatum = dspm['VDAT'] as String? ?? 'MLLW';
+        soundingDatum = dspm['SDAT'] as String? ?? 'MLLW';
+        comf = (dspm['COMF'] as num?)?.toDouble() ?? 10000000.0;
+        somf = (dspm['SOMF'] as num?)?.toDouble() ?? 10.0;
+      }
+    }
+    
+    // Extract usage band from cell ID (3rd character for NOAA charts)
+    int? usageBand;
+    if (cellId != null && cellId.length >= 3) {
+      usageBand = int.tryParse(cellId[2]);
+    }
+
     // Extract basic metadata with fallbacks
     return S57ChartMetadata(
       producer: 'NOAA',
       version: '3.1',
       creationDate: DateTime.now(),
       title: 'S-57 Electronic Navigational Chart',
+      cellId: cellId,
+      usageBand: usageBand,
+      editionNumber: editionNumber ?? 1,
+      updateNumber: updateNumber ?? 0,
+      issueDate: issueDate ?? DateTime.now(),
+      compilationScale: compilationScale,
+      horizontalDatum: horizontalDatum,
+      verticalDatum: verticalDatum,
+      soundingDatum: soundingDatum,
+      comf: comf,
+      somf: somf,
     );
   }
 
@@ -844,7 +925,7 @@ class S57Parser {
         final minDepth = attributes['DRVAL1'] ?? attributes['min_depth'];
         final maxDepth = attributes['DRVAL2'] ?? attributes['max_depth'];
         if (minDepth != null && maxDepth != null) {
-          return 'Depth Area ${minDepth}-${maxDepth}m';
+          return 'Depth Area $minDepth-${maxDepth}m';
         }
         return 'Depth Area';
       case S57FeatureType.sounding:
