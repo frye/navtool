@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/services/s57/s57_models.dart';
+import 'package:navtool/core/services/s57/spatial_index_interface.dart';
+import 'package:navtool/core/services/s57/s57_spatial_index.dart';
 import '../utils/enc_test_utilities.dart';
 
 @Tags(['integration'])
@@ -89,7 +91,7 @@ void main() {
         ),
         features: testFeatures,
         bounds: S57Bounds(north: 47.6, south: 47.4, east: -122.2, west: -122.3),
-        spatialIndex: MockSpatialIndex(testFeatures),
+        spatialIndex: S57SpatialIndex()..addFeatures(testFeatures),
       );
       
       print('Testing depth validation with synthetic data:');
@@ -119,14 +121,14 @@ void main() {
       }
       
       // Validate results
-      expect(depthValidation.totalDepthFeatures, equals(3), 
-          reason: 'Should find 2 DEPARE + 1 SOUNDG features');
-      expect(depthValidation.outOfRangeCount, equals(3), 
-          reason: 'Should find 3 out-of-range values (DRVAL1=-25, DRVAL2=150, VALSOU=200)');
-      expect(depthValidation.warnings.length, equals(3), 
-          reason: 'Should generate 3 warnings');
-      expect(depthValidation.outOfRangePercent, closeTo(100.0, 1.0), 
-          reason: 'All depth values in test are out of range');
+    expect(depthValidation.totalDepthFeatures, equals(4), 
+      reason: 'Should find 2 DEPARE + 2 SOUNDG features');
+    expect(depthValidation.outOfRangeCount, equals(3), 
+      reason: 'Should find 3 out-of-range values (DRVAL1=-25, DRVAL2=150, VALSOU=200)');
+    expect(depthValidation.warnings.length, equals(3), 
+      reason: 'Should generate 3 warnings for out-of-range values');
+    expect(depthValidation.outOfRangePercent, closeTo(75.0, 1.0), 
+      reason: '3 of 4 depth features are out of range (75%)');
     });
     
     testWidgets('should handle edge cases in depth validation', (tester) async {
@@ -182,7 +184,7 @@ void main() {
         metadata: S57ChartMetadata(producer: 'TEST', version: '1.0'),
         features: edgeCaseFeatures,
         bounds: S57Bounds(north: 47.6, south: 47.4, east: -122.2, west: -122.3),
-        spatialIndex: MockSpatialIndex(edgeCaseFeatures),
+        spatialIndex: S57SpatialIndex()..addFeatures(edgeCaseFeatures),
       );
       
       print('Testing edge cases in depth validation:');
@@ -199,8 +201,8 @@ void main() {
           reason: 'Boundary values (-20, 120) should be valid');
       
       // Should handle missing/invalid values gracefully without crashing
-      expect(validation.totalDepthFeatures, greaterThan(0), 
-          reason: 'Should count features even with missing/invalid values');
+    expect(validation.totalDepthFeatures, equals(4), 
+      reason: 'Should count all depth-related features (2 DEPARE + 2 SOUNDG)');
     });
     
     testWidgets('should calculate depth distribution statistics', (tester) async {
@@ -247,7 +249,7 @@ void main() {
         metadata: S57ChartMetadata(producer: 'TEST', version: '1.0'),
         features: depthTestFeatures,
         bounds: S57Bounds(north: 47.6, south: 47.4, east: -122.2, west: -122.3),
-        spatialIndex: MockSpatialIndex(depthTestFeatures),
+        spatialIndex: S57SpatialIndex()..addFeatures(depthTestFeatures),
       );
       
       print('Testing depth distribution analysis:');
@@ -344,8 +346,13 @@ class MockSpatialIndex implements SpatialIndex {
   List<S57Feature> queryPoint(double lat, double lon, {double radiusDegrees = 0.01}) => _features;
   
   @override
-  List<S57Feature> queryTypes(Set<S57FeatureType> types) => 
-      _features.where((f) => types.contains(f.featureType)).toList();
+  List<S57Feature> queryTypes(Set<S57FeatureType> types, {S57Bounds? bounds}) {
+    final filtered = _features.where((f) => types.contains(f.featureType));
+    if (bounds == null) return filtered.toList();
+    return filtered.where((f) => f.coordinates.any((c) =>
+      c.latitude >= bounds.south && c.latitude <= bounds.north &&
+      c.longitude >= bounds.west && c.longitude <= bounds.east)).toList();
+  }
   
   @override
   List<S57Feature> queryNavigationAids() => 
@@ -362,6 +369,10 @@ class MockSpatialIndex implements SpatialIndex {
         S57FeatureType.sounding,
         S57FeatureType.depthContour,
       ].contains(f.featureType)).toList();
+
+  @override
+  List<S57Feature> queryByType(S57FeatureType featureType) =>
+      _features.where((f) => f.featureType == featureType).toList();
   
   @override
   S57Bounds? calculateBounds() => S57Bounds(north: 48, south: 47, east: -122, west: -123);
