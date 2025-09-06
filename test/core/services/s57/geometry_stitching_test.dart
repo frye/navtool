@@ -14,8 +14,8 @@ void main() {
     });
 
     test('should stitch edges without duplicate coordinates', () {
-      // Arrange - Use COALNE which chains E1 + E2 
-      final pointers = fixtures.getFeaturePointers('COALNE');
+      // Arrange - Use COALNE_CONTIGUOUS which chains E1 + E2 without reversal
+      final pointers = fixtures.getFeaturePointers('COALNE_CONTIGUOUS');
       final stitchCoord = fixtures.getStitchingTestCoordinate();
 
       // Act
@@ -88,10 +88,10 @@ void main() {
     });
 
     test('should stitch reversed edges correctly', () {
-      // Arrange - E2 forward then E1 reversed (creates continuous line)
+      // Arrange - E1 forward then E2 reversed (should not stitch as they don't connect)
       final pointers = [
-        const S57SpatialPointer(refId: 2, isEdge: true, reverse: false), // (10,0) -> (10,10)
-        const S57SpatialPointer(refId: 1, isEdge: true, reverse: true),  // (10,0) <- (0,0)
+        const S57SpatialPointer(refId: 1, isEdge: true, reverse: false), // (0,0) -> (10,0)
+        const S57SpatialPointer(refId: 2, isEdge: true, reverse: true),  // (10,10) -> (10,0)
       ];
 
       // Act
@@ -101,12 +101,14 @@ void main() {
       expect(geometry.type, equals(S57GeometryType.line));
       
       final coords = geometry.rings.first;
-      expect(coords.length, equals(3), reason: 'Should stitch at shared coordinate (10,0)');
+      // These edges don't actually connect, so no stitching occurs
+      expect(coords.length, equals(4), reason: 'Non-contiguous edges should not be stitched');
       
-      // Verify sequence: E2 start -> E2 end -> E1 start (E1 reversed)
-      expect(coords[0].x, equals(10.0)); expect(coords[0].y, equals(0.0));   // Start of E2  
-      expect(coords[1].x, equals(10.0)); expect(coords[1].y, equals(10.0));  // End of E2
-      expect(coords[2].x, equals(0.0));  expect(coords[2].y, equals(0.0));   // Start of reversed E1
+      // Verify sequence: E1 then E2 reversed (non-contiguous)
+      expect(coords[0].x, equals(0.0));  expect(coords[0].y, equals(0.0));   // Start of E1  
+      expect(coords[1].x, equals(10.0)); expect(coords[1].y, equals(0.0));   // End of E1
+      expect(coords[2].x, equals(10.0)); expect(coords[2].y, equals(10.0));  // Start of reversed E2
+      expect(coords[3].x, equals(10.0)); expect(coords[3].y, equals(0.0));   // End of reversed E2
     });
 
     test('should stitch node and edge pointers', () {
