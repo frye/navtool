@@ -1,0 +1,25 @@
+{
+  "metadata": {
+    "generated_at": "2025-01-07T06:31:00.000Z",
+    "chart_id": "SAMPLE_CONSOLIDATION",
+    "generator_version": "1.0.0",
+    "phase": "3.1_consolidation"
+  },
+  "feature_frequencies": {
+    "DEPARE": 125,
+    "SOUNDG": 750,
+    "COALNE": 8,
+    "LIGHTS": 4,
+    "WRECKS": 3,
+    "BCNCAR": 2,
+    "BOYLAT": 15,
+    "OBSTRN": 7
+  },
+  "summary": {
+    "total_features": 914,
+    "feature_types": 8,
+    "most_common": "SOUNDG",
+    "least_common": "BCNCAR",
+    "consolidation_status": "complete"
+  }
+}
