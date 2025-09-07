@@ -403,58 +403,36 @@ class S57Parser {
     final result = <String, dynamic>{};
     int offset = 0;
 
-    // DEBUG: Print raw DSPM data for troubleshooting
-    assert(() {
-      print('DEBUG: DSPM field length: ${data.length}');
-      print('DEBUG: DSPM raw bytes: ${data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
-      return true;
-    }());
-
-    // DSPM subfields according to S-57 specification:
-    // RCNM, RCID, HDAT, VDAT, SDAT, CSCL, DUNI, HUNI, PUNI, COUN, COMF, SOMF
-
     try {
       // Skip RCNM (1 byte) and RCID (4 bytes) if present
       if (offset + 5 <= data.length) {
         offset += 5;
-        assert(() {
-          print('DEBUG: Skipped RCNM+RCID, offset now: $offset');
-          return true;
-        }());
       }
 
       // Parse known fixed-length subfields first
-      // HDAT (4 bytes)
+      // HDAT (4 bytes) - read as individual bytes to avoid ASCII decode issues
       if (offset + 4 <= data.length) {
         final hdatBytes = data.sublist(offset, offset + 4);
-        result['HDAT'] = ascii.decode(hdatBytes).trim();
+        // Convert bytes to string manually to handle potential null bytes
+        final hdatStr = String.fromCharCodes(hdatBytes.where((b) => b != 0));
+        result['HDAT'] = hdatStr.isNotEmpty ? hdatStr : 'WGS84';
         offset += 4;
-        assert(() {
-          print('DEBUG: HDAT: ${result['HDAT']}, offset now: $offset');
-          return true;
-        }());
       }
 
       // VDAT (4 bytes)
       if (offset + 4 <= data.length) {
         final vdatBytes = data.sublist(offset, offset + 4);
-        result['VDAT'] = ascii.decode(vdatBytes).trim();
+        final vdatStr = String.fromCharCodes(vdatBytes.where((b) => b != 0));
+        result['VDAT'] = vdatStr.isNotEmpty ? vdatStr : 'MLLW';
         offset += 4;
-        assert(() {
-          print('DEBUG: VDAT: ${result['VDAT']}, offset now: $offset');
-          return true;
-        }());
       }
 
       // SDAT (4 bytes)
       if (offset + 4 <= data.length) {
         final sdatBytes = data.sublist(offset, offset + 4);
-        result['SDAT'] = ascii.decode(sdatBytes).trim();
+        final sdatStr = String.fromCharCodes(sdatBytes.where((b) => b != 0));
+        result['SDAT'] = sdatStr.isNotEmpty ? sdatStr : 'MLLW';
         offset += 4;
-        assert(() {
-          print('DEBUG: SDAT: ${result['SDAT']}, offset now: $offset');
-          return true;
-        }());
       }
 
       // CSCL (4 bytes) - Compilation Scale as integer
@@ -463,16 +441,8 @@ class S57Parser {
           final cscl = ByteData.sublistView(data, offset, offset + 4).getUint32(0, Endian.little);
           result['CSCL'] = cscl;
           offset += 4;
-          assert(() {
-            print('DEBUG: CSCL: ${result['CSCL']}, offset now: $offset');
-            return true;
-          }());
         } catch (e) {
           offset += 4;
-          assert(() {
-            print('DEBUG: Failed to parse CSCL: $e, offset now: $offset');
-            return true;
-          }());
         }
       }
 
@@ -482,16 +452,8 @@ class S57Parser {
           final comf = ByteData.sublistView(data, offset, offset + 4).getFloat32(0, Endian.little);
           result['COMF'] = comf.toDouble();
           offset += 4;
-          assert(() {
-            print('DEBUG: COMF: ${result['COMF']}, offset now: $offset');
-            return true;
-          }());
         } catch (e) {
           offset += 4;
-          assert(() {
-            print('DEBUG: Failed to parse COMF: $e, offset now: $offset');
-            return true;
-          }());
         }
       }
 
@@ -501,16 +463,8 @@ class S57Parser {
           final somf = ByteData.sublistView(data, offset, offset + 4).getFloat32(0, Endian.little);
           result['SOMF'] = somf.toDouble();
           offset += 4;
-          assert(() {
-            print('DEBUG: SOMF: ${result['SOMF']}, offset now: $offset');
-            return true;
-          }());
         } catch (e) {
           offset += 4;
-          assert(() {
-            print('DEBUG: Failed to parse SOMF: $e, offset now: $offset');
-            return true;
-          }());
         }
       }
 
@@ -519,17 +473,8 @@ class S57Parser {
       result['VDAT'] ??= 'MLLW';
       result['SDAT'] ??= 'MLLW';
 
-      assert(() {
-        print('DEBUG: Final DSPM result: $result');
-        return true;
-      }());
-
     } catch (e) {
       // Return partial result on parsing errors
-      assert(() {
-        print('DEBUG: DSPM parsing exception: $e');
-        return true;
-      }());
     }
 
     return result;
