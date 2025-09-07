@@ -208,17 +208,167 @@ print('Query time: ${stopwatch.elapsedMilliseconds}ms for ${results.length} resu
 
 ### Critical Errors (Stop Processing)
 - `LEADER_LEN_MISMATCH`: ISO 8211 record header corruption
+- `LEADER_TRUNCATED`: Record header shorter than required 24 bytes
 - `UPDATE_GAP`: Missing intermediate update file
 - `FIELD_BOUNDS`: Data extends beyond record boundaries
+- `FIELD_LEN_MISMATCH`: Declared field length doesn't match actual data
+- `BAD_BASE_ADDR`: Invalid base address in record leader
 
 ### Warnings (Continue Processing)
 - `UNKNOWN_OBJ_CODE`: Object type not in catalog
 - `MISSING_REQUIRED_ATTR`: Required attribute missing from feature
 - `DEPTH_OUT_OF_RANGE`: Depth value outside expected range (-100 to 15000m)
+- `MISSING_FIELD_TERM`: Field terminator (0x1E) missing
+- `INVALID_SUBFIELD_DELIM`: Unexpected subfield delimiter placement
+- `DANGLING_POINTER`: Reference to non-existent record
+- `COORD_COUNT_MISMATCH`: Coordinate count doesn't match declared value
+- `EMPTY_REQUIRED_FIELD`: Required field contains no data
+- `INVALID_RUIN_CODE`: Unsupported record update instruction
 
 ### Info Messages (Informational)
 - `POLYGON_CLOSED_AUTO`: Polygon automatically closed
 - `DEGENERATE_EDGE`: Geometry simplified due to invalid coordinates
+
+## Malformed Record Resilience
+
+NavTool's S-57 parser is designed to gracefully handle corrupted or malformed ENC files commonly encountered in marine environments. This section covers the parser's resilience features and diagnostic capabilities implemented in Issue 20.x.
+
+### Parser Resilience Features
+
+**Graceful Degradation**
+- Parser continues processing despite structural corruption
+- Malformed records are skipped with appropriate warnings
+- Partial chart data remains usable for navigation
+
+**Strict Mode Control**
+- Development mode: Collect all warnings, continue parsing
+- Production mode: Escalate critical errors to exceptions
+- Testing mode: Fail fast with low warning threshold
+
+**Warning Classification**
+- Machine-actionable warning codes for automated handling
+- Severity levels (Info, Warning, Error) for appropriate response
+- Contextual information (record ID, feature ID) for debugging
+
+### Common Malformed Record Scenarios
+
+#### 1. Truncated Leader (LEADER_TRUNCATED)
+**Cause**: Network transmission errors, disk corruption, incomplete file transfers
+**Symptoms**: Records appear to be cut off at header level
+**Resolution**: Parser skips truncated records, continues with remaining data
+
+```dart
+// Check for truncated leader warnings
+final warnings = chart.warnings?.where((w) => 
+  w.code == S57WarningCodes.leaderTruncated).toList() ?? [];
+if (warnings.isNotEmpty) {
+  print('Truncated records found: ${warnings.length}');
+  // Consider re-downloading chart if many truncated records
+}
+```
+
+#### 2. Directory Length Mismatch (FIELD_LEN_MISMATCH)
+**Cause**: Corruption in record directory entries
+**Symptoms**: Fields claim different length than actual data
+**Resolution**: Parser uses actual field boundaries, warns about mismatch
+
+#### 3. Missing Field Terminators (MISSING_FIELD_TERM)
+**Cause**: Binary corruption affecting delimiter bytes
+**Symptoms**: Fields run together without proper separation
+**Resolution**: Parser attempts field boundary detection using context
+
+#### 4. Invalid Subfield Delimiters (INVALID_SUBFIELD_DELIM)
+**Cause**: Corruption in structured field data
+**Symptoms**: Unexpected 0x1F bytes in field content
+**Resolution**: Parser handles unexpected delimiters gracefully
+
+#### 5. Dangling Spatial Pointers (DANGLING_POINTER)
+**Cause**: Reference integrity corruption in spatial features
+**Symptoms**: FSPT records point to non-existent VRID records
+**Resolution**: Parser continues, warns about broken references
+
+#### 6. Coordinate Count Mismatch (COORD_COUNT_MISMATCH)
+**Cause**: Corruption in vector record point counts
+**Symptoms**: VRPT declares N points but provides different count
+**Resolution**: Parser uses actual coordinate data available
+
+#### 7. Empty Required Fields (EMPTY_REQUIRED_FIELD)
+**Cause**: Data corruption affecting essential chart metadata
+**Symptoms**: DSID or DSPM fields contain no data
+**Resolution**: Parser continues with reduced functionality
+
+#### 8. Invalid Update Instructions (INVALID_RUIN_CODE)
+**Cause**: Corruption in update file processing codes
+**Symptoms**: RUIN field contains unsupported operation codes
+**Resolution**: Parser skips invalid updates, preserves base data
+
+### Diagnostic Commands for Malformed Records
+
+```dart
+// Test parsing resilience with development options
+final options = S57ParseOptions.development(); // strictMode: false
+final chart = S57Parser.parse(data, options: options);
+
+// Analyze malformed record patterns
+final malformedWarnings = chart.warnings?.where((w) => [
+  S57WarningCodes.leaderTruncated,
+  S57WarningCodes.fieldLenMismatch,
+  S57WarningCodes.missingFieldTerminator,
+  S57WarningCodes.invalidSubfieldDelim,
+  S57WarningCodes.danglingPointer,
+  S57WarningCodes.coordinateCountMismatch,
+  S57WarningCodes.emptyRequiredField,
+  S57WarningCodes.invalidRUINCode,
+].contains(w.code)).toList() ?? [];
+
+print('Malformed record issues: ${malformedWarnings.length}');
+for (final warning in malformedWarnings.take(10)) {
+  print('${warning.code}: ${warning.message}');
+}
+
+// Verify essential chart data integrity
+if (chart.features.isNotEmpty) {
+  print('Chart still usable: ${chart.features.length} features parsed');
+  print('Navigation data available: ${chart.summary()}');
+} else {
+  print('Chart severely corrupted - consider re-downloading');
+}
+```
+
+### Testing Parser Resilience
+
+For comprehensive testing of parser resilience against corruption:
+
+```bash
+# Run malformed record tests (Issue 20.x test suite)
+flutter test test/core/services/s57/malformed/ --timeout 30s
+
+# Run fuzz tests for random corruption patterns
+flutter test test/core/services/s57/malformed/fuzz_resilience_test.dart --tags fuzz
+
+# Test strict mode error escalation
+flutter test test/core/services/s57/malformed/ --name "strict mode"
+```
+
+### Recovery Strategies
+
+**For Charts with Many Warnings:**
+1. Check warning distribution - if concentrated in specific records, may indicate localized corruption
+2. Verify chart source integrity - re-download if possible
+3. Use bounds filtering to work around corrupted regions
+4. Consider fallback to previous chart edition
+
+**For Strict Mode Failures:**
+1. Run in development mode to collect full warning list
+2. Address first critical error shown in warning collector
+3. Use custom parse options with higher warning thresholds
+4. Implement graceful degradation in navigation application
+
+**For Performance Impact:**
+1. Warning collection has bounded limits (1000 max) to prevent memory issues
+2. Parser implements early termination on excessive corruption
+3. Use `maxWarnings` parameter to control warning overhead
+4. Monitor parsing time and fail over to cached charts if needed
 
 ## Performance Tuning
 

@@ -19,7 +19,7 @@ void main() {
     group('Failure Class 1: Truncated Leader', () {
       test('should generate warning for truncated leader in non-DDR record', () {
         // Create a simple valid data record first, then append truncated one
-        final validDataRecord = MalformedFixtureBuilder._createValidLeader(
+        final validDataRecord = MalformedFixtureBuilder.createValidLeader(
           recordLength: 50, 
           baseAddress: 30
         );

@@ -53,7 +53,7 @@ class MalformedFixtureBuilder {
     final buffer = BytesBuilder();
     
     // Create leader that points to directory
-    final leader = _createValidLeader(
+    final leader = createValidLeader(
       recordLength: 100,
       baseAddress: 35, // After 24-byte leader + 11-byte directory
     );
@@ -85,7 +85,7 @@ class MalformedFixtureBuilder {
     final buffer = BytesBuilder();
     
     // Create valid leader
-    final leader = _createValidLeader(
+    final leader = createValidLeader(
       recordLength: 60,
       baseAddress: 35,
     );
@@ -116,7 +116,7 @@ class MalformedFixtureBuilder {
   static List<int> createUnexpectedSubfieldDelimiter({bool atStart = true}) {
     final buffer = BytesBuilder();
     
-    final leader = _createValidLeader(
+    final leader = createValidLeader(
       recordLength: 70,
       baseAddress: 35,
     );
@@ -160,7 +160,7 @@ class MalformedFixtureBuilder {
   static List<int> createDanglingFSPTPointer() {
     final buffer = BytesBuilder();
     
-    final leader = _createValidLeader(
+    final leader = createValidLeader(
       recordLength: 80,
       baseAddress: 35,
     );
@@ -196,7 +196,7 @@ class MalformedFixtureBuilder {
   static List<int> createInconsistentVRPTCount() {
     final buffer = BytesBuilder();
     
-    final leader = _createValidLeader(
+    final leader = createValidLeader(
       recordLength: 100,
       baseAddress: 35,
     );
@@ -237,7 +237,7 @@ class MalformedFixtureBuilder {
   static List<int> createEmptyRequiredFields({bool emptyDSID = true}) {
     final buffer = BytesBuilder();
     
-    final leader = _createValidLeader(
+    final leader = createValidLeader(
       recordLength: 40,
       baseAddress: 24 + 12, // leader + directory
     );
@@ -268,7 +268,7 @@ class MalformedFixtureBuilder {
   static List<int> createInvalidRUINOperation() {
     final buffer = BytesBuilder();
     
-    final leader = _createValidLeader(
+    final leader = createValidLeader(
       recordLength: 70,
       baseAddress: 35,
     );
@@ -301,7 +301,7 @@ class MalformedFixtureBuilder {
   }
 
   /// Create a valid leader for test records
-  static List<int> _createValidLeader({
+  static List<int> createValidLeader({
     required int recordLength,
     required int baseAddress,
   }) {

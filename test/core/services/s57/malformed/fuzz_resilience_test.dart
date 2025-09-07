@@ -20,7 +20,7 @@ void main() {
       const int baseSeed = 42; // Deterministic for reproducibility
       
       // Base valid record for corruption - use simple structured data
-      final baseRecord = MalformedFixtureBuilder._createValidLeader(
+      final baseRecord = MalformedFixtureBuilder.createValidLeader(
         recordLength: 50, 
         baseAddress: 30
       );
@@ -92,7 +92,7 @@ void main() {
 
     test('should handle systematic corruption patterns', () {
       // Use simple valid base record for systematic tests
-      final baseRecord = MalformedFixtureBuilder._createValidLeader(
+      final baseRecord = MalformedFixtureBuilder.createValidLeader(
         recordLength: 50, 
         baseAddress: 30
       );
@@ -136,7 +136,7 @@ void main() {
 
     test('should generate consistent results with same seed', () {
       // Use simple valid base record
-      final baseRecord = MalformedFixtureBuilder._createValidLeader(
+      final baseRecord = MalformedFixtureBuilder.createValidLeader(
         recordLength: 50, 
         baseAddress: 30
       );
@@ -197,7 +197,7 @@ void main() {
 
     test('should maintain memory bounds during corruption testing', () {
       // Use simple valid base record
-      final baseRecord = MalformedFixtureBuilder._createValidLeader(
+      final baseRecord = MalformedFixtureBuilder.createValidLeader(
         recordLength: 50, 
         baseAddress: 30
       );
