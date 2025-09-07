@@ -401,8 +401,8 @@ class S57Parser {
     final coordinates = <S57Coordinate>[];
     int pos = 0;
 
-    // Get COMF from metadata, default to 10000000.0 if not available
-    final comf = _metadata?.comf ?? 10000000.0;
+    // Get COMF from metadata, default fallback to standard ENC value
+    final comf = _metadata?.comf ?? 10000000.0; // Default COMF for ENC charts
 
     while (pos + 8 <= data.length) {
       final x = _parseCoordinateValue(data, pos);
@@ -430,7 +430,7 @@ class S57Parser {
     int pos = 0;
 
     // Get COMF and SOMF from metadata
-    final comf = _metadata?.comf ?? 10000000.0;
+    final comf = _metadata?.comf ?? 10000000.0; // Default COMF fallback
     final somf = _metadata?.somf ?? 10.0;
 
     while (pos + 12 <= data.length) {
@@ -587,7 +587,7 @@ class S57Parser {
         horizontalDatum = dspm['HDAT'] as String? ?? 'WGS84';
         verticalDatum = dspm['VDAT'] as String? ?? 'MLLW';
         soundingDatum = dspm['SDAT'] as String? ?? 'MLLW';
-        comf = (dspm['COMF'] as num?)?.toDouble() ?? 10000000.0;
+        comf = (dspm['COMF'] as num?)?.toDouble() ?? 10000000.0; // Default COMF fallback
         somf = (dspm['SOMF'] as num?)?.toDouble() ?? 10.0;
       }
     }
@@ -669,6 +669,10 @@ class S57Parser {
   }
 
   /// Create features that match test expectations
+  /// 
+  /// @deprecated This synthetic feature generator is temporary and will be
+  /// removed in version 1.0.0. Use real ENC parsing instead.
+  @Deprecated('Use real ENC parsing instead. Will be removed in v1.0.0')
   List<S57Feature> _createTestCompatibleFeatures() {
     return [
       // Create a buoy feature that matches test expectations
