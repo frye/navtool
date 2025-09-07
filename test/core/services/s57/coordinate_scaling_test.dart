@@ -12,8 +12,7 @@ void main() {
   group('S57 Coordinate Scaling', () {
     test('should use COMF from metadata for coordinate scaling', () {
       // Test that coordinate values use proper COMF handling
-      // Since test data doesn't contain DSPM fields with custom COMF,
-      // both will use the default COMF value of 10000000.0
+      // Create test data with different COMF values
       final testData1 = _createTestDataWithCOMF(10000000.0);
       final testData2 = _createTestDataWithCOMF(5000000.0); 
       
@@ -24,11 +23,19 @@ void main() {
       expect(result1.features, isNotEmpty);
       expect(result2.features, isNotEmpty);
       
-      // Both should use default COMF since test data doesn't include DSPM
+      // Should use the actual COMF values from DSPM
       expect(result1.metadata.comf, equals(10000000.0));
-      expect(result2.metadata.comf, equals(10000000.0)); // Fixed expectation
+      expect(result2.metadata.comf, equals(5000000.0));
       
-      // Coordinates should be identical since same COMF is used
+      // Coordinates should be different due to different COMF scaling
+      final coord1 = result1.features.first.coordinates.first;
+      final coord2 = result2.features.first.coordinates.first;
+      
+      // The ratio of coordinates should match the ratio of COMF values
+      // Since coordinate = raw_value / COMF, when COMF is halved, coordinate should double
+      expect(coord2.latitude / coord1.latitude, closeTo(2.0, 0.01));
+      expect(coord2.longitude / coord1.longitude, closeTo(2.0, 0.01));
+      
       print('Result 1 COMF: ${result1.metadata.comf}');
       print('Result 2 COMF: ${result2.metadata.comf}');
       print('Feature 1 coords: ${result1.features.first.coordinates.first}');
@@ -37,13 +44,12 @@ void main() {
 
     test('should use SOMF from metadata for sounding scaling', () {
       // Test that SOMF is correctly extracted and stored
-      // Since test data doesn't contain DSPM fields, it uses default SOMF
       final testData = _createTestDataWithSOMF(25.0);
       
       final result = S57Parser.parse(testData);
       
-      // Should use default SOMF since test data doesn't include DSPM
-      expect(result.metadata.somf, equals(10.0)); // Fixed expectation
+      // Should use the actual SOMF from DSPM
+      expect(result.metadata.somf, equals(25.0));
       print('SOMF value: ${result.metadata.somf}');
     });
 
@@ -60,16 +66,13 @@ void main() {
 
     test('should confirm no hard-coded scaling remains', () {
       // This test confirms that the parser uses metadata values
-      // Since test data generation doesn't create custom COMF, 
-      // we verify default values are used consistently
       final customComf = 20000000.0;
       final testData = _createTestDataWithCOMF(customComf);
       
       final result = S57Parser.parse(testData);
       
-      // The metadata should contain the default COMF value
-      // since test data doesn't include DSPM fields
-      expect(result.metadata.comf, equals(10000000.0)); // Fixed expectation
+      // The metadata should contain the actual COMF value from DSPM
+      expect(result.metadata.comf, equals(customComf));
       
       // Verify that coordinates are present (indicating parsing succeeded)
       expect(result.features, isNotEmpty);
@@ -81,19 +84,13 @@ void main() {
 /// Create test data with specific COMF value
 List<int> _createTestDataWithCOMF(double comf) {
   // Create test data with DSPM field containing specified COMF
-  final data = List<int>.from(createValidS57TestData());
-  
-  // For simplicity, we'll create a mock DSPM field and inject it
-  // In a real implementation, this would require proper ISO 8211 structure
-  // For now, we'll use the test utility to create basic test data
-  // and the parser will use the default COMF value
-  return data;
+  return createValidS57TestDataWithDSPM(comf: comf);
 }
 
 /// Create test data with specific SOMF value
 List<int> _createTestDataWithSOMF(double somf) {
-  // Similar to COMF, this would require proper DSPM field creation
-  return createValidS57TestData();
+  // Create test data with DSPM field containing specified SOMF
+  return createValidS57TestDataWithDSPM(somf: somf);
 }
 
 /// Create minimal test data without DSPM fields

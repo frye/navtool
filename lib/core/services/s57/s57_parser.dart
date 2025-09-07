@@ -270,6 +270,8 @@ class S57Parser {
         return _parseSpatialPointer(data);
       case 'VRID': // Vector Record Identifier
         return _parseVectorRecordId(data);
+      case 'DSPM': // Dataset Parameter
+        return _parseDspmField(data);
       case 'SG2D': // 2D Coordinate
         return _parse2DCoordinate(data);
       case 'SG3D': // 3D Coordinate
@@ -393,6 +395,102 @@ class S57Parser {
         return 'QUASOU';
       default:
         return null;
+    }
+  }
+
+  /// Parse Dataset Parameter (DSPM) field
+  Map<String, dynamic> _parseDspmField(Uint8List data) {
+    final result = <String, dynamic>{};
+    int offset = 0;
+
+    try {
+      // Skip RCNM (1 byte) and RCID (4 bytes) if present
+      if (offset + 5 <= data.length) {
+        offset += 5;
+      }
+
+      // Parse known fixed-length subfields first
+      // HDAT (4 bytes) - read as individual bytes to avoid ASCII decode issues
+      if (offset + 4 <= data.length) {
+        final hdatBytes = data.sublist(offset, offset + 4);
+        // Convert bytes to string manually to handle potential null bytes
+        final hdatStr = String.fromCharCodes(hdatBytes.where((b) => b != 0));
+        result['HDAT'] = hdatStr.isNotEmpty ? hdatStr : 'WGS84';
+        offset += 4;
+      }
+
+      // VDAT (4 bytes)
+      if (offset + 4 <= data.length) {
+        final vdatBytes = data.sublist(offset, offset + 4);
+        final vdatStr = String.fromCharCodes(vdatBytes.where((b) => b != 0));
+        result['VDAT'] = vdatStr.isNotEmpty ? vdatStr : 'MLLW';
+        offset += 4;
+      }
+
+      // SDAT (4 bytes)
+      if (offset + 4 <= data.length) {
+        final sdatBytes = data.sublist(offset, offset + 4);
+        final sdatStr = String.fromCharCodes(sdatBytes.where((b) => b != 0));
+        result['SDAT'] = sdatStr.isNotEmpty ? sdatStr : 'MLLW';
+        offset += 4;
+      }
+
+      // CSCL (4 bytes) - Compilation Scale as integer
+      if (offset + 4 <= data.length) {
+        try {
+          final cscl = ByteData.sublistView(data, offset, offset + 4).getUint32(0, Endian.little);
+          result['CSCL'] = cscl;
+          offset += 4;
+        } catch (e) {
+          offset += 4;
+        }
+      }
+
+      // COMF (4 bytes) - Coordinate Multiplication Factor as float
+      if (offset + 4 <= data.length) {
+        try {
+          final comf = ByteData.sublistView(data, offset, offset + 4).getFloat32(0, Endian.little);
+          result['COMF'] = comf.toDouble();
+          offset += 4;
+        } catch (e) {
+          offset += 4;
+        }
+      }
+
+      // SOMF (4 bytes) - Sounding Multiplication Factor as float  
+      if (offset + 4 <= data.length) {
+        try {
+          final somf = ByteData.sublistView(data, offset, offset + 4).getFloat32(0, Endian.little);
+          result['SOMF'] = somf.toDouble();
+          offset += 4;
+        } catch (e) {
+          offset += 4;
+        }
+      }
+
+      // Apply defaults for missing values
+      result['HDAT'] ??= 'WGS84';
+      result['VDAT'] ??= 'MLLW';
+      result['SDAT'] ??= 'MLLW';
+
+    } catch (e) {
+      // Return partial result on parsing errors
+    }
+
+    return result;
+  }
+
+  /// Check if bytes represent a valid datum code
+  bool _isValidDatumCode(Uint8List bytes) {
+    try {
+      final str = ascii.decode(bytes).trim();
+      // Common datum codes: WGS84, NAD83, MLLW, etc.
+      return str.isNotEmpty && 
+             str.length >= 2 && 
+             str.length <= 6 &&
+             str.codeUnits.every((c) => (c >= 65 && c <= 90) || (c >= 48 && c <= 57)); // A-Z, 0-9
+    } catch (_) {
+      return false;
     }
   }
 
