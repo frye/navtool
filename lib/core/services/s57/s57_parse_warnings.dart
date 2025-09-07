@@ -78,6 +78,14 @@ class S57WarningCodes {
   static const String dirTruncated = 'DIR_TRUNCATED';
   static const String fieldBounds = 'FIELD_BOUNDS';
   static const String subfieldParse = 'SUBFIELD_PARSE';
+  static const String leaderTruncated = 'LEADER_TRUNCATED';
+  static const String fieldLenMismatch = 'FIELD_LEN_MISMATCH';
+  static const String missingFieldTerminator = 'MISSING_FIELD_TERM';
+  static const String invalidSubfieldDelim = 'INVALID_SUBFIELD_DELIM';
+  static const String danglingPointer = 'DANGLING_POINTER';
+  static const String coordinateCountMismatch = 'COORD_COUNT_MISMATCH';
+  static const String emptyRequiredField = 'EMPTY_REQUIRED_FIELD';
+  static const String invalidRUINCode = 'INVALID_RUIN_CODE';
 
   // S-57 object and attribute validation
   static const String unknownObjCode = 'UNKNOWN_OBJ_CODE';
