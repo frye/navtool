@@ -270,6 +270,8 @@ class S57Parser {
         return _parseSpatialPointer(data);
       case 'VRID': // Vector Record Identifier
         return _parseVectorRecordId(data);
+      case 'DSPM': // Dataset Parameter
+        return _parseDspmField(data);
       case 'SG2D': // 2D Coordinate
         return _parse2DCoordinate(data);
       case 'SG3D': // 3D Coordinate
@@ -393,6 +395,157 @@ class S57Parser {
         return 'QUASOU';
       default:
         return null;
+    }
+  }
+
+  /// Parse Dataset Parameter (DSPM) field
+  Map<String, dynamic> _parseDspmField(Uint8List data) {
+    final result = <String, dynamic>{};
+    int offset = 0;
+
+    // DEBUG: Print raw DSPM data for troubleshooting
+    assert(() {
+      print('DEBUG: DSPM field length: ${data.length}');
+      print('DEBUG: DSPM raw bytes: ${data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      return true;
+    }());
+
+    // DSPM subfields according to S-57 specification:
+    // RCNM, RCID, HDAT, VDAT, SDAT, CSCL, DUNI, HUNI, PUNI, COUN, COMF, SOMF
+
+    try {
+      // Skip RCNM (1 byte) and RCID (4 bytes) if present
+      if (offset + 5 <= data.length) {
+        offset += 5;
+        assert(() {
+          print('DEBUG: Skipped RCNM+RCID, offset now: $offset');
+          return true;
+        }());
+      }
+
+      // Parse known fixed-length subfields first
+      // HDAT (4 bytes)
+      if (offset + 4 <= data.length) {
+        final hdatBytes = data.sublist(offset, offset + 4);
+        result['HDAT'] = ascii.decode(hdatBytes).trim();
+        offset += 4;
+        assert(() {
+          print('DEBUG: HDAT: ${result['HDAT']}, offset now: $offset');
+          return true;
+        }());
+      }
+
+      // VDAT (4 bytes)
+      if (offset + 4 <= data.length) {
+        final vdatBytes = data.sublist(offset, offset + 4);
+        result['VDAT'] = ascii.decode(vdatBytes).trim();
+        offset += 4;
+        assert(() {
+          print('DEBUG: VDAT: ${result['VDAT']}, offset now: $offset');
+          return true;
+        }());
+      }
+
+      // SDAT (4 bytes)
+      if (offset + 4 <= data.length) {
+        final sdatBytes = data.sublist(offset, offset + 4);
+        result['SDAT'] = ascii.decode(sdatBytes).trim();
+        offset += 4;
+        assert(() {
+          print('DEBUG: SDAT: ${result['SDAT']}, offset now: $offset');
+          return true;
+        }());
+      }
+
+      // CSCL (4 bytes) - Compilation Scale as integer
+      if (offset + 4 <= data.length) {
+        try {
+          final cscl = ByteData.sublistView(data, offset, offset + 4).getUint32(0, Endian.little);
+          result['CSCL'] = cscl;
+          offset += 4;
+          assert(() {
+            print('DEBUG: CSCL: ${result['CSCL']}, offset now: $offset');
+            return true;
+          }());
+        } catch (e) {
+          offset += 4;
+          assert(() {
+            print('DEBUG: Failed to parse CSCL: $e, offset now: $offset');
+            return true;
+          }());
+        }
+      }
+
+      // COMF (4 bytes) - Coordinate Multiplication Factor as float
+      if (offset + 4 <= data.length) {
+        try {
+          final comf = ByteData.sublistView(data, offset, offset + 4).getFloat32(0, Endian.little);
+          result['COMF'] = comf.toDouble();
+          offset += 4;
+          assert(() {
+            print('DEBUG: COMF: ${result['COMF']}, offset now: $offset');
+            return true;
+          }());
+        } catch (e) {
+          offset += 4;
+          assert(() {
+            print('DEBUG: Failed to parse COMF: $e, offset now: $offset');
+            return true;
+          }());
+        }
+      }
+
+      // SOMF (4 bytes) - Sounding Multiplication Factor as float  
+      if (offset + 4 <= data.length) {
+        try {
+          final somf = ByteData.sublistView(data, offset, offset + 4).getFloat32(0, Endian.little);
+          result['SOMF'] = somf.toDouble();
+          offset += 4;
+          assert(() {
+            print('DEBUG: SOMF: ${result['SOMF']}, offset now: $offset');
+            return true;
+          }());
+        } catch (e) {
+          offset += 4;
+          assert(() {
+            print('DEBUG: Failed to parse SOMF: $e, offset now: $offset');
+            return true;
+          }());
+        }
+      }
+
+      // Apply defaults for missing values
+      result['HDAT'] ??= 'WGS84';
+      result['VDAT'] ??= 'MLLW';
+      result['SDAT'] ??= 'MLLW';
+
+      assert(() {
+        print('DEBUG: Final DSPM result: $result');
+        return true;
+      }());
+
+    } catch (e) {
+      // Return partial result on parsing errors
+      assert(() {
+        print('DEBUG: DSPM parsing exception: $e');
+        return true;
+      }());
+    }
+
+    return result;
+  }
+
+  /// Check if bytes represent a valid datum code
+  bool _isValidDatumCode(Uint8List bytes) {
+    try {
+      final str = ascii.decode(bytes).trim();
+      // Common datum codes: WGS84, NAD83, MLLW, etc.
+      return str.isNotEmpty && 
+             str.length >= 2 && 
+             str.length <= 6 &&
+             str.codeUnits.every((c) => (c >= 65 && c <= 90) || (c >= 48 && c <= 57)); // A-Z, 0-9
+    } catch (_) {
+      return false;
     }
   }
 
