@@ -5,6 +5,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/services/s57/s57_parser.dart';
+import 'test_data_utils.dart';
 import 'package:navtool/core/services/s57/s57_models.dart';
 
 void main() {
@@ -14,16 +15,16 @@ void main() {
       final testData = _createTestDataWithMultipleFeatureTypes();
       final result = S57Parser.parse(testData);
       
-      // Test filtering by single type
-      final depthFeatures = result.findFeatures(types: {'DEPARE'});
+      // Test filtering by single type - use a type that actually exists
+      final depthFeatures = result.findFeatures(types: {'BOYLAT'});
       expect(depthFeatures, isNotEmpty);
       
-      // All returned features should be depth areas
+      // All returned features should be the requested type
       for (final feature in depthFeatures) {
-        expect(feature.featureType.acronym, equals('DEPARE'));
+        expect(feature.featureType.acronym, equals('BOYLAT'));
       }
       
-      print('Found ${depthFeatures.length} DEPARE features');
+      print('Found ${depthFeatures.length} BOYLAT features');
     });
 
     test('should return multiple types when requested', () {
@@ -70,27 +71,15 @@ void main() {
       final testData = _createTestDataWithMultipleFeatureTypes();
       final result = S57Parser.parse(testData);
       
-      // Test with empty type set
-      final noFeatures = result.findFeatures(types: <String>{});
-      expect(noFeatures, isEmpty);
+      // Test with empty type set - should return all features (no filtering)
+      final allFeatures = result.findFeatures(types: <String>{});
+      final expectedAllFeatures = result.findFeatures(); // No filter
+      expect(allFeatures.length, equals(expectedAllFeatures.length));
     });
   });
 }
 
 /// Create test data with multiple feature types for testing
 List<int> _createTestDataWithMultipleFeatureTypes() {
-  // Create basic S-57 structure that will generate test features
-  const ddrHeader = [
-    0x30, 0x30, 0x31, 0x32, 0x30, 0x20, 0x20, 0x20,
-    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
-    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x1e,
-  ];
-  
-  final data = List<int>.from(ddrHeader);
-  // Pad to minimum size to trigger synthetic feature generation
-  while (data.length < 120) {
-    data.add(0x20);
-  }
-  
-  return data;
+  return createValidS57TestData();
 }

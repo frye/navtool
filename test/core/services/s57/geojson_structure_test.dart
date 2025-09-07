@@ -4,6 +4,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/services/s57/s57_parser.dart';
+import 'test_data_utils.dart';
 import 'package:navtool/core/services/s57/s57_models.dart';
 
 void main() {
@@ -174,25 +175,10 @@ void main() {
 
 /// Create test data that generates features for GeoJSON testing
 List<int> _createTestDataWithFeatures() {
-  const ddrHeader = [
-    0x30, 0x30, 0x31, 0x32, 0x30, 0x20, 0x20, 0x20,
-    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
-    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x1e,
-  ];
-  
-  final data = List<int>.from(ddrHeader);
-  while (data.length < 120) {
-    data.add(0x20);
-  }
-  
-  return data;
+  return createValidS57TestData();
 }
 
 /// Create minimal test data for empty collections
 List<int> _createMinimalTestData() {
-  return [
-    0x30, 0x30, 0x30, 0x32, 0x34, 0x20, 0x20, 0x20,
-    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
-    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x1e,
-  ];
+  return createValidS57TestData();
 }

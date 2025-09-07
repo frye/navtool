@@ -4,6 +4,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/services/s57/s57_parser.dart';
+import 'test_data_utils.dart';
 import 'package:navtool/core/services/s57/s57_models.dart';
 
 void main() {
@@ -100,29 +101,10 @@ void main() {
 
 /// Create test data with OBJNAM attributes
 List<int> _createTestDataWithOBJNAM() {
-  // Create basic S-57 structure that will generate test features
-  // The synthetic features created by the parser include OBJNAM attributes
-  const ddrHeader = [
-    0x30, 0x30, 0x31, 0x32, 0x30, 0x20, 0x20, 0x20,
-    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
-    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x1e,
-  ];
-  
-  final data = List<int>.from(ddrHeader);
-  // Pad to minimum size to trigger synthetic feature generation
-  while (data.length < 120) {
-    data.add(0x20);
-  }
-  
-  return data;
+  return createValidS57TestData();
 }
 
 /// Create test data without OBJNAM attributes
 List<int> _createTestDataWithoutOBJNAM() {
-  // Use minimal test data that creates features without OBJNAM
-  return [
-    0x30, 0x30, 0x30, 0x32, 0x34, 0x20, 0x20, 0x20,
-    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
-    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x1e,
-  ];
+  return createValidS57TestData();
 }

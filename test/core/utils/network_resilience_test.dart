@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/utils/network_resilience.dart';
 import 'dart:io';
@@ -56,13 +57,17 @@ void main() {
 
         // Act & Assert
         // This should either complete quickly (if online) or timeout
-        final result = networkResilience.waitForConnection(
-          timeout: const Duration(milliseconds: 100),
-        );
-
-        expect(result, isA<Future<void>>());
-
-        // Don't wait for completion as it depends on actual network state
+        try {
+          await networkResilience.waitForConnection(
+            timeout: const Duration(milliseconds: 100),
+          );
+          // If we get here, we were online
+        } catch (e) {
+          // If we get here, we timed out (which is expected if offline)
+          expect(e, isA<TimeoutException>());
+        }
+        
+        // Test completed successfully regardless of network state
       });
 
       test('should handle connection timeout gracefully', () async {
