@@ -481,7 +481,9 @@ class S57Parser {
       // COMF (4 bytes) - Coordinate Multiplication Factor as float
       if (offset + 4 <= data.length) {
         try {
-          final comf = ByteData.sublistView(data, offset, offset + 4).getFloat32(0, Endian.little);
+          final comfBytes = data.sublist(offset, offset + 4);
+          final byteData = ByteData.view(Uint8List.fromList(comfBytes).buffer);
+          final comf = byteData.getFloat32(0, Endian.little);
           result['COMF'] = comf.toDouble();
           offset += 4;
         } catch (e) {
@@ -492,7 +494,9 @@ class S57Parser {
       // SOMF (4 bytes) - Sounding Multiplication Factor as float  
       if (offset + 4 <= data.length) {
         try {
-          final somf = ByteData.sublistView(data, offset, offset + 4).getFloat32(0, Endian.little);
+          final somfBytes = data.sublist(offset, offset + 4);
+          final byteData = ByteData.view(Uint8List.fromList(somfBytes).buffer);
+          final somf = byteData.getFloat32(0, Endian.little);
           result['SOMF'] = somf.toDouble();
           offset += 4;
         } catch (e) {
@@ -743,8 +747,18 @@ class S57Parser {
         horizontalDatum = dspm['HDAT'] as String? ?? 'WGS84';
         verticalDatum = dspm['VDAT'] as String? ?? 'MLLW';
         soundingDatum = dspm['SDAT'] as String? ?? 'MLLW';
-        comf = (dspm['COMF'] as num?)?.toDouble() ?? 10000000.0; // Default COMF fallback
-        somf = (dspm['SOMF'] as num?)?.toDouble() ?? 10.0;
+        
+        // Extract COMF with validation
+        final comfValue = dspm['COMF'];
+        if (comfValue is num && comfValue.isFinite && comfValue > 0) {
+          comf = comfValue.toDouble();
+        }
+        
+        // Extract SOMF with validation  
+        final somfValue = dspm['SOMF'];
+        if (somfValue is num && somfValue.isFinite && somfValue > 0) {
+          somf = somfValue.toDouble();
+        }
       }
     }
     
