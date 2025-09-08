@@ -4,6 +4,8 @@ import 'dart:math';
 
 import 's57_models.dart';
 import 's57_spatial_index.dart';
+import 's57_parse_warnings.dart';
+import 's57_warning_collector.dart';
 import '../../error/app_error.dart';
 
 /// S-57 Electronic Navigational Chart (ENC) parser
@@ -22,7 +24,7 @@ class S57Parser {
   static const int _fieldTerminator = 0x1e;
 
   /// Parse S-57 binary data and extract features and metadata
-  static S57ParsedData parse(List<int> data) {
+  static S57ParsedData parse(List<int> data, {S57WarningCollector? warnings}) {
     if (data.isEmpty) {
       throw AppError(
         message: 'S-57 data cannot be empty',
@@ -39,7 +41,7 @@ class S57Parser {
     }
 
     try {
-      final parser = S57Parser._(data);
+      final parser = S57Parser._(data, warnings: warnings);
       return parser._parseData();
     } catch (e) {
       if (e is AppError) rethrow;
@@ -54,8 +56,11 @@ class S57Parser {
   final Uint8List _data;
   int _position = 0;
   S57ChartMetadata? _metadata; // Chart metadata for coordinate scaling
+  final S57WarningCollector? _warnings; // Optional warning collector
 
-  S57Parser._(List<int> data) : _data = Uint8List.fromList(data);
+  S57Parser._(List<int> data, {S57WarningCollector? warnings}) 
+    : _data = Uint8List.fromList(data),
+      _warnings = warnings;
 
   /// Parse the complete S-57 data structure
   S57ParsedData _parseData() {
@@ -416,6 +421,15 @@ class S57Parser {
         // Convert bytes to string manually to handle potential null bytes
         final hdatStr = String.fromCharCodes(hdatBytes.where((b) => b != 0));
         result['HDAT'] = hdatStr.isNotEmpty ? hdatStr : 'WGS84';
+        
+        // Emit warning for unknown horizontal datum codes
+        if (hdatStr.isNotEmpty && !_isKnownDatumCode(hdatStr, 'horizontal')) {
+          _warnings?.warning(
+            S57WarningCodes.unknownHorizontalDatum,
+            'Unknown horizontal datum code: $hdatStr',
+            recordId: 'DSPM',
+          );
+        }
         offset += 4;
       }
 
@@ -424,6 +438,15 @@ class S57Parser {
         final vdatBytes = data.sublist(offset, offset + 4);
         final vdatStr = String.fromCharCodes(vdatBytes.where((b) => b != 0));
         result['VDAT'] = vdatStr.isNotEmpty ? vdatStr : 'MLLW';
+        
+        // Emit warning for unknown vertical datum codes
+        if (vdatStr.isNotEmpty && !_isKnownDatumCode(vdatStr, 'vertical')) {
+          _warnings?.warning(
+            S57WarningCodes.unknownVerticalDatum,
+            'Unknown vertical datum code: $vdatStr',
+            recordId: 'DSPM',
+          );
+        }
         offset += 4;
       }
 
@@ -432,6 +455,15 @@ class S57Parser {
         final sdatBytes = data.sublist(offset, offset + 4);
         final sdatStr = String.fromCharCodes(sdatBytes.where((b) => b != 0));
         result['SDAT'] = sdatStr.isNotEmpty ? sdatStr : 'MLLW';
+        
+        // Emit warning for unknown sounding datum codes
+        if (sdatStr.isNotEmpty && !_isKnownDatumCode(sdatStr, 'sounding')) {
+          _warnings?.warning(
+            S57WarningCodes.unknownSoundingDatum,
+            'Unknown sounding datum code: $sdatStr',
+            recordId: 'DSPM',
+          );
+        }
         offset += 4;
       }
 
@@ -491,6 +523,32 @@ class S57Parser {
              str.codeUnits.every((c) => (c >= 65 && c <= 90) || (c >= 48 && c <= 57)); // A-Z, 0-9
     } catch (_) {
       return false;
+    }
+  }
+  
+  /// Check if a datum code string is known/supported
+  bool _isKnownDatumCode(String datumCode, String datumType) {
+    // Known horizontal datum codes
+    const knownHorizontalDatums = {
+      'WGS84', 'WGS8', 'NAD83', 'NAD27', 'ETRS89', 'GDA94', 'JGD2000',
+      'PZ90', 'ITRF', 'ED50', 'OSGB', 'TOKYO'
+    };
+    
+    // Known vertical/sounding datum codes  
+    const knownVerticalDatums = {
+      'MLLW', 'MLW', 'MSL', 'MLHW', 'MHW', 'MHHW', 'LAT', 'HAT',
+      'CD', 'LLWM', 'HHWM', 'ISLW', 'LNLW', 'LLW', 'HHW', 'MLWS',
+      'MLHWS', 'MHWS', 'MHWN', 'MLWN', 'LNLWN'
+    };
+    
+    switch (datumType.toLowerCase()) {
+      case 'horizontal':
+        return knownHorizontalDatums.contains(datumCode);
+      case 'vertical':
+      case 'sounding':
+        return knownVerticalDatums.contains(datumCode);
+      default:
+        return false;
     }
   }
 

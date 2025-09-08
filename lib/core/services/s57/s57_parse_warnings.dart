@@ -103,6 +103,11 @@ class S57WarningCodes {
 
   // Data sanity checks
   static const String depthOutOfRange = 'DEPTH_OUT_OF_RANGE';
+  
+  // Datum validation warnings
+  static const String unknownHorizontalDatum = 'UNKNOWN_HORIZONTAL_DATUM';
+  static const String unknownVerticalDatum = 'UNKNOWN_VERTICAL_DATUM';
+  static const String unknownSoundingDatum = 'UNKNOWN_SOUNDING_DATUM';
 }
 
 /// Configuration options for S-57 parsing behavior
