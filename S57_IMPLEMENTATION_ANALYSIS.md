@@ -265,6 +265,41 @@ All required meta tests have been implemented and validated:
 3. **`meta_warning_threshold_test.dart`** ✅ - Validates warning collection and threshold infrastructure
 4. **`meta_performance_parse_test.dart`** ✅ - Optional performance validation (CI-skippable)
 5. **`meta_snapshot_presence_test.dart`** ✅ - Ensures golden snapshot infrastructure exists
+6. **`feature_distribution_snapshot_test.dart`** ✅ - Feature distribution regression guard with ±10% tolerance
+
+### Feature Distribution Snapshot Guard
+
+A dedicated regression guard monitors feature distribution stability to detect unintended changes from parser or catalog modifications:
+
+**Purpose**: Protect against silent feature count regressions that could impact downstream spatial queries or performance assumptions.
+
+**Implementation**: 
+- Baseline: `test/fixtures/s57/feature_distribution_baseline.json` (canonical NOAA ENC composite)
+- Test: `test/core/services/s57/feature_distribution_snapshot_test.dart` (unit test, CI-integrated)
+- Tolerance: ±10% (configurable, overridable for specific scenarios)
+
+**Baseline Refresh Workflow**:
+```bash
+# 1. Update baseline when intentional changes occur:
+#    test/fixtures/s57/feature_distribution_baseline.json
+# 2. Verify new baseline:
+flutter test test/core/services/s57/feature_distribution_snapshot_test.dart
+# 3. Document changes in commit message
+```
+
+**Diff Output Example**:
+```
+Feature distribution regression detected!
+
+Features outside ±10% tolerance:
+  DEPARE: 500 (expected range: 405-495, actual change: +11.1%)
+  SOUNDG: 11000 (expected range: 11250-13750, actual change: -12.0%)
+
+If this change is intentional, update the baseline:
+  test/fixtures/s57/feature_distribution_baseline.json
+```
+
+**CI Integration**: Runs as standard unit test (< 1s runtime) without requiring ENC fixtures, providing fast feedback on feature distribution stability.
 
 ### Open Questions Resolved
 - **Scaling factors derived from DSPM**: ✅ CONFIRMED - COMF/SOMF usage implemented with documented fallbacks

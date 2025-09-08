@@ -1,0 +1,38 @@
+{
+  "metadata": {
+    "description": "Canonical NOAA ENC feature distribution baseline for regression testing",
+    "purpose": "Detect unintended feature distribution changes with ±10% tolerance",
+    "source": "Curated synthetic composite representing typical NOAA harbor/coastal charts",
+    "chartType": "Synthetic composite (Harbor/Coastal)",
+    "tolerance": "±10%",
+    "lastUpdated": "2024-09-08",
+    "version": "1.0"
+  },
+  "featureFrequency": {
+    "DEPARE": 450,
+    "SOUNDG": 12500,
+    "COALNE": 25,
+    "LIGHTS": 8,
+    "WRECKS": 5,
+    "BCNCAR": 4,
+    "BOYLAT": 12,
+    "OBSTRN": 3,
+    "RESARE": 2,
+    "FAIRWY": 6,
+    "ACHARE": 3
+  },
+  "summary": {
+    "totalFeatures": 13018,
+    "uniqueFeatureTypes": 11,
+    "dominantFeatures": [
+      "SOUNDG (96.0%)",
+      "DEPARE (3.5%)"
+    ],
+    "marineNavigation": {
+      "navigationAids": 24,
+      "depthFeatures": 12950,
+      "hazards": 8,
+      "areas": 11
+    }
+  }
+}
