@@ -4,6 +4,8 @@ library;
 import 'package:flutter/material.dart';
 import '../models/chart_models.dart';
 import '../services/coordinate_transform.dart';
+import 's52/s52_color_tables.dart';
+import 's52/s52_symbol_manager.dart';
 
 /// Service responsible for rendering maritime charts
 class ChartRenderingService {
@@ -12,6 +14,10 @@ class ChartRenderingService {
   final ChartDisplayMode _displayMode;
   final Map<String, bool> _layerVisibility = {};
   final Map<MaritimeFeatureType, Widget> _symbolCache = {};
+  
+  // S-52 integration
+  late final S52SymbolManager _symbolManager;
+  late final S52ColorTable _s52ColorTable;
 
   ChartRenderingService({
     required CoordinateTransform transform,
@@ -22,6 +28,9 @@ class ChartRenderingService {
        _displayMode = displayMode {
     // Initialize default layer visibility
     _initializeLayerVisibility();
+    
+    // Initialize S-52 symbology
+    _initializeS52();
   }
 
   /// Render the chart to a Canvas
@@ -449,6 +458,25 @@ class ChartRenderingService {
     _layerVisibility['anchorages'] = true;
   }
 
+  /// Initialize S-52 symbology system
+  void _initializeS52() {
+    _symbolManager = S52SymbolManager.instance;
+    
+    // Convert ChartDisplayMode to S52DisplayMode
+    final s52Mode = switch (_displayMode) {
+      ChartDisplayMode.dayMode => S52DisplayMode.day,
+      ChartDisplayMode.nightMode => S52DisplayMode.night,
+      ChartDisplayMode.duskMode => S52DisplayMode.dusk,
+    };
+    
+    _symbolManager.setDisplayMode(s52Mode);
+    _s52ColorTable = S52ColorTables.getColorTable(s52Mode);
+    
+    // Set scale from transform
+    final scale = _transform.scaleFactor;
+    _symbolManager.setScale(scale);
+  }
+
   /// Get available rendering layers
   List<String> getLayers() {
     return _layerVisibility.keys.toList();
@@ -505,6 +533,12 @@ class ChartRenderingService {
     PointFeature feature,
     Offset position,
   ) {
+    // Try S-52 compliant rendering first
+    if (_tryS52SymbolRendering(canvas, feature, position)) {
+      return;
+    }
+
+    // Fallback to legacy rendering
     final paint = Paint()
       ..color = getSymbolColor(feature.type)
       ..style = PaintingStyle.fill;
@@ -523,6 +557,18 @@ class ChartRenderingService {
         break;
       default:
         _drawGenericPointSymbol(canvas, position, size, paint);
+    }
+  }
+
+  /// Try rendering with S-52 compliant symbols
+  bool _tryS52SymbolRendering(Canvas canvas, PointFeature feature, Offset position) {
+    try {
+      final size = getSymbolSizeForZoom(feature.type);
+      _symbolManager.renderSymbolToCanvas(canvas, position, feature, size);
+      return true;
+    } catch (e) {
+      // Fall back to legacy rendering if S-52 fails
+      return false;
     }
   }
 
