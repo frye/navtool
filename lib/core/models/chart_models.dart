@@ -265,3 +265,253 @@ class DepthContour extends LineFeature {
   @override
   int get renderPriority => 5;
 }
+
+/// Chart tile/cell management for optimal rendering
+class ChartTile {
+  final String id;
+  final LatLngBounds bounds;
+  final int zoomLevel;
+  final List<MaritimeFeature> features;
+  final ChartScale scale;
+  final DateTime lastUpdated;
+
+  const ChartTile({
+    required this.id,
+    required this.bounds,
+    required this.zoomLevel,
+    required this.features,
+    required this.scale,
+    required this.lastUpdated,
+  });
+
+  /// Check if tile should be rendered at given zoom level
+  bool shouldRenderAtZoom(double zoom) {
+    return (zoom >= zoomLevel - 1) && (zoom <= zoomLevel + 2);
+  }
+
+  /// Get visible features at current scale
+  List<MaritimeFeature> getVisibleFeatures() {
+    return features.where((feature) => feature.isVisibleAtScale(scale)).toList();
+  }
+
+  /// Get feature count by type
+  Map<MaritimeFeatureType, int> getFeatureCountsByType() {
+    final counts = <MaritimeFeatureType, int>{};
+    for (final feature in features) {
+      counts[feature.type] = (counts[feature.type] ?? 0) + 1;
+    }
+    return counts;
+  }
+}
+
+/// Chart cell management for S-57 ENC data
+class ChartCell {
+  final String cellName;
+  final LatLngBounds bounds;
+  final int edition;
+  final int updateNumber;
+  final String producer;
+  final DateTime issueDate;
+  final ChartScale nativeScale;
+  final List<ChartTile> tiles;
+
+  const ChartCell({
+    required this.cellName,
+    required this.bounds,
+    required this.edition,
+    required this.updateNumber,
+    required this.producer,
+    required this.issueDate,
+    required this.nativeScale,
+    required this.tiles,
+  });
+
+  /// Create tiles for this cell based on feature density
+  static List<ChartTile> createTilesForCell({
+    required String cellName,
+    required LatLngBounds bounds,
+    required List<MaritimeFeature> features,
+    required ChartScale scale,
+    int maxFeaturesPerTile = 1000,
+  }) {
+    final tiles = <ChartTile>[];
+    
+    // Simple quadtree-style subdivision if too many features
+    if (features.length <= maxFeaturesPerTile) {
+      tiles.add(ChartTile(
+        id: '${cellName}_0',
+        bounds: bounds,
+        zoomLevel: _scaleToZoomLevel(scale),
+        features: features,
+        scale: scale,
+        lastUpdated: DateTime.now(),
+      ));
+    } else {
+      // Subdivide into quadrants
+      final centerLat = (bounds.north + bounds.south) / 2;
+      final centerLon = (bounds.east + bounds.west) / 2;
+      
+      final quadrants = [
+        LatLngBounds(
+          north: bounds.north,
+          south: centerLat,
+          east: centerLon,
+          west: bounds.west,
+        ), // NW
+        LatLngBounds(
+          north: bounds.north,
+          south: centerLat,
+          east: bounds.east,
+          west: centerLon,
+        ), // NE
+        LatLngBounds(
+          north: centerLat,
+          south: bounds.south,
+          east: centerLon,
+          west: bounds.west,
+        ), // SW
+        LatLngBounds(
+          north: centerLat,
+          south: bounds.south,
+          east: bounds.east,
+          west: centerLon,
+        ), // SE
+      ];
+      
+      for (int i = 0; i < quadrants.length; i++) {
+        final quadrantFeatures = features
+            .where((f) => quadrants[i].contains(f.position))
+            .toList();
+            
+        if (quadrantFeatures.isNotEmpty) {
+          tiles.add(ChartTile(
+            id: '${cellName}_$i',
+            bounds: quadrants[i],
+            zoomLevel: _scaleToZoomLevel(scale),
+            features: quadrantFeatures,
+            scale: scale,
+            lastUpdated: DateTime.now(),
+          ));
+        }
+      }
+    }
+    
+    return tiles;
+  }
+
+  /// Get tiles visible in viewport bounds
+  List<ChartTile> getTilesInBounds(LatLngBounds viewportBounds) {
+    return tiles
+        .where((tile) => _boundsIntersect(tile.bounds, viewportBounds))
+        .toList();
+  }
+
+  /// Check if cell data is current (no updates needed)
+  bool get isCurrent => DateTime.now().difference(issueDate).inDays < 30;
+
+  static int _scaleToZoomLevel(ChartScale scale) {
+    return switch (scale) {
+      ChartScale.overview => 8,
+      ChartScale.general => 10,
+      ChartScale.coastal => 12,
+      ChartScale.approach => 14,
+      ChartScale.harbour => 16,
+      ChartScale.berthing => 18,
+    };
+  }
+
+  static bool _boundsIntersect(LatLngBounds a, LatLngBounds b) {
+    return a.west <= b.east &&
+        a.east >= b.west &&
+        a.south <= b.north &&
+        a.north >= b.south;
+  }
+}
+
+/// Chart metadata management
+class ChartMetadata {
+  final String id;
+  final String title;
+  final String producer;
+  final DateTime issueDate;
+  final int edition;
+  final int updateNumber;
+  final LatLngBounds bounds;
+  final ChartScale nativeScale;
+  final Map<String, dynamic> attributes;
+
+  const ChartMetadata({
+    required this.id,
+    required this.title,
+    required this.producer,
+    required this.issueDate,
+    required this.edition,
+    required this.updateNumber,
+    required this.bounds,
+    required this.nativeScale,
+    this.attributes = const {},
+  });
+
+  /// Create from S-57 chart metadata
+  factory ChartMetadata.fromS57({
+    required String cellName,
+    required String datasetTitle,
+    required String producer,
+    required DateTime issueDate,
+    required int edition,
+    required int updateNumber,
+    required double north,
+    required double south,
+    required double east,
+    required double west,
+    required int compilationScale,
+    Map<String, dynamic> additionalAttributes = const {},
+  }) {
+    return ChartMetadata(
+      id: cellName,
+      title: datasetTitle,
+      producer: producer,
+      issueDate: issueDate,
+      edition: edition,
+      updateNumber: updateNumber,
+      bounds: LatLngBounds(
+        north: north,
+        south: south,
+        east: east,
+        west: west,
+      ),
+      nativeScale: _determineScaleFromCompilation(compilationScale),
+      attributes: additionalAttributes,
+    );
+  }
+
+  /// Determine appropriate chart scale from compilation scale
+  static ChartScale _determineScaleFromCompilation(int compilationScale) {
+    if (compilationScale >= 1000000) return ChartScale.overview;
+    if (compilationScale >= 500000) return ChartScale.general;
+    if (compilationScale >= 100000) return ChartScale.coastal;
+    if (compilationScale >= 50000) return ChartScale.approach;
+    if (compilationScale >= 25000) return ChartScale.harbour;
+    return ChartScale.berthing;
+  }
+
+  /// Check if bounds overlap with another chart
+  bool overlaps(ChartMetadata other) {
+    return ChartCell._boundsIntersect(bounds, other.bounds);
+  }
+
+  /// Calculate coverage percentage of given bounds
+  double calculateCoverage(LatLngBounds queryBounds) {
+    if (!ChartCell._boundsIntersect(bounds, queryBounds)) return 0.0;
+
+    final intersectNorth = [bounds.north, queryBounds.north].reduce((a, b) => a < b ? a : b);
+    final intersectSouth = [bounds.south, queryBounds.south].reduce((a, b) => a > b ? a : b);
+    final intersectEast = [bounds.east, queryBounds.east].reduce((a, b) => a < b ? a : b);
+    final intersectWest = [bounds.west, queryBounds.west].reduce((a, b) => a > b ? a : b);
+
+    final intersectArea = (intersectNorth - intersectSouth) * (intersectEast - intersectWest);
+    final queryArea = (queryBounds.north - queryBounds.south) * (queryBounds.east - queryBounds.west);
+
+    return (intersectArea / queryArea).clamp(0.0, 1.0);
+  }
+}
