@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:navtool/core/services/database_storage_service.dart';
@@ -445,6 +446,3 @@ class TestLoggerAdapter implements AppLogger {
     print('ERROR: $error');
   }
 }
-
-/// Utility to decode ZIP archives for testing
-import 'package:archive/archive.dart';
