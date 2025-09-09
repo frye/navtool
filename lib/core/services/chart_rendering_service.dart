@@ -4,8 +4,12 @@ library;
 import 'package:flutter/material.dart';
 import '../models/chart_models.dart';
 import '../services/coordinate_transform.dart';
+import '../utils/path_dash_utils.dart';
 import 's52/s52_color_tables.dart';
 import 's52/s52_symbol_manager.dart';
+import 's57/s57_models.dart';
+import 's57/s57_spatial_tree.dart';
+import 's57/spatial_index_interface.dart';
 
 /// Service responsible for rendering maritime charts
 class ChartRenderingService {
@@ -15,9 +19,11 @@ class ChartRenderingService {
   final Map<String, bool> _layerVisibility = {};
   final Map<MaritimeFeatureType, Widget> _symbolCache = {};
   
+  // Spatial indexing for performance
+  late final SpatialIndex _spatialIndex;
+  
   // S-52 integration
   late final S52SymbolManager _symbolManager;
-  late final S52ColorTable _s52ColorTable;
 
   ChartRenderingService({
     required CoordinateTransform transform,
@@ -31,6 +37,9 @@ class ChartRenderingService {
     
     // Initialize S-52 symbology
     _initializeS52();
+    
+    // Build spatial index for performance
+    _buildSpatialIndex();
   }
 
   /// Render the chart to a Canvas
@@ -132,23 +141,24 @@ class ChartRenderingService {
       ..strokeWidth = _transform.getLineWidthForScale(feature.width ?? 2.0);
 
     // Apply specific line styles
+    Path renderPath = path;
     switch (feature.type) {
       case MaritimeFeatureType.shoreline:
         paint.strokeWidth = 2.0;
         break;
       case MaritimeFeatureType.cable:
-        // Dashed line effect will be implemented later
         paint.strokeWidth = 1.0;
+        renderPath = PathDashUtils.cableDashedPath(path);
         break;
       case MaritimeFeatureType.pipeline:
-        // Dotted line effect will be implemented later
         paint.strokeWidth = 1.0;
+        renderPath = PathDashUtils.pipelineDottedPath(path);
         break;
       default:
         break;
     }
 
-    canvas.drawPath(path, paint);
+    canvas.drawPath(renderPath, paint);
   }
 
   /// Render area features (land masses, anchorages, etc.)
@@ -470,7 +480,6 @@ class ChartRenderingService {
     };
     
     _symbolManager.setDisplayMode(s52Mode);
-    _s52ColorTable = S52ColorTables.getColorTable(s52Mode);
     
     // Set scale from transform
     final scale = _transform.scaleFactor;
@@ -501,12 +510,106 @@ class ChartRenderingService {
     };
   }
 
-  /// Get visible features with culling optimization
+  /// Build spatial index from features for efficient culling
+  void _buildSpatialIndex() {
+    // Convert maritime features to S57 features for spatial indexing
+    final s57Features = _features.map(_convertToS57Feature).toList();
+    
+    // Use factory to choose optimal index implementation based on feature count
+    _spatialIndex = SpatialIndexFactory.create(s57Features);
+  }
+  
+  /// Convert maritime feature to S57 feature for spatial indexing
+  S57Feature _convertToS57Feature(MaritimeFeature feature) {
+    // Extract coordinates and determine geometry type
+    List<S57Coordinate> coordinates;
+    S57GeometryType geometryType;
+    
+    if (feature is PointFeature) {
+      coordinates = [S57Coordinate(
+        latitude: feature.position.latitude,
+        longitude: feature.position.longitude,
+      )];
+      geometryType = S57GeometryType.point;
+    } else if (feature is LineFeature) {
+      coordinates = feature.coordinates.map((coord) => S57Coordinate(
+        latitude: coord.latitude,
+        longitude: coord.longitude,
+      )).toList();
+      geometryType = S57GeometryType.line;
+    } else if (feature is AreaFeature) {
+      // Use first ring for bounding
+      coordinates = feature.coordinates.isNotEmpty 
+        ? feature.coordinates.first.map((coord) => S57Coordinate(
+            latitude: coord.latitude,
+            longitude: coord.longitude,
+          )).toList()
+        : [S57Coordinate(
+            latitude: feature.position.latitude,
+            longitude: feature.position.longitude,
+          )];
+      geometryType = S57GeometryType.area;
+    } else {
+      coordinates = [S57Coordinate(
+        latitude: feature.position.latitude,
+        longitude: feature.position.longitude,
+      )];
+      geometryType = S57GeometryType.point;
+    }
+    
+    return S57Feature(
+      recordId: feature.id.hashCode,
+      featureType: _maritimeToS57Type(feature.type),
+      geometryType: geometryType,
+      coordinates: coordinates,
+      attributes: feature is PointFeature ? feature.attributes : {},
+    );
+  }
+  
+  /// Map maritime feature type to S57 feature type
+  S57FeatureType _maritimeToS57Type(MaritimeFeatureType type) {
+    return switch (type) {
+      MaritimeFeatureType.lighthouse => S57FeatureType.lighthouse,
+      MaritimeFeatureType.buoy => S57FeatureType.buoy,
+      MaritimeFeatureType.beacon => S57FeatureType.beacon,
+      MaritimeFeatureType.shoreline => S57FeatureType.shoreline,
+      MaritimeFeatureType.landArea => S57FeatureType.landArea,
+      MaritimeFeatureType.cable => S57FeatureType.obstruction, // Use obstruction for cables
+      MaritimeFeatureType.pipeline => S57FeatureType.obstruction, // Use obstruction for pipelines
+      MaritimeFeatureType.depthContour => S57FeatureType.depthContour,
+      MaritimeFeatureType.depthArea => S57FeatureType.depthArea,
+      MaritimeFeatureType.soundings => S57FeatureType.sounding,
+      MaritimeFeatureType.rocks => S57FeatureType.underwater,
+      MaritimeFeatureType.wrecks => S57FeatureType.wreck,
+      MaritimeFeatureType.anchorage => S57FeatureType.coastline, // Use coastline for anchorage areas
+      MaritimeFeatureType.restrictedArea => S57FeatureType.coastline, // Use coastline for restricted areas
+      MaritimeFeatureType.trafficSeparation => S57FeatureType.coastline, // Use coastline for traffic separation
+      MaritimeFeatureType.obstruction => S57FeatureType.obstruction,
+      MaritimeFeatureType.daymark => S57FeatureType.daymark,
+    };
+  }
+
+  /// Get visible features with spatial culling optimization
   List<MaritimeFeature> getVisibleFeatures() {
     final bounds = _transform.visibleBounds;
+    
+    // Use spatial index for efficient bounds query
+    final s57Bounds = S57Bounds(
+      west: bounds.west,
+      east: bounds.east,
+      south: bounds.south,
+      north: bounds.north,
+    );
+    
+    final spatialCandidates = _spatialIndex.queryBounds(s57Bounds);
+    final candidateIds = spatialCandidates.map((f) => f.recordId).toSet();
+    
+    // Filter original features based on spatial results and additional criteria
     return _features.where((feature) {
-      // Basic visibility culling
-      if (!bounds.contains(feature.position)) {
+      final featureId = feature.id.hashCode;
+      
+      // Must pass spatial culling first
+      if (!candidateIds.contains(featureId)) {
         return false;
       }
 
