@@ -24,7 +24,6 @@ class ChartRenderingService {
   
   // S-52 integration
   late final S52SymbolManager _symbolManager;
-  late final S52ColorTable _s52ColorTable;
 
   ChartRenderingService({
     required CoordinateTransform transform,
@@ -481,7 +480,6 @@ class ChartRenderingService {
     };
     
     _symbolManager.setDisplayMode(s52Mode);
-    _s52ColorTable = S52ColorTables.getColorTable(s52Mode);
     
     // Set scale from transform
     final scale = _transform.scaleFactor;
