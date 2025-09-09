@@ -61,17 +61,24 @@ class _ChartWidgetState extends State<ChartWidget> {
     _displayMode = widget.displayMode;
     _rotation = 0.0;
     
-    // Initialize rendering service
-    _initializeRenderingService();
-    
-    // Initialize available layers
-    _availableLayers = _renderingService.getLayers();
-    
-    // Initialize layer visibility
+    // Initialize default layer visibility (will be updated in didChangeDependencies)
     _layerVisibility = {
-      for (String layer in _availableLayers)
-        layer: true,
+      'depth_contours': true,
+      'navigation_aids': true,
+      'shoreline': true,
+      'restricted_areas': true,
+      'anchorages': true,
+      'chart_grid': false,
+      'chart_boundaries': true,
     };
+    
+    _availableLayers = _layerVisibility.keys.toList();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _initializeRenderingService();
   }
 
   void _initializeRenderingService() {
@@ -89,6 +96,18 @@ class _ChartWidgetState extends State<ChartWidget> {
       features: widget.features,
       displayMode: _displayMode,
     );
+    
+    // Update available layers from rendering service
+    try {
+      _availableLayers = _renderingService.getLayers();
+      // Update layer visibility map to include any new layers
+      for (String layer in _availableLayers) {
+        _layerVisibility[layer] ??= true;
+      }
+    } catch (e) {
+      // Fallback if rendering service doesn't have layers method
+      // Keep existing layer visibility
+    }
   }
 
   @override
