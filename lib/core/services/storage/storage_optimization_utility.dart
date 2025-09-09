@@ -1,8 +1,6 @@
-import 'dart:io';
 import 'dart:math';
 import '../database_storage_service.dart';
 import '../compression_service.dart';
-import 'chart_storage_analyzer.dart';
 import '../../models/chart.dart';
 import '../../models/geographic_bounds.dart';
 import '../../logging/app_logger.dart';
@@ -164,7 +162,6 @@ class StorageOptimizationUtility {
     logger.info('Generating storage cleanup recommendations...');
     
     final recommendations = <CleanupRecommendation>[];
-    final storageInfo = await storageService.getStorageInfo();
     final totalUsage = await storageService.getStorageUsage();
     
     // Check for old chart versions
@@ -301,7 +298,7 @@ class StorageOptimizationUtility {
       id: 'PERF_TEST_${DateTime.now().millisecondsSinceEpoch}',
       title: 'Performance Test Chart',
       scale: 25000,
-      bounds: const GeographicBounds(
+      bounds: GeographicBounds(
         north: 47.7,
         south: 47.5,
         east: -122.2,
