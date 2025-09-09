@@ -4,6 +4,85 @@
 
 NavTool is a Flutter application that enables users to download vector nautical charts from NOAA's free Electronic Navigational Chart (ENC) sources, organized by U.S. state. The app provides an intuitive interface for discovering, selecting, and downloading NOAA's S-57 format vector charts for offline use in marine navigation and geographic analysis.
 
+## Current Issue Analysis: Washington State Charts Not Found
+
+### Problem Description
+When users run the application and select "Washington" from the state dropdown in the chart browser, they encounter "0 charts found" instead of the expected list of Washington state nautical charts with previews.
+
+### Root Cause Analysis
+
+**Primary Issues Identified:**
+
+1. **Chart Catalog Bootstrap Failure**
+   - The `ensureCatalogBootstrapped()` method in `ChartCatalogServiceImpl` is designed to force re-bootstrap even when charts exist
+   - This causes the system to repeatedly attempt to fetch from NOAA API, which may be failing
+   - Current code comment indicates: "Force re-bootstrap to test new geometry extraction"
+
+2. **NOAA API Network Connectivity Issues**
+   - Test logs show intermittent failures: "NoaaApiException: No internet connection available (NETWORK_CONNECTIVITY)"
+   - The bootstrap process depends entirely on successful NOAA API calls
+   - Failures in API calls result in empty chart catalog
+
+3. **State-to-Chart Mapping Dependencies**
+   - Washington state mapping relies on spatial intersection of chart bounds with Washington boundaries
+   - The mapping service (`StateRegionMappingServiceImpl`) calls `_computeChartCellsForState()` which queries the database
+   - If the database is empty due to bootstrap failures, no charts are found
+
+4. **Cache Invalidation System**
+   - Previous issue #129 identified stale cached data with invalid bounds (0,0,0,0)
+   - While a cache invalidation system was implemented, the bootstrap process still depends on live API calls
+
+### Technical Flow Analysis
+
+**Expected Flow:**
+1. User selects "Washington" from dropdown
+2. `ChartBrowserScreen._loadChartsForState()` calls `NoaaChartDiscoveryService.discoverChartsByState()`
+3. Discovery service calls `ChartCatalogService.ensureCatalogBootstrapped()`
+4. Bootstrap fetches charts from NOAA API and stores them in database
+5. `StateRegionMappingService.getChartCellsForState()` queries database for Washington charts
+6. Charts are returned and displayed to user
+
+**Actual Flow Issues:**
+1. Bootstrap repeatedly attempts API calls (force refresh enabled)
+2. API calls fail intermittently due to network issues
+3. Database remains empty or partially populated
+4. Spatial queries for Washington state return no results
+5. User sees "0 charts found"
+
+### Detailed Technical Findings
+
+**From Code Analysis:**
+
+1. **Forced Bootstrap Logic** (`chart_catalog_service.dart:298-308`):
+   ```dart
+   // Force re-bootstrap to test new geometry extraction
+   // TODO: Remove this force refresh after verifying geometry extraction works
+   if (chartCount > 0) {
+     _logger.info(
+       'Force refreshing chart catalog to test geometry extraction (chartCount: $chartCount)',
+     );
+   }
+   ```
+
+2. **Network Failure Pattern** (from test logs):
+   - Frequent "No internet connection available" errors
+   - Successful calls mixed with failures
+   - Bootstrap process fails when API calls fail
+
+3. **State Mapping Logic** (`state_region_mapping_service.dart:145-185`):
+   - Uses spatial intersection with predefined Washington bounds: `north: 49.0, south: 45.5, east: -116.9, west: -124.8`
+   - Queries database: `await _storageService.getChartsInBounds(stateBounds)`
+   - Returns empty list if database has no charts for Washington area
+
+4. **Database Query Logic** (`database_storage_service.dart:669-683`):
+   ```sql
+   SELECT * FROM charts 
+   WHERE bounds_south <= ? AND bounds_north >= ? AND 
+         bounds_west <= ? AND bounds_east >= ?
+   ```
+   - Correct spatial intersection logic
+   - Returns empty if no charts in database match Washington bounds
+
 ## Background Research
 
 NOAA provides free Electronic Navigational Charts (ENCs) in the international S-57 vector format. These charts are organized by geographic regions rather than states, covering U.S. coastal waters, Great Lakes, and inland waterways. The charts are available through several access methods:
@@ -75,10 +154,85 @@ NOAA provides free Electronic Navigational Charts (ENCs) in the international S-
 - **Simple State Selection**: Start with familiar state boundaries rather than complex regional groupings
 - **Visual Chart Coverage**: Show exactly what water areas each chart covers
 - **Offline-First**: Assume users will primarily use charts without internet connection
-- **Update Awareness**: Clearly indicate when newer chart versions are available
+- **User-Controlled Updates**: Let users decide when to refresh chart data based on connectivity
 - **Marine-Standard Display**: Follow IHO chart symbology and marine navigation conventions
 - **Touch-Optimized**: Design for marine environment with wet hands and gloves
 - **Sunlight Readable**: High contrast modes for bright outdoor conditions
+- **Connectivity Awareness**: Clear indicators of cached vs. fresh data without forcing updates
+
+### Contributing Factors
+
+**Environmental Issues:**
+- Intermittent network connectivity in marine/development environments
+- NOAA API rate limiting or temporary service unavailability
+- DNS resolution issues for NOAA endpoints
+
+**Data Availability Issues:**
+- NOAA test dataset limitations (only 15-18 charts total according to diagnostic tests)
+- Limited Washington state coverage in test data
+- Production vs. test endpoint configuration issues
+
+**Caching Strategy Issues:**
+- Force bootstrap strategy prevents using cached data
+- No fallback mechanism when API calls fail
+- Cache invalidation may be too aggressive
+
+### Solution Plan
+
+**Phase 1: Immediate Fixes (High Priority)**
+
+1. **Remove Automatic Bootstrap** 
+   - Disable forced re-bootstrap logic in `ensureCatalogBootstrapped()`
+   - Allow system to use existing cached charts indefinitely
+   - Remove automatic API calls that depend on network connectivity
+
+2. **Add Manual Refresh Button**
+   - Add "Refresh Chart Catalog" button in chart browser UI
+   - User controls when to attempt NOAA API calls
+   - Show loading state and progress during manual refresh
+   - Graceful error handling with clear user messaging
+
+3. **Add Test Data Seeding with Existing Elliott Bay Charts**
+   - Use existing test charts: `US5WA50M_harbor_elliott_bay.zip` and `US3WA01M_coastal_puget_sound.zip`
+   - Seed database with actual NOAA ENC test data from `test/fixtures/charts/noaa_enc/`
+   - Ensure Elliott Bay charts (US5WA50M and US3WA01M) are available immediately without requiring network
+   - Provide offline-first experience for marine environment using real chart data
+
+**Phase 2: Network Resilience (Medium Priority)**
+
+1. **Enhanced Error Handling**
+   - Better network failure detection and reporting
+   - User-friendly error messages when charts unavailable
+   - Network status monitoring and retry mechanisms
+
+2. **Progressive Loading Strategy**
+   - Load charts incrementally as network allows
+   - Show partial results while loading continues
+   - Cache successful API responses aggressively
+
+3. **Offline-First Architecture**
+   - Pre-populate with essential chart data
+   - Background sync when network available
+   - Local database as primary source of truth
+
+**Phase 3: Data Quality & Coverage (Lower Priority)**
+
+1. **Production API Integration**
+   - Verify production NOAA endpoints provide full coverage
+   - Implement proper API authentication if required
+   - Add data validation and quality checks
+
+2. **Enhanced State Mapping**
+   - Improve spatial intersection algorithms
+   - Add support for chart overlaps and boundaries
+   - Better handling of edge cases and chart gaps
+
+### Immediate Action Items
+
+1. **Remove Automatic Bootstrap** - Disable forced API refresh
+2. **Add Manual Refresh Button** - User-controlled chart updates
+3. **Seed Elliott Bay Test Data** - Use existing US5WA50M and US3WA01M charts from test fixtures
+4. **Update UI/UX** - Clear refresh status and offline indicators showing Elliott Bay chart availability
 
 ## Implementation Progress
 
@@ -145,7 +299,74 @@ NOAA provides free Electronic Navigational Charts (ENCs) in the international S-
 
 **Estimated Timeline**: 16-22 days (3-4 weeks) for complete NOAA integration
 
-### Technical Architecture Summary
+### Washington Charts Issue - Comprehensive Analysis
+
+### Debug Evidence Summary
+
+**From Codebase Analysis:**
+
+1. **Bootstrap Process Issues:**
+   - `ChartCatalogServiceImpl.ensureCatalogBootstrapped()` forces re-bootstrap even with existing charts
+   - Comment indicates this is temporary for "geometry extraction testing"
+   - Process depends entirely on successful NOAA API calls
+
+2. **Network Failure Patterns:**
+   - Test logs show: "NoaaApiException: No internet connection available (NETWORK_CONNECTIVITY)"
+   - Mixed success/failure pattern suggests intermittent connectivity
+   - No fallback strategy when API calls fail
+
+3. **Data Flow Dependencies:**
+   ```
+   User selects Washington
+   ↓
+   NoaaChartDiscoveryService.discoverChartsByState("Washington")
+   ↓
+   ChartCatalogService.ensureCatalogBootstrapped() [FAILS HERE]
+   ↓
+   StateRegionMappingService.getChartCellsForState("Washington")
+   ↓
+   StorageService.getChartsInBounds(washingtonBounds) [RETURNS EMPTY]
+   ↓
+   User sees "0 charts found"
+   ```
+
+4. **Database State:**
+   - Spatial query logic is correct (verified in Issue #129 solution)
+   - Washington bounds are accurate: `north: 49.0, south: 45.5, east: -116.9, west: -124.8`
+   - Problem is empty/incomplete database due to bootstrap failures
+
+**Evidence from Issue #129 Solution:**
+- Cache invalidation system was implemented and tested
+- Spatial intersection queries work correctly when database has data
+- Test with synthetic Washington charts returned expected results
+- Issue is data availability, not technical implementation
+
+### Root Cause Conclusion
+
+The "0 charts found for Washington" issue is **NOT** a spatial query bug or coordinate system problem. It is a **data availability issue** caused by:
+
+1. **Primary Cause:** Forced bootstrap process failing due to network issues
+2. **Secondary Cause:** No fallback mechanism when NOAA API unavailable
+3. **Tertiary Cause:** Potentially limited Washington chart coverage in NOAA test dataset
+
+### Solution Implementation Priority
+
+**CRITICAL (Fix Immediately):**
+- [ ] Disable forced bootstrap in `ChartCatalogServiceImpl.ensureCatalogBootstrapped()`
+- [ ] Add network failure fallback in bootstrap process
+- [ ] Seed database with Washington test chart data
+
+**HIGH (Next Release):**
+- [ ] Implement progressive chart loading with retry logic
+- [ ] Add user-friendly error messaging for network issues
+- [ ] Create offline-first chart discovery strategy
+
+**MEDIUM (Future Enhancement):**
+- [ ] Verify production NOAA API provides full Washington coverage
+- [ ] Add background sync for chart catalog updates
+- [ ] Implement chart coverage monitoring and alerts
+
+## Technical Architecture Summary
 
 **Service Layer Design:**
 ```dart
@@ -162,12 +383,259 @@ NoaaMetadataParser -> GeoJSON to Chart model transformation
 - Offline-first design for marine environment reliability
 - Comprehensive error handling for network and parsing failures
 
+**Current Architecture Issues:**
+- Bootstrap process too dependent on live API calls
+- No graceful degradation when network unavailable
+- Cache invalidation may be too aggressive for marine environments
+- User experience degrades completely when API fails
+
 ### Success Metrics
 - Chart coverage for all US coastal states and Great Lakes
 - State-based discovery completes in <2 seconds
 - >99% success rate for chart metadata retrieval
 - >90% test coverage for reliability
 - Seamless integration with existing chart browsing UI
+
+### Washington Charts Issue - Action Plan
+
+**Immediate Actions Required:**
+
+1. **Remove Automatic Bootstrap** (`lib/core/services/noaa/chart_catalog_service.dart:298-308`)
+   ```dart
+   // REMOVE this forced refresh logic entirely:
+   // if (chartCount > 0) {
+   //   _logger.info('Force refreshing chart catalog...');
+   // }
+   
+   // REPLACE with simple cache check:
+   if (chartCount > 0) {
+     _logger.info('Using cached chart catalog with ${chartCount} charts');
+     return; // Always use existing cache
+   }
+   ```
+
+2. **Add Manual Refresh Button** (`lib/features/charts/chart_browser_screen.dart`)
+   ```dart
+   // Add refresh button to app bar
+   AppBar(
+     title: Text('Chart Browser'),
+     actions: [
+       IconButton(
+         icon: Icon(Icons.refresh),
+         onPressed: _refreshChartCatalog,
+         tooltip: 'Refresh Chart Catalog',
+       ),
+     ],
+   )
+   
+   // User-controlled refresh method
+   Future<void> _refreshChartCatalog() async {
+     setState(() => _isRefreshing = true);
+     try {
+       await ref.read(chartCatalogServiceProvider).refreshCatalog(force: true);
+       // Show success message
+     } catch (e) {
+       // Show network error, continue using cached data
+     }
+     setState(() => _isRefreshing = false);
+   }
+   ```
+
+3. **Seed Test Data for Offline Use**
+   - Create `lib/core/fixtures/washington_charts.dart` with realistic test data
+   - Populate database on first app launch with representative charts
+   - Ensure Washington state shows charts immediately without network
+
+4. **Update User Experience with Elliott Bay Charts Toggle**
+   - Add UI toggle to always include Elliott Bay test charts (US5WA50M, US3WA01M)
+   - Toggle works independently - even when live NOAA data is available
+   - Combine live and test charts with deduplication (live charts take precedence)
+   - Show visual indicator when test charts are included
+   - Display last refresh timestamp
+   - Clear messaging about manual refresh capability
+   - Loading states only during user-initiated refresh
+
+**Testing Strategy:**
+- Test with network disconnected to verify fallback
+- Verify Washington state shows charts in offline mode  
+- Test bootstrap recovery after network restoration
+- Validate spatial queries with seeded test data
+
+**Expected Outcome:**
+Users selecting Washington state will have a toggle option to include Elliott Bay test charts (US5WA50M harbor-scale and US3WA01M coastal-scale) alongside any live NOAA data. The toggle is enabled by default and works independently of network connectivity. When enabled, users see both test charts and live charts combined (with live charts taking precedence for duplicate IDs). Users can manually refresh the chart catalog when they have good connectivity, and the app remains fully functional offline with the existing Elliott Bay test data. This provides a reliable marine navigation experience that works in all connectivity conditions, using real NOAA ENC chart files from the test fixtures, while also allowing access to the most current live data when available.
+
+## Current Chart Rendering Issue Analysis (December 2024)
+
+### Problem Description
+After successfully implementing Issue #183 (Elliott Bay test charts integration), users report that selected Elliott Bay charts (US5WA50M and US3WA01M) display only "weird symbol" in the center instead of proper maritime features like contours, depth areas, and navigation aids.
+
+### Technical Root Cause Analysis
+
+**Chart Data Pipeline Investigation:**
+
+1. **S-57 Parser Status**: ✅ **WORKING CORRECTLY**
+   - Elliott Bay test charts (US5WA50M.000, US3WA01M.000) parse successfully
+   - Extracts proper maritime features: DEPARE (depth areas), SOUNDG (soundings), COALNE (coastlines)
+   - Synthetic test features are properly generated with correct geometries and attributes
+   - Feature types correctly identified: `S57FeatureType.depthArea`, `S57FeatureType.sounding`, etc.
+
+2. **Feature Data Conversion**: ❓ **POTENTIAL GAP**
+   - S57Features contain proper attributes (DRVAL1/DRVAL2 for depths, VALSOU for soundings)
+   - Coordinates are correctly transformed using COMF/SOMF scaling factors
+   - Features have valid `S57GeometryType` (point, line, area) and geographic bounds
+
+3. **Chart Rendering Service**: ❌ **RENDERING DISCONNECT**
+   - `ChartRenderingService` expects `MaritimeFeature` objects (PointFeature, LineFeature, AreaFeature)
+   - S57Parser produces `S57Feature` objects with different data structure
+   - **MISSING ADAPTER**: No conversion layer between S57Feature → MaritimeFeature
+   - CustomPainter receives wrong feature types and displays fallback symbols
+
+4. **Visual Rendering Pipeline**: ✅ **ARCHITECTURE EXISTS**
+   - `ChartWidget` → `_ChartPainter` → `ChartRenderingService.render()` pipeline is complete
+   - S-52 symbology system exists with `S52SymbolManager` and color tables
+   - Canvas rendering for maritime features (depths, contours, aids) is implemented
+   - Fallback symbol rendering explains "weird symbol" - it's the generic point symbol
+
+### Specific Technical Findings
+
+**Data Structure Mismatch:**
+```dart
+// S57Parser produces:
+S57Feature {
+  recordId: 12345,
+  featureType: S57FeatureType.depthArea,
+  geometryType: S57GeometryType.area,
+  coordinates: [S57Coordinate(lat: 47.65, lng: -122.35), ...],
+  attributes: {'DRVAL1': 10.0, 'DRVAL2': 20.0},
+  label: 'Depth Area 10-20m'
+}
+
+// ChartRenderingService expects:
+AreaFeature {
+  id: 'depth_area_123',
+  type: MaritimeFeatureType.depthArea,
+  position: LatLng(47.65, -122.35),
+  coordinates: [[LatLng(...), LatLng(...)]],
+  fillColor: Colors.blue,
+  attributes: {'depth_min': 10.0, 'depth_max': 20.0}
+}
+```
+
+**Chart Display Pipeline Gaps:**
+1. **Missing Feature Adapter**: No `S57Feature` → `MaritimeFeature` conversion
+2. **Missing Chart Data Provider**: Charts load as `S57ParsedData` but rendering expects `List<MaritimeFeature>`
+3. **Missing S-52 Integration**: S57Features don't connect to S52SymbolManager
+4. **Missing Chart Loading**: Elliott Bay charts are cataloged but not loaded into chart viewer
+
+### Solution Implementation Plan
+
+**CRITICAL FIX - Chart Rendering Pipeline Integration**
+
+**Phase 1: Feature Adapter Implementation**
+```dart
+// Create: lib/core/adapters/s57_to_maritime_adapter.dart
+class S57ToMaritimeAdapter {
+  static List<MaritimeFeature> convertFeatures(List<S57Feature> s57Features) {
+    return s57Features.map((s57) => _convertFeature(s57)).whereType<MaritimeFeature>().toList();
+  }
+  
+  static MaritimeFeature? _convertFeature(S57Feature s57) {
+    switch (s57.featureType) {
+      case S57FeatureType.depthArea:
+        return _convertDepthArea(s57);
+      case S57FeatureType.sounding:
+        return _convertSounding(s57);
+      case S57FeatureType.coastline:
+        return _convertCoastline(s57);
+      // ... handle all maritime feature types
+    }
+  }
+}
+```
+
+**Phase 2: Chart Data Integration**
+```dart
+// Update: lib/features/charts/chart_screen.dart
+class ChartScreen extends ConsumerWidget {
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ref.watch(selectedChartProvider).when(
+      data: (chartData) {
+        // Parse S-57 chart data
+        final s57Data = S57Parser.parse(chartData.rawBytes);
+        
+        // Convert to maritime features
+        final maritimeFeatures = S57ToMaritimeAdapter.convertFeatures(s57Data.features);
+        
+        // Display with chart widget
+        return ChartWidget(
+          features: maritimeFeatures,
+          bounds: _convertBounds(s57Data.bounds),
+        );
+      },
+    );
+  }
+}
+```
+
+**Phase 3: Elliott Bay Chart Loading**
+```dart
+// Update: Chart selection to load actual chart files
+Future<void> loadChart(ChartMetadata chart) async {
+  if (chart.id == 'US5WA50M' || chart.id == 'US3WA01M') {
+    // Load from test fixtures
+    final chartFile = File('test/fixtures/charts/noaa_enc/${chart.id}.000');
+    final chartData = await chartFile.readAsBytes();
+    
+    // Set as current chart for rendering
+    ref.read(selectedChartProvider.notifier).loadChart(chartData);
+  }
+}
+```
+
+**Phase 4: S-52 Symbology Integration**
+```dart
+// Enhance: ChartRenderingService with S-52 compliance
+class ChartRenderingService {
+  void _renderDepthArea(Canvas canvas, AreaFeature depthArea) {
+    // Use S-52 colors and patterns for depth areas
+    final s52Color = _s52SymbolManager.getDepthAreaColor(
+      minDepth: depthArea.attributes['depth_min'],
+      maxDepth: depthArea.attributes['depth_max'],
+    );
+    
+    // Render with proper marine symbology
+    final paint = Paint()..color = s52Color;
+    canvas.drawPath(_createAreaPath(depthArea.coordinates), paint);
+  }
+}
+```
+
+### Implementation Priority
+
+**IMMEDIATE (Fix Chart Display)**
+1. **Feature Adapter** - Convert S57Features to MaritimeFeatures 
+2. **Chart Loading** - Load Elliott Bay chart files into chart viewer
+3. **Basic Rendering** - Display depth areas, soundings, coastlines correctly
+
+**HIGH (Complete Maritime Features)**  
+1. **Full Feature Support** - All S-57 feature types (DEPARE, SOUNDG, COALNE, BOYLAT, etc.)
+2. **S-52 Colors** - Proper maritime color schemes for depth areas and symbols
+3. **Chart Bounds** - Correct viewport and coordinate transformation
+
+**MEDIUM (Enhanced Experience)**
+1. **Symbol Rendering** - Navigation aids, buoys, beacons with proper symbols  
+2. **Chart Labels** - Depth values, feature names, navigation info
+3. **Layer Management** - Toggle depth contours, navigation aids, etc.
+
+### Expected Resolution
+After implementing the feature adapter and chart loading pipeline, Elliott Bay charts will display:
+- **Depth Areas (DEPARE)**: Blue-shaded polygons with proper depth ranges (10-20m, etc.)
+- **Soundings (SOUNDG)**: Individual depth measurements as numbers on chart
+- **Coastlines (COALNE)**: Shore boundaries and land areas
+- **Navigation Aids**: Any buoys or beacons in Elliott Bay area
+- **Proper Chart Bounds**: Centered on Elliott Bay coordinates (47.6062°N, 122.3321°W)
+
+The "weird symbol" will be replaced with full maritime chart display showing Elliott Bay's harbor features, depth contours, and navigation information exactly as they appear in professional chart plotters.
 
 ## Technical Architecture
 
