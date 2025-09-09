@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:math' as math;
+import 'dart:io';
 import 'package:navtool/core/models/chart.dart';
 import 'package:navtool/core/models/geographic_bounds.dart';
 import 'package:navtool/core/services/cache_service.dart';
@@ -9,6 +10,7 @@ import 'package:navtool/core/error/app_error.dart';
 import 'package:navtool/core/services/noaa/noaa_api_client.dart';
 import 'package:navtool/core/services/database_storage_service.dart';
 import 'package:navtool/core/services/storage/noaa_storage_extensions.dart';
+import 'package:navtool/core/fixtures/washington_charts.dart';
 
 /// Abstract interface for chart catalog management and caching
 abstract class ChartCatalogService {
@@ -307,7 +309,13 @@ class ChartCatalogServiceImpl implements ChartCatalogService {
         return; // Always use existing cache
       }
 
-      _logger.info('Chart catalog is empty, bootstrapping from NOAA API...');
+      _logger.info('Chart catalog is empty, seeding with Elliott Bay test charts...');
+      
+      // First-time setup: seed with Elliott Bay test charts
+      await _seedElliottBayTestCharts();
+      
+      // Check if we should also fetch from NOAA API
+      _logger.info('Seeding complete, bootstrapping from NOAA API...');
 
       // Fetch the complete chart catalog from NOAA API
       final catalogGeoJson = await _noaaApiClient.fetchChartCatalog();
@@ -741,5 +749,65 @@ class ChartCatalogServiceImpl implements ChartCatalogService {
     }
 
     return 50000; // Default scale
+  }
+
+  /// Seeds Elliott Bay test charts for offline-first operation
+  Future<void> _seedElliottBayTestCharts() async {
+    try {
+      final testCharts = WashingtonTestCharts.getAllCharts();
+      
+      _logger.info('Seeding ${testCharts.length} Elliott Bay test charts...');
+      
+      final List<Chart> chartsToStore = [];
+      
+      for (final chart in testCharts) {
+        try {
+          // For the two real test charts, attempt to load actual file data
+          if (WashingtonTestCharts.hasRealChartData(chart.id)) {
+            final chartPath = WashingtonTestCharts.getTestChartPath(chart.id);
+            
+            if (chartPath != null) {
+              final chartFile = File(chartPath);
+              
+              if (await chartFile.exists()) {
+                final chartData = await chartFile.readAsBytes();
+                
+                // Store chart with actual file data
+                await _databaseStorageService.storeChart(chart, chartData);
+                _logger.debug('Seeded real test chart: ${chart.id} (${chartData.length} bytes)');
+              } else {
+                _logger.warning('Test chart file not found: $chartPath - storing metadata only');
+                _logger.debug('Seeded chart metadata only: ${chart.id}');
+              }
+            }
+          } else {
+            // Synthetic charts: store metadata only (no file data)
+            _logger.debug('Seeded synthetic chart metadata: ${chart.id}');
+          }
+          
+          // Cache the chart metadata
+          await cacheChart(chart);
+          chartsToStore.add(chart);
+          
+        } catch (e) {
+          _logger.warning('Failed to seed chart ${chart.id}', exception: e);
+          // Continue with other charts
+        }
+      }
+      
+      // Store chart metadata in database
+      if (chartsToStore.isNotEmpty) {
+        try {
+          await _databaseStorageService.insertNoaaCharts(chartsToStore);
+          _logger.info('Successfully seeded ${chartsToStore.length} Elliott Bay test charts');
+        } catch (e) {
+          _logger.error('Failed to store Elliott Bay charts in database', exception: e);
+        }
+      }
+      
+    } catch (e) {
+      _logger.error('Failed to seed Elliott Bay test charts', exception: e);
+      // Don't throw - this is not critical for bootstrap
+    }
   }
 }
