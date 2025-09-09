@@ -7,6 +7,10 @@ import '../../core/models/chart.dart';
 import '../../core/providers/noaa_providers.dart';
 import '../../core/state/providers.dart';
 import '../../core/fixtures/washington_charts.dart';
+import '../../core/services/noaa/progressive_chart_loader.dart';
+import '../../core/services/background_sync_service.dart';
+import '../../core/error/network_error_classifier.dart';
+import '../../core/utils/network_resilience.dart';
 import 'widgets/chart_card.dart';
 import 'widgets/download_manager_panel.dart';
 
@@ -28,6 +32,13 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
   bool _includeTestCharts = true; // Default to showing test charts
   String? _errorMessage;
   Timer? _searchDebouncer;
+
+  // Enhanced refresh state
+  ChartLoadProgress? _refreshProgress;
+  String? _activeRefreshId;
+  StreamSubscription<ChartLoadProgress>? _refreshSubscription;
+  DateTime? _lastRefreshTime;
+  NetworkErrorType? _lastNetworkError;
 
   // Scale filtering
   double _minScale = 1000;
@@ -109,36 +120,225 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
   @override
   void dispose() {
     _searchDebouncer?.cancel();
+    _refreshSubscription?.cancel();
+    _cancelActiveRefresh();
     super.dispose();
   }
 
-  /// Manually refresh the chart catalog
+  /// Manually refresh the chart catalog with enhanced progress tracking
   Future<void> _refreshChartCatalog() async {
-    setState(() => _isRefreshing = true);
+    if (_isRefreshing) return; // Prevent multiple concurrent refreshes
+
+    setState(() {
+      _isRefreshing = true;
+      _refreshProgress = null;
+      _lastNetworkError = null;
+      _errorMessage = null;
+    });
+
     try {
-      final chartCatalogService = ref.read(chartCatalogServiceProvider);
-      await chartCatalogService.refreshCatalog(force: true);
+      // Get progressive chart loader
+      final progressiveLoader = ref.read(progressiveChartLoaderProvider);
       
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Chart catalog updated successfully')),
-        );
+      // Start progressive loading
+      final refreshId = 'refresh_${DateTime.now().millisecondsSinceEpoch}';
+      _activeRefreshId = refreshId;
+      
+      final progressStream = progressiveLoader.loadChartsWithProgress(
+        region: _selectedState,
+        loadId: refreshId,
+      );
+
+      // Listen to progress updates
+      _refreshSubscription = progressStream.listen(
+        _onRefreshProgress,
+        onError: _onRefreshError,
+        onDone: _onRefreshCompleted,
+      );
+
+    } catch (error) {
+      _handleRefreshError(error);
+    }
+  }
+
+  /// Cancel active refresh operation
+  Future<void> _cancelActiveRefresh() async {
+    if (_activeRefreshId != null) {
+      try {
+        final progressiveLoader = ref.read(progressiveChartLoaderProvider);
+        await progressiveLoader.cancelLoading(_activeRefreshId!);
         
-        // Reload charts for current state if selected
-        if (_selectedState != null) {
-          _loadChartsForState(_selectedState!);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Chart refresh cancelled'),
+              backgroundColor: Colors.orange,
+            ),
+          );
         }
+      } catch (error) {
+        // Ignore cancellation errors
+      } finally {
+        _cleanupRefreshState();
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Refresh failed - using cached charts')),
-        );
+    }
+  }
+
+  /// Handle refresh progress updates
+  void _onRefreshProgress(ChartLoadProgress progress) {
+    if (!mounted) return;
+
+    setState(() {
+      _refreshProgress = progress;
+      
+      if (progress.hasError) {
+        _lastNetworkError = NetworkErrorClassifier.classifyError(progress.error!);
+        _errorMessage = NetworkErrorClassifier.getUserFriendlyMessage(_lastNetworkError!);
       }
-    } finally {
-      if (mounted) {
-        setState(() => _isRefreshing = false);
+    });
+  }
+
+  /// Handle refresh errors
+  void _onRefreshError(dynamic error) {
+    _handleRefreshError(error);
+  }
+
+  /// Handle refresh completion
+  void _onRefreshCompleted() {
+    if (!mounted) return;
+
+    final progress = _refreshProgress;
+    if (progress != null && progress.isCompleted) {
+      setState(() {
+        _lastRefreshTime = DateTime.now();
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Chart catalog updated successfully (${progress.loadedCharts.length} charts)'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      
+      // Reload charts for current state if selected
+      if (_selectedState != null) {
+        _loadChartsForState(_selectedState!);
       }
+    }
+
+    _cleanupRefreshState();
+  }
+
+  /// Handle refresh errors
+  void _handleRefreshError(dynamic error) {
+    if (!mounted) return;
+
+    final errorType = NetworkErrorClassifier.classifyError(error as Exception);
+    final errorMessage = NetworkErrorClassifier.getUserFriendlyMessage(errorType);
+    final recommendation = NetworkErrorClassifier.getRecoveryRecommendation(errorType);
+
+    setState(() {
+      _lastNetworkError = errorType;
+      _errorMessage = errorMessage;
+    });
+
+    // Show detailed error dialog for non-trivial errors
+    if (errorType != NetworkErrorType.unknownError) {
+      _showDetailedErrorDialog(errorMessage, recommendation);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Refresh failed - using cached charts'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+
+    _cleanupRefreshState();
+  }
+
+  /// Clean up refresh state
+  void _cleanupRefreshState() {
+    if (!mounted) return;
+    
+    setState(() {
+      _isRefreshing = false;
+      _refreshProgress = null;
+      _activeRefreshId = null;
+    });
+    
+    _refreshSubscription?.cancel();
+    _refreshSubscription = null;
+  }
+
+  /// Show detailed error dialog with marine-specific recommendations
+  void _showDetailedErrorDialog(String message, String recommendation) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber, color: Colors.orange),
+            const SizedBox(width: 8),
+            const Text('Network Issue'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            const SizedBox(height: 12),
+            const Text(
+              'Recommended Actions:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(recommendation),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              // Queue background sync for retry
+              _queueBackgroundSync();
+            },
+            child: const Text('Retry Later'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _refreshChartCatalog(); // Retry immediately
+            },
+            child: const Text('Retry Now'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Queue background sync for retry
+  void _queueBackgroundSync() {
+    try {
+      final backgroundSync = ref.read(backgroundSyncServiceProvider);
+      backgroundSync.queueCatalogRefresh(
+        priority: SyncPriority.normal,
+        region: _selectedState,
+      );
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Queued for background sync when network improves'),
+          backgroundColor: Colors.blue,
+        ),
+      );
+    } catch (error) {
+      // Background sync not available, ignore silently
     }
   }
 
@@ -184,6 +384,46 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
       case 'refresh':
         _refreshChartCatalog();
         break;
+      case 'cancel_refresh':
+        _cancelActiveRefresh();
+        break;
+    }
+  }
+
+  /// Get progress text for display
+  String _getProgressText() {
+    final progress = _refreshProgress;
+    if (progress == null) return 'Initializing...';
+
+    switch (progress.stage) {
+      case ChartLoadStage.initializing:
+        return 'Starting refresh...';
+      case ChartLoadStage.fetchingCatalog:
+        return 'Fetching chart catalog...';
+      case ChartLoadStage.processingCharts:
+        final percentage = (progress.progress * 100).round();
+        final eta = progress.eta;
+        final etaText = eta != null ? ' • ${_formatDuration(eta)} remaining' : '';
+        return '$percentage% (${progress.completedItems}/${progress.totalItems})$etaText';
+      case ChartLoadStage.finalizing:
+        return 'Finalizing...';
+      case ChartLoadStage.completed:
+        return 'Completed!';
+      case ChartLoadStage.cancelled:
+        return 'Cancelled';
+      case ChartLoadStage.failed:
+        return 'Failed';
+    }
+  }
+
+  /// Format duration for display
+  String _formatDuration(Duration duration) {
+    if (duration.inHours > 0) {
+      return '${duration.inHours}h ${duration.inMinutes % 60}m';
+    } else if (duration.inMinutes > 0) {
+      return '${duration.inMinutes}m';
+    } else {
+      return '${duration.inSeconds}s';
     }
   }
 
@@ -233,12 +473,37 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                         )
                       : const Icon(Icons.refresh),
                     const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text('Refresh Chart Catalog'),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Refresh Chart Catalog'),
+                          if (_refreshProgress != null && _isRefreshing)
+                            Text(
+                              _getProgressText(),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
+              if (_isRefreshing)
+                PopupMenuItem(
+                  value: 'cancel_refresh',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.cancel, color: Colors.red),
+                      const SizedBox(width: 8),
+                      const Expanded(child: Text('Cancel Refresh')),
+                    ],
+                  ),
+                ),
             ],
           ),
           IconButton(
@@ -313,7 +578,140 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
           );
         },
       ),
+      bottomNavigationBar: _buildStatusBar(),
     );
+  }
+
+  /// Build status bar showing network status and refresh info
+  Widget _buildStatusBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          top: BorderSide(
+            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Network status indicator
+          _buildNetworkStatusIndicator(),
+          const SizedBox(width: 16),
+          // Last refresh info
+          Expanded(
+            child: _buildRefreshStatusInfo(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build network status indicator
+  Widget _buildNetworkStatusIndicator() {
+    return Consumer(
+      builder: (context, ref, child) {
+        return FutureBuilder<MarineNetworkConditions>(
+          future: ref.read(networkResilienceProvider).assessMarineNetworkConditions(),
+          builder: (context, snapshot) {
+            final conditions = snapshot.data;
+            if (conditions == null) {
+              return const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.help_outline, size: 16, color: Colors.grey),
+                  SizedBox(width: 4),
+                  Text('Network: Unknown', style: TextStyle(fontSize: 12)),
+                ],
+              );
+            }
+
+            final (icon, color, text) = _getNetworkStatusDisplay(conditions);
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: color),
+                const SizedBox(width: 4),
+                Text(
+                  'Network: $text',
+                  style: TextStyle(fontSize: 12, color: color),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Build refresh status info
+  Widget _buildRefreshStatusInfo() {
+    if (_isRefreshing && _refreshProgress != null) {
+      return Row(
+        children: [
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              value: _refreshProgress!.progress,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _getProgressText(),
+              style: const TextStyle(fontSize: 12),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      );
+    } else if (_lastRefreshTime != null) {
+      final timeAgo = DateTime.now().difference(_lastRefreshTime!);
+      return Text(
+        'Last refresh: ${_formatTimeAgo(timeAgo)} ago',
+        style: const TextStyle(fontSize: 12, color: Colors.grey),
+      );
+    } else {
+      return const Text(
+        'No recent refresh',
+        style: TextStyle(fontSize: 12, color: Colors.grey),
+      );
+    }
+  }
+
+  /// Get network status display info
+  (IconData, Color, String) _getNetworkStatusDisplay(MarineNetworkConditions conditions) {
+    switch (conditions.connectionQuality) {
+      case ConnectionQuality.excellent:
+        return (Icons.wifi, Colors.green, 'Excellent');
+      case ConnectionQuality.good:
+        return (Icons.wifi, Colors.green, 'Good');
+      case ConnectionQuality.fair:
+        return (Icons.wifi_2_bar, Colors.orange, 'Fair');
+      case ConnectionQuality.poor:
+        return (Icons.wifi_1_bar, Colors.red, 'Poor');
+      case ConnectionQuality.veryPoor:
+        return (Icons.wifi_1_bar, Colors.red, 'Very Poor');
+      case ConnectionQuality.offline:
+        return (Icons.wifi_off, Colors.grey, 'Offline');
+    }
+  }
+
+  /// Format time ago for display
+  String _formatTimeAgo(Duration timeAgo) {
+    if (timeAgo.inDays > 0) {
+      return '${timeAgo.inDays}d';
+    } else if (timeAgo.inHours > 0) {
+      return '${timeAgo.inHours}h';
+    } else if (timeAgo.inMinutes > 0) {
+      return '${timeAgo.inMinutes}m';
+    } else {
+      return '${timeAgo.inSeconds}s';
+    }
   }
 
   Widget _buildControlsSection() {

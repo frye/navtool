@@ -29,6 +29,9 @@ import '../services/navigation_service.dart';
 import '../services/navigation_service_impl.dart';
 import '../services/settings_service.dart';
 import '../services/settings_service_impl.dart';
+import '../services/noaa/progressive_chart_loader.dart';
+import '../services/background_sync_service.dart';
+import '../providers/noaa_providers.dart';
 import 'app_state.dart';
 import 'app_state_notifier.dart';
 import 'download_state.dart';
@@ -109,6 +112,24 @@ final downloadMetricsSnapshotProvider = StreamProvider.autoDispose((
 final networkResilienceProvider = Provider<NetworkResilience>((ref) {
   // Single shared instance; starts monitoring when constructed
   return NetworkResilience();
+});
+
+// Progressive chart loader
+final progressiveChartLoaderProvider = Provider<ProgressiveChartLoader>((ref) {
+  return ProgressiveChartLoader(
+    apiClient: ref.read(noaaApiClientProvider),
+    logger: ref.read(loggerProvider),
+  );
+});
+
+// Background sync service
+final backgroundSyncServiceProvider = Provider<BackgroundSyncService>((ref) {
+  return BackgroundSyncService(
+    logger: ref.read(loggerProvider),
+    networkResilience: ref.read(networkResilienceProvider),
+    backgroundTaskService: ref.read(backgroundTaskServiceProvider),
+    progressiveChartLoader: ref.read(progressiveChartLoaderProvider),
+  );
 });
 
 // Storage service (placeholder - should be implemented)
