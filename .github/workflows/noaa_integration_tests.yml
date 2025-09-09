@@ -35,14 +35,29 @@ jobs:
           libatk1.0-0 \
           libdrm-dev \
           libxss1 \
-          libgconf-2-4 \
           libxrandr2 \
           libasound2-dev \
           libpangocairo-1.0-0 \
-          libatk1.0-0 \
           libcairo-gobject2 \
           libgtk-3-0 \
           libgdk-pixbuf2.0-0 \
+          libxcomposite1 \
+          libxcursor1 \
+          libxdamage1 \
+          libxfixes3 \
+          libxi6 \
+          libxinerama1 \
+          libxrender1 \
+          libxss1 \
+          libxtst6 \
+          ca-certificates \
+          fonts-liberation \
+          libasound2 \
+          libatk-bridge2.0-0 \
+          libatspi2.0-0 \
+          libdrm2 \
+          libxkbcommon0 \
+          libxshmfence1 \
           xvfb \
           build-essential \
           cmake \
