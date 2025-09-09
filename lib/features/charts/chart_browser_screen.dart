@@ -22,6 +22,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
   Set<ChartType> _selectedChartTypes = {};
   Set<String> _selectedChartIds = {};
   bool _isLoading = false;
+  bool _isRefreshing = false;
   String? _errorMessage;
   Timer? _searchDebouncer;
 
@@ -107,6 +108,36 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     super.dispose();
   }
 
+  /// Manually refresh the chart catalog
+  Future<void> _refreshChartCatalog() async {
+    setState(() => _isRefreshing = true);
+    try {
+      final chartCatalogService = ref.read(chartCatalogServiceProvider);
+      await chartCatalogService.refreshCatalog(force: true);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Chart catalog updated successfully')),
+        );
+        
+        // Reload charts for current state if selected
+        if (_selectedState != null) {
+          _loadChartsForState(_selectedState!);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Refresh failed - using cached charts')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -123,6 +154,17 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                 foregroundColor: Theme.of(context).colorScheme.onPrimary,
               ),
             ),
+          IconButton(
+            tooltip: 'Refresh Chart Catalog',
+            icon: _isRefreshing 
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.refresh),
+            onPressed: _isRefreshing ? null : _refreshChartCatalog,
+          ),
           IconButton(
             tooltip: 'Open Download Manager',
             icon: const Icon(Icons.cloud_download),
