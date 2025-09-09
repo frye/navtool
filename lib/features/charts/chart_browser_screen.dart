@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'dart:io' show Platform;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/models/chart.dart';
 import '../../core/providers/noaa_providers.dart';
 import '../../core/state/providers.dart';
+import '../../core/fixtures/washington_charts.dart';
 import 'widgets/chart_card.dart';
 import 'widgets/download_manager_panel.dart';
 
@@ -22,6 +24,8 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
   Set<ChartType> _selectedChartTypes = {};
   Set<String> _selectedChartIds = {};
   bool _isLoading = false;
+  bool _isRefreshing = false;
+  bool _includeTestCharts = true; // Default to showing test charts
   String? _errorMessage;
   Timer? _searchDebouncer;
 
@@ -77,6 +81,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
   @override
   void initState() {
     super.initState();
+    _loadToggleState();
     // Automatically discover charts based on location when screen loads
     final isTestEnv = Platform.environment.containsKey('FLUTTER_TEST');
     bool allowDiscovery = true;
@@ -107,6 +112,81 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     super.dispose();
   }
 
+  /// Manually refresh the chart catalog
+  Future<void> _refreshChartCatalog() async {
+    setState(() => _isRefreshing = true);
+    try {
+      final chartCatalogService = ref.read(chartCatalogServiceProvider);
+      await chartCatalogService.refreshCatalog(force: true);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Chart catalog updated successfully')),
+        );
+        
+        // Reload charts for current state if selected
+        if (_selectedState != null) {
+          _loadChartsForState(_selectedState!);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Refresh failed - using cached charts')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
+  }
+
+  /// Load toggle state from SharedPreferences
+  Future<void> _loadToggleState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final includeTestCharts = prefs.getBool('include_test_charts') ?? true; // Default to true
+      if (mounted) {
+        setState(() {
+          _includeTestCharts = includeTestCharts;
+        });
+      }
+    } catch (e) {
+      // If loading fails, use default value (true)
+      _includeTestCharts = true;
+    }
+  }
+
+  /// Save toggle state to SharedPreferences
+  Future<void> _saveToggleState(bool include) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('include_test_charts', include);
+    } catch (e) {
+      // Silently fail if storage fails
+    }
+  }
+
+  /// Handle menu actions from the app bar
+  void _handleMenuAction(String action) {
+    switch (action) {
+      case 'toggle_test_charts':
+        setState(() {
+          _includeTestCharts = !_includeTestCharts;
+        });
+        _saveToggleState(_includeTestCharts);
+        // Refresh chart list if state is selected
+        if (_selectedState != null) {
+          _loadChartsForState(_selectedState!);
+        }
+        break;
+      case 'refresh':
+        _refreshChartCatalog();
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -123,6 +203,44 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                 foregroundColor: Theme.of(context).colorScheme.onPrimary,
               ),
             ),
+          // Settings menu with test chart toggle and refresh
+          PopupMenuButton<String>(
+            onSelected: _handleMenuAction,
+            tooltip: 'Chart Browser Settings',
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'toggle_test_charts',
+                child: Row(
+                  children: [
+                    Icon(_includeTestCharts ? Icons.visibility : Icons.visibility_off),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(_includeTestCharts ? 'Hide Elliott Bay Charts' : 'Show Elliott Bay Charts'),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'refresh',
+                enabled: !_isRefreshing,
+                child: Row(
+                  children: [
+                    _isRefreshing 
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text('Refresh Chart Catalog'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
           IconButton(
             tooltip: 'Open Download Manager',
             icon: const Icon(Icons.cloud_download),
@@ -164,6 +282,25 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   controls,
+                  // Test charts status banner
+                  if (_includeTestCharts)
+                    Container(
+                      width: double.infinity,
+                      color: Colors.blue.shade50,
+                      padding: const EdgeInsets.all(8),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Including Elliott Bay test charts (US5WA50M, US3WA01M)',
+                              style: TextStyle(color: Colors.blue.shade700),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   selectedCountBar,
                   _buildContentSection(
                     shrinkWrap: true,
@@ -552,12 +689,35 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     });
 
     try {
+      // Get live charts from NOAA API
       final discoveryService = ref.read(noaaChartDiscoveryServiceProvider);
-      final charts = await discoveryService.discoverChartsByState(state);
+      final liveCharts = await discoveryService.discoverChartsByState(state);
+      
+      // Get Elliott Bay test charts if toggle is enabled
+      final testCharts = _includeTestCharts 
+          ? WashingtonTestCharts.getChartsForState(state)
+          : <Chart>[];
+      
+      // Combine and deduplicate charts (live charts take precedence)
+      final allCharts = <String, Chart>{};
+      
+      // Add test charts first
+      for (final chart in testCharts) {
+        allCharts[chart.id] = chart;
+      }
+      
+      // Add live charts (overwrites test charts with same ID)
+      for (final chart in liveCharts) {
+        allCharts[chart.id] = chart;
+      }
+      
+      // Sort by type priority (Harbor > Approach > Coastal > General > Overview)
+      final sortedCharts = allCharts.values.toList()
+        ..sort(_chartPriorityComparator);
 
       if (mounted) {
         setState(() {
-          _charts = charts;
+          _charts = sortedCharts;
           _isLoading = false;
         });
         _filterCharts();
@@ -570,6 +730,14 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
         });
       }
     }
+  }
+
+  /// Comparator for sorting charts by type priority
+  int _chartPriorityComparator(Chart a, Chart b) {
+    final aPriority = a.typePriority;
+    final bPriority = b.typePriority;
+    
+    return aPriority.compareTo(bPriority);
   }
 
   void _performSearch() {
