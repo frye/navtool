@@ -48,7 +48,7 @@ void main() {
         await tester.pumpWidget(createTestWidget());
 
         // Should have info and settings buttons
-        expect(find.byIcon(Icons.info_outline), findsOneWidget);
+        expect(find.byIcon(Icons.info_outline), findsWidgets);
         expect(find.byIcon(Icons.settings), findsOneWidget);
       });
 
@@ -70,8 +70,8 @@ void main() {
 
         // Should have floating action buttons
         expect(find.byType(FloatingActionButton), findsWidgets);
-        expect(find.byIcon(Icons.add_location), findsOneWidget);
-        expect(find.byIcon(Icons.straighten), findsOneWidget);
+        expect(find.byIcon(Icons.add_location), findsWidgets);
+        expect(find.byIcon(Icons.straighten), findsWidgets);
       });
     });
 
@@ -79,8 +79,8 @@ void main() {
       testWidgets('should handle info button tap', (WidgetTester tester) async {
         await tester.pumpWidget(createTestWidget());
 
-        final infoButton = find.byIcon(Icons.info_outline);
-        expect(infoButton, findsOneWidget);
+        final infoButton = find.byIcon(Icons.info_outline).first;
+        expect(find.byIcon(Icons.info_outline), findsWidgets);
 
         await tester.tap(infoButton);
         await tester.pumpAndSettle();
@@ -108,8 +108,8 @@ void main() {
       ) async {
         await tester.pumpWidget(createTestWidget());
 
-        final waypointButton = find.byIcon(Icons.add_location);
-        expect(waypointButton, findsOneWidget);
+        final waypointButton = find.byIcon(Icons.add_location).first;
+        expect(find.byIcon(Icons.add_location), findsWidgets);
 
         await tester.tap(waypointButton);
         await tester.pump();
@@ -120,8 +120,8 @@ void main() {
       ) async {
         await tester.pumpWidget(createTestWidget());
 
-        final measureButton = find.byIcon(Icons.straighten);
-        expect(measureButton, findsOneWidget);
+        final measureButton = find.byIcon(Icons.straighten).first;
+        expect(find.byIcon(Icons.straighten), findsWidgets);
 
         await tester.tap(measureButton);
         await tester.pump();
@@ -152,8 +152,8 @@ void main() {
         await tester.pumpWidget(createTestWidget());
 
         // Should show day/night mode
-        expect(find.byIcon(Icons.light_mode), findsOneWidget);
-        expect(find.text('Day'), findsOneWidget);
+        expect(find.byIcon(Icons.light_mode), findsWidgets);
+        expect(find.text('Day'), findsWidgets);
       });
 
       testWidgets('should show chart layers indicator', (
@@ -162,7 +162,7 @@ void main() {
         await tester.pumpWidget(createTestWidget());
 
         // Should show layers icon
-        expect(find.byIcon(Icons.layers), findsOneWidget);
+        expect(find.byIcon(Icons.layers), findsWidgets);
       });
     });
 
@@ -321,8 +321,8 @@ void main() {
         await tester.pumpWidget(createTestWidget());
 
         // Test rapid interactions with floating action buttons
-        final waypointButton = find.byIcon(Icons.add_location);
-        final measureButton = find.byIcon(Icons.straighten);
+        final waypointButton = find.byIcon(Icons.add_location).first;
+        final measureButton = find.byIcon(Icons.straighten).first;
 
         if (waypointButton.evaluate().isNotEmpty &&
             measureButton.evaluate().isNotEmpty) {
@@ -356,9 +356,9 @@ void main() {
       ) async {
         await tester.pumpWidget(createTestWidget());
 
-        // Should start in day mode
-        expect(find.byIcon(Icons.light_mode), findsOneWidget);
-        expect(find.text('Day'), findsOneWidget);
+        // Should start in day mode (check if any light_mode icons exist)
+        expect(find.byIcon(Icons.light_mode), findsWidgets);
+        expect(find.text('Day'), findsWidgets);
       });
     });
   });

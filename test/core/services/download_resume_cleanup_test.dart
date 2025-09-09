@@ -80,7 +80,7 @@ void main() {
 
     test('normalizes mismatched partial size instead of removing', () async {
       final stateFile = File('${tempDir.path}/.download_state.json');
-      final part = File('${tempDir.path}/MISMATCH.zip.part');
+      final part = File('${tempDir.path}/mismatch.zip.part');
       await part.writeAsBytes(List<int>.filled(50, 7));
       final state = {
         'downloads': {},
@@ -145,7 +145,7 @@ void main() {
 
     test('removes zero-length corrupt partial entry', () async {
       final stateFile = File('${tempDir.path}/.download_state.json');
-      final part = File('${tempDir.path}/ZERO.zip.part');
+      final part = File('${tempDir.path}/zero.zip.part');
       await part.writeAsBytes(const []); // zero length partial
       final state = {
         'downloads': {},
