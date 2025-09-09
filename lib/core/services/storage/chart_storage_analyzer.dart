@@ -1,11 +1,9 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import '../database_storage_service.dart';
 import '../s57/s57_parser.dart';
 import '../compression_service.dart';
 import '../../models/chart.dart';
-import '../../models/geographic_bounds.dart';
 import '../../logging/app_logger.dart';
 
 /// Chart Storage Analysis Results
