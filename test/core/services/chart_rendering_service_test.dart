@@ -388,6 +388,201 @@ void main() {
 
         expect(nightService, isNotNull);
       });
+
+      test('should support dusk mode', () {
+        final duskService = ChartRenderingService(
+          transform: transform,
+          features: testFeatures,
+          displayMode: ChartDisplayMode.duskMode,
+        );
+
+        expect(duskService, isNotNull);
+      });
+    });
+
+    group('Enhanced Maritime Feature Rendering', () {
+      test('should handle enhanced lighthouse symbols with characteristics', () {
+        final lighthouseWithCharacteristics = PointFeature(
+          id: 'lighthouse_with_char',
+          type: MaritimeFeatureType.lighthouse,
+          position: testCenter,
+          label: 'Main Light',
+          attributes: {
+            'character': 'Fl W 10s',
+            'range': 15.0,
+          },
+        );
+
+        final service = ChartRenderingService(
+          transform: transform,
+          features: [lighthouseWithCharacteristics],
+        );
+
+        expect(service, isNotNull);
+      });
+
+      test('should handle enhanced buoy symbols with topmarks', () {
+        final cardinalBuoy = PointFeature(
+          id: 'cardinal_buoy',
+          type: MaritimeFeatureType.buoy,
+          position: testCenter,
+          attributes: {
+            'buoyShape': 'pillar',
+            'color': 'black-yellow',
+            'topmark': 'north',
+          },
+        );
+
+        final service = ChartRenderingService(
+          transform: transform,
+          features: [cardinalBuoy],
+        );
+
+        expect(service, isNotNull);
+      });
+
+      test('should handle enhanced depth contour labeling', () {
+        final detailedDepthContour = DepthContour(
+          id: 'detailed_depth_20m',
+          coordinates: List.generate(15, (i) => 
+            LatLng(testCenter.latitude + i * 0.001, testCenter.longitude + i * 0.001)
+          ),
+          depth: 20.0,
+        );
+
+        final service = ChartRenderingService(
+          transform: transform,
+          features: [detailedDepthContour],
+        );
+
+        expect(service, isNotNull);
+      });
+    });
+
+    group('Chart Grid and Boundaries', () {
+      late ChartRenderingService serviceWithGrid;
+
+      setUp(() {
+        serviceWithGrid = ChartRenderingService(
+          transform: transform,
+          features: testFeatures,
+        );
+        serviceWithGrid.setLayerVisible('chart_grid', true);
+        serviceWithGrid.setLayerVisible('chart_boundaries', true);
+      });
+
+      test('should support chart grid rendering', () {
+        expect(serviceWithGrid, isNotNull);
+        expect(serviceWithGrid.getLayers(), contains('chart_grid'));
+      });
+
+      test('should support chart boundaries rendering', () {
+        expect(serviceWithGrid, isNotNull);
+        expect(serviceWithGrid.getLayers(), contains('chart_boundaries'));
+      });
+
+      test('should handle grid visibility toggling', () {
+        serviceWithGrid.setLayerVisible('chart_grid', false);
+        expect(serviceWithGrid.getLayers(), contains('chart_grid'));
+        
+        serviceWithGrid.setLayerVisible('chart_grid', true);
+        expect(serviceWithGrid.getLayers(), contains('chart_grid'));
+      });
+    });
+
+    group('Symbol Size and Color Handling', () {
+      test('should calculate symbol size based on zoom level', () {
+        // Test different zoom levels
+        final zoomLevels = [8.0, 12.0, 16.0];
+        
+        for (final zoomLevel in zoomLevels) {
+          final zoomTransform = CoordinateTransform(
+            zoom: zoomLevel,
+            center: testCenter,
+            screenSize: testScreenSize,
+          );
+
+          final service = ChartRenderingService(
+            transform: zoomTransform,
+            features: testFeatures,
+          );
+
+          expect(service, isNotNull);
+          expect(service.getSymbolSizeForZoom(MaritimeFeatureType.lighthouse), greaterThan(0));
+        }
+      });
+
+      test('should provide mode-specific colors', () {
+        final dayService = ChartRenderingService(
+          transform: transform,
+          features: testFeatures,
+          displayMode: ChartDisplayMode.dayMode,
+        );
+
+        final nightService = ChartRenderingService(
+          transform: transform,
+          features: testFeatures,
+          displayMode: ChartDisplayMode.nightMode,
+        );
+
+        final dayColors = dayService.getModeSpecificColors();
+        final nightColors = nightService.getModeSpecificColors();
+
+        expect(dayColors['sea'], isNotNull);
+        expect(nightColors['sea'], isNotNull);
+        expect(dayColors['sea'], isNot(equals(nightColors['sea'])));
+      });
+    });
+
+    group('Feature Information and Hit Testing', () {
+      test('should provide feature information', () {
+        final featureInfo = renderingService.getFeatureInfo('lighthouse_1');
+        
+        expect(featureInfo, isNotNull);
+        expect(featureInfo['id'], equals('lighthouse_1'));
+        expect(featureInfo['type'], equals('lighthouse'));
+        expect(featureInfo['position'], isNotNull);
+      });
+
+      test('should handle hit testing for feature selection', () {
+        // Test hit testing at various screen positions
+        final screenPoints = [
+          const Offset(100, 100),
+          const Offset(400, 300),
+          const Offset(700, 500),
+        ];
+
+        for (final point in screenPoints) {
+          final hitFeature = renderingService.hitTest(point);
+          // Hit testing may or may not find a feature depending on position
+          // Just ensure it doesn't crash
+          expect(hitFeature, anyOf(isNull, isA<MaritimeFeature>()));
+        }
+      });
+    });
+
+    group('Layer Management', () {
+      test('should manage layer visibility', () {
+        final layers = renderingService.getLayers();
+        expect(layers, isNotEmpty);
+        
+        // Test visibility toggling
+        for (final layer in layers) {
+          renderingService.setLayerVisible(layer, false);
+          renderingService.setLayerVisible(layer, true);
+        }
+      });
+
+      test('should provide layer priorities', () {
+        final priorities = [
+          renderingService.getLayerPriority(MaritimeFeatureType.lighthouse),
+          renderingService.getLayerPriority(MaritimeFeatureType.shoreline),
+          renderingService.getLayerPriority(MaritimeFeatureType.landArea),
+        ];
+
+        expect(priorities.every((p) => p > 0), isTrue);
+        expect(priorities[0], greaterThan(priorities[2])); // Lighthouse > land area
+      });
     });
   });
 }

@@ -50,6 +50,11 @@ class ChartRenderingService {
       Paint()..color = _getSeaColor(),
     );
 
+    // Render chart grid if enabled
+    if (_layerVisibility['chart_grid'] ?? false) {
+      _renderChartGrid(canvas, size);
+    }
+
     // Get visible features sorted by render priority
     final visibleFeatures = _getVisibleFeatures();
     visibleFeatures.sort(
@@ -59,6 +64,11 @@ class ChartRenderingService {
     // Render features in order
     for (final feature in visibleFeatures) {
       _renderFeature(canvas, feature);
+    }
+
+    // Render chart boundaries if enabled
+    if (_layerVisibility['chart_boundaries'] ?? true) {
+      _renderChartBoundaries(canvas, size);
     }
 
     // Render scale bar and compass
@@ -339,19 +349,87 @@ class ChartRenderingService {
     textPainter.paint(canvas, labelPosition);
   }
 
-  /// Render depth labels along contours
+  /// Render depth labels along contours with enhanced placement
   void _renderDepthLabels(Canvas canvas, DepthContour contour) {
     if (contour.coordinates.length < 10) return;
 
-    // Place labels at regular intervals
-    const int labelInterval = 5;
-    for (
-      int i = labelInterval;
-      i < contour.coordinates.length;
-      i += labelInterval
-    ) {
+    final scale = _transform.chartScale;
+    
+    // Determine label frequency based on scale and contour importance
+    int labelInterval;
+    if (contour.depth % 50 == 0) {
+      labelInterval = 3; // Major contours - more frequent labels
+    } else if (contour.depth % 10 == 0) {
+      labelInterval = 5; // Intermediate contours
+    } else {
+      labelInterval = 8; // Minor contours - fewer labels
+    }
+
+    // Only show labels at appropriate scales
+    if (scale.scale > 100000 && contour.depth % 20 != 0) return;
+
+    for (int i = labelInterval; i < contour.coordinates.length; i += labelInterval) {
       final screenPos = _transform.latLngToScreen(contour.coordinates[i]);
-      _renderLabel(canvas, '${contour.depth}m', screenPos, 0);
+      
+      // Calculate contour direction for label orientation
+      Offset? direction;
+      if (i > 0 && i < contour.coordinates.length - 1) {
+        final prev = _transform.latLngToScreen(contour.coordinates[i - 1]);
+        final next = _transform.latLngToScreen(contour.coordinates[i + 1]);
+        direction = Offset(next.dx - prev.dx, next.dy - prev.dy);
+      }
+
+      _renderDepthLabel(canvas, contour.depth, screenPos, direction);
+    }
+  }
+
+  /// Render individual depth label with orientation
+  void _renderDepthLabel(Canvas canvas, double depth, Offset position, Offset? direction) {
+    final labelText = depth.round() == depth ? depth.round().toString() : depth.toStringAsFixed(1);
+    
+    final textStyle = TextStyle(
+      color: _getDepthLabelColor(depth),
+      fontSize: 10.0,
+      fontWeight: FontWeight.w600,
+      shadows: [
+        Shadow(
+          color: _displayMode == ChartDisplayMode.dayMode ? Colors.white : Colors.black,
+          offset: const Offset(0.5, 0.5),
+          blurRadius: 1.0,
+        ),
+      ],
+    );
+
+    final textSpan = TextSpan(text: labelText, style: textStyle);
+    final textPainter = TextPainter(
+      text: textSpan,
+      textDirection: TextDirection.ltr,
+    );
+
+    textPainter.layout();
+
+    // Position label slightly offset from contour line
+    final labelPosition = Offset(
+      position.dx - textPainter.width / 2,
+      position.dy - textPainter.height / 2 - 8,
+    );
+
+    textPainter.paint(canvas, labelPosition);
+  }
+
+  /// Get depth label color based on depth
+  Color _getDepthLabelColor(double depth) {
+    final isDayMode = _displayMode == ChartDisplayMode.dayMode;
+    
+    if (depth < 5) {
+      // Shallow water - red for danger
+      return isDayMode ? Colors.red.shade700 : Colors.red.shade300;
+    } else if (depth < 20) {
+      // Moderate depth - blue
+      return isDayMode ? Colors.blue.shade700 : Colors.blue.shade300;
+    } else {
+      // Deep water - dark blue
+      return isDayMode ? Colors.blue.shade900 : Colors.blue.shade200;
     }
   }
 
@@ -466,6 +544,8 @@ class ChartRenderingService {
     _layerVisibility['shoreline'] = true;
     _layerVisibility['restricted_areas'] = true;
     _layerVisibility['anchorages'] = true;
+    _layerVisibility['chart_grid'] = false;
+    _layerVisibility['chart_boundaries'] = true;
   }
 
   /// Initialize S-52 symbology system
@@ -899,28 +979,32 @@ class ChartRenderingService {
     );
     canvas.drawRect(rect, paint);
 
-    // Draw lighthouse top
-    final topPaint = Paint()..color = Colors.white;
-    canvas.drawCircle(
-      Offset(center.dx, center.dy - size * 0.4),
-      size * 0.15,
-      topPaint,
-    );
-
-    // Draw light beam if it has characteristics
-    if (feature.attributes.containsKey('character')) {
+    // Draw light beam based on characteristics
+    final character = feature.attributes['character'] as String? ?? 'F';
+    final range = feature.attributes['range'] as double? ?? 10.0;
+    
+    if (character.contains('F')) {
+      // Fixed light - draw continuous beam
       final beamPaint = Paint()
-        ..color = Colors.yellow.withAlpha(100)
+        ..color = Colors.yellow.withAlpha(60)
         ..style = PaintingStyle.fill;
-
-      final path = Path();
-      path.moveTo(center.dx, center.dy - size * 0.4);
-      path.lineTo(center.dx - size * 0.8, center.dy - size * 1.2);
-      path.lineTo(center.dx + size * 0.8, center.dy - size * 1.2);
-      path.close();
-
-      canvas.drawPath(path, beamPaint);
+      canvas.drawCircle(center, size * (range / 20.0).clamp(1.5, 3.0), beamPaint);
+    } else if (character.contains('Fl')) {
+      // Flashing light - draw sectored beam
+      final beamPaint = Paint()
+        ..color = Colors.yellow.withAlpha(80)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
+      canvas.drawCircle(center, size * 1.8, beamPaint);
     }
+
+    // Draw lighthouse top
+    final topRect = Rect.fromCenter(
+      center: center - Offset(0, size * 0.4),
+      width: size * 0.8,
+      height: size * 0.3,
+    );
+    canvas.drawRect(topRect, Paint()..color = Colors.white);
   }
 
   /// Draw enhanced buoy symbol
@@ -953,6 +1037,83 @@ class ChartRenderingService {
     }
   }
 
+  /// Draw pillar buoy shape
+  void _drawPillarBuoy(Canvas canvas, Offset center, double size, String color) {
+    final paint = Paint()
+      ..color = _getBuoyColor(color)
+      ..style = PaintingStyle.fill;
+
+    final rect = Rect.fromCenter(
+      center: center,
+      width: size * 0.5,
+      height: size * 1.2,
+    );
+    canvas.drawRect(rect, paint);
+  }
+
+  /// Draw spherical buoy shape
+  void _drawSphericalBuoy(Canvas canvas, Offset center, double size, String color) {
+    final paint = Paint()
+      ..color = _getBuoyColor(color)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(center, size * 0.6, paint);
+  }
+
+  /// Draw cylindrical buoy shape
+  void _drawCylindricalBuoy(Canvas canvas, Offset center, double size, String color) {
+    final paint = Paint()
+      ..color = _getBuoyColor(color)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(center, size * 0.5, paint);
+    
+    // Draw cylindrical top
+    final rect = Rect.fromCenter(
+      center: center - Offset(0, size * 0.3),
+      width: size * 0.4,
+      height: size * 0.2,
+    );
+    canvas.drawRect(rect, paint);
+  }
+
+  /// Draw topmark on buoy or beacon
+  void _drawTopmark(Canvas canvas, Offset center, double size, String topmark) {
+    final topmarkCenter = center - Offset(0, size * 0.8);
+    final paint = Paint()
+      ..color = Colors.black
+      ..style = PaintingStyle.fill;
+
+    switch (topmark.toLowerCase()) {
+      case 'north':
+        _drawNorthCardinalTopmark(canvas, topmarkCenter, size * 0.4, paint);
+        break;
+      case 'south':
+        _drawSouthCardinalTopmark(canvas, topmarkCenter, size * 0.4, paint);
+        break;
+      case 'east':
+        _drawEastCardinalTopmark(canvas, topmarkCenter, size * 0.4, paint);
+        break;
+      case 'west':
+        _drawWestCardinalTopmark(canvas, topmarkCenter, size * 0.4, paint);
+        break;
+      case 'port':
+        canvas.drawRect(
+          Rect.fromCenter(center: topmarkCenter, width: size * 0.3, height: size * 0.6),
+          paint,
+        );
+        break;
+      case 'starboard':
+        final path = Path();
+        path.moveTo(topmarkCenter.dx, topmarkCenter.dy - size * 0.3);
+        path.lineTo(topmarkCenter.dx + size * 0.3, topmarkCenter.dy + size * 0.3);
+        path.lineTo(topmarkCenter.dx - size * 0.3, topmarkCenter.dy + size * 0.3);
+        path.close();
+        canvas.drawPath(path, paint);
+        break;
+    }
+  }
+
   /// Draw enhanced beacon symbol
   void _drawEnhancedBeaconSymbol(
     Canvas canvas,
@@ -976,70 +1137,6 @@ class ChartRenderingService {
       height: size * 0.2,
     );
     canvas.drawRect(platformRect, paint);
-  }
-
-  /// Draw pillar buoy
-  void _drawPillarBuoy(
-    Canvas canvas,
-    Offset center,
-    double size,
-    String color,
-  ) {
-    final paint = Paint()..color = _getBuoyColor(color);
-    final rect = Rect.fromCenter(
-      center: center,
-      width: size * 0.3,
-      height: size,
-    );
-    canvas.drawRect(rect, paint);
-  }
-
-  /// Draw spherical buoy
-  void _drawSphericalBuoy(
-    Canvas canvas,
-    Offset center,
-    double size,
-    String color,
-  ) {
-    final paint = Paint()..color = _getBuoyColor(color);
-    canvas.drawCircle(center, size * 0.4, paint);
-  }
-
-  /// Draw cylindrical buoy
-  void _drawCylindricalBuoy(
-    Canvas canvas,
-    Offset center,
-    double size,
-    String color,
-  ) {
-    final paint = Paint()..color = _getBuoyColor(color);
-    final rect = Rect.fromCenter(
-      center: center,
-      width: size * 0.5,
-      height: size,
-    );
-    canvas.drawOval(rect, paint);
-  }
-
-  /// Draw topmark
-  void _drawTopmark(Canvas canvas, Offset center, double size, String topmark) {
-    final paint = Paint()..color = Colors.black;
-    final topCenter = Offset(center.dx, center.dy - size * 0.6);
-
-    switch (topmark) {
-      case 'north-cardinal':
-        _drawNorthCardinalTopmark(canvas, topCenter, size * 0.3, paint);
-        break;
-      case 'south-cardinal':
-        _drawSouthCardinalTopmark(canvas, topCenter, size * 0.3, paint);
-        break;
-      case 'east-cardinal':
-        _drawEastCardinalTopmark(canvas, topCenter, size * 0.3, paint);
-        break;
-      case 'west-cardinal':
-        _drawWestCardinalTopmark(canvas, topCenter, size * 0.3, paint);
-        break;
-    }
   }
 
   /// Draw north cardinal topmark
@@ -1122,6 +1219,228 @@ class ChartRenderingService {
     path1.close();
 
     canvas.drawPath(path1, paint);
+  }
+
+  /// Render chart grid (latitude/longitude lines)
+  void _renderChartGrid(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = (_displayMode == ChartDisplayMode.dayMode ? Colors.grey : Colors.grey.shade600)
+      ..strokeWidth = 0.5
+      ..style = PaintingStyle.stroke;
+
+    final bounds = _transform.visibleBounds;
+    final scale = _transform.chartScale;
+
+    // Determine grid spacing based on scale
+    double latSpacing, lonSpacing;
+    if (scale.scale > 500000) {
+      latSpacing = lonSpacing = 1.0; // 1 degree
+    } else if (scale.scale > 100000) {
+      latSpacing = lonSpacing = 0.5; // 30 minutes
+    } else if (scale.scale > 25000) {
+      latSpacing = lonSpacing = 0.1; // 6 minutes
+    } else {
+      latSpacing = lonSpacing = 0.05; // 3 minutes
+    }
+
+    // Draw latitude lines
+    final startLat = (bounds.south / latSpacing).floor() * latSpacing;
+    for (double lat = startLat; lat <= bounds.north; lat += latSpacing) {
+      if (lat < -90 || lat > 90) continue;
+
+      final startPoint = _transform.latLngToScreen(LatLng(lat, bounds.west));
+      final endPoint = _transform.latLngToScreen(LatLng(lat, bounds.east));
+      canvas.drawLine(startPoint, endPoint, paint);
+
+      // Draw latitude labels
+      if (lat % (latSpacing * 2) == 0) {
+        final labelPos = Offset(10, startPoint.dy);
+        _renderGridLabel(canvas, _formatLatitude(lat), labelPos);
+      }
+    }
+
+    // Draw longitude lines  
+    final startLon = (bounds.west / lonSpacing).floor() * lonSpacing;
+    for (double lon = startLon; lon <= bounds.east; lon += lonSpacing) {
+      if (lon < -180 || lon > 180) continue;
+
+      final startPoint = _transform.latLngToScreen(LatLng(bounds.south, lon));
+      final endPoint = _transform.latLngToScreen(LatLng(bounds.north, lon));
+      canvas.drawLine(startPoint, endPoint, paint);
+
+      // Draw longitude labels
+      if (lon % (lonSpacing * 2) == 0) {
+        final labelPos = Offset(startPoint.dx, size.height - 20);
+        _renderGridLabel(canvas, _formatLongitude(lon), labelPos);
+      }
+    }
+  }
+
+  /// Render chart boundaries and title information
+  void _renderChartBoundaries(Canvas canvas, Size size) {
+    // Draw chart border
+    final borderPaint = Paint()
+      ..color = _displayMode == ChartDisplayMode.dayMode ? Colors.black : Colors.white
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
+
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      borderPaint,
+    );
+
+    // Draw title block
+    _renderTitleBlock(canvas, size);
+
+    // Draw scale information
+    _renderScaleInformation(canvas, size);
+  }
+
+  /// Render chart title block
+  void _renderTitleBlock(Canvas canvas, Size size) {
+    const titleBlockHeight = 60.0;
+    final titleRect = Rect.fromLTWH(
+      10, 
+      size.height - titleBlockHeight - 10,
+      size.width - 20,
+      titleBlockHeight,
+    );
+
+    final paint = Paint()
+      ..color = Colors.white.withAlpha(200)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawRect(titleRect, paint);
+
+    final borderPaint = Paint()
+      ..color = Colors.black
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+
+    canvas.drawRect(titleRect, borderPaint);
+
+    // Chart title
+    _renderLabel(canvas, 'NOAA Electronic Navigational Chart', 
+                Offset(titleRect.left + 10, titleRect.top + 10), 0);
+    
+    // Chart scale
+    final scale = _transform.chartScale;
+    _renderLabel(canvas, 'Scale: 1:${scale.scale.round()}',
+                Offset(titleRect.left + 10, titleRect.top + 30), 0);
+
+    // Date information
+    final now = DateTime.now();
+    _renderLabel(canvas, 'Date: ${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+                Offset(titleRect.left + 10, titleRect.top + 45), 0);
+  }
+
+  /// Render scale information and north arrow
+  void _renderScaleInformation(Canvas canvas, Size size) {
+    // Draw north arrow in top right
+    final arrowCenter = Offset(size.width - 40, 40);
+    _renderNorthArrow(canvas, arrowCenter, 20.0);
+  }
+
+  /// Render north arrow
+  void _renderNorthArrow(Canvas canvas, Offset center, double size) {
+    final paint = Paint()
+      ..color = Colors.red
+      ..style = PaintingStyle.fill;
+
+    // Arrow pointing up
+    final path = Path();
+    path.moveTo(center.dx, center.dy - size);
+    path.lineTo(center.dx - size * 0.3, center.dy);
+    path.lineTo(center.dx + size * 0.3, center.dy);
+    path.close();
+
+    canvas.drawPath(path, paint);
+
+    // Draw 'N' label
+    _renderLabel(canvas, 'N', center + Offset(-4, size + 5), 0);
+  }
+
+  /// Render grid labels
+  void _renderGridLabel(Canvas canvas, String text, Offset position) {
+    final textStyle = TextStyle(
+      color: _displayMode == ChartDisplayMode.dayMode ? Colors.black : Colors.white,
+      fontSize: 10.0,
+      fontWeight: FontWeight.w400,
+    );
+
+    final textSpan = TextSpan(text: text, style: textStyle);
+    final textPainter = TextPainter(
+      text: textSpan,
+      textDirection: TextDirection.ltr,
+    );
+
+    textPainter.layout();
+    textPainter.paint(canvas, position);
+  }
+
+  /// Format latitude for display
+  String _formatLatitude(double latitude) {
+    final degrees = latitude.abs().floor();
+    final minutes = ((latitude.abs() - degrees) * 60).round();
+    final direction = latitude >= 0 ? 'N' : 'S';
+    return '$degrees°${minutes.toString().padLeft(2, '0')}\' $direction';
+  }
+
+  /// Format longitude for display
+  String _formatLongitude(double longitude) {
+    final degrees = longitude.abs().floor();
+    final minutes = ((longitude.abs() - degrees) * 60).round();
+    final direction = longitude >= 0 ? 'E' : 'W';
+    return '$degrees°${minutes.toString().padLeft(2, '0')}\' $direction';
+  }
+
+  /// Enhanced text label rendering with collision avoidance
+  void renderEnhancedLabel(Canvas canvas, String text, Offset position, double symbolSize) {
+    final textStyle = TextStyle(
+      color: _displayMode == ChartDisplayMode.dayMode ? Colors.black : Colors.white,
+      fontSize: _getLabelFontSize(),
+      fontWeight: FontWeight.w500,
+      shadows: [
+        Shadow(
+          color: _displayMode == ChartDisplayMode.dayMode ? Colors.white : Colors.black,
+          offset: const Offset(1, 1),
+          blurRadius: 2.0,
+        ),
+      ],
+    );
+
+    final textSpan = TextSpan(text: text, style: textStyle);
+    final textPainter = TextPainter(
+      text: textSpan,
+      textDirection: TextDirection.ltr,
+    );
+
+    textPainter.layout();
+
+    // Position label to avoid overlapping with symbol
+    final labelPosition = _calculateLabelPosition(position, symbolSize, textPainter.size);
+
+    textPainter.paint(canvas, labelPosition);
+  }
+
+  /// Get font size based on zoom level
+  double _getLabelFontSize() {
+    final baseSize = 12.0;
+    final zoomFactor = (_transform.zoom / 12.0).clamp(0.7, 1.5);
+    return baseSize * zoomFactor;
+  }
+
+  /// Calculate optimal label position to avoid overlapping
+  Offset _calculateLabelPosition(Offset symbolPosition, double symbolSize, Size labelSize) {
+    // Default: position to the right of symbol
+    final rightPosition = Offset(
+      symbolPosition.dx + symbolSize * 0.7,
+      symbolPosition.dy - labelSize.height / 2,
+    );
+
+    // TODO: Implement collision detection with other labels
+    // For now, just return the right position
+    return rightPosition;
   }
 
   /// Get buoy color from string
