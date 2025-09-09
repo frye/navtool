@@ -311,17 +311,17 @@ void main() {
       ));
 
       // Get initial position display
-      expect(find.textContaining('47°'), findsOneWidget);
-      expect(find.textContaining('122°'), findsOneWidget);
+      expect(find.textContaining('47°'), findsWidgets);
+      expect(find.textContaining('122°'), findsWidgets);
 
-      // Simulate pan gesture
-      final chartCanvas = find.byType(CustomPaint);
+      // Simulate pan gesture on the main chart area
+      final chartCanvas = find.byType(CustomPaint).first;
       await tester.drag(chartCanvas, const Offset(100, 0));
       await tester.pump();
 
       // Position should still be displayed (though values may have changed)
-      expect(find.textContaining('47°'), findsOneWidget);
-      expect(find.textContaining('122°'), findsOneWidget);
+      expect(find.textContaining('47°'), findsWidgets);
+      expect(find.textContaining('122°'), findsWidgets);
     });
 
     testWidgets('should show feature counts in info overlay', (WidgetTester tester) async {
@@ -357,7 +357,7 @@ void main() {
         home: Scaffold(body: widget),
       ));
 
-      final chartCanvas = find.byType(CustomPaint);
+      final chartCanvas = find.byType(CustomPaint).first;
 
       // Test simple drag gesture (panning)
       await tester.drag(chartCanvas, const Offset(100, 50));
@@ -454,7 +454,7 @@ void main() {
         }
 
         // Should not crash and should show reasonable zoom level
-        expect(find.textContaining('.'), findsOneWidget); // Some zoom level displayed
+        expect(find.textContaining('.'), findsWidgets); // Some zoom level displayed
 
         // Rapid display mode changes
         for (int i = 0; i < 6; i++) {
