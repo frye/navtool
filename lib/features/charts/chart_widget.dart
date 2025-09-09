@@ -6,6 +6,8 @@ import 'dart:math' as math;
 import '../../core/models/chart_models.dart';
 import '../../core/services/coordinate_transform.dart';
 import '../../core/services/chart_rendering_service.dart';
+import 'widgets/chart_display_controls.dart';
+import 'widgets/chart_info_overlay.dart';
 
 /// Main chart widget that displays maritime charts with interactive controls
 class ChartWidget extends StatefulWidget {
@@ -34,6 +36,17 @@ class _ChartWidgetState extends State<ChartWidget> {
   late LatLng _center;
   late double _zoom;
   late ChartDisplayMode _displayMode;
+  late double _rotation;
+
+  // UI state
+  bool _isLayerPanelOpen = false;
+  bool _isInfoOverlayOpen = false;
+  bool _isInfoOverlayExpanded = false;
+  Map<String, bool> _layerVisibility = {};
+  late List<String> _availableLayers;
+
+  // Rendering service for enhanced controls
+  late ChartRenderingService _renderingService;
 
   // Scale gesture state
   double? _lastScaleValue;
@@ -46,6 +59,55 @@ class _ChartWidgetState extends State<ChartWidget> {
     _center = widget.initialCenter;
     _zoom = widget.initialZoom;
     _displayMode = widget.displayMode;
+    _rotation = 0.0;
+    
+    // Initialize default layer visibility (will be updated in didChangeDependencies)
+    _layerVisibility = {
+      'depth_contours': true,
+      'navigation_aids': true,
+      'shoreline': true,
+      'restricted_areas': true,
+      'anchorages': true,
+      'chart_grid': false,
+      'chart_boundaries': true,
+    };
+    
+    _availableLayers = _layerVisibility.keys.toList();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _initializeRenderingService();
+  }
+
+  void _initializeRenderingService() {
+    final transform = CoordinateTransform(
+      zoom: _zoom,
+      center: _center,
+      screenSize: Size(
+        MediaQuery.of(context).size.width,
+        MediaQuery.of(context).size.height,
+      ),
+    );
+    
+    _renderingService = ChartRenderingService(
+      transform: transform,
+      features: widget.features,
+      displayMode: _displayMode,
+    );
+    
+    // Update available layers from rendering service
+    try {
+      _availableLayers = _renderingService.getLayers();
+      // Update layer visibility map to include any new layers
+      for (String layer in _availableLayers) {
+        _layerVisibility[layer] ??= true;
+      }
+    } catch (e) {
+      // Fallback if rendering service doesn't have layers method
+      // Keep existing layer visibility
+    }
   }
 
   @override
@@ -73,12 +135,47 @@ class _ChartWidgetState extends State<ChartWidget> {
                     zoom: _zoom,
                     features: widget.features,
                     displayMode: _displayMode,
+                    rotation: _rotation,
+                    layerVisibility: _layerVisibility,
                   ),
                 ),
-                // Chart controls overlay
-                _buildControlsOverlay(constraints),
-                // Chart info overlay
-                _buildInfoOverlay(),
+                // Enhanced chart display controls
+                ChartDisplayControls(
+                  zoom: _zoom,
+                  rotation: _rotation,
+                  displayMode: _displayMode,
+                  chartScale: ChartScale.fromZoom(_zoom),
+                  position: _center,
+                  isLayerPanelOpen: _isLayerPanelOpen,
+                  layerVisibility: _layerVisibility,
+                  availableLayers: _availableLayers,
+                  onZoomIn: _zoomIn,
+                  onZoomOut: _zoomOut,
+                  onRotationChanged: _onRotationChanged,
+                  onResetRotation: _resetRotation,
+                  onDisplayModeChanged: _onDisplayModeChanged,
+                  onCenterPosition: _centerOnPosition,
+                  onToggleLayerPanel: _toggleLayerPanel,
+                  onLayerToggle: _toggleLayer,
+                  onShowChartInfo: _showChartInfo,
+                ),
+                // Enhanced chart info overlay
+                if (_isInfoOverlayOpen)
+                  Positioned(
+                    top: 80,
+                    right: 16,
+                    child: ChartInfoOverlay(
+                      features: widget.features,
+                      currentPosition: _center,
+                      zoom: _zoom,
+                      displayMode: _displayMode,
+                      chartScale: ChartScale.fromZoom(_zoom),
+                      featureCounts: _getFeatureCounts(),
+                      isExpanded: _isInfoOverlayExpanded,
+                      onToggleExpanded: _toggleInfoOverlayExpanded,
+                      onClose: _closeInfoOverlay,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -87,102 +184,7 @@ class _ChartWidgetState extends State<ChartWidget> {
     );
   }
 
-  /// Build chart controls overlay
-  Widget _buildControlsOverlay(BoxConstraints constraints) {
-    return Positioned(
-      top: 16,
-      right: 16,
-      child: Column(
-        children: [
-          // Zoom controls
-          Card(
-            child: Column(
-              children: [
-                IconButton(
-                  onPressed: _zoomIn,
-                  icon: const Icon(Icons.add),
-                  tooltip: 'Zoom In',
-                ),
-                IconButton(
-                  onPressed: _zoomOut,
-                  icon: const Icon(Icons.remove),
-                  tooltip: 'Zoom Out',
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          // Day/Night mode toggle
-          Card(
-            child: IconButton(
-              onPressed: _toggleDisplayMode,
-              icon: Icon(
-                _displayMode == ChartDisplayMode.dayMode
-                    ? Icons.dark_mode
-                    : Icons.light_mode,
-              ),
-              tooltip: _displayMode == ChartDisplayMode.dayMode
-                  ? 'Switch to Night Mode'
-                  : 'Switch to Day Mode',
-            ),
-          ),
-          const SizedBox(height: 8),
-          // Center position button
-          Card(
-            child: IconButton(
-              onPressed: _centerOnPosition,
-              icon: const Icon(Icons.my_location),
-              tooltip: 'Center on Position',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  /// Build chart information overlay
-  Widget _buildInfoOverlay() {
-    final transform = CoordinateTransform(
-      zoom: _zoom,
-      center: _center,
-      screenSize: Size(
-        MediaQuery.of(context).size.width,
-        MediaQuery.of(context).size.height,
-      ),
-    );
-
-    return Positioned(
-      bottom: 16,
-      left: 16,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Position: ${CoordinateUtils.formatLatitude(_center.latitude)}, ${CoordinateUtils.formatLongitude(_center.longitude)}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Zoom: ${_zoom.toStringAsFixed(1)} | Scale: ${transform.chartScale.label}',
-                style: const TextStyle(fontSize: 12),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Mode: ${_displayMode.name}',
-                style: const TextStyle(fontSize: 12),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   /// Handle scale start (includes pan and zoom)
   void _onScaleStart(ScaleStartDetails details) {
@@ -276,13 +278,72 @@ class _ChartWidgetState extends State<ChartWidget> {
     widget.onPositionChanged?.call(_center);
   }
 
-  /// Toggle display mode between day and night
-  void _toggleDisplayMode() {
+  /// Change display mode
+  void _onDisplayModeChanged(ChartDisplayMode mode) {
     setState(() {
-      _displayMode = _displayMode == ChartDisplayMode.dayMode
-          ? ChartDisplayMode.nightMode
-          : ChartDisplayMode.dayMode;
+      _displayMode = mode;
+      _initializeRenderingService();
     });
+  }
+
+  /// Handle rotation change
+  void _onRotationChanged(double rotation) {
+    setState(() {
+      _rotation = rotation;
+    });
+  }
+
+  /// Reset rotation to north up
+  void _resetRotation() {
+    setState(() {
+      _rotation = 0.0;
+    });
+  }
+
+  /// Toggle layer panel visibility
+  void _toggleLayerPanel() {
+    setState(() {
+      _isLayerPanelOpen = !_isLayerPanelOpen;
+    });
+  }
+
+  /// Toggle layer visibility
+  void _toggleLayer(String layerName) {
+    setState(() {
+      _layerVisibility[layerName] = !(_layerVisibility[layerName] ?? true);
+      _renderingService.setLayerVisible(layerName, _layerVisibility[layerName]!);
+    });
+  }
+
+  /// Show chart information overlay
+  void _showChartInfo() {
+    setState(() {
+      _isInfoOverlayOpen = true;
+    });
+  }
+
+  /// Close chart information overlay
+  void _closeInfoOverlay() {
+    setState(() {
+      _isInfoOverlayOpen = false;
+      _isInfoOverlayExpanded = false;
+    });
+  }
+
+  /// Toggle info overlay expanded state
+  void _toggleInfoOverlayExpanded() {
+    setState(() {
+      _isInfoOverlayExpanded = !_isInfoOverlayExpanded;
+    });
+  }
+
+  /// Get feature counts by type
+  Map<MaritimeFeatureType, int> _getFeatureCounts() {
+    final counts = <MaritimeFeatureType, int>{};
+    for (final feature in widget.features) {
+      counts[feature.type] = (counts[feature.type] ?? 0) + 1;
+    }
+    return counts;
   }
 
   /// Center on current position (placeholder implementation)
@@ -343,12 +404,16 @@ class _ChartPainter extends CustomPainter {
   final double zoom;
   final List<MaritimeFeature> features;
   final ChartDisplayMode displayMode;
+  final double rotation;
+  final Map<String, bool> layerVisibility;
 
   _ChartPainter({
     required this.center,
     required this.zoom,
     required this.features,
     required this.displayMode,
+    this.rotation = 0.0,
+    this.layerVisibility = const {},
   });
 
   @override
@@ -365,7 +430,22 @@ class _ChartPainter extends CustomPainter {
       displayMode: displayMode,
     );
 
-    renderingService.render(canvas, size);
+    // Apply layer visibility settings
+    for (final entry in layerVisibility.entries) {
+      renderingService.setLayerVisible(entry.key, entry.value);
+    }
+
+    // Apply rotation if needed
+    if (rotation != 0.0) {
+      canvas.save();
+      canvas.translate(size.width / 2, size.height / 2);
+      canvas.rotate(rotation * math.pi / 180);
+      canvas.translate(-size.width / 2, -size.height / 2);
+      renderingService.render(canvas, size);
+      canvas.restore();
+    } else {
+      renderingService.render(canvas, size);
+    }
   }
 
   @override
@@ -373,6 +453,8 @@ class _ChartPainter extends CustomPainter {
     return oldDelegate.center != center ||
         oldDelegate.zoom != zoom ||
         oldDelegate.features != features ||
-        oldDelegate.displayMode != displayMode;
+        oldDelegate.displayMode != displayMode ||
+        oldDelegate.rotation != rotation ||
+        oldDelegate.layerVisibility != layerVisibility;
   }
 }
