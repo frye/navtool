@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  FLUTTER_VERSION: '3.27.1'  # Latest stable with Dart 3.8.1+ compatibility
+  FLUTTER_VERSION: '3.35.1'  # Latest stable with Dart 3.8.1+ compatibility
   SKIP_INTEGRATION_TESTS: 'true'
   CI: 'true'
 
