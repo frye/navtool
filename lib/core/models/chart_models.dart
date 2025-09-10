@@ -150,10 +150,12 @@ class PointFeature extends MaritimeFeature {
   @override
   bool isVisibleAtScale(ChartScale scale) {
     return switch (type) {
-      MaritimeFeatureType.lighthouse => true, // Always visible
+      MaritimeFeatureType.lighthouse => true, // Always visible - critical navigation
       MaritimeFeatureType.beacon => scale.scale <= 100000,
-      MaritimeFeatureType.buoy => true, // Always visible for Elliott Bay testing
+      MaritimeFeatureType.buoy => true, // Always visible - critical navigation  
       MaritimeFeatureType.daymark => scale.scale <= 25000,
+      MaritimeFeatureType.soundings => scale.scale <= 100000, // Visible at coastal scales for Elliott Bay - enhanced visibility
+      MaritimeFeatureType.obstruction => scale.scale <= 50000, // Safety critical - visible at harbor scales
       _ => true,
     };
   }
@@ -161,9 +163,11 @@ class PointFeature extends MaritimeFeature {
   @override
   int get renderPriority => switch (type) {
     MaritimeFeatureType.lighthouse => 100,
+    MaritimeFeatureType.buoy => 95, // Buoys are critical navigation aids, higher than beacons
     MaritimeFeatureType.beacon => 90,
-    MaritimeFeatureType.buoy => 80,
-    MaritimeFeatureType.daymark => 70,
+    MaritimeFeatureType.daymark => 85,
+    MaritimeFeatureType.obstruction => 80, // Safety critical
+    MaritimeFeatureType.soundings => 45,
     _ => 50,
   };
 }
@@ -226,6 +230,9 @@ class AreaFeature extends MaritimeFeature {
     return switch (type) {
       MaritimeFeatureType.landArea => true,
       MaritimeFeatureType.builtArea => scale.scale <= 75000, // Visible at harbor/approach scales
+      MaritimeFeatureType.depthArea => scale.scale <= 50000, // Visible at harbor/approach scales - Elliott Bay optimization
+      MaritimeFeatureType.anchorage => scale.scale <= 100000, // Visible at coastal and closer scales
+      MaritimeFeatureType.restrictedArea => scale.scale <= 75000, // Important for navigation safety
       MaritimeFeatureType.anchorage => scale.scale <= 100000,
       MaritimeFeatureType.restrictedArea => scale.scale <= 100000,
       MaritimeFeatureType.trafficSeparation => scale.scale <= 500000,
