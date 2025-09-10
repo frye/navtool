@@ -12,6 +12,7 @@ import '../../core/services/chart_rendering_service.dart';
 import '../../core/services/s57/s57_parser.dart';
 
 import '../../core/adapters/s57_to_maritime_adapter.dart';
+import '../../core/utils/zip_extractor.dart';
 import 'chart_widget.dart';
 
 /// Screen that displays maritime charts with navigation controls
@@ -85,11 +86,26 @@ class _ChartScreenState extends State<ChartScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                'Loaded chart boundary for ${widget.chart!.id}. S-57 feature loading may be incomplete.',
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Loaded chart boundary for ${widget.chart!.id}'),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'S-57 feature loading incomplete. Showing basic chart outline only.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
               ),
-              duration: const Duration(seconds: 4),
+              duration: const Duration(seconds: 6),
               backgroundColor: Colors.orange,
+              behavior: SnackBarBehavior.floating,
+              action: SnackBarAction(
+                label: 'Details',
+                textColor: Colors.white,
+                onPressed: () => _showChartLoadingDiagnostics(),
+              ),
             ),
           );
         }
@@ -107,19 +123,25 @@ class _ChartScreenState extends State<ChartScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Failed to load S-57 chart data for ${widget.chart!.id}. Showing chart boundary only.',
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Failed to load S-57 chart data for ${widget.chart!.id}'),
+                const SizedBox(height: 4),
+                const Text(
+                  'Showing chart boundary only. Check test data availability.',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ],
             ),
             duration: const Duration(seconds: 8),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
             action: SnackBarAction(
-              label: 'Retry',
+              label: 'Diagnose',
               textColor: Colors.white,
-              onPressed: () {
-                // Retry loading chart features
-                _loadChartFeatures();
-              },
+              onPressed: () => _showChartLoadingDiagnostics(),
             ),
           ),
         );
@@ -467,15 +489,150 @@ class _ChartScreenState extends State<ChartScreen> {
     );
   }
 
-  /// Show feature visibility settings
-  void _showFeatureVisibilitySettings() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Feature visibility controls will be implemented in a future version',
+  /// Show chart loading diagnostics dialog
+  void _showChartLoadingDiagnostics() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Chart Loading Diagnostics'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 400, maxWidth: 500),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.chart != null) ...[
+                  _buildDiagnosticSection('Chart Information', [
+                    'Chart ID: ${widget.chart!.id}',
+                    'Title: ${widget.chart!.title}',
+                    'Scale: 1:${widget.chart!.scale}',
+                    'Type: ${widget.chart!.type.name}',
+                  ]),
+                  _buildDiagnosticSection('Expected File Locations', [
+                    'Asset: ${_getElliottBayAssetPath(widget.chart!.id) ?? 'Not configured'}',
+                    'Test fixture: ${_getElliottBayTestPath(widget.chart!.id) ?? 'Not available'}',
+                  ]),
+                  _buildDiagnosticSection('Troubleshooting Steps', [
+                    '1. Verify test data files exist in test/fixtures/charts/noaa_enc/',
+                    '2. Check that ZIP files contain .000 S-57 data files',
+                    '3. Ensure archive package is properly installed',
+                    '4. Run Elliott Bay rendering tests to validate pipeline',
+                    '5. Check console logs for detailed error messages',
+                  ]),
+                ],
+                const SizedBox(height: 16),
+                const Text(
+                  'For Elliott Bay charts to display properly, the complete S-57 parsing '
+                  'pipeline must work: ZIP extraction → S-57 parsing → Maritime feature conversion → Rendering.',
+                  style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                ),
+              ],
+            ),
+          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+          if (widget.chart != null)
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _retryChartLoading();
+              },
+              child: const Text('Retry Loading'),
+            ),
+        ],
       ),
     );
+  }
+
+  /// Build diagnostic section with title and items
+  Widget _buildDiagnosticSection(String title, List<String> items) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        ),
+        const SizedBox(height: 4),
+        ...items.map((item) => Padding(
+          padding: const EdgeInsets.only(left: 8, bottom: 2),
+          child: Text('• $item', style: const TextStyle(fontSize: 12)),
+        )),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  /// Show feature visibility settings
+  void _showFeatureVisibilitySettings() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Feature Visibility'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Currently loaded features:'),
+            const SizedBox(height: 12),
+            ..._buildFeatureTypeCounts().entries.map((entry) =>
+              ListTile(
+                leading: Icon(_getFeatureTypeIcon(entry.key)),
+                title: Text(entry.key.name),
+                trailing: Text('${entry.value}'),
+                dense: true,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Layer visibility controls will be implemented in a future version.',
+              style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build feature type counts for display
+  Map<MaritimeFeatureType, int> _buildFeatureTypeCounts() {
+    final counts = <MaritimeFeatureType, int>{};
+    for (final feature in _features) {
+      counts[feature.type] = (counts[feature.type] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  /// Get icon for feature type
+  IconData _getFeatureTypeIcon(MaritimeFeatureType type) {
+    return switch (type) {
+      MaritimeFeatureType.lighthouse => Icons.lightbulb,
+      MaritimeFeatureType.buoy => Icons.circle,
+      MaritimeFeatureType.beacon => Icons.radio_button_checked,
+      MaritimeFeatureType.shoreline => Icons.water,
+      MaritimeFeatureType.landArea => Icons.landscape,
+      MaritimeFeatureType.depthContour => Icons.timeline,
+      MaritimeFeatureType.anchorage => Icons.anchor,
+      MaritimeFeatureType.restrictedArea => Icons.block,
+      _ => Icons.place,
+    };
+  }
+
+  /// Retry chart loading
+  void _retryChartLoading() {
+    if (widget.chart != null) {
+      _loadChartFeatures();
+    }
   }
 
   /// Add waypoint at current position
@@ -519,49 +676,51 @@ class _ChartScreenState extends State<ChartScreen> {
         
         // Parse S-57 data and convert to maritime features
         try {
+          print('[ChartScreen] Starting S-57 parsing for ${chartData.length} bytes');
           final s57Data = S57Parser.parse(chartData);
           print('[ChartScreen] S-57 parsing successful!');
           print('[ChartScreen]   Features found: ${s57Data.features.length}');
+          print('[ChartScreen]   Chart bounds: ${s57Data.bounds.toMap()}');
+          print('[ChartScreen]   Chart metadata: ${s57Data.metadata.toMap()}');
+          
+          // S-57 feature type breakdown
+          final featureTypeCount = <String, int>{};
+          for (final feature in s57Data.features) {
+            featureTypeCount[feature.featureType.acronym] = 
+                (featureTypeCount[feature.featureType.acronym] ?? 0) + 1;
+          }
+          print('[ChartScreen]   S-57 feature breakdown: $featureTypeCount');
           
           if (s57Data.features.isNotEmpty) {
-            // Log S-57 feature breakdown
-            final s57FeatureBreakdown = <String, int>{};
-            for (final feature in s57Data.features) {
-              final acronym = feature.attributes['RCNM']?.toString() ?? 
-                             feature.attributes['acronym']?.toString() ?? 
-                             'UNKNOWN';
-              s57FeatureBreakdown[acronym] = (s57FeatureBreakdown[acronym] ?? 0) + 1;
-            }
-            print('[ChartScreen]   Feature breakdown: $s57FeatureBreakdown');
-            
             // Convert to maritime features with detailed tracking
             print('[ChartScreen] Converting ${s57Data.features.length} S-57 features to maritime features...');
             final maritimeFeatures = S57ToMaritimeAdapter.convertFeatures(s57Data.features);
+            print('[ChartScreen] Feature conversion completed!');
             print('[ChartScreen]   Maritime features generated: ${maritimeFeatures.length}');
             
+            // Maritime feature breakdown
+            final maritimeTypeCount = <String, int>{};
+            for (final feature in maritimeFeatures) {
+              maritimeTypeCount[feature.type.name] = 
+                  (maritimeTypeCount[feature.type.name] ?? 0) + 1;
+            }
+            print('[ChartScreen]   Maritime feature breakdown: $maritimeTypeCount');
+            
+            // Log conversion efficiency
+            final conversionRate = (maritimeFeatures.length / s57Data.features.length * 100).toStringAsFixed(1);
+            print('[ChartScreen]   Conversion rate: $conversionRate% (${maritimeFeatures.length}/${s57Data.features.length})');
+            
             if (maritimeFeatures.isNotEmpty) {
-              // Log maritime feature breakdown
-              final maritimeFeatureBreakdown = <String, int>{};
-              for (final feature in maritimeFeatures) {
-                final typeName = feature.type.toString().split('.').last;
-                maritimeFeatureBreakdown[typeName] = (maritimeFeatureBreakdown[typeName] ?? 0) + 1;
-              }
-              print('[ChartScreen]   Maritime feature breakdown: $maritimeFeatureBreakdown');
-              
-              // Log conversion efficiency
-              final conversionRate = (maritimeFeatures.length / s57Data.features.length * 100).toStringAsFixed(1);
-              print('[ChartScreen]   Conversion rate: $conversionRate% (${maritimeFeatures.length}/${s57Data.features.length})');
-              
-              print('[ChartScreen] Successfully loaded ${maritimeFeatures.length} maritime features from S-57 chart ${chart.id}');
+              print('[ChartScreen] SUCCESS: Loaded ${maritimeFeatures.length} real maritime features from Elliott Bay S-57 chart ${chart.id}');
               return maritimeFeatures;
             } else {
-              print('[ChartScreen] Warning: S57ToMaritimeAdapter produced no maritime features');
+              print('[ChartScreen] ERROR: S57ToMaritimeAdapter produced no maritime features despite ${s57Data.features.length} S-57 features');
             }
           } else {
-            print('[ChartScreen] Warning: S-57 parser found no features in chart data');
+            print('[ChartScreen] ERROR: S-57 parser found no features in ${chartData.length} bytes of chart data');
           }
         } catch (parseError, parseStack) {
-          print('[ChartScreen] S-57 parsing failed: $parseError');
+          print('[ChartScreen] CRITICAL ERROR: S-57 parsing failed: $parseError');
           print('[ChartScreen] Parse stack trace: $parseStack');
         }
       } else {
@@ -625,24 +784,43 @@ class _ChartScreenState extends State<ChartScreen> {
       if (assetPath != null) {
         print('[ChartScreen] Loading chart from asset: $assetPath');
         
-        // Load from asset bundle for reliable runtime access
-        final ByteData byteData = await rootBundle.load(assetPath);
-        final List<int> bytes = byteData.buffer.asUint8List();
-        
-        print('[ChartScreen] Successfully loaded ${bytes.length} bytes from asset bundle');
-        return bytes;
+        try {
+          // Load from asset bundle for reliable runtime access
+          final ByteData byteData = await rootBundle.load(assetPath);
+          final List<int> bytes = byteData.buffer.asUint8List();
+          
+          print('[ChartScreen] Successfully loaded ${bytes.length} bytes from asset bundle');
+          return bytes;
+        } catch (assetError) {
+          print('[ChartScreen] Asset loading failed: $assetError, trying fallback');
+        }
       }
       
       // Fallback: Try test fixture path for development
-      print('[ChartScreen] Asset path not found, trying test fixture fallback');
+      print('[ChartScreen] Trying test fixture fallback for ${chart.id}');
       final testPath = _getElliottBayTestPath(chart.id);
       if (testPath != null) {
         final file = File(testPath);
         if (await file.exists()) {
           print('[ChartScreen] Loading chart from test fixture: $testPath');
-          final bytes = await file.readAsBytes();
-          print('[ChartScreen] Successfully loaded ${bytes.length} bytes from test fixture');
-          return bytes;
+          final zipBytes = await file.readAsBytes();
+          print('[ChartScreen] Successfully loaded ${zipBytes.length} bytes from test fixture');
+          
+          // Extract S-57 data from ZIP archive
+          final s57Bytes = await ZipExtractor.extractS57FromZip(zipBytes, chart.id);
+          if (s57Bytes != null) {
+            print('[ChartScreen] Successfully extracted ${s57Bytes.length} bytes of S-57 data from ZIP');
+            return s57Bytes;
+          } else {
+            print('[ChartScreen] Failed to extract S-57 data from ZIP archive');
+            
+            // Debug: List ZIP contents
+            final zipListing = ZipExtractor.getZipListing(zipBytes);
+            print('[ChartScreen] ZIP contents:');
+            for (final item in zipListing) {
+              print('[ChartScreen]   $item');
+            }
+          }
         } else {
           print('[ChartScreen] Test fixture file does not exist: $testPath');
         }
@@ -673,13 +851,13 @@ class _ChartScreenState extends State<ChartScreen> {
   
   /// Get test fixture path for Elliott Bay charts (fallback for development)
   String? _getElliottBayTestPath(String chartId) {
-    // Map Elliott Bay chart IDs to test fixture paths
+    // Map Elliott Bay chart IDs to actual test fixture ZIP files
     return switch (chartId) {
-      'US5WA50M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000',
-      'US3WA01M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US3WA01M/US3WA01M.000',
+      'US5WA50M' => 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip',
+      'US3WA01M' => 'test/fixtures/charts/noaa_enc/US3WA01M_coastal_puget_sound.zip',
       // Add other Elliott Bay chart variations
-      'US5WA17M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000', // Alias for harbor chart
-      'US5WA18M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US3WA01M/US3WA01M.000', // Alias for approach chart
+      'US5WA17M' => 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip', // Alias for harbor chart
+      'US5WA18M' => 'test/fixtures/charts/noaa_enc/US3WA01M_coastal_puget_sound.zip', // Alias for approach chart
       _ => null,
     };
   }
