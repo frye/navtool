@@ -3,6 +3,7 @@
 *.log
 *.pyc
 *.swp
+*.cpuprofile
 .env
 .env.local
 .DS_Store

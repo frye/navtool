@@ -96,10 +96,13 @@ void main() {
         // Create charts with quality issues
         final charts = [
           TestFixtures.createTestChart(id: 'US5CA01M', title: 'Valid Chart', scale: 25000),
-          TestFixtures.createTestChart(id: 'US5CA02M', title: '', scale: 50000), // Missing title - triggers missingMetadata
-          // Note: scale <= 0 cannot be tested because Chart constructor validates it
-          // Note: invalid bounds cannot be tested because GeographicBounds constructor validates them
-          // These validation issues would need to be tested at a different level (e.g., during data import)
+          TestFixtures.createTestChart(id: 'US5CA02M', title: '', scale: 50000), // Missing title
+          TestFixtures.createTestChart(id: 'US5CA03M', title: 'Valid Scale Chart', scale: 75000), // Valid scale (Chart constructor validates)
+          TestFixtures.createTestChart(
+            id: 'US5CA04M',
+            title: 'Valid Bounds Chart',
+            bounds: GeographicBounds(north: 37.5, south: 37.0, east: -122.0, west: -122.5), // Valid bounds
+          ),
         ];
 
         final chartCells = charts.map((c) => c.id).toList();
@@ -118,9 +121,8 @@ void main() {
 
         expect(report.issues, isNotEmpty);
         expect(report.issues.any((i) => i.type == QualityIssueType.missingMetadata), isTrue);
-        // Note: inconsistentScale and invalidBounds cannot be triggered because Chart constructor validates these
-        // These would need to be tested at the data import/parsing level, not at the Chart object level
-        expect(report.overallQuality.index, greaterThan(ChartQualityLevel.excellent.index));
+        // Chart constructor validates scale and bounds, so no inconsistentScale or invalidBounds issues expected
+        expect(report.overallQuality.index, greaterThanOrEqualTo(ChartQualityLevel.good.index));
       });
 
       testWidgets('should detect coverage gaps', (tester) async {
@@ -430,12 +432,12 @@ int _getExpectedChartCountForState(String state) {
   return expectedCounts[state] ?? 5;
 }
 
-/// Extension methods for generating marine test data in quality monitor tests
-extension MarineTestUtils on Chart {
+/// Utility class for generating marine test data in quality monitor tests
+class MarineTestUtils {
   /// Generates test charts for a specific state
   static List<Chart> generateTestChartsForState(String state, {int count = 5}) {
     final charts = <Chart>[];
-    final stateBounds = getStateBounds(state);
+    final stateBounds = MarineTestUtils.getStateBounds(state);
     
     for (int i = 1; i <= count; i++) {
       charts.add(TestFixtures.createTestChart(
