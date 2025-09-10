@@ -19,18 +19,25 @@ void main() {
         ),
       );
       
-      // Wait for initial render
-      await tester.pumpAndSettle();
+      // Wait for initial render, avoid GPS timeout
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(seconds: 1)); // Allow more time for layout
       
       // Verify we're on the home screen
       expect(find.byType(HomeScreen), findsOneWidget);
       
-      // Act: Find and tap the Elliott Bay Harbor Chart button
-      final elliottBayButton = find.widgetWithText(ElevatedButton, 'Elliott Bay Harbor Chart');
-      expect(elliottBayButton, findsOneWidget, reason: 'Elliott Bay button should be visible on home screen');
+      // Act: Find and tap the Elliott Bay Harbor Chart button using text search
+      // Use text finder and then find ancestor button, as the ElevatedButton.icon uses internal widgets
+      final elliottBayText = find.text('Elliott Bay Harbor Chart');
+      expect(elliottBayText, findsOneWidget, reason: 'Elliott Bay text should be visible');
       
-      await tester.tap(elliottBayButton);
-      await tester.pumpAndSettle();
+      // Tap directly on the text, which should trigger the button tap
+      await tester.tap(elliottBayText);
+      
+      // Wait for navigation using time-bounded pumps
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
       
       // Assert: Should navigate to chart screen
       expect(find.byType(ChartScreen), findsOneWidget, reason: 'Should navigate to ChartScreen');
@@ -39,8 +46,9 @@ void main() {
       expect(find.textContaining('Elliott Bay'), findsAtLeastNWidgets(1), 
         reason: 'Chart screen should show Elliott Bay in title or content');
       
-      // Wait for chart features to load
-      await tester.pumpAndSettle(const Duration(seconds: 5));
+      // Wait for chart features to load using time-bounded pumps
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump(const Duration(seconds: 2));
       
       // Verify no fallback error messages are shown
       expect(find.textContaining('S-57 feature loading may be incomplete'), findsNothing,
@@ -65,13 +73,16 @@ void main() {
         ),
       );
       
-      await tester.pumpAndSettle();
+      // Wait for initial render, but avoid GPS timeout by using pump with duration
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
       
-      // Act: Tap Elliott Bay button
-      final elliottBayButton = find.widgetWithText(ElevatedButton, 'Elliott Bay Harbor Chart');
-      expect(elliottBayButton, findsOneWidget);
+      // Act: Find Elliott Bay button using text search 
+      final elliottBayText = find.text('Elliott Bay Harbor Chart');
+      expect(elliottBayText, findsOneWidget);
       
-      await tester.tap(elliottBayButton);
+      // Tap directly on the text, which should trigger the button tap
+      await tester.tap(elliottBayText);
       
       // Assert: Should show loading feedback
       await tester.pump(); // Trigger immediate UI update
@@ -86,7 +97,9 @@ void main() {
         reason: 'Should show loading feedback to user (either text or indicator)'
       );
       
-      await tester.pumpAndSettle();
+      // Wait a reasonable time for navigation, avoid indefinite pumpAndSettle
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
       
       print('Elliott Bay Button Test: Loading feedback displayed correctly');
     }, tags: ['integration', 'elliott-bay', 'ux']);
@@ -100,14 +113,21 @@ void main() {
         ),
       );
       
-      await tester.pumpAndSettle();
+      // Avoid GPS timeout by using pump with duration
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
       
-      // Act: Tap Elliott Bay button
-      final elliottBayButton = find.widgetWithText(ElevatedButton, 'Elliott Bay Harbor Chart');
-      expect(elliottBayButton, findsOneWidget);
+      // Act: Find Elliott Bay button using text search 
+      final elliottBayText = find.text('Elliott Bay Harbor Chart');
+      expect(elliottBayText, findsOneWidget);
       
-      await tester.tap(elliottBayButton);
-      await tester.pumpAndSettle(const Duration(seconds: 10));
+      // Tap directly on the text, which should trigger the button tap
+      await tester.tap(elliottBayText);
+      
+      // Wait for navigation and chart loading, but use time-bounded pumps
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump(const Duration(seconds: 2));
       
       // Assert: If error occurs, should handle gracefully
       // Either succeed in loading or show appropriate error message
