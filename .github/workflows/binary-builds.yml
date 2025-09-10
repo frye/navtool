@@ -2,9 +2,7 @@ name: Binary Builds Pipeline
 
 on:
   push:
-    branches: [ main, develop, 'feature/**' ]
-  pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
   # Allow manual triggering from the Actions tab
   workflow_dispatch:
 
