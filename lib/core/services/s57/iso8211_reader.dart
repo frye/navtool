@@ -4,7 +4,7 @@
 /// produces validated multi-record structures and gracefully handles
 /// malformed records according to the specification.
 
-import 'dart:convert';
+
 import 'dart:typed_data';
 
 import 'iso8211_models.dart';

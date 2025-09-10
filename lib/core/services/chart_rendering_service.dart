@@ -44,6 +44,12 @@ class ChartRenderingService {
 
   /// Render the chart to a Canvas
   void render(Canvas canvas, Size size) {
+    // Debug: Log all features being rendered
+    print('[ChartRenderingService] render() called with ${_features.length} features');
+    for (var feature in _features) {
+      print('[ChartRenderingService] Feature: ${feature.type} at ${feature.position} (id: ${feature.id})');
+    }
+    
     // Clear the canvas with sea color
     canvas.drawRect(
       Rect.fromLTWH(0, 0, size.width, size.height),
@@ -57,12 +63,18 @@ class ChartRenderingService {
 
     // Get visible features sorted by render priority
     final visibleFeatures = _getVisibleFeatures();
+    print('[ChartRenderingService] Visible features after filtering: ${visibleFeatures.length}');
+    for (var feature in visibleFeatures) {
+      print('[ChartRenderingService] Visible: ${feature.type} at ${feature.position}');
+    }
+    
     visibleFeatures.sort(
       (a, b) => a.renderPriority.compareTo(b.renderPriority),
     );
 
     // Render features in order
     for (final feature in visibleFeatures) {
+      print('[ChartRenderingService] Rendering feature: ${feature.type}');
       _renderFeature(canvas, feature);
     }
 
@@ -79,14 +91,37 @@ class ChartRenderingService {
   /// Get features visible in current viewport
   List<MaritimeFeature> _getVisibleFeatures() {
     final currentScale = _transform.chartScale;
-    return _features.where((feature) {
-      return _transform.isFeatureVisible(feature) &&
-          feature.isVisibleAtScale(currentScale);
-    }).toList();
+    print('[ChartRenderingService] Current scale: $currentScale');
+    
+    final visibleFeatures = <MaritimeFeature>[];
+    
+    for (final feature in _features) {
+      final isVisible = _transform.isFeatureVisible(feature);
+      final isVisibleAtScale = feature.isVisibleAtScale(currentScale);
+      
+      print('[ChartRenderingService] Feature ${feature.type}: isVisible=$isVisible, isVisibleAtScale=$isVisibleAtScale');
+      
+      if (isVisible && isVisibleAtScale) {
+        visibleFeatures.add(feature);
+      }
+    }
+    
+    return visibleFeatures;
   }
 
   /// Render a single maritime feature
   void _renderFeature(Canvas canvas, MaritimeFeature feature) {
+    // Check layer visibility  
+    final layerName = _getLayerNameForFeature(feature.type);
+    final isLayerVisible = _layerVisibility[layerName] ?? true;
+    
+    print('[ChartRenderingService] Feature ${feature.type}: layer=$layerName, visible=$isLayerVisible');
+    
+    if (!isLayerVisible) {
+      print('[ChartRenderingService] Skipping ${feature.type} - layer not visible');
+      return;
+    }
+    
     if (feature is DepthContour) {
       _renderDepthContour(canvas, feature);
     } else if (feature is PointFeature) {

@@ -4,12 +4,13 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import '../../core/models/chart.dart';
 import 'dart:math' as math;
 import '../../core/models/chart_models.dart';
 import '../../core/services/chart_rendering_service.dart';
 import '../../core/services/s57/s57_parser.dart';
-import '../../core/services/s57/s57_models.dart';
+
 import '../../core/adapters/s57_to_maritime_adapter.dart';
 import 'chart_widget.dart';
 
@@ -64,17 +65,57 @@ class _ChartScreenState extends State<ChartScreen> {
     });
     
     try {
+      print('[ChartScreen] Starting feature loading for chart ${widget.chart!.id}');
       final features = await _generateFeaturesFromChart(widget.chart!);
-      setState(() {
-        _features = features;
-        _isLoadingFeatures = false;
-      });
-    } catch (e) {
-      print('Error loading chart features: $e');
+      
+      if (features.isNotEmpty) {
+        print('[ChartScreen] Successfully loaded ${features.length} maritime features');
+        setState(() {
+          _features = features;
+          _isLoadingFeatures = false;
+        });
+      } else {
+        print('[ChartScreen] No features generated, using boundary fallback');
+        setState(() {
+          _features = _generateChartBoundaryFeatures(widget.chart!);
+          _isLoadingFeatures = false;
+        });
+        
+        // Show user feedback about fallback
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Loaded chart boundary for ${widget.chart!.id}. S-57 feature loading may be incomplete.',
+              ),
+              duration: const Duration(seconds: 4),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+    } catch (e, stackTrace) {
+      print('[ChartScreen] ERROR loading chart features: $e');
+      print('[ChartScreen] Stack trace: $stackTrace');
+      
       setState(() {
         _features = _generateChartBoundaryFeatures(widget.chart!);
         _isLoadingFeatures = false;
       });
+      
+      // Show user error feedback
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to load S-57 chart data for ${widget.chart!.id}. Showing chart boundary only.',
+            ),
+            duration: const Duration(seconds: 5),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -119,7 +160,7 @@ class _ChartScreenState extends State<ChartScreen> {
                 // Loading indicator overlay
                 if (_isLoadingFeatures)
                   Container(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha: 0.3),
                     child: const Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -418,26 +459,48 @@ class _ChartScreenState extends State<ChartScreen> {
   /// Generate minimal real features from a NOAA chart's bounding box
   /// Generate maritime features from S-57 chart data
   Future<List<MaritimeFeature>> _generateFeaturesFromChart(Chart chart) async {
+    print('[ChartScreen] Generating features from chart ${chart.id}');
+    
     try {
-      // For Phase 2: Try to load S-57 chart data if available
+      // Phase 1: Load S-57 chart data if available
       final chartData = await _loadChartData(chart);
       
-      if (chartData != null) {
-        // Parse S-57 data and convert to maritime features
-        final s57Data = S57Parser.parse(chartData);
-        final maritimeFeatures = S57ToMaritimeAdapter.convertFeatures(s57Data.features);
+      if (chartData != null && chartData.isNotEmpty) {
+        print('[ChartScreen] Chart data loaded successfully, parsing S-57...');
         
-        if (maritimeFeatures.isNotEmpty) {
-          print('Successfully loaded ${maritimeFeatures.length} maritime features from S-57 chart ${chart.id}');
-          return maritimeFeatures;
+        // Parse S-57 data and convert to maritime features
+        try {
+          final s57Data = S57Parser.parse(chartData);
+          print('[ChartScreen] S-57 parsing successful, found ${s57Data.features.length} S57 features');
+          
+          if (s57Data.features.isNotEmpty) {
+            final maritimeFeatures = S57ToMaritimeAdapter.convertFeatures(s57Data.features);
+            print('[ChartScreen] Feature conversion successful, generated ${maritimeFeatures.length} maritime features');
+            
+            if (maritimeFeatures.isNotEmpty) {
+              print('[ChartScreen] Successfully loaded ${maritimeFeatures.length} maritime features from S-57 chart ${chart.id}');
+              return maritimeFeatures;
+            } else {
+              print('[ChartScreen] Warning: S57ToMaritimeAdapter produced no maritime features');
+            }
+          } else {
+            print('[ChartScreen] Warning: S-57 parser found no features in chart data');
+          }
+        } catch (parseError, parseStack) {
+          print('[ChartScreen] S-57 parsing failed: $parseError');
+          print('[ChartScreen] Parse stack trace: $parseStack');
         }
+      } else {
+        print('[ChartScreen] No chart data available for S-57 processing');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Log error but continue with fallback
-      print('Warning: Failed to load S-57 chart data for ${chart.id}: $e');
+      print('[ChartScreen] Error in S-57 feature generation for ${chart.id}: $e');
+      print('[ChartScreen] Stack trace: $stackTrace');
     }
     
     // Fallback: Generate basic chart boundary features as before
+    print('[ChartScreen] Using chart boundary fallback for ${chart.id}');
     return _generateChartBoundaryFeatures(chart);
   }
   
@@ -479,31 +542,63 @@ class _ChartScreenState extends State<ChartScreen> {
   
   /// Load S-57 chart data for the given chart
   Future<List<int>?> _loadChartData(Chart chart) async {
+    print('[ChartScreen] Loading chart data for ${chart.id}');
+    
     try {
-      // Phase 3 Implementation: Load Elliott Bay test charts
-      final chartPath = _getElliottBayChartPath(chart.id);
-      if (chartPath != null) {
-        final file = File(chartPath);
+      // Phase 1 Implementation: Load Elliott Bay charts from assets
+      final assetPath = _getElliottBayAssetPath(chart.id);
+      if (assetPath != null) {
+        print('[ChartScreen] Loading chart from asset: $assetPath');
+        
+        // Load from asset bundle for reliable runtime access
+        final ByteData byteData = await rootBundle.load(assetPath);
+        final List<int> bytes = byteData.buffer.asUint8List();
+        
+        print('[ChartScreen] Successfully loaded ${bytes.length} bytes from asset bundle');
+        return bytes;
+      }
+      
+      // Fallback: Try test fixture path for development
+      print('[ChartScreen] Asset path not found, trying test fixture fallback');
+      final testPath = _getElliottBayTestPath(chart.id);
+      if (testPath != null) {
+        final file = File(testPath);
         if (await file.exists()) {
-          return await file.readAsBytes();
+          print('[ChartScreen] Loading chart from test fixture: $testPath');
+          final bytes = await file.readAsBytes();
+          print('[ChartScreen] Successfully loaded ${bytes.length} bytes from test fixture');
+          return bytes;
+        } else {
+          print('[ChartScreen] Test fixture file does not exist: $testPath');
         }
       }
       
-      // TODO: Future implementation will:
-      // 1. Check local storage for other chart files
-      // 2. Download from NOAA if not available locally  
-      // 3. Return raw S-57 bytes for parsing
+      print('[ChartScreen] No chart data source found for ${chart.id}');
       
-    } catch (e) {
-      print('Error loading chart data for ${chart.id}: $e');
+    } catch (e, stackTrace) {
+      print('[ChartScreen] ERROR loading chart data for ${chart.id}: $e');
+      print('[ChartScreen] Stack trace: $stackTrace');
     }
     
     return null;
   }
   
-  /// Get file path for Elliott Bay test charts
-  String? _getElliottBayChartPath(String chartId) {
-    // Map Elliott Bay chart IDs to actual S-57 files
+  /// Get asset path for Elliott Bay charts (primary method)
+  String? _getElliottBayAssetPath(String chartId) {
+    // Map Elliott Bay chart IDs to asset bundle paths
+    return switch (chartId) {
+      'US5WA50M' => 'assets/s57/charts/US5WA50M.000',
+      'US3WA01M' => 'assets/s57/charts/US3WA01M.000',
+      // Add other Elliott Bay chart variations
+      'US5WA17M' => 'assets/s57/charts/US5WA50M.000', // Alias for harbor chart
+      'US5WA18M' => 'assets/s57/charts/US3WA01M.000', // Alias for approach chart
+      _ => null,
+    };
+  }
+  
+  /// Get test fixture path for Elliott Bay charts (fallback for development)
+  String? _getElliottBayTestPath(String chartId) {
+    // Map Elliott Bay chart IDs to test fixture paths
     return switch (chartId) {
       'US5WA50M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000',
       'US3WA01M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US3WA01M/US3WA01M.000',

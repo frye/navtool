@@ -44,7 +44,7 @@ class ConsoleLogger implements AppLogger {
 Future<void> main() async {
   print('🚢 NavTool Chart Storage System Demo');
   print('====================================');
-  print();
+  print("");
 
   // Initialize FFI for SQLite
   sqfliteFfiInit();
@@ -106,32 +106,32 @@ Future<void> main() async {
     status: ChartStatus.current,
   );
   
-  print();
+  print("");
   print('📊 Analyzing chart storage performance...');
   
   try {
     // Perform comprehensive analysis
     final analysis = await analyzer.analyzeChart(harborChartPath, harborChart);
     
-    print();
+    print("");
     print('📈 Performance Results:');
     print('======================');
     print('Chart: ${analysis.chartId}');
     print('Original Size: ${_formatBytes(analysis.originalSize)}');
     print('Stored Size: ${_formatBytes(analysis.storedSize)}');
     print('Compression: ${(analysis.compressionRatio * 100).toStringAsFixed(1)}%');
-    print();
+    print("");
     print('Performance Metrics:');
     print('  Parse Time: ${analysis.parseTime.inMilliseconds}ms');
     print('  Store Time: ${analysis.storeTime.inMilliseconds}ms');
     print('  Retrieval Time: ${analysis.retrievalTime.inMilliseconds}ms');
     print('  Features: ${analysis.featureCount}');
-    print();
+    print("");
     print('Efficiency Score: ${analysis.efficiencyScore.toStringAsFixed(1)}/100');
     
     // Check performance target
     final meetsTarget = analysis.retrievalTime.inMilliseconds < 100;
-    print();
+    print("");
     if (meetsTarget) {
       print('✅ SUCCESS: Meets sub-100ms lookup requirement!');
       print('   Target: <100ms, Actual: ${analysis.retrievalTime.inMilliseconds}ms');
@@ -142,7 +142,7 @@ Future<void> main() async {
     
     // Show feature distribution
     if (analysis.featureDistribution.isNotEmpty) {
-      print();
+      print('');
       print('Feature Distribution:');
       analysis.featureDistribution.forEach((type, count) {
         print('  $type: $count features');
@@ -151,7 +151,7 @@ Future<void> main() async {
     
     // Generate recommendations
     final recommendations = analyzer.generateOptimizationRecommendations(analysis);
-    print();
+    print("");
     print('Optimization Recommendations:');
     if (recommendations.isEmpty) {
       print('✅ No optimizations needed - system is performing optimally!');
@@ -162,7 +162,7 @@ Future<void> main() async {
     }
     
     // Test multiple lookups to demonstrate consistency
-    print();
+    print("");
     print('🔄 Testing lookup consistency (5 trials)...');
     final lookupTimes = <int>[];
     
@@ -179,7 +179,7 @@ Future<void> main() async {
     final maxLookup = lookupTimes.reduce((a, b) => a > b ? a : b);
     final minLookup = lookupTimes.reduce((a, b) => a < b ? a : b);
     
-    print();
+    print("");
     print('Lookup Statistics:');
     print('  Average: ${avgLookup.toStringAsFixed(1)}ms');
     print('  Min: ${minLookup}ms');
@@ -191,7 +191,7 @@ Future<void> main() async {
     return;
   }
   
-  print();
+  print("");
   print('🎯 Demo Summary:');
   print('================');
   print('Local Chart Storage system successfully demonstrates:');
@@ -200,7 +200,7 @@ Future<void> main() async {
   print('✅ Real-world NOAA ENC data handling');
   print('✅ S-57 parsing integration');
   print('✅ Performance monitoring and optimization');
-  print();
+  print("");
   print('System is ready for marine navigation use! ⚓');
 }
 

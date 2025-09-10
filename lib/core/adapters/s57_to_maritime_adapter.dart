@@ -5,9 +5,11 @@ library;
 import 'package:flutter/material.dart';
 import '../models/chart_models.dart';
 import '../services/s57/s57_models.dart';
+import '../logging/app_logger.dart';
 
 /// Adapter that converts S57Features to MaritimeFeatures for chart rendering
 class S57ToMaritimeAdapter {
+  static const AppLogger _logger = ConsoleLogger(minimumLevel: LogLevel.debug);
   
   /// Convert a list of S57Features to MaritimeFeatures
   static List<MaritimeFeature> convertFeatures(List<S57Feature> s57Features) {
@@ -57,7 +59,8 @@ class S57ToMaritimeAdapter {
       };
     } catch (e) {
       // Log conversion error but don't fail the entire conversion
-      print('Warning: Failed to convert S57Feature ${s57.recordId} of type ${s57.featureType}: $e');
+      _logger.warning('Failed to convert S57Feature ${s57.recordId} of type ${s57.featureType}: $e', 
+                     context: 'S57ToMaritimeAdapter');
       return null;
     }
   }
@@ -82,7 +85,7 @@ class S57ToMaritimeAdapter {
       position: position,
       coordinates: rings,
       fillColor: fillColor,
-      strokeColor: fillColor.withOpacity(0.8),
+      strokeColor: fillColor.withValues(alpha: 0.8),
       attributes: {
         'depth_min': minDepth,
         'depth_max': maxDepth,
@@ -96,9 +99,28 @@ class S57ToMaritimeAdapter {
   /// Convert sounding (SOUNDG) to PointFeature
   static PointFeature _convertSounding(S57Feature s57) {
     final depth = s57.attributes['VALSOU'] as double? ?? 0.0;
-    final position = s57.coordinates.isNotEmpty 
-        ? LatLng(s57.coordinates.first.latitude, s57.coordinates.first.longitude)
-        : const LatLng(0, 0);
+    
+    // Debug coordinate conversion
+    LatLng position = const LatLng(0, 0);
+    if (s57.coordinates.isNotEmpty) {
+      final coord = s57.coordinates.first;
+      position = LatLng(coord.latitude, coord.longitude);
+      
+      // Log coordinate conversion for debugging
+      _logger.debug('Converting sounding coordinates: S57(${coord.latitude}, ${coord.longitude}) → LatLng(${position.latitude}, ${position.longitude})', 
+                   context: 'S57ToMaritimeAdapter');
+      
+      // If coordinates are still (0,0), there might be a coordinate system issue
+      if (position.latitude == 0.0 && position.longitude == 0.0) {
+        _logger.warning('Converted coordinates are (0,0) - possible coordinate system issue', 
+                       context: 'S57ToMaritimeAdapter');
+        _logger.debug('S57Coordinate raw values: lat=${coord.latitude}, lng=${coord.longitude}', 
+                     context: 'S57ToMaritimeAdapter');
+      }
+    } else {
+      _logger.warning('No coordinates available for sounding feature ${s57.recordId}', 
+                     context: 'S57ToMaritimeAdapter');
+    }
     
     return PointFeature(
       id: 'sounding_${s57.recordId}',
@@ -118,13 +140,56 @@ class S57ToMaritimeAdapter {
   static DepthContour _convertDepthContour(S57Feature s57) {
     final depth = s57.attributes['VALDCO'] as double? ?? 0.0;
     
+    // Debug coordinate conversion for depth contours
+    _logger.debug('Converting depth contour coordinates: ${s57.coordinates.length} points', 
+                 context: 'S57ToMaritimeAdapter');
+    if (s57.coordinates.isNotEmpty) {
+      final firstCoord = s57.coordinates.first;
+      final lastCoord = s57.coordinates.last;
+      _logger.debug('Depth contour first: S57(${firstCoord.latitude}, ${firstCoord.longitude})', 
+                   context: 'S57ToMaritimeAdapter');
+      _logger.debug('Depth contour last: S57(${lastCoord.latitude}, ${lastCoord.longitude})', 
+                   context: 'S57ToMaritimeAdapter');
+    }
+    
     // Convert S57Coordinates to LatLng
     final coordinates = s57.coordinates
         .map((coord) => LatLng(coord.latitude, coord.longitude))
         .toList();
     
-    return DepthContour(
+    // Calculate proper center position from coordinates
+    final position = coordinates.isNotEmpty 
+        ? _calculateCenterPosition(s57.coordinates)
+        : const LatLng(47.64, -122.34); // Elliott Bay fallback
+    
+    _logger.debug('Depth contour center position: ${position.latitude}, ${position.longitude}', 
+                 context: 'S57ToMaritimeAdapter');
+    
+    if (coordinates.isEmpty) {
+      _logger.warning('Depth contour has no coordinates, creating dummy coordinates', 
+                     context: 'S57ToMaritimeAdapter');
+      // Create a small depth contour line as fallback
+      return DepthContour.withPosition(
+        id: 'depthcontour_${s57.recordId}',
+        position: position,
+        coordinates: [
+          const LatLng(47.64, -122.34), // Elliott Bay area
+          const LatLng(47.64, -122.33),
+        ],
+        depth: depth,
+        attributes: {
+          'depth': depth,
+          'original_s57_code': s57.featureType.code,
+          'original_s57_acronym': s57.featureType.acronym,
+          'fallback_coordinates': true,
+          ...s57.attributes,
+        },
+      );
+    }
+    
+    return DepthContour.withPosition(
       id: 'depthcontour_${s57.recordId}',
+      position: position,
       coordinates: coordinates,
       depth: depth,
       attributes: {
@@ -185,9 +250,27 @@ class S57ToMaritimeAdapter {
   
   /// Convert lighthouse (LIGHTS) to PointFeature
   static PointFeature _convertLighthouse(S57Feature s57) {
-    final position = s57.coordinates.isNotEmpty 
-        ? LatLng(s57.coordinates.first.latitude, s57.coordinates.first.longitude)
-        : const LatLng(0, 0);
+    // Debug coordinate conversion
+    LatLng position = const LatLng(0, 0);
+    if (s57.coordinates.isNotEmpty) {
+      final coord = s57.coordinates.first;
+      position = LatLng(coord.latitude, coord.longitude);
+      
+      // Log coordinate conversion for debugging
+      _logger.debug('Converting lighthouse coordinates: S57(${coord.latitude}, ${coord.longitude}) → LatLng(${position.latitude}, ${position.longitude})', 
+                   context: 'S57ToMaritimeAdapter');
+      
+      // If coordinates are still (0,0), there might be a coordinate system issue
+      if (position.latitude == 0.0 && position.longitude == 0.0) {
+        _logger.warning('Converted lighthouse coordinates are (0,0) - possible coordinate system issue', 
+                       context: 'S57ToMaritimeAdapter');
+        _logger.debug('S57Coordinate raw values: lat=${coord.latitude}, lng=${coord.longitude}', 
+                     context: 'S57ToMaritimeAdapter');
+      }
+    } else {
+      _logger.warning('No coordinates available for lighthouse feature ${s57.recordId}', 
+                     context: 'S57ToMaritimeAdapter');
+    }
     
     // Handle potential type conversion errors gracefully
     final character = _safeStringFromAttribute(s57.attributes['LITCHR']) ?? 'F';
@@ -216,9 +299,27 @@ class S57ToMaritimeAdapter {
   
   /// Convert buoy (BOYLAT, BOYCAR, etc.) to PointFeature
   static PointFeature _convertBuoy(S57Feature s57) {
-    final position = s57.coordinates.isNotEmpty 
-        ? LatLng(s57.coordinates.first.latitude, s57.coordinates.first.longitude)
-        : const LatLng(0, 0);
+    // Debug coordinate conversion
+    LatLng position = const LatLng(0, 0);
+    if (s57.coordinates.isNotEmpty) {
+      final coord = s57.coordinates.first;
+      position = LatLng(coord.latitude, coord.longitude);
+      
+      // Log coordinate conversion for debugging
+      _logger.debug('Converting buoy coordinates: S57(${coord.latitude}, ${coord.longitude}) → LatLng(${position.latitude}, ${position.longitude})', 
+                   context: 'S57ToMaritimeAdapter');
+      
+      // If coordinates are still (0,0), there might be a coordinate system issue
+      if (position.latitude == 0.0 && position.longitude == 0.0) {
+        _logger.warning('Converted buoy coordinates are (0,0) - possible coordinate system issue', 
+                       context: 'S57ToMaritimeAdapter');
+        _logger.debug('S57Coordinate raw values: lat=${coord.latitude}, lng=${coord.longitude}', 
+                     context: 'S57ToMaritimeAdapter');
+      }
+    } else {
+      _logger.warning('No coordinates available for buoy feature ${s57.recordId}', 
+                     context: 'S57ToMaritimeAdapter');
+    }
     
     // Handle potential type conversions gracefully
     final shape = _safeStringFromAttribute(s57.attributes['BOYSHP']) ?? 'cylindrical';
@@ -399,15 +500,15 @@ class S57ToMaritimeAdapter {
     final avgDepth = (minDepth + maxDepth) / 2;
     
     if (avgDepth < 2) {
-      return Colors.red.withOpacity(0.3); // Very shallow - danger
+      return Colors.red.withValues(alpha: 0.3); // Very shallow - danger
     } else if (avgDepth < 5) {
-      return Colors.orange.withOpacity(0.3); // Shallow
+      return Colors.orange.withValues(alpha: 0.3); // Shallow
     } else if (avgDepth < 10) {
-      return Colors.yellow.withOpacity(0.3); // Moderate shallow
+      return Colors.yellow.withValues(alpha: 0.3); // Moderate shallow
     } else if (avgDepth < 20) {
-      return Colors.lightBlue.withOpacity(0.3); // Moderate depth
+      return Colors.lightBlue.withValues(alpha: 0.3); // Moderate depth
     } else {
-      return Colors.blue.withOpacity(0.3); // Deep water
+      return Colors.blue.withValues(alpha: 0.3); // Deep water
     }
   }
   

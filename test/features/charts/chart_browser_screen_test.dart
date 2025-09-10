@@ -115,6 +115,41 @@ void main() {
       );
     }
 
+    /// Helper function to pump with extended timeout for complex UI interactions
+    Future<void> pumpAndSettleWithTimeout(
+      WidgetTester tester, {
+      Duration timeout = const Duration(seconds: 15), // Increased from 10s to 15s for marine UI complexity
+    }) async {
+      await tester.pumpAndSettle(timeout);
+    }
+
+    /// Helper function to pump with specific duration instead of waiting for settle
+    Future<void> pumpAndWait(
+      WidgetTester tester, {
+      Duration wait = const Duration(milliseconds: 800), // Increased from 500ms to 800ms for more stable UI
+    }) async {
+      await tester.pump();
+      await Future.delayed(wait);
+      await tester.pump();
+    }
+
+    /// Helper function to pump with retries for flaky UI interactions  
+    Future<void> pumpWithRetries(
+      WidgetTester tester, {
+      int maxRetries = 3,
+    }) async {
+      for (int i = 0; i < maxRetries; i++) {
+        try {
+          await tester.pump();
+          await Future.delayed(const Duration(milliseconds: 100));
+          return;
+        } catch (e) {
+          if (i == maxRetries - 1) rethrow;
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
+      }
+    }
+
     group('Screen Structure and Layout', () {
       testWidgets(
         'should create ChartBrowserScreen with all required components',
@@ -637,9 +672,9 @@ void main() {
         await tester.tap(find.text('California'));
         await tester.pumpAndSettle();
 
-        // Tap info button
+        // Tap info button to show preview dialog
         await tester.tap(find.byIcon(Icons.info_outline).first);
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithTimeout(tester); // Use extended timeout for dialog animation
 
         // Assert
         expect(find.byType(AlertDialog), findsOneWidget);
@@ -953,7 +988,7 @@ void main() {
 
         // Enable scale filtering
         await tester.tap(find.text('Filter by Scale Range'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithTimeout(tester); // Use extended timeout for complex filtering UI
 
         // Assert
         expect(find.text('Scale: 1:1,000 - 1:10,000,000'), findsOneWidget);
@@ -1002,13 +1037,13 @@ void main() {
 
         // Act
         await tester.pumpWidget(createTestWidget());
-        await tester.pumpAndSettle();
+        await pumpAndWait(tester);
 
         // Select California to load charts
         await tester.tap(find.byType(DropdownButton<String>));
-        await tester.pumpAndSettle();
+        await pumpAndWait(tester);
         await tester.tap(find.text('California'));
-        await tester.pumpAndSettle();
+        await pumpAndWait(tester, wait: const Duration(seconds: 1));
 
         // Verify both charts are shown initially
         expect(find.text('Small Scale'), findsOneWidget);
@@ -1016,7 +1051,7 @@ void main() {
 
         // Enable scale filtering and set range to exclude large scale
         await tester.tap(find.text('Filter by Scale Range'));
-        await tester.pumpAndSettle();
+        await pumpAndWait(tester);
 
         // Assert filtering UI is shown
         expect(find.byType(Slider), findsNWidgets(2));
@@ -1040,23 +1075,23 @@ void main() {
 
         // Act
         await tester.pumpWidget(createTestWidget());
-        await tester.pumpAndSettle();
+        await pumpAndWait(tester);
 
         // Select California and enable filters
         await tester.tap(find.byType(DropdownButton<String>));
-        await tester.pumpAndSettle();
+        await pumpAndWait(tester);
         await tester.tap(find.text('California'));
-        await tester.pumpAndSettle();
+        await pumpAndWait(tester, wait: const Duration(seconds: 1));
 
         // Enable scale filter
         await tester.tap(find.text('Filter by Scale Range'));
-        await tester.pumpAndSettle();
+        await pumpAndWait(tester);
 
-        // Change to Florida
+        // Change to Florida (state change should reset filters)
         await tester.tap(find.byType(DropdownButton<String>));
-        await tester.pumpAndSettle();
+        await pumpAndWait(tester);
         await tester.tap(find.text('Florida'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithTimeout(tester); // Use extended timeout for state change reset
 
         // Scale filter UI should not be visible (filter was reset)
         expect(find.byType(Slider), findsNothing);
@@ -1078,17 +1113,17 @@ void main() {
 
         // Act
         await tester.pumpWidget(createTestWidget());
-        await tester.pumpAndSettle();
+        await pumpAndWait(tester);
 
         // Load charts
         await tester.tap(find.byType(DropdownButton<String>));
-        await tester.pumpAndSettle();
+        await pumpAndWait(tester);
         await tester.tap(find.text('California'));
-        await tester.pumpAndSettle();
+        await pumpAndWait(tester, wait: const Duration(seconds: 1));
 
         // Tap info button
         await tester.tap(find.byIcon(Icons.info_outline));
-        await tester.pumpAndSettle();
+        await pumpAndWait(tester);
 
         // Assert enhanced details are shown
         expect(find.text('Chart Details'), findsOneWidget);

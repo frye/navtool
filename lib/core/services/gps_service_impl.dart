@@ -511,8 +511,9 @@ class GpsServiceImpl implements GpsService {
     double confidence = 0.6; // Higher base confidence for consistent tracks
 
     // Higher confidence for more positions
-    if (history.positions.length >= 3)
+    if (history.positions.length >= 3) {
       confidence += 0.15; // 3 points form a good track
+    }
     if (history.positions.length >= 5) confidence += 0.1;
     if (history.positions.length >= 10) confidence += 0.1;
 

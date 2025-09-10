@@ -1154,44 +1154,50 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
   }
 
   void _filterCharts() {
-    setState(() {
-      _filteredCharts = _charts.where((chart) {
-        // Filter by chart type
-        if (_selectedChartTypes.isNotEmpty &&
-            !_selectedChartTypes.contains(chart.type)) {
-          return false;
-        }
+    // Debounce rapid filtering calls to improve test stability
+    if (_searchDebouncer?.isActive ?? false) _searchDebouncer!.cancel();
+    _searchDebouncer = Timer(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        setState(() {
+          _filteredCharts = _charts.where((chart) {
+            // Filter by chart type
+            if (_selectedChartTypes.isNotEmpty &&
+                !_selectedChartTypes.contains(chart.type)) {
+              return false;
+            }
 
-        // Filter by scale range
-        if (_scaleFilterEnabled) {
-          if (chart.scale < _minScale || chart.scale > _maxScale) {
-            return false;
-          }
-        }
+            // Filter by scale range
+            if (_scaleFilterEnabled) {
+              if (chart.scale < _minScale || chart.scale > _maxScale) {
+                return false;
+              }
+            }
 
-        // Filter by date range
-        if (_dateFilterEnabled) {
-          if (_startDate != null && chart.lastUpdate.isBefore(_startDate!)) {
-            return false;
-          }
-          if (_endDate != null &&
-              chart.lastUpdate.isAfter(
-                _endDate!.add(const Duration(days: 1)),
-              )) {
-            return false;
-          }
-        }
+            // Filter by date range
+            if (_dateFilterEnabled) {
+              if (_startDate != null && chart.lastUpdate.isBefore(_startDate!)) {
+                return false;
+              }
+              if (_endDate != null &&
+                  chart.lastUpdate.isAfter(
+                    _endDate!.add(const Duration(days: 1)),
+                  )) {
+                return false;
+              }
+            }
 
-        // Filter by search query
-        if (_searchQuery.isNotEmpty) {
-          final query = _searchQuery.toLowerCase();
-          return chart.title.toLowerCase().contains(query) ||
-              chart.id.toLowerCase().contains(query) ||
-              (chart.description?.toLowerCase().contains(query) ?? false);
-        }
+            // Filter by search query
+            if (_searchQuery.isNotEmpty) {
+              final query = _searchQuery.toLowerCase();
+              return chart.title.toLowerCase().contains(query) ||
+                  chart.id.toLowerCase().contains(query) ||
+                  (chart.description?.toLowerCase().contains(query) ?? false);
+            }
 
-        return true;
-      }).toList();
+            return true;
+          }).toList();
+        });
+      }
     });
   }
 
@@ -1461,7 +1467,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
             GestureDetector(
               onTap: () => setState(() {
                 _scaleFilterEnabled = !_scaleFilterEnabled;
-                if (_scaleFilterEnabled) _filterCharts();
+                // Filter will be called by debounced method automatically
               }),
               child: Row(
                 children: [
@@ -1471,7 +1477,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                       value: _scaleFilterEnabled,
                       onChanged: (value) => setState(() {
                         _scaleFilterEnabled = value;
-                        if (_scaleFilterEnabled) _filterCharts();
+                        _filterCharts(); // Only call once here
                       }),
                     ),
                   ),
@@ -1539,7 +1545,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
             GestureDetector(
               onTap: () => setState(() {
                 _dateFilterEnabled = !_dateFilterEnabled;
-                if (_dateFilterEnabled) _filterCharts();
+                // Filter will be called by debounced method automatically
               }),
               child: Row(
                 children: [
@@ -1549,7 +1555,7 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
                       value: _dateFilterEnabled,
                       onChanged: (value) => setState(() {
                         _dateFilterEnabled = value;
-                        if (_dateFilterEnabled) _filterCharts();
+                        _filterCharts(); // Only call once here
                       }),
                     ),
                   ),

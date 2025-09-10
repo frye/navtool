@@ -4,7 +4,7 @@
 /// This module provides the core data structures for parsing ISO 8211 records
 /// that form the foundation of S-57 Electronic Navigational Chart files.
 
-import 'dart:typed_data';
+
 
 /// Directory entry in an ISO 8211 record
 ///

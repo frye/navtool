@@ -1320,8 +1320,9 @@ class DownloadServiceImpl implements DownloadService {
     if (error is AppError) {
       final msg = error.message.toLowerCase();
       if (msg.contains('checksum')) return DownloadErrorCode.checksumMismatch;
-      if (msg.contains('insufficient disk space'))
+      if (msg.contains('insufficient disk space')) {
         return DownloadErrorCode.insufficientDiskSpace;
+      }
       if (msg.contains('timeout')) return DownloadErrorCode.networkTimeout;
       switch (error.type) {
         case AppErrorType.network:
@@ -1459,8 +1460,9 @@ class DownloadServiceImpl implements DownloadService {
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024)
+    if (bytes < 1024 * 1024 * 1024) {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 

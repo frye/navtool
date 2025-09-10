@@ -100,8 +100,9 @@ class ConsoleLogger implements AppLogger {
     if (level.index < minimumLevel.index) return;
 
     // Skip debug logs in production unless explicitly enabled
-    if (!kDebugMode && level == LogLevel.debug && !level.showInProduction)
+    if (!kDebugMode && level == LogLevel.debug && !level.showInProduction) {
       return;
+    }
 
     final buffer = StringBuffer();
 

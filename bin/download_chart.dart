@@ -3,7 +3,7 @@
 // Or pass chart id as first argument when using `dart run` (Flutter context required).
 import 'dart:io';
 import 'package:flutter/widgets.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:navtool/tools/download_noaa_chart_logic.dart';
 
 Future<void> main(List<String> args) async {

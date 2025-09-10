@@ -4,7 +4,7 @@
 /// RUIN (Insert/Delete/Modify) operations to a base ENC dataset
 
 import 'dart:io';
-import 'dart:typed_data';
+
 import 'package:meta/meta.dart';
 
 import 's57_models.dart';
