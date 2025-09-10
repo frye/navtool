@@ -2,7 +2,7 @@
 // This allows using providers and any Flutter framework types safely.
 
 import 'package:flutter/widgets.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'download_noaa_chart_logic.dart';
 
 Future<void> main(List<String> args) async {

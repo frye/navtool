@@ -10,7 +10,7 @@ import 'dart:math' as math;
 import '../../core/models/chart_models.dart';
 import '../../core/services/chart_rendering_service.dart';
 import '../../core/services/s57/s57_parser.dart';
-import '../../core/services/s57/s57_models.dart';
+
 import '../../core/adapters/s57_to_maritime_adapter.dart';
 import 'chart_widget.dart';
 
@@ -160,7 +160,7 @@ class _ChartScreenState extends State<ChartScreen> {
                 // Loading indicator overlay
                 if (_isLoadingFeatures)
                   Container(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha: 0.3),
                     child: const Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,

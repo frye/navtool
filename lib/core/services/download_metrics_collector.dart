@@ -1,6 +1,6 @@
 import 'dart:collection';
 import 'package:flutter/foundation.dart';
-import '../state/download_state.dart';
+
 
 /// Basic metrics snapshot for downloads (Phase 3 initial implementation)
 @immutable

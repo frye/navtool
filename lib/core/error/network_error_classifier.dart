@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'noaa_exceptions.dart';
-import 'noaa_error_classifier.dart';
+
 
 /// Network error types for marine environments
 enum NetworkErrorType {
