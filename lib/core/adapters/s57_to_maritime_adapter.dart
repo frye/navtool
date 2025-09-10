@@ -96,9 +96,24 @@ class S57ToMaritimeAdapter {
   /// Convert sounding (SOUNDG) to PointFeature
   static PointFeature _convertSounding(S57Feature s57) {
     final depth = s57.attributes['VALSOU'] as double? ?? 0.0;
-    final position = s57.coordinates.isNotEmpty 
-        ? LatLng(s57.coordinates.first.latitude, s57.coordinates.first.longitude)
-        : const LatLng(0, 0);
+    
+    // Debug coordinate conversion
+    LatLng position = const LatLng(0, 0);
+    if (s57.coordinates.isNotEmpty) {
+      final coord = s57.coordinates.first;
+      position = LatLng(coord.latitude, coord.longitude);
+      
+      // Log coordinate conversion for debugging
+      print('[S57ToMaritimeAdapter] Converting sounding coordinates: S57(${coord.latitude}, ${coord.longitude}) → LatLng(${position.latitude}, ${position.longitude})');
+      
+      // If coordinates are still (0,0), there might be a coordinate system issue
+      if (position.latitude == 0.0 && position.longitude == 0.0) {
+        print('[S57ToMaritimeAdapter] WARNING: Converted coordinates are (0,0) - possible coordinate system issue');
+        print('[S57ToMaritimeAdapter] S57Coordinate raw values: lat=${coord.latitude}, lng=${coord.longitude}');
+      }
+    } else {
+      print('[S57ToMaritimeAdapter] WARNING: No coordinates available for sounding feature ${s57.recordId}');
+    }
     
     return PointFeature(
       id: 'sounding_${s57.recordId}',
@@ -185,9 +200,23 @@ class S57ToMaritimeAdapter {
   
   /// Convert lighthouse (LIGHTS) to PointFeature
   static PointFeature _convertLighthouse(S57Feature s57) {
-    final position = s57.coordinates.isNotEmpty 
-        ? LatLng(s57.coordinates.first.latitude, s57.coordinates.first.longitude)
-        : const LatLng(0, 0);
+    // Debug coordinate conversion
+    LatLng position = const LatLng(0, 0);
+    if (s57.coordinates.isNotEmpty) {
+      final coord = s57.coordinates.first;
+      position = LatLng(coord.latitude, coord.longitude);
+      
+      // Log coordinate conversion for debugging
+      print('[S57ToMaritimeAdapter] Converting lighthouse coordinates: S57(${coord.latitude}, ${coord.longitude}) → LatLng(${position.latitude}, ${position.longitude})');
+      
+      // If coordinates are still (0,0), there might be a coordinate system issue
+      if (position.latitude == 0.0 && position.longitude == 0.0) {
+        print('[S57ToMaritimeAdapter] WARNING: Converted lighthouse coordinates are (0,0) - possible coordinate system issue');
+        print('[S57ToMaritimeAdapter] S57Coordinate raw values: lat=${coord.latitude}, lng=${coord.longitude}');
+      }
+    } else {
+      print('[S57ToMaritimeAdapter] WARNING: No coordinates available for lighthouse feature ${s57.recordId}');
+    }
     
     // Handle potential type conversion errors gracefully
     final character = _safeStringFromAttribute(s57.attributes['LITCHR']) ?? 'F';
@@ -216,9 +245,23 @@ class S57ToMaritimeAdapter {
   
   /// Convert buoy (BOYLAT, BOYCAR, etc.) to PointFeature
   static PointFeature _convertBuoy(S57Feature s57) {
-    final position = s57.coordinates.isNotEmpty 
-        ? LatLng(s57.coordinates.first.latitude, s57.coordinates.first.longitude)
-        : const LatLng(0, 0);
+    // Debug coordinate conversion
+    LatLng position = const LatLng(0, 0);
+    if (s57.coordinates.isNotEmpty) {
+      final coord = s57.coordinates.first;
+      position = LatLng(coord.latitude, coord.longitude);
+      
+      // Log coordinate conversion for debugging
+      print('[S57ToMaritimeAdapter] Converting buoy coordinates: S57(${coord.latitude}, ${coord.longitude}) → LatLng(${position.latitude}, ${position.longitude})');
+      
+      // If coordinates are still (0,0), there might be a coordinate system issue
+      if (position.latitude == 0.0 && position.longitude == 0.0) {
+        print('[S57ToMaritimeAdapter] WARNING: Converted buoy coordinates are (0,0) - possible coordinate system issue');
+        print('[S57ToMaritimeAdapter] S57Coordinate raw values: lat=${coord.latitude}, lng=${coord.longitude}');
+      }
+    } else {
+      print('[S57ToMaritimeAdapter] WARNING: No coordinates available for buoy feature ${s57.recordId}');
+    }
     
     // Handle potential type conversions gracefully
     final shape = _safeStringFromAttribute(s57.attributes['BOYSHP']) ?? 'cylindrical';
