@@ -593,6 +593,8 @@ class MarineTestUtils {
   static List<Chart> generateTestChartsForState(String state, {int count = 5}) {
     return MockDataGenerators.generateChartsForState(state, count);
   }
+
+
 }
 
 extension GeographicBoundsTestHelpers on GeographicBounds {
