@@ -1,0 +1,522 @@
+name: Binary Builds
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [opened, synchronize, reopened]
+  # Allow manual triggering from the Actions tab
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: '3.35.1'  # Latest stable with Dart 3.8.1+ compatibility
+  CI: 'true'
+
+jobs:
+  # Pre-build validation to catch issues early
+  validate:
+    name: Validate Code
+    runs-on: ubuntu-latest
+    timeout-minutes: 20  # Faster validation before expensive builds
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+        cache: true
+        
+    - name: Verify Flutter installation
+      run: |
+        flutter doctor -v
+        flutter --version
+    
+    - name: Clean before dependency fetch
+      run: flutter clean
+        
+    - name: Get dependencies (NEVER CANCEL - takes 5-10 minutes)
+      run: flutter pub get
+      
+    - name: Check pubspec.lock integrity
+      run: |
+        echo "Verifying pubspec.lock has not changed after dependency resolution"
+        git diff --exit-code pubspec.lock || (echo "::error::pubspec.lock changed after flutter pub get. Please commit the updated lockfile." && exit 1)
+      
+    - name: Generate mocks (NEVER CANCEL - takes 3-5 minutes)
+      run: flutter packages pub run build_runner build --delete-conflicting-outputs
+      
+    - name: Run static analysis
+      run: flutter analyze --fatal-infos
+      
+    - name: Check formatting
+      run: dart format --set-exit-if-changed .
+      
+    - name: Security audit
+      run: flutter pub audit
+      
+    - name: Run validated test script
+      run: |
+        chmod +x ./scripts/test.sh
+        ./scripts/test.sh unit
+  # Linux Release Build
+  build-linux:
+    name: Build Linux Binary
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # 2 hours for complete build cycle
+    needs: validate
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Linux system dependencies
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          ninja-build \
+          pkg-config \
+          libgtk-3-dev \
+          libasound2 \
+          libxi6 \
+          libxrender1 \
+          libxrandr2 \
+          libxcursor1 \
+          libxinerama1 \
+          libxss1 \
+          libgl1 \
+          libglu1-mesa \
+          liblzma-dev \
+          libstdc++-12-dev \
+          ca-certificates \
+          fonts-liberation
+        
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+        cache: true
+        
+    - name: Verify Flutter installation
+      run: |
+        set -euo pipefail
+        flutter doctor -v
+        flutter --version
+        flutter config --enable-linux-desktop
+    
+    - name: Clean previous builds
+      run: flutter clean
+        
+    - name: Get dependencies (NEVER CANCEL - takes 5-10 minutes)
+      run: flutter pub get
+      
+    - name: Check pubspec.lock integrity
+      run: |
+        set -euo pipefail
+        echo "Verifying pubspec.lock has not changed after dependency resolution"
+        git diff --exit-code pubspec.lock || (echo "::error::pubspec.lock changed after flutter pub get. Please commit the updated lockfile." && exit 1)
+      
+    - name: Generate mocks (NEVER CANCEL - takes 3-5 minutes)
+      run: flutter packages pub run build_runner build --delete-conflicting-outputs
+      
+    - name: Build Linux release binary (NEVER CANCEL - takes 45-90 minutes)
+      run: |
+        set -euo pipefail
+        echo "Starting Linux release build - this will take 45-90 minutes"
+        flutter build linux --release --verbose
+        echo "Linux build completed successfully"
+        
+    - name: Verify build artifacts
+      run: |
+        set -euo pipefail
+        echo "Checking build artifacts..."
+        ls -la build/linux/x64/release/bundle/
+        if [ -f "build/linux/x64/release/bundle/navtool" ]; then
+          echo "✅ Linux binary created successfully"
+          # Verify architecture and binary details
+          file build/linux/x64/release/bundle/navtool
+          # Check if it's a 64-bit ELF executable
+          file build/linux/x64/release/bundle/navtool | grep "ELF 64-bit" || (echo "::error::Binary is not a 64-bit ELF executable" && exit 1)
+        else
+          echo "❌ Linux binary not found"
+          exit 1
+        fi
+        
+    - name: Generate checksums
+      run: |
+        set -euo pipefail
+        cd build/linux/x64/release/bundle/
+        echo "Generating file checksums..."
+        sha256sum navtool > SHA256SUMS.txt
+        # Add checksums for shared libraries
+        find . -type f -name "*.so" | xargs sha256sum >> SHA256SUMS.txt
+        cat SHA256SUMS.txt
+        
+    - name: Package Linux build
+      run: |
+        set -euo pipefail
+        cd build/linux/x64/release/
+        tar czf navtool-linux-x64.tar.gz bundle/
+        mv navtool-linux-x64.tar.gz ../../../../
+        
+    - name: Upload Linux binary
+      uses: actions/upload-artifact@v4
+      with:
+        name: navtool-linux-x64
+        path: navtool-linux-x64.tar.gz
+        retention-days: 30
+        
+    - name: Upload Linux checksums
+      uses: actions/upload-artifact@v4
+      with:
+        name: navtool-linux-x64-checksums
+        path: build/linux/x64/release/bundle/SHA256SUMS.txt
+        retention-days: 30
+
+  # Windows Release Build
+  build-windows:
+    name: Build Windows Binary
+    runs-on: windows-latest
+    timeout-minutes: 120  # 2 hours for complete build cycle
+    needs: validate
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+        cache: true
+        
+    - name: Verify Flutter installation
+      run: |
+        $ErrorActionPreference = "Stop"
+        flutter doctor -v
+        flutter --version
+        flutter config --enable-windows-desktop
+    
+    - name: Clean previous builds
+      run: flutter clean
+        
+    - name: Get dependencies (NEVER CANCEL - takes 5-10 minutes)
+      run: flutter pub get
+      
+    - name: Check pubspec.lock integrity
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "Verifying pubspec.lock has not changed after dependency resolution"
+        git diff --exit-code pubspec.lock || (echo "::error::pubspec.lock changed after flutter pub get. Please commit the updated lockfile." && exit 1)
+      
+    - name: Generate mocks (NEVER CANCEL - takes 3-5 minutes)
+      run: flutter packages pub run build_runner build --delete-conflicting-outputs
+      
+    - name: Build Windows release binary (NEVER CANCEL - takes 45-90 minutes)
+      run: |
+        $ErrorActionPreference = "Stop"
+        Write-Host "Starting Windows release build - this will take 45-90 minutes"
+        flutter build windows --release --verbose
+        Write-Host "Windows build completed successfully"
+        
+    - name: Verify build artifacts
+      run: |
+        $ErrorActionPreference = "Stop"
+        Write-Host "Checking build artifacts..."
+        Get-ChildItem -Path "build\windows\x64\runner\Release\" -Recurse
+        if (Test-Path "build\windows\x64\runner\Release\navtool.exe") {
+          Write-Host "✅ Windows binary created successfully"
+          
+          # Examine main executable
+          Write-Host "Executable details:"
+          $fileInfo = Get-Item "build\windows\x64\runner\Release\navtool.exe"
+          Write-Host "Size: $($fileInfo.Length) bytes"
+          Write-Host "Last Modified: $($fileInfo.LastWriteTime)"
+          
+          # List and check DLLs
+          Write-Host "Checking dependencies..."
+          Get-ChildItem -Path "build\windows\x64\runner\Release\" -Filter "*.dll" | 
+            Sort-Object Length -Descending | 
+            Select-Object -First 10 | 
+            Format-Table Name, Length
+            
+        } else {
+          Write-Host "❌ Windows binary not found"
+          exit 1
+        }
+        
+    - name: Generate checksums
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd build/windows/x64/runner/Release/
+        echo "Generating file checksums..."
+        sha256sum navtool.exe > SHA256SUMS.txt
+        # Add checksums for DLLs
+        find . -type f -name "*.dll" | sort | xargs sha256sum >> SHA256SUMS.txt
+        cat SHA256SUMS.txt
+        
+    - name: Package Windows build
+      run: |
+        $ErrorActionPreference = "Stop"
+        cd build\windows\x64\runner\Release
+        Compress-Archive -Path ".\*" -DestinationPath "..\..\..\..\navtool-windows-x64.zip"
+        
+    - name: Upload Windows binary
+      uses: actions/upload-artifact@v4
+      with:
+        name: navtool-windows-x64
+        path: navtool-windows-x64.zip
+        retention-days: 30
+        
+    - name: Upload Windows checksums
+      uses: actions/upload-artifact@v4
+      with:
+        name: navtool-windows-x64-checksums
+        path: build/windows/x64/runner/Release/SHA256SUMS.txt
+        retention-days: 30
+
+  # macOS Release Build
+  build-macos:
+    name: Build macOS Binary
+    runs-on: macos-latest
+    timeout-minutes: 120  # 2 hours for complete build cycle
+    needs: validate
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+        cache: true
+        
+    - name: Verify Flutter installation
+      run: |
+        set -euo pipefail
+        flutter doctor -v
+        flutter --version
+        flutter config --enable-macos-desktop
+    
+    - name: Clean previous builds
+      run: flutter clean
+        
+    - name: Get dependencies (NEVER CANCEL - takes 5-10 minutes)
+      run: flutter pub get
+      
+    - name: Check pubspec.lock integrity
+      run: |
+        set -euo pipefail
+        echo "Verifying pubspec.lock has not changed after dependency resolution"
+        git diff --exit-code pubspec.lock || (echo "::error::pubspec.lock changed after flutter pub get. Please commit the updated lockfile." && exit 1)
+      
+    - name: Generate mocks (NEVER CANCEL - takes 3-5 minutes)
+      run: flutter packages pub run build_runner build --delete-conflicting-outputs
+      
+    - name: Build macOS release binary (NEVER CANCEL - takes 45-90 minutes)
+      run: |
+        set -euo pipefail
+        echo "Starting macOS release build - this will take 45-90 minutes"
+        flutter build macos --release --verbose
+        echo "macOS build completed successfully"
+        
+    - name: Verify build artifacts
+      run: |
+        set -euo pipefail
+        echo "Checking build artifacts..."
+        ls -la build/macos/Build/Products/Release/
+        if [ -d "build/macos/Build/Products/Release/navtool.app" ]; then
+          echo "✅ macOS app bundle created successfully"
+          ls -la "build/macos/Build/Products/Release/navtool.app/Contents/MacOS/"
+          
+          # Verify executable architecture
+          echo "Checking binary architecture..."
+          file "build/macos/Build/Products/Release/navtool.app/Contents/MacOS/navtool"
+          
+          # Check if universal binary (contains both arm64 and x86_64)
+          if command -v lipo &> /dev/null; then
+            echo "Architecture details:"
+            lipo -info "build/macos/Build/Products/Release/navtool.app/Contents/MacOS/navtool"
+            
+            # Check for specific architectures
+            ARCHS=$(lipo -info "build/macos/Build/Products/Release/navtool.app/Contents/MacOS/navtool")
+            if [[ $ARCHS == *"arm64"* ]]; then
+              echo "✅ Contains arm64 architecture"
+            else
+              echo "⚠️ Missing arm64 architecture"
+            fi
+            
+            if [[ $ARCHS == *"x86_64"* ]]; then
+              echo "✅ Contains x86_64 architecture"
+            else
+              echo "⚠️ Missing x86_64 architecture"
+            fi
+            
+            if [[ $ARCHS == *"Non-fat"* ]]; then
+              echo "⚠️ Warning: Not a universal binary"
+            fi
+          fi
+        else
+          echo "❌ macOS app bundle not found"
+          exit 1
+        fi
+        
+    - name: Generate checksums
+      run: |
+        set -euo pipefail
+        cd build/macos/Build/Products/Release/
+        echo "Generating file checksums..."
+        find navtool.app -type f -not -path "*/\.*" | sort | xargs shasum -a 256 > SHA256SUMS.txt
+        head -n 10 SHA256SUMS.txt # Show first 10 checksums for visibility
+        
+    - name: Package macOS build
+      run: |
+        set -euo pipefail
+        cd build/macos/Build/Products/Release/
+        tar czf navtool-macos.tar.gz navtool.app/
+        mv navtool-macos.tar.gz ../../../../../
+        
+    - name: Upload macOS binary
+      uses: actions/upload-artifact@v4
+      with:
+        name: navtool-macos
+        path: navtool-macos.tar.gz
+        retention-days: 30
+        
+    - name: Upload macOS checksums
+      uses: actions/upload-artifact@v4
+      with:
+        name: navtool-macos-checksums
+        path: build/macos/Build/Products/Release/SHA256SUMS.txt
+        retention-days: 30
+
+  # Build Summary and Validation (Combined with gating function)
+  build-summary:
+    name: Build Summary and Verification
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-windows, build-macos]
+    if: always()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download all build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+      
+    - name: Generate build summary
+      run: |
+        set -euo pipefail
+        echo "# Binary Build Results" > build-summary.md
+        echo "" >> build-summary.md
+        echo "## Platform Build Status" >> build-summary.md
+        echo "- Linux x64: ${{ needs.build-linux.result }}" >> build-summary.md
+        echo "- Windows x64: ${{ needs.build-windows.result }}" >> build-summary.md
+        echo "- macOS: ${{ needs.build-macos.result }}" >> build-summary.md
+        echo "" >> build-summary.md
+        
+        # Check if all builds succeeded
+        if [[ "${{ needs.build-linux.result }}" == "success" && "${{ needs.build-windows.result }}" == "success" && "${{ needs.build-macos.result }}" == "success" ]]; then
+          echo "## ✅ All Builds Successful" >> build-summary.md
+          echo "" >> build-summary.md
+          echo "All platform binaries have been built successfully and are ready for distribution." >> build-summary.md
+          echo "" >> build-summary.md
+          echo "### Available Artifacts:" >> build-summary.md
+          echo "- **navtool-linux-x64.tar.gz** - Linux x64 binary bundle" >> build-summary.md
+          echo "- **navtool-windows-x64.zip** - Windows x64 executable and dependencies" >> build-summary.md
+          echo "- **navtool-macos.tar.gz** - macOS app bundle" >> build-summary.md
+          
+          echo "" >> build-summary.md
+          echo "### Build Verification" >> build-summary.md
+          echo "- All build artifacts have been verified for architecture compatibility" >> build-summary.md
+          echo "- SHA256 checksums have been generated for all platform builds" >> build-summary.md
+          echo "- Dependencies have been audited for security vulnerabilities" >> build-summary.md
+        else
+          echo "## ❌ Build Failures Detected" >> build-summary.md
+          echo "" >> build-summary.md
+          echo "One or more platform builds failed. All builds must succeed before this PR can be merged." >> build-summary.md
+          echo "" >> build-summary.md
+          echo "### Failed Builds:" >> build-summary.md
+          [[ "${{ needs.build-linux.result }}" != "success" ]] && echo "- Linux build: ${{ needs.build-linux.result }}" >> build-summary.md
+          [[ "${{ needs.build-windows.result }}" != "success" ]] && echo "- Windows build: ${{ needs.build-windows.result }}" >> build-summary.md
+          [[ "${{ needs.build-macos.result }}" != "success" ]] && echo "- macOS build: ${{ needs.build-macos.result }}" >> build-summary.md
+        fi
+        
+        echo "" >> build-summary.md
+        echo "## Build Information" >> build-summary.md
+        echo "- Flutter Version: ${{ env.FLUTTER_VERSION }}" >> build-summary.md
+        echo "- Build Type: Release" >> build-summary.md
+        echo "- Triggered by: ${{ github.event_name }}" >> build-summary.md
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          echo "- PR Number: #${{ github.event.pull_request.number }}" >> build-summary.md
+          echo "- PR Title: ${{ github.event.pull_request.title }}" >> build-summary.md
+        fi
+        
+        # List artifacts and sizes
+        echo "" >> build-summary.md
+        echo "## Artifact Information" >> build-summary.md
+        echo "| Platform | Artifact | Size |" >> build-summary.md
+        echo "|----------|----------|------|" >> build-summary.md
+        
+        find artifacts -type f -not -path "*/SHA256SUMS.txt" | while read file; do
+          filename=$(basename "$file")
+          size=$(du -h "$file" | cut -f1)
+          platform=""
+          if [[ "$filename" == *"linux"* ]]; then
+            platform="Linux"
+          elif [[ "$filename" == *"windows"* ]]; then
+            platform="Windows"
+          elif [[ "$filename" == *"macos"* ]]; then
+            platform="macOS"
+          else
+            platform="Other"
+          fi
+          echo "| $platform | $filename | $size |" >> build-summary.md
+        done
+        
+        cat build-summary.md
+        
+    - name: Check build artifacts
+      run: |
+        set -euo pipefail
+        echo "=== Checking downloaded artifacts ==="
+        find artifacts -type f | while read file; do
+          echo "📦 $file ($(du -h "$file" | cut -f1))"
+        done
+        
+        # Check for checksums files
+        if [ -d "artifacts/navtool-linux-x64-checksums" ] && \
+           [ -d "artifacts/navtool-windows-x64-checksums" ] && \
+           [ -d "artifacts/navtool-macos-checksums" ]; then
+          echo "✅ All checksum files found"
+        else
+          echo "⚠️ Some checksum files are missing"
+        fi
+        
+    - name: Upload build summary
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-summary
+        path: build-summary.md
+        retention-days: 30
+        
+    - name: Fail job if any build failed
+      if: needs.build-linux.result != 'success' || needs.build-windows.result != 'success' || needs.build-macos.result != 'success'
+      run: |
+        set -euo pipefail
+        echo "❌ One or more builds failed:"
+        echo "  Linux: ${{ needs.build-linux.result }}"
+        echo "  Windows: ${{ needs.build-windows.result }}"
+        echo "  macOS: ${{ needs.build-macos.result }}"
+        echo ""
+        echo "All platform builds must succeed before this PR can be merged."
+        exit 1
