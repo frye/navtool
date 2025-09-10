@@ -247,6 +247,17 @@ class DepthContour extends LineFeature {
          type: MaritimeFeatureType.depthContour,
          position: const LatLng(0, 0), // Will be calculated from coordinates
        );
+       
+  /// Constructor with explicit position calculation
+  const DepthContour.withPosition({
+    required super.id,
+    required super.position,
+    required super.coordinates,
+    required this.depth,
+    super.attributes,
+  }) : super(
+         type: MaritimeFeatureType.depthContour,
+       );
 
   @override
   bool isVisibleAtScale(ChartScale scale) {

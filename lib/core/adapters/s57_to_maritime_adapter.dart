@@ -147,11 +147,19 @@ class S57ToMaritimeAdapter {
         .map((coord) => LatLng(coord.latitude, coord.longitude))
         .toList();
     
+    // Calculate proper center position from coordinates
+    final position = coordinates.isNotEmpty 
+        ? _calculateCenterPosition(s57.coordinates)
+        : const LatLng(47.64, -122.34); // Elliott Bay fallback
+    
+    print('[S57ToMaritimeAdapter] Depth contour center position: ${position.latitude}, ${position.longitude}');
+    
     if (coordinates.isEmpty) {
       print('[S57ToMaritimeAdapter] WARNING: Depth contour has no coordinates, creating dummy coordinates');
       // Create a small depth contour line as fallback
-      return DepthContour(
+      return DepthContour.withPosition(
         id: 'depthcontour_${s57.recordId}',
+        position: position,
         coordinates: [
           const LatLng(47.64, -122.34), // Elliott Bay area
           const LatLng(47.64, -122.33),
@@ -167,8 +175,9 @@ class S57ToMaritimeAdapter {
       );
     }
     
-    return DepthContour(
+    return DepthContour.withPosition(
       id: 'depthcontour_${s57.recordId}',
+      position: position,
       coordinates: coordinates,
       depth: depth,
       attributes: {
