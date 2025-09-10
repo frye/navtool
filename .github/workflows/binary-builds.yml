@@ -3,9 +3,6 @@ name: Binary Builds
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main, develop ]
-    types: [opened, synchronize, reopened]
   # Allow manual triggering from the Actions tab
   workflow_dispatch:
 
