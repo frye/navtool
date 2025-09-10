@@ -133,10 +133,39 @@ class S57ToMaritimeAdapter {
   static DepthContour _convertDepthContour(S57Feature s57) {
     final depth = s57.attributes['VALDCO'] as double? ?? 0.0;
     
+    // Debug coordinate conversion for depth contours
+    print('[S57ToMaritimeAdapter] Converting depth contour coordinates: ${s57.coordinates.length} points');
+    if (s57.coordinates.isNotEmpty) {
+      final firstCoord = s57.coordinates.first;
+      final lastCoord = s57.coordinates.last;
+      print('[S57ToMaritimeAdapter] Depth contour first: S57(${firstCoord.latitude}, ${firstCoord.longitude})');
+      print('[S57ToMaritimeAdapter] Depth contour last: S57(${lastCoord.latitude}, ${lastCoord.longitude})');
+    }
+    
     // Convert S57Coordinates to LatLng
     final coordinates = s57.coordinates
         .map((coord) => LatLng(coord.latitude, coord.longitude))
         .toList();
+    
+    if (coordinates.isEmpty) {
+      print('[S57ToMaritimeAdapter] WARNING: Depth contour has no coordinates, creating dummy coordinates');
+      // Create a small depth contour line as fallback
+      return DepthContour(
+        id: 'depthcontour_${s57.recordId}',
+        coordinates: [
+          const LatLng(47.64, -122.34), // Elliott Bay area
+          const LatLng(47.64, -122.33),
+        ],
+        depth: depth,
+        attributes: {
+          'depth': depth,
+          'original_s57_code': s57.featureType.code,
+          'original_s57_acronym': s57.featureType.acronym,
+          'fallback_coordinates': true,
+          ...s57.attributes,
+        },
+      );
+    }
     
     return DepthContour(
       id: 'depthcontour_${s57.recordId}',
