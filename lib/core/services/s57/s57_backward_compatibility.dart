@@ -32,6 +32,9 @@ class S57BackwardCompatibilityAdapter {
     S57FeatureType.coastline: 'COALNE', // Coastline
     S57FeatureType.shoreline: 'COALNE', // Shoreline alias -> Coastline
     S57FeatureType.landArea: 'LNDARE', // Land area
+    // Shore constructions and built areas
+    S57FeatureType.shoreConstruction: 'SLCONS', // Shore construction
+    S57FeatureType.builtArea: 'BUAARE', // Built-up area
     // Obstructions
     S57FeatureType.obstruction: 'OBSTRN', // Obstruction
     S57FeatureType.wreck: 'WRECKS', // Wreck
@@ -50,6 +53,8 @@ class S57BackwardCompatibilityAdapter {
     'SOUNDG': S57FeatureType.sounding,
     'COALNE': S57FeatureType.coastline,
     'LNDARE': S57FeatureType.landArea,
+    'SLCONS': S57FeatureType.shoreConstruction,
+    'BUAARE': S57FeatureType.builtArea,
     'OBSTRN': S57FeatureType.obstruction,
     'WRECKS': S57FeatureType.wreck,
     'UWTROC': S57FeatureType.underwater,

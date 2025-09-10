@@ -701,6 +701,8 @@ class ChartRenderingService {
       MaritimeFeatureType.trafficSeparation => S57FeatureType.coastline, // Use coastline for traffic separation
       MaritimeFeatureType.obstruction => S57FeatureType.obstruction,
       MaritimeFeatureType.daymark => S57FeatureType.daymark,
+      MaritimeFeatureType.shoreConstruction => S57FeatureType.shoreConstruction,
+      MaritimeFeatureType.builtArea => S57FeatureType.builtArea,
     };
   }
 

@@ -39,6 +39,10 @@ class S57ToMaritimeAdapter {
         S57FeatureType.shoreline => _convertCoastline(s57), // Alias
         S57FeatureType.landArea => _convertLandArea(s57),
         
+        // Shore constructions and built areas
+        S57FeatureType.shoreConstruction => _convertShoreConstruction(s57),
+        S57FeatureType.builtArea => _convertBuiltArea(s57),
+        
         // Navigation aids
         S57FeatureType.lighthouse => _convertLighthouse(s57),
         S57FeatureType.buoy => _convertBuoy(s57),
@@ -455,6 +459,70 @@ class S57ToMaritimeAdapter {
       label: s57.label ?? _generateRockLabel(depth),
       attributes: {
         'depth': depth,
+        'original_s57_code': s57.featureType.code,
+        'original_s57_acronym': s57.featureType.acronym,
+        ...s57.attributes,
+      },
+    );
+  }
+  
+  /// Convert shore construction (SLCONS) to LineFeature for piers, docks, etc.
+  static LineFeature _convertShoreConstruction(S57Feature s57) {
+    final position = s57.coordinates.isNotEmpty 
+        ? LatLng(s57.coordinates.first.latitude, s57.coordinates.first.longitude)
+        : const LatLng(0, 0);
+    
+    // Convert S57Coordinates to LatLng
+    final coordinates = s57.coordinates
+        .map((coord) => LatLng(coord.latitude, coord.longitude))
+        .toList();
+    
+    // Get shore construction category (pier, dock, wharf, etc.)
+    final category = _safeStringFromAttribute(s57.attributes['CATSLC']) ?? 'unknown';
+    
+    return LineFeature(
+      id: 'slcons_${s57.recordId}',
+      type: MaritimeFeatureType.shoreConstruction,
+      position: position,
+      coordinates: coordinates,
+      color: Colors.brown,
+      width: 3.0,
+      attributes: {
+        'category': category,
+        'construction_material': _safeStringFromAttribute(s57.attributes['CONRAD']) ?? 'unknown',
+        'original_s57_code': s57.featureType.code,
+        'original_s57_acronym': s57.featureType.acronym,
+        ...s57.attributes,
+      },
+    );
+  }
+  
+  /// Convert built area (BUAARE) to AreaFeature for harbor facilities
+  static AreaFeature _convertBuiltArea(S57Feature s57) {
+    final position = _calculateCenterPosition(s57.coordinates);
+    final rings = _convertToAreaRings(s57.coordinates);
+    
+    // Get built area category (harbor facilities, industrial, residential, etc.)
+    final category = _safeStringFromAttribute(s57.attributes['CATBUA']) ?? 'unknown';
+    
+    // Use different colors based on built area category
+    Color fillColor = Colors.grey.withValues(alpha: 0.6); // Default
+    if (category.contains('industrial') || category.contains('port')) {
+      fillColor = Colors.orange.withValues(alpha: 0.4);
+    } else if (category.contains('residential')) {
+      fillColor = Colors.yellow.withValues(alpha: 0.3);
+    }
+    
+    return AreaFeature(
+      id: 'buaare_${s57.recordId}',
+      type: MaritimeFeatureType.builtArea,
+      position: position,
+      coordinates: rings,
+      fillColor: fillColor,
+      strokeColor: Colors.grey.withValues(alpha: 0.8),
+      attributes: {
+        'category': category,
+        'function': _safeStringFromAttribute(s57.attributes['FUNCTN']) ?? 'unknown',
         'original_s57_code': s57.featureType.code,
         'original_s57_acronym': s57.featureType.acronym,
         ...s57.attributes,

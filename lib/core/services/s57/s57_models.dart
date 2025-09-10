@@ -28,6 +28,10 @@ enum S57FeatureType {
   shoreline(30, 'COALNE'),
   landArea(71, 'LNDARE'), // Land area
 
+  // Shore constructions and built areas (official S-57 codes)
+  shoreConstruction(129, 'SLCONS'), // Shore construction (piers, docks)
+  builtArea(64, 'BUAARE'), // Built-up area (harbor facilities)
+
   // Obstructions (official S-57 codes)
   obstruction(104, 'OBSTRN'), // Obstruction
   wreck(159, 'WRECKS'), // Wreck
@@ -112,6 +116,8 @@ class S57Feature {
       S57FeatureType.coastline => 'coastline',
       S57FeatureType.shoreline => 'shoreline',
       S57FeatureType.landArea => 'land_area',
+      S57FeatureType.shoreConstruction => 'shore_construction',
+      S57FeatureType.builtArea => 'built_area',
       S57FeatureType.obstruction => 'obstruction',
       S57FeatureType.wreck => 'wreck',
       S57FeatureType.underwater => 'underwater_rock',
