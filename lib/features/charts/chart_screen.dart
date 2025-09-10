@@ -119,7 +119,7 @@ class _ChartScreenState extends State<ChartScreen> {
         _isLoadingFeatures = false;
       });
       
-      // Show user error feedback
+      // Show user error feedback with retry option
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -187,7 +187,7 @@ class _ChartScreenState extends State<ChartScreen> {
                     });
                   },
                 ),
-                // Loading indicator overlay
+                // Loading indicator overlay with enhanced progress information
                 if (_isLoadingFeatures)
                   Container(
                     color: Colors.black.withValues(alpha: 0.3),
@@ -198,11 +198,19 @@ class _ChartScreenState extends State<ChartScreen> {
                           CircularProgressIndicator(),
                           SizedBox(height: 16),
                           Text(
-                            'Loading S-57 chart data...',
+                            'Parsing S-57 chart data...',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 16,
                               fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Extracting maritime features from chart',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
                             ),
                           ),
                         ],
@@ -367,11 +375,39 @@ class _ChartScreenState extends State<ChartScreen> {
                 _buildInfoRow('Features Loaded', '${_features.length}'),
                 _buildInfoRow('Display Mode', _displayMode.name),
                 const SizedBox(height: 16),
+                // S-57 Parsing Diagnostics
+                const Text(
+                  'S-57 Parsing Diagnostics:',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                _buildInfoRow('Feature Count', '${_features.length}'),
+                _buildInfoRow(
+                  'Data Source',
+                  _features.length > 10 
+                    ? 'Real S-57 chart data' 
+                    : _features.length > 0 
+                      ? 'Synthetic test features (S-57 parser may need debugging)'
+                      : 'Chart boundary fallback only',
+                ),
+                if (_features.isNotEmpty) ...[
+                  _buildInfoRow(
+                    'Feature Types',
+                    _features.map((f) => f.type.toString().split('.').last).toSet().join(', '),
+                  ),
+                ],
+                const SizedBox(height: 12),
                 Text(
                   widget.chart == null
                       ? 'Demonstration chart with sample features (no NOAA chart provided).'
-                      : 'Rendering simplified bounding box for real NOAA chart metadata.',
-                  style: const TextStyle(fontSize: 12),
+                      : _features.length > 10
+                        ? 'Successfully loaded real S-57 chart features.'
+                        : 'S-57 parsing resulted in ${_features.length} features. Check console for detailed parsing logs.',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                    color: Colors.grey,
+                  ),
                 ),
               ],
             ),
@@ -624,14 +660,19 @@ class _ChartScreenState extends State<ChartScreen> {
   /// Generate minimal real features from a NOAA chart's bounding box
   /// Generate maritime features from S-57 chart data
   Future<List<MaritimeFeature>> _generateFeaturesFromChart(Chart chart) async {
-    print('[ChartScreen] Generating features from chart ${chart.id}');
+    print('[ChartScreen] Starting S-57 processing for chart ${chart.id}');
+    print('[ChartScreen] Chart metadata:');
+    print('[ChartScreen]   Title: ${chart.title}');
+    print('[ChartScreen]   Scale: 1:${chart.scale}');
+    print('[ChartScreen]   Bounds: N:${chart.bounds.north.toStringAsFixed(4)} S:${chart.bounds.south.toStringAsFixed(4)} E:${chart.bounds.east.toStringAsFixed(4)} W:${chart.bounds.west.toStringAsFixed(4)}');
+    print('[ChartScreen]   Source: ${chart.source.displayName}');
     
     try {
       // Phase 1: Load S-57 chart data if available
       final chartData = await _loadChartData(chart);
       
       if (chartData != null && chartData.isNotEmpty) {
-        print('[ChartScreen] Chart data loaded successfully, parsing S-57...');
+        print('[ChartScreen] Starting S-57 parsing for ${chartData.length} bytes');
         
         // Parse S-57 data and convert to maritime features
         try {
@@ -642,15 +683,16 @@ class _ChartScreenState extends State<ChartScreen> {
           print('[ChartScreen]   Chart bounds: ${s57Data.bounds.toMap()}');
           print('[ChartScreen]   Chart metadata: ${s57Data.metadata.toMap()}');
           
-          // Feature type breakdown
+          // S-57 feature type breakdown
           final featureTypeCount = <String, int>{};
           for (final feature in s57Data.features) {
             featureTypeCount[feature.featureType.acronym] = 
                 (featureTypeCount[feature.featureType.acronym] ?? 0) + 1;
           }
-          print('[ChartScreen]   Feature breakdown: $featureTypeCount');
+          print('[ChartScreen]   S-57 feature breakdown: $featureTypeCount');
           
           if (s57Data.features.isNotEmpty) {
+            // Convert to maritime features with detailed tracking
             print('[ChartScreen] Converting ${s57Data.features.length} S-57 features to maritime features...');
             final maritimeFeatures = S57ToMaritimeAdapter.convertFeatures(s57Data.features);
             print('[ChartScreen] Feature conversion completed!');
@@ -663,6 +705,10 @@ class _ChartScreenState extends State<ChartScreen> {
                   (maritimeTypeCount[feature.type.name] ?? 0) + 1;
             }
             print('[ChartScreen]   Maritime feature breakdown: $maritimeTypeCount');
+            
+            // Log conversion efficiency
+            final conversionRate = (maritimeFeatures.length / s57Data.features.length * 100).toStringAsFixed(1);
+            print('[ChartScreen]   Conversion rate: $conversionRate% (${maritimeFeatures.length}/${s57Data.features.length})');
             
             if (maritimeFeatures.isNotEmpty) {
               print('[ChartScreen] SUCCESS: Loaded ${maritimeFeatures.length} real maritime features from Elliott Bay S-57 chart ${chart.id}');
@@ -688,6 +734,7 @@ class _ChartScreenState extends State<ChartScreen> {
     
     // Fallback: Generate basic chart boundary features as before
     print('[ChartScreen] Using chart boundary fallback for ${chart.id}');
+    print('[ChartScreen] Fallback will generate ${_generateChartBoundaryFeatures(chart).length} boundary features');
     return _generateChartBoundaryFeatures(chart);
   }
   

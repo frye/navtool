@@ -10,9 +10,51 @@ import '../about/about_screen.dart';
 import '../charts/chart_screen.dart';
 import '../../core/fixtures/washington_charts.dart';
 import '../../app/routes.dart';
+import '../../core/fixtures/washington_charts.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
+
+  /// Navigate to Elliott Bay Harbor Chart directly
+  void _openElliottBayChart(BuildContext context) {
+    try {
+      // Get Elliott Bay harbor chart (US5WA50M) 
+      final elliottBayCharts = WashingtonTestCharts.getElliottBayCharts();
+      final harborChart = elliottBayCharts.firstWhere(
+        (chart) => chart.id == 'US5WA50M',
+        orElse: () => elliottBayCharts.first,
+      );
+      
+      // Navigate to chart screen with Elliott Bay chart
+      Navigator.pushNamed(
+        context,
+        AppRoutes.chart,
+        arguments: {
+          'chart': harborChart,
+          'chartTitle': 'Elliott Bay Harbor Chart',
+        },
+      );
+      
+      // Show loading feedback to user
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Loading ${harborChart.title}...'),
+          duration: const Duration(seconds: 2),
+          backgroundColor: Colors.blue,
+        ),
+      );
+      
+    } catch (e) {
+      // Handle error loading Elliott Bay chart
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error loading Elliott Bay chart: $e'),
+          duration: const Duration(seconds: 4),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -122,6 +164,20 @@ class HomeScreen extends ConsumerWidget {
                               label: const Text('Open Chart'),
                             ),
                           ),
+                          const SizedBox(height: 16),
+                          // Elliott Bay Direct Access
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () => _openElliottBayChart(context),
+                              icon: const Icon(Icons.anchor),
+                              label: const Text('Elliott Bay Harbor Chart'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Theme.of(context).colorScheme.secondary,
+                                foregroundColor: Theme.of(context).colorScheme.onSecondary,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 32),
@@ -171,29 +227,44 @@ class HomeScreen extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(height: 32),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    Column(
                       children: [
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.pushNamed(
-                              context,
-                              AppRoutes.chartBrowser,
-                            );
-                          },
-                          icon: const Icon(Icons.add),
-                          label: const Text('New Chart'),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.pushNamed(
+                                  context,
+                                  AppRoutes.chartBrowser,
+                                );
+                              },
+                              icon: const Icon(Icons.add),
+                              label: const Text('New Chart'),
+                            ),
+                            const SizedBox(width: 16),
+                            OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.pushNamed(
+                                  context,
+                                  AppRoutes.chartBrowser,
+                                );
+                              },
+                              icon: const Icon(Icons.folder_open),
+                              label: const Text('Open Chart'),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 16),
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.pushNamed(
-                              context,
-                              AppRoutes.chartBrowser,
-                            );
-                          },
-                          icon: const Icon(Icons.folder_open),
-                          label: const Text('Open Chart'),
+                        const SizedBox(height: 16),
+                        // Elliott Bay Direct Access
+                        ElevatedButton.icon(
+                          onPressed: () => _openElliottBayChart(context),
+                          icon: const Icon(Icons.anchor),
+                          label: const Text('Elliott Bay Harbor Chart'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).colorScheme.secondary,
+                            foregroundColor: Theme.of(context).colorScheme.onSecondary,
+                          ),
                         ),
                       ],
                     ),
@@ -410,6 +481,20 @@ class HomeScreen extends ConsumerWidget {
                       },
                       icon: const Icon(Icons.folder_open),
                       label: const Text('Open Chart'),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Elliott Bay Direct Access
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _openElliottBayChart(context),
+                      icon: const Icon(Icons.anchor),
+                      label: const Text('Elliott Bay Harbor Chart'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.secondary,
+                        foregroundColor: Theme.of(context).colorScheme.onSecondary,
+                      ),
                     ),
                   ),
                 ],
