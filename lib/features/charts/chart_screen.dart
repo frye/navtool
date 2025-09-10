@@ -38,6 +38,8 @@ class _ChartScreenState extends State<ChartScreen> {
   late LatLng _currentPosition;
   ChartDisplayMode _displayMode = ChartDisplayMode.dayMode;
   bool _isLoadingFeatures = false;
+  int _retryAttempts = 0;
+  static const int _maxRetries = 3;
 
   @override
   void initState() {
@@ -129,20 +131,26 @@ class _ChartScreenState extends State<ChartScreen> {
               children: [
                 Text('Failed to load S-57 chart data for ${widget.chart!.id}'),
                 const SizedBox(height: 4),
-                const Text(
-                  'Showing chart boundary only. Check test data availability.',
-                  style: TextStyle(fontSize: 12),
+                Text(
+                  'Attempt ${_retryAttempts + 1}/$_maxRetries. Showing chart boundary only.',
+                  style: const TextStyle(fontSize: 12),
                 ),
               ],
             ),
             duration: const Duration(seconds: 8),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
-            action: SnackBarAction(
-              label: 'Diagnose',
-              textColor: Colors.white,
-              onPressed: () => _showChartLoadingDiagnostics(),
-            ),
+            action: _retryAttempts < _maxRetries 
+              ? SnackBarAction(
+                  label: 'Retry',
+                  textColor: Colors.white,
+                  onPressed: () => _retryChartLoading(),
+                )
+              : SnackBarAction(
+                  label: 'Diagnose',
+                  textColor: Colors.white,
+                  onPressed: () => _showChartLoadingDiagnostics(),
+                ),
           ),
         );
       }
@@ -187,33 +195,64 @@ class _ChartScreenState extends State<ChartScreen> {
                     });
                   },
                 ),
-                // Loading indicator overlay with enhanced progress information
+                // Enhanced loading indicator with progress information
                 if (_isLoadingFeatures)
                   Container(
                     color: Colors.black.withValues(alpha: 0.3),
-                    child: const Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 16),
-                          Text(
-                            'Parsing S-57 chart data...',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.2),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
                             ),
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Extracting maritime features from chart',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const CircularProgressIndicator(),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Loading ${widget.chart?.title ?? 'Chart'}',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Parsing S-57 chart data...',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Chart ID: ${widget.chart?.id ?? 'Unknown'}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Extracting navigation features, depth contours,\nand maritime objects from S-57 data',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -375,25 +414,37 @@ class _ChartScreenState extends State<ChartScreen> {
                 _buildInfoRow('Features Loaded', '${_features.length}'),
                 _buildInfoRow('Display Mode', _displayMode.name),
                 const SizedBox(height: 16),
-                // S-57 Parsing Diagnostics
+                // Enhanced S-57 Parsing Diagnostics
                 const Text(
                   'S-57 Parsing Diagnostics:',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 _buildInfoRow('Feature Count', '${_features.length}'),
+                _buildInfoRow('Retry Attempts', '$_retryAttempts/$_maxRetries'),
+                
+                // Determine data source based on feature analysis
                 _buildInfoRow(
-                  'Data Source',
-                  _features.length > 10 
-                    ? 'Real S-57 chart data' 
-                    : _features.length > 0 
-                      ? 'Synthetic test features (S-57 parser may need debugging)'
-                      : 'Chart boundary fallback only',
+                  'Data Source Analysis',
+                  _analyzeDataSource(),
                 ),
+                
                 if (_features.isNotEmpty) ...[
                   _buildInfoRow(
                     'Feature Types',
                     _features.map((f) => f.type.toString().split('.').last).toSet().join(', '),
+                  ),
+                  
+                  // Show S-57 origin data if available
+                  _buildInfoRow(
+                    'S-57 Conversions',
+                    _analyzeS57Conversions(),
+                  ),
+                  
+                  // Show coordinate bounds
+                  _buildInfoRow(
+                    'Feature Bounds',
+                    _calculateFeatureBounds(),
                   ),
                 ],
                 const SizedBox(height: 12),
@@ -628,9 +679,70 @@ class _ChartScreenState extends State<ChartScreen> {
     };
   }
 
-  /// Retry chart loading
+  /// Analyze data source based on feature characteristics
+  String _analyzeDataSource() {
+    if (_features.isEmpty) {
+      return 'No features loaded';
+    }
+    
+    // Count features with S-57 origin data
+    final realConversions = _features.where((f) => 
+      f.attributes.containsKey('original_s57_code') && 
+      f.attributes.containsKey('original_s57_acronym')).length;
+    
+    if (realConversions == _features.length) {
+      return 'Real S-57 chart data (${_features.length} features)';
+    } else if (realConversions > 0) {
+      return 'Mixed: $realConversions real S-57 + ${_features.length - realConversions} synthetic';
+    } else {
+      return _features.length > 2 
+        ? 'Synthetic test features (${_features.length} features)'
+        : 'Chart boundary fallback only';
+    }
+  }
+
+  /// Analyze S-57 conversion statistics
+  String _analyzeS57Conversions() {
+    if (_features.isEmpty) return 'None';
+    
+    final realConversions = _features.where((f) => 
+      f.attributes.containsKey('original_s57_code')).length;
+    
+    if (realConversions == 0) return 'No S-57 origin data found';
+    
+    // Show S-57 feature types that were converted
+    final s57Types = _features
+      .where((f) => f.attributes.containsKey('original_s57_acronym'))
+      .map((f) => f.attributes['original_s57_acronym'] as String)
+      .toSet();
+    
+    return '$realConversions/${_features.length} features from S-57 types: ${s57Types.join(', ')}';
+  }
+
+  /// Calculate feature coordinate bounds
+  String _calculateFeatureBounds() {
+    if (_features.isEmpty) return 'None';
+    
+    double minLat = 90.0, maxLat = -90.0;
+    double minLon = 180.0, maxLon = -180.0;
+    
+    for (final feature in _features) {
+      final pos = feature.position;
+      minLat = math.min(minLat, pos.latitude);
+      maxLat = math.max(maxLat, pos.latitude);
+      minLon = math.min(minLon, pos.longitude);
+      maxLon = math.max(maxLon, pos.longitude);
+    }
+    
+    return 'N:${maxLat.toStringAsFixed(4)} S:${minLat.toStringAsFixed(4)} '
+           'E:${maxLon.toStringAsFixed(4)} W:${minLon.toStringAsFixed(4)}';
+  }
+
+  /// Retry chart loading with attempt tracking
   void _retryChartLoading() {
-    if (widget.chart != null) {
+    if (widget.chart != null && _retryAttempts < _maxRetries) {
+      _retryAttempts++;
+      print('[ChartScreen] Retrying chart loading (attempt ${_retryAttempts}/$_maxRetries)');
       _loadChartFeatures();
     }
   }
@@ -683,13 +795,28 @@ class _ChartScreenState extends State<ChartScreen> {
           print('[ChartScreen]   Chart bounds: ${s57Data.bounds.toMap()}');
           print('[ChartScreen]   Chart metadata: ${s57Data.metadata.toMap()}');
           
-          // S-57 feature type breakdown
+          // Enhanced S-57 feature type breakdown with details
           final featureTypeCount = <String, int>{};
+          final featureDetails = <String, List<String>>{};
           for (final feature in s57Data.features) {
-            featureTypeCount[feature.featureType.acronym] = 
-                (featureTypeCount[feature.featureType.acronym] ?? 0) + 1;
+            final acronym = feature.featureType.acronym;
+            featureTypeCount[acronym] = (featureTypeCount[acronym] ?? 0) + 1;
+            
+            // Collect feature details for debugging
+            featureDetails[acronym] ??= [];
+            final details = 'ID:${feature.recordId}, Coords:${feature.coordinates.length}';
+            if (featureDetails[acronym]!.length < 2) { // Limit to 2 examples per type
+              featureDetails[acronym]!.add(details);
+            }
           }
           print('[ChartScreen]   S-57 feature breakdown: $featureTypeCount');
+          
+          // Log detailed feature information for first few features
+          for (int i = 0; i < s57Data.features.length && i < 3; i++) {
+            final f = s57Data.features[i];
+            print('[ChartScreen]     Feature $i: ${f.featureType.acronym} (${f.featureType.name}) - ${f.coordinates.length} coords, ${f.attributes.length} attributes');
+            if (f.label != null) print('[ChartScreen]       Label: ${f.label}');
+          }
           
           if (s57Data.features.isNotEmpty) {
             // Convert to maritime features with detailed tracking
@@ -698,20 +825,37 @@ class _ChartScreenState extends State<ChartScreen> {
             print('[ChartScreen] Feature conversion completed!');
             print('[ChartScreen]   Maritime features generated: ${maritimeFeatures.length}');
             
-            // Maritime feature breakdown
+            // Enhanced maritime feature breakdown with validation
             final maritimeTypeCount = <String, int>{};
+            final realConversions = <String, int>{};
             for (final feature in maritimeFeatures) {
               maritimeTypeCount[feature.type.name] = 
                   (maritimeTypeCount[feature.type.name] ?? 0) + 1;
+              
+              // Track features with S-57 origin data (indicates real conversion)
+              if (feature.attributes.containsKey('original_s57_code')) {
+                final s57Acronym = feature.attributes['original_s57_acronym'] as String? ?? 'unknown';
+                realConversions[s57Acronym] = (realConversions[s57Acronym] ?? 0) + 1;
+              }
             }
             print('[ChartScreen]   Maritime feature breakdown: $maritimeTypeCount');
+            print('[ChartScreen]   Real S-57 conversions: $realConversions');
             
-            // Log conversion efficiency
+            // Log conversion efficiency and validation
             final conversionRate = (maritimeFeatures.length / s57Data.features.length * 100).toStringAsFixed(1);
+            final realConversionCount = realConversions.values.fold(0, (sum, count) => sum + count);
             print('[ChartScreen]   Conversion rate: $conversionRate% (${maritimeFeatures.length}/${s57Data.features.length})');
+            print('[ChartScreen]   Real conversions: $realConversionCount/${maritimeFeatures.length} (${(realConversionCount/maritimeFeatures.length*100).toStringAsFixed(1)}%)');
             
             if (maritimeFeatures.isNotEmpty) {
-              print('[ChartScreen] SUCCESS: Loaded ${maritimeFeatures.length} real maritime features from Elliott Bay S-57 chart ${chart.id}');
+              print('[ChartScreen] SUCCESS: Loaded ${maritimeFeatures.length} maritime features from Elliott Bay S-57 chart ${chart.id}');
+              if (realConversionCount == maritimeFeatures.length) {
+                print('[ChartScreen] VALIDATION: All maritime features have S-57 origin data - real chart parsing confirmed');
+              } else if (realConversionCount > 0) {
+                print('[ChartScreen] VALIDATION: Partial real chart parsing - ${realConversionCount} real + ${maritimeFeatures.length - realConversionCount} synthetic features');
+              } else {
+                print('[ChartScreen] WARNING: No S-57 origin data found - may be using synthetic fallback features');
+              }
               return maritimeFeatures;
             } else {
               print('[ChartScreen] ERROR: S57ToMaritimeAdapter produced no maritime features despite ${s57Data.features.length} S-57 features');
