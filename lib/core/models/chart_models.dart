@@ -97,6 +97,10 @@ enum MaritimeFeatureType {
   rocks,
   wrecks,
 
+  // Shore constructions and built areas
+  shoreConstruction,  // For SLCONS piers/docks
+  builtArea,         // For BUAARE harbor facilities
+
   // Marine areas
   anchorage,
   restrictedArea,
@@ -168,6 +172,7 @@ class PointFeature extends MaritimeFeature {
 class LineFeature extends MaritimeFeature {
   final List<LatLng> coordinates;
   final double? width;
+  final Color? color;
 
   const LineFeature({
     required super.id,
@@ -176,12 +181,14 @@ class LineFeature extends MaritimeFeature {
     required this.coordinates,
     super.attributes,
     this.width,
+    this.color,
   });
 
   @override
   bool isVisibleAtScale(ChartScale scale) {
     return switch (type) {
       MaritimeFeatureType.shoreline => true,
+      MaritimeFeatureType.shoreConstruction => scale.scale <= 50000, // Visible at harbor/approach scales
       MaritimeFeatureType.cable => scale.scale <= 100000,
       MaritimeFeatureType.pipeline => scale.scale <= 100000,
       _ => true,
@@ -191,6 +198,7 @@ class LineFeature extends MaritimeFeature {
   @override
   int get renderPriority => switch (type) {
     MaritimeFeatureType.shoreline => 10,
+    MaritimeFeatureType.shoreConstruction => 45, // High priority for navigation safety
     MaritimeFeatureType.cable => 30,
     MaritimeFeatureType.pipeline => 30,
     _ => 20,
@@ -217,6 +225,7 @@ class AreaFeature extends MaritimeFeature {
   bool isVisibleAtScale(ChartScale scale) {
     return switch (type) {
       MaritimeFeatureType.landArea => true,
+      MaritimeFeatureType.builtArea => scale.scale <= 75000, // Visible at harbor/approach scales
       MaritimeFeatureType.anchorage => scale.scale <= 100000,
       MaritimeFeatureType.restrictedArea => scale.scale <= 100000,
       MaritimeFeatureType.trafficSeparation => scale.scale <= 500000,
@@ -227,6 +236,7 @@ class AreaFeature extends MaritimeFeature {
   @override
   int get renderPriority => switch (type) {
     MaritimeFeatureType.landArea => 0,
+    MaritimeFeatureType.builtArea => 15, // Above land, below navigation features
     MaritimeFeatureType.anchorage => 40,
     MaritimeFeatureType.restrictedArea => 35,
     MaritimeFeatureType.trafficSeparation => 30,

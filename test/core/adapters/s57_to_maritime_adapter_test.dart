@@ -533,5 +533,210 @@ void main() {
         expect(result.first.type, equals(MaritimeFeatureType.lighthouse));
       });
     });
+
+    group('shore construction conversion', () {
+      test('should convert SLCONS to LineFeature with proper attributes', () {
+        final s57ShoreConstruction = S57Feature(
+          recordId: 801,
+          featureType: S57FeatureType.shoreConstruction,
+          geometryType: S57GeometryType.line,
+          coordinates: [
+            S57Coordinate(latitude: 47.605, longitude: -122.325),
+            S57Coordinate(latitude: 47.606, longitude: -122.324),
+            S57Coordinate(latitude: 47.607, longitude: -122.323),
+          ],
+          attributes: {
+            'CATSLC': 'pier', // Shore construction category
+            'CONRAD': 'concrete', // Construction material
+            'OBJNAM': 'Elliott Bay Pier',
+          },
+        );
+
+        final result = S57ToMaritimeAdapter.convertFeatures([s57ShoreConstruction]);
+        
+        expect(result, hasLength(1));
+        expect(result.first, isA<LineFeature>());
+        
+        final lineFeature = result.first as LineFeature;
+        expect(lineFeature.type, equals(MaritimeFeatureType.shoreConstruction));
+        expect(lineFeature.id, equals('slcons_801'));
+        expect(lineFeature.coordinates, hasLength(3));
+        expect(lineFeature.width, equals(3.0));
+        expect(lineFeature.color, equals(Colors.brown));
+        expect(lineFeature.attributes['category'], equals('pier'));
+        expect(lineFeature.attributes['construction_material'], equals('concrete'));
+        expect(lineFeature.attributes['original_s57_acronym'], equals('SLCONS'));
+      });
+
+      test('should handle shore construction with missing attributes', () {
+        final s57ShoreConstruction = S57Feature(
+          recordId: 802,
+          featureType: S57FeatureType.shoreConstruction,
+          geometryType: S57GeometryType.line,
+          coordinates: [
+            S57Coordinate(latitude: 47.605, longitude: -122.325),
+            S57Coordinate(latitude: 47.606, longitude: -122.324),
+          ],
+          attributes: {}, // No attributes
+        );
+
+        final result = S57ToMaritimeAdapter.convertFeatures([s57ShoreConstruction]);
+        
+        expect(result, hasLength(1));
+        final lineFeature = result.first as LineFeature;
+        expect(lineFeature.attributes['category'], equals('unknown'));
+        expect(lineFeature.attributes['construction_material'], equals('unknown'));
+      });
+    });
+
+    group('built area conversion', () {
+      test('should convert BUAARE to AreaFeature with proper attributes', () {
+        final s57BuiltArea = S57Feature(
+          recordId: 901,
+          featureType: S57FeatureType.builtArea,
+          geometryType: S57GeometryType.area,
+          coordinates: [
+            S57Coordinate(latitude: 47.60, longitude: -122.33),
+            S57Coordinate(latitude: 47.61, longitude: -122.33),
+            S57Coordinate(latitude: 47.61, longitude: -122.32),
+            S57Coordinate(latitude: 47.60, longitude: -122.32),
+            S57Coordinate(latitude: 47.60, longitude: -122.33), // Closed polygon
+          ],
+          attributes: {
+            'CATBUA': 'industrial', // Built area category
+            'FUNCTN': 'port facilities', // Function
+            'OBJNAM': 'Elliott Bay Terminal',
+          },
+        );
+
+        final result = S57ToMaritimeAdapter.convertFeatures([s57BuiltArea]);
+        
+        expect(result, hasLength(1));
+        expect(result.first, isA<AreaFeature>());
+        
+        final areaFeature = result.first as AreaFeature;
+        expect(areaFeature.type, equals(MaritimeFeatureType.builtArea));
+        expect(areaFeature.id, equals('buaare_901'));
+        expect(areaFeature.coordinates, hasLength(1)); // One ring
+        expect(areaFeature.coordinates.first, hasLength(5)); // 5 points (closed polygon)
+        expect(areaFeature.fillColor, equals(Colors.orange.withValues(alpha: 0.4))); // Industrial color
+        expect(areaFeature.attributes['category'], equals('industrial'));
+        expect(areaFeature.attributes['function'], equals('port facilities'));
+        expect(areaFeature.attributes['original_s57_acronym'], equals('BUAARE'));
+      });
+
+      test('should use different colors based on built area category', () {
+        // Test residential built area
+        final s57ResidentialArea = S57Feature(
+          recordId: 902,
+          featureType: S57FeatureType.builtArea,
+          geometryType: S57GeometryType.area,
+          coordinates: [
+            S57Coordinate(latitude: 47.60, longitude: -122.33),
+            S57Coordinate(latitude: 47.61, longitude: -122.33),
+            S57Coordinate(latitude: 47.61, longitude: -122.32),
+            S57Coordinate(latitude: 47.60, longitude: -122.32),
+            S57Coordinate(latitude: 47.60, longitude: -122.33),
+          ],
+          attributes: {'CATBUA': 'residential'},
+        );
+
+        final residentialResult = S57ToMaritimeAdapter.convertFeatures([s57ResidentialArea]);
+        final residentialArea = residentialResult.first as AreaFeature;
+        expect(residentialArea.fillColor, equals(Colors.yellow.withValues(alpha: 0.3)));
+
+        // Test unknown category (default)
+        final s57UnknownArea = S57Feature(
+          recordId: 903,
+          featureType: S57FeatureType.builtArea,
+          geometryType: S57GeometryType.area,
+          coordinates: [
+            S57Coordinate(latitude: 47.60, longitude: -122.33),
+            S57Coordinate(latitude: 47.61, longitude: -122.33),
+            S57Coordinate(latitude: 47.61, longitude: -122.32),
+            S57Coordinate(latitude: 47.60, longitude: -122.32),
+            S57Coordinate(latitude: 47.60, longitude: -122.33),
+          ],
+          attributes: {'CATBUA': 'unknown'},
+        );
+
+        final unknownResult = S57ToMaritimeAdapter.convertFeatures([s57UnknownArea]);
+        final unknownArea = unknownResult.first as AreaFeature;
+        expect(unknownArea.fillColor, equals(Colors.grey.withValues(alpha: 0.6)));
+      });
+    });
+
+    group('Elliott Bay feature type coverage', () {
+      test('supports all Elliott Bay feature types', () {
+        final supportedTypes = S57FeatureType.values.map((t) => t.acronym).toSet();
+        
+        // Verify critical Elliott Bay feature types are supported
+        expect(supportedTypes, contains('DEPARE')); // Depth areas
+        expect(supportedTypes, contains('SOUNDG')); // Soundings
+        expect(supportedTypes, contains('BOYLAT')); // Lateral buoys
+        expect(supportedTypes, contains('BOYCAR')); // Cardinal buoys
+        expect(supportedTypes, contains('LIGHTS')); // Lights
+        expect(supportedTypes, contains('COALNE')); // Coastlines
+        expect(supportedTypes, contains('LNDARE')); // Land areas
+        expect(supportedTypes, contains('SLCONS')); // Shore constructions - NEW
+        expect(supportedTypes, contains('BUAARE')); // Built areas - NEW
+      });
+
+      test('converts Elliott Bay feature mix with new types', () {
+        final s57Features = [
+          // Existing supported types
+          S57Feature(
+            recordId: 1,
+            featureType: S57FeatureType.depthArea,
+            geometryType: S57GeometryType.area,
+            coordinates: [S57Coordinate(latitude: 47.60, longitude: -122.33)],
+            attributes: {'DRVAL1': 10.0},
+          ),
+          S57Feature(
+            recordId: 2,
+            featureType: S57FeatureType.buoyLateral,
+            geometryType: S57GeometryType.point,
+            coordinates: [S57Coordinate(latitude: 47.61, longitude: -122.32)],
+            attributes: {'BOYSHP': 'cylindrical'},
+          ),
+          // New supported types
+          S57Feature(
+            recordId: 3,
+            featureType: S57FeatureType.shoreConstruction,
+            geometryType: S57GeometryType.line,
+            coordinates: [
+              S57Coordinate(latitude: 47.605, longitude: -122.325),
+              S57Coordinate(latitude: 47.606, longitude: -122.324),
+            ],
+            attributes: {'CATSLC': 'pier'},
+          ),
+          S57Feature(
+            recordId: 4,
+            featureType: S57FeatureType.builtArea,
+            geometryType: S57GeometryType.area,
+            coordinates: [
+              S57Coordinate(latitude: 47.60, longitude: -122.33),
+              S57Coordinate(latitude: 47.61, longitude: -122.33),
+              S57Coordinate(latitude: 47.61, longitude: -122.32),
+              S57Coordinate(latitude: 47.60, longitude: -122.32),
+              S57Coordinate(latitude: 47.60, longitude: -122.33),
+            ],
+            attributes: {'CATBUA': 'port'},
+          ),
+        ];
+
+        final result = S57ToMaritimeAdapter.convertFeatures(s57Features);
+        
+        // Should convert all 4 features
+        expect(result, hasLength(4));
+        
+        // Verify feature types
+        final featureTypes = result.map((f) => f.type).toSet();
+        expect(featureTypes, contains(MaritimeFeatureType.depthArea));
+        expect(featureTypes, contains(MaritimeFeatureType.buoy));
+        expect(featureTypes, contains(MaritimeFeatureType.shoreConstruction));
+        expect(featureTypes, contains(MaritimeFeatureType.builtArea));
+      });
+    });
   });
 }

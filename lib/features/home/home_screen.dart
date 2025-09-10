@@ -508,38 +508,5 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  /// Navigate directly to Elliott Bay Harbor Chart for testing S-57 rendering
-  void _openElliottBayChart(BuildContext context) {
-    try {
-      final elliottBayCharts = WashingtonTestCharts.getElliottBayCharts();
-      if (elliottBayCharts.isNotEmpty) {
-        // Use the first Elliott Bay chart (US5WA50M - Harbor chart)
-        final chart = elliottBayCharts.first;
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ChartScreen(
-              chart: chart,
-              chartTitle: 'Elliott Bay Harbor Chart (Real S-57 Data)',
-            ),
-          ),
-        );
-      } else {
-        // Fallback to show an error
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Elliott Bay chart data not available'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to load Elliott Bay chart: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
+
 }

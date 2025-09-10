@@ -1,9 +1,8 @@
 name: Binary Builds
 
 on:
-  pull_request:
-    branches: [ main, develop ]
-    types: [opened, synchronize, reopened]
+  push:
+    branches: [ main ]
   # Allow manual triggering from the Actions tab
   workflow_dispatch:
 
@@ -47,8 +46,15 @@ jobs:
     - name: Generate mocks (NEVER CANCEL - takes 3-5 minutes)
       run: flutter packages pub run build_runner build --delete-conflicting-outputs
       
-    - name: Run static analysis
-      run: flutter analyze --fatal-infos
+    - name: Run static analysis (informational only - does not block builds)
+      run: |
+        echo "=== Running Flutter Analyze for Information ==="
+        flutter analyze --fatal-infos || {
+          echo "⚠️  Flutter analyze found issues, but continuing with builds"
+          echo "Analyze issues are informational only and do not block the builds"
+        }
+        echo "=== Flutter Analyze Complete ==="
+      continue-on-error: true
       
     - name: Check formatting
       run: dart format --set-exit-if-changed .

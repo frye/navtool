@@ -451,6 +451,8 @@ class ChartInfoOverlay extends StatelessWidget {
       MaritimeFeatureType.obstruction => Icons.block,
       MaritimeFeatureType.cable => Icons.cable,
       MaritimeFeatureType.pipeline => Icons.horizontal_rule,
+      MaritimeFeatureType.shoreConstruction => Icons.construction,
+      MaritimeFeatureType.builtArea => Icons.business,
     };
   }
 
@@ -474,6 +476,8 @@ class ChartInfoOverlay extends StatelessWidget {
       MaritimeFeatureType.obstruction => 'Obstructions',
       MaritimeFeatureType.cable => 'Cables',
       MaritimeFeatureType.pipeline => 'Pipelines',
+      MaritimeFeatureType.shoreConstruction => 'Shore Constructions',
+      MaritimeFeatureType.builtArea => 'Built Areas',
     };
   }
 }
