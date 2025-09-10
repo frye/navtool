@@ -2,10 +2,15 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:io';
 import '../../core/models/chart.dart';
 import 'dart:math' as math;
 import '../../core/models/chart_models.dart';
 import '../../core/services/chart_rendering_service.dart';
+import '../../core/services/s57/s57_parser.dart';
+import '../../core/services/s57/s57_models.dart';
+import '../../core/adapters/s57_to_maritime_adapter.dart';
 import 'chart_widget.dart';
 
 /// Screen that displays maritime charts with navigation controls
@@ -30,19 +35,46 @@ class _ChartScreenState extends State<ChartScreen> {
   late List<MaritimeFeature> _features;
   late LatLng _currentPosition;
   ChartDisplayMode _displayMode = ChartDisplayMode.dayMode;
+  bool _isLoadingFeatures = false;
 
   @override
   void initState() {
     super.initState();
+    
+    // Initialize position and default features immediately
     if (widget.chart != null) {
       // Center at chart bounds center
       final c = widget.chart!.bounds.center;
       _currentPosition = LatLng(c.latitude, c.longitude);
-      _features = _generateFeaturesFromChart(widget.chart!);
+      _features = []; // Start with empty features
+      _loadChartFeatures(); // Load features asynchronously
     } else {
       _currentPosition =
           widget.initialPosition ?? const LatLng(37.7749, -122.4194);
       _features = _generateSampleFeatures(); // fallback for legacy route usage
+    }
+  }
+  
+  /// Load chart features asynchronously
+  Future<void> _loadChartFeatures() async {
+    if (widget.chart == null) return;
+    
+    setState(() {
+      _isLoadingFeatures = true;
+    });
+    
+    try {
+      final features = await _generateFeaturesFromChart(widget.chart!);
+      setState(() {
+        _features = features;
+        _isLoadingFeatures = false;
+      });
+    } catch (e) {
+      print('Error loading chart features: $e');
+      setState(() {
+        _features = _generateChartBoundaryFeatures(widget.chart!);
+        _isLoadingFeatures = false;
+      });
     }
   }
 
@@ -71,16 +103,42 @@ class _ChartScreenState extends State<ChartScreen> {
           _buildStatusBar(),
           // Main chart area
           Expanded(
-            child: ChartWidget(
-              initialCenter: _currentPosition,
-              initialZoom: 12.0,
-              features: _features,
-              displayMode: _displayMode,
-              onPositionChanged: (newPosition) {
-                setState(() {
-                  _currentPosition = newPosition;
-                });
-              },
+            child: Stack(
+              children: [
+                ChartWidget(
+                  initialCenter: _currentPosition,
+                  initialZoom: 12.0,
+                  features: _features,
+                  displayMode: _displayMode,
+                  onPositionChanged: (newPosition) {
+                    setState(() {
+                      _currentPosition = newPosition;
+                    });
+                  },
+                ),
+                // Loading indicator overlay
+                if (_isLoadingFeatures)
+                  Container(
+                    color: Colors.black.withOpacity(0.3),
+                    child: const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 16),
+                          Text(
+                            'Loading S-57 chart data...',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
@@ -358,7 +416,33 @@ class _ChartScreenState extends State<ChartScreen> {
   }
 
   /// Generate minimal real features from a NOAA chart's bounding box
-  List<MaritimeFeature> _generateFeaturesFromChart(Chart chart) {
+  /// Generate maritime features from S-57 chart data
+  Future<List<MaritimeFeature>> _generateFeaturesFromChart(Chart chart) async {
+    try {
+      // For Phase 2: Try to load S-57 chart data if available
+      final chartData = await _loadChartData(chart);
+      
+      if (chartData != null) {
+        // Parse S-57 data and convert to maritime features
+        final s57Data = S57Parser.parse(chartData);
+        final maritimeFeatures = S57ToMaritimeAdapter.convertFeatures(s57Data.features);
+        
+        if (maritimeFeatures.isNotEmpty) {
+          print('Successfully loaded ${maritimeFeatures.length} maritime features from S-57 chart ${chart.id}');
+          return maritimeFeatures;
+        }
+      }
+    } catch (e) {
+      // Log error but continue with fallback
+      print('Warning: Failed to load S-57 chart data for ${chart.id}: $e');
+    }
+    
+    // Fallback: Generate basic chart boundary features as before
+    return _generateChartBoundaryFeatures(chart);
+  }
+  
+  /// Generate basic chart boundary features (fallback)
+  List<MaritimeFeature> _generateChartBoundaryFeatures(Chart chart) {
     final b = chart.bounds;
     final c = b.center;
     final center = LatLng(c.latitude, c.longitude);
@@ -391,6 +475,43 @@ class _ChartScreenState extends State<ChartScreen> {
         attributes: {'role': 'center'},
       ),
     ];
+  }
+  
+  /// Load S-57 chart data for the given chart
+  Future<List<int>?> _loadChartData(Chart chart) async {
+    try {
+      // Phase 3 Implementation: Load Elliott Bay test charts
+      final chartPath = _getElliottBayChartPath(chart.id);
+      if (chartPath != null) {
+        final file = File(chartPath);
+        if (await file.exists()) {
+          return await file.readAsBytes();
+        }
+      }
+      
+      // TODO: Future implementation will:
+      // 1. Check local storage for other chart files
+      // 2. Download from NOAA if not available locally  
+      // 3. Return raw S-57 bytes for parsing
+      
+    } catch (e) {
+      print('Error loading chart data for ${chart.id}: $e');
+    }
+    
+    return null;
+  }
+  
+  /// Get file path for Elliott Bay test charts
+  String? _getElliottBayChartPath(String chartId) {
+    // Map Elliott Bay chart IDs to actual S-57 files
+    return switch (chartId) {
+      'US5WA50M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000',
+      'US3WA01M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US3WA01M/US3WA01M.000',
+      // Add other Elliott Bay chart variations
+      'US5WA17M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000', // Alias for harbor chart
+      'US5WA18M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US3WA01M/US3WA01M.000', // Alias for approach chart
+      _ => null,
+    };
   }
 
   /// Generate sample maritime features for demonstration (legacy fallback)
