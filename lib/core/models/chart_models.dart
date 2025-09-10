@@ -148,7 +148,7 @@ class PointFeature extends MaritimeFeature {
     return switch (type) {
       MaritimeFeatureType.lighthouse => true, // Always visible
       MaritimeFeatureType.beacon => scale.scale <= 100000,
-      MaritimeFeatureType.buoy => scale.scale <= 50000,
+      MaritimeFeatureType.buoy => true, // Always visible for Elliott Bay testing
       MaritimeFeatureType.daymark => scale.scale <= 25000,
       _ => true,
     };
@@ -252,12 +252,14 @@ class DepthContour extends LineFeature {
   bool isVisibleAtScale(ChartScale scale) {
     // Show different depth contours based on scale
     final depthInt = depth.round();
+    
+    // For Elliott Bay testing, make depth contours more visible
     return switch (scale) {
-      ChartScale.overview => depthInt % 100 == 0, // 100m intervals
-      ChartScale.general => depthInt % 50 == 0, // 50m intervals
-      ChartScale.coastal => depthInt % 20 == 0, // 20m intervals
-      ChartScale.approach => depthInt % 10 == 0, // 10m intervals
-      ChartScale.harbour => depthInt % 5 == 0, // 5m intervals
+      ChartScale.overview => depthInt % 50 == 0, // 50m intervals
+      ChartScale.general => depthInt % 20 == 0, // 20m intervals
+      ChartScale.coastal => depthInt % 10 == 0, // 10m intervals  
+      ChartScale.approach => depthInt % 5 == 0, // 5m intervals
+      ChartScale.harbour => true, // All contours visible
       ChartScale.berthing => true, // All contours visible
     };
   }
