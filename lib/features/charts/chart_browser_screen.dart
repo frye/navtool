@@ -8,9 +8,9 @@ import '../../core/providers/noaa_providers.dart';
 import '../../core/state/providers.dart';
 import '../../core/fixtures/washington_charts.dart';
 import '../../core/services/noaa/progressive_chart_loader.dart';
-import '../../core/services/background_sync_service.dart';
 import '../../core/error/network_error_classifier.dart';
 import '../../core/utils/network_resilience.dart';
+import '../../core/logging/app_logger.dart';
 import 'widgets/chart_card.dart';
 import 'widgets/download_manager_panel.dart';
 
@@ -38,7 +38,6 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
   String? _activeRefreshId;
   StreamSubscription<ChartLoadProgress>? _refreshSubscription;
   DateTime? _lastRefreshTime;
-  NetworkErrorType? _lastNetworkError;
 
   // Scale filtering
   double _minScale = 1000;
@@ -49,6 +48,9 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
   DateTime? _startDate;
   DateTime? _endDate;
   bool _dateFilterEnabled = false;
+
+  // Logger for debugging
+  AppLogger? _logger;
 
   // List of US coastal states that have NOAA charts
   static const List<String> _coastalStates = [
@@ -132,32 +134,127 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     setState(() {
       _isRefreshing = true;
       _refreshProgress = null;
-      _lastNetworkError = null;
       _errorMessage = null;
     });
 
     try {
-      // Get progressive chart loader
-      final progressiveLoader = ref.read(progressiveChartLoaderProvider);
+      // Initialize logger if not done yet
+      _logger ??= ref.read(loggerProvider);
       
-      // Start progressive loading
-      final refreshId = 'refresh_${DateTime.now().millisecondsSinceEpoch}';
-      _activeRefreshId = refreshId;
+      // PHASE 1: Manual refresh implementation
+      // Use NOAA discovery service directly (without automatic bootstrap)
+      final discoveryService = ref.read(noaaChartDiscoveryServiceProvider);
       
-      final progressStream = progressiveLoader.loadChartsWithProgress(
-        region: _selectedState,
-        loadId: refreshId,
-      );
+      // Show initial progress
+      setState(() {
+        _refreshProgress = ChartLoadProgress(
+          stage: ChartLoadStage.initializing,
+          currentItem: 0,
+          currentItemName: 'Initializing',
+          progress: 0.0,
+          completedItems: 0,
+          totalItems: 1,
+          eta: null,
+          loadedCharts: [],
+        );
+      });
 
-      // Listen to progress updates
-      _refreshSubscription = progressStream.listen(
-        _onRefreshProgress,
-        onError: _onRefreshError,
-        onDone: _onRefreshCompleted,
-      );
+      List<Chart> refreshedCharts = [];
+      
+      // Try to refresh charts for all coastal states or specific state
+      final statesToRefresh = _selectedState != null 
+          ? [_selectedState!] 
+          : _coastalStates;
+      
+      int completedStates = 0;
+      for (final state in statesToRefresh) {
+        try {
+          setState(() {
+            _refreshProgress = ChartLoadProgress(
+              stage: ChartLoadStage.fetchingCatalog,
+              currentItem: completedStates + 1,
+              currentItemName: 'Loading $state',
+              progress: completedStates / statesToRefresh.length,
+              completedItems: completedStates,
+              totalItems: statesToRefresh.length,
+              eta: null,
+              loadedCharts: refreshedCharts,
+            );
+          });
+
+          // Try to get charts from API for this state
+          final stateCharts = await discoveryService.discoverChartsByState(state);
+          refreshedCharts.addAll(stateCharts);
+          
+          completedStates++;
+          
+          _logger?.info('Refreshed ${stateCharts.length} charts for $state');
+          
+        } catch (error) {
+          _logger?.warning('Failed to refresh charts for $state: $error');
+          // Continue with other states
+          completedStates++;
+        }
+      }
+
+      // Update completion status
+      setState(() {
+        _refreshProgress = ChartLoadProgress(
+          stage: ChartLoadStage.completed,
+          currentItem: statesToRefresh.length,
+          currentItemName: 'Completed',
+          progress: 1.0,
+          completedItems: statesToRefresh.length,
+          totalItems: statesToRefresh.length,
+          eta: null,
+          loadedCharts: refreshedCharts,
+        );
+      });
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Chart catalog updated: ${refreshedCharts.length} charts refreshed'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // Reload current state charts
+        if (_selectedState != null) {
+          _loadChartsForState(_selectedState!);
+        }
+      }
 
     } catch (error) {
-      _handleRefreshError(error);
+      _logger?.error('Manual refresh failed', exception: error);
+      
+      final errorType = NetworkErrorClassifier.classifyError(error as Exception);
+      final errorMessage = NetworkErrorClassifier.getUserFriendlyMessage(errorType);
+      
+      if (mounted) {
+        setState(() {
+          _errorMessage = errorMessage;
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Refresh failed: $errorMessage'),
+            backgroundColor: Colors.red,
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: _refreshChartCatalog,
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
+          _lastRefreshTime = DateTime.now();
+        });
+      }
     }
   }
 
@@ -184,79 +281,6 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     }
   }
 
-  /// Handle refresh progress updates
-  void _onRefreshProgress(ChartLoadProgress progress) {
-    if (!mounted) return;
-
-    setState(() {
-      _refreshProgress = progress;
-      
-      if (progress.hasError) {
-        _lastNetworkError = NetworkErrorClassifier.classifyError(progress.error!);
-        _errorMessage = NetworkErrorClassifier.getUserFriendlyMessage(_lastNetworkError!);
-      }
-    });
-  }
-
-  /// Handle refresh errors
-  void _onRefreshError(dynamic error) {
-    _handleRefreshError(error);
-  }
-
-  /// Handle refresh completion
-  void _onRefreshCompleted() {
-    if (!mounted) return;
-
-    final progress = _refreshProgress;
-    if (progress != null && progress.isCompleted) {
-      setState(() {
-        _lastRefreshTime = DateTime.now();
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Chart catalog updated successfully (${progress.loadedCharts.length} charts)'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      
-      // Reload charts for current state if selected
-      if (_selectedState != null) {
-        _loadChartsForState(_selectedState!);
-      }
-    }
-
-    _cleanupRefreshState();
-  }
-
-  /// Handle refresh errors
-  void _handleRefreshError(dynamic error) {
-    if (!mounted) return;
-
-    final errorType = NetworkErrorClassifier.classifyError(error as Exception);
-    final errorMessage = NetworkErrorClassifier.getUserFriendlyMessage(errorType);
-    final recommendation = NetworkErrorClassifier.getRecoveryRecommendation(errorType);
-
-    setState(() {
-      _lastNetworkError = errorType;
-      _errorMessage = errorMessage;
-    });
-
-    // Show detailed error dialog for non-trivial errors
-    if (errorType != NetworkErrorType.unknownError) {
-      _showDetailedErrorDialog(errorMessage, recommendation);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Refresh failed - using cached charts'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-
-    _cleanupRefreshState();
-  }
-
   /// Clean up refresh state
   void _cleanupRefreshState() {
     if (!mounted) return;
@@ -269,77 +293,6 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     
     _refreshSubscription?.cancel();
     _refreshSubscription = null;
-  }
-
-  /// Show detailed error dialog with marine-specific recommendations
-  void _showDetailedErrorDialog(String message, String recommendation) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.warning_amber, color: Colors.orange),
-            const SizedBox(width: 8),
-            const Text('Network Issue'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(message),
-            const SizedBox(height: 12),
-            const Text(
-              'Recommended Actions:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            Text(recommendation),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              // Queue background sync for retry
-              _queueBackgroundSync();
-            },
-            child: const Text('Retry Later'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _refreshChartCatalog(); // Retry immediately
-            },
-            child: const Text('Retry Now'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Queue background sync for retry
-  void _queueBackgroundSync() {
-    try {
-      final backgroundSync = ref.read(backgroundSyncServiceProvider);
-      backgroundSync.queueCatalogRefresh(
-        priority: SyncPriority.normal,
-        region: _selectedState,
-      );
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Queued for background sync when network improves'),
-          backgroundColor: Colors.blue,
-        ),
-      );
-    } catch (error) {
-      // Background sync not available, ignore silently
-    }
   }
 
   /// Load toggle state from SharedPreferences
@@ -1087,16 +1040,30 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
     });
 
     try {
-      // Get live charts from NOAA API
-      final discoveryService = ref.read(noaaChartDiscoveryServiceProvider);
-      final liveCharts = await discoveryService.discoverChartsByState(state);
-      
-      // Get Elliott Bay test charts if toggle is enabled
+      // Initialize logger if not done yet
+      _logger ??= ref.read(loggerProvider);
+
+      // PHASE 1: Remove automatic bootstrap dependency - Offline-first approach
+      // Start with test data immediately (no network dependency)
       final testCharts = _includeTestCharts 
           ? WashingtonTestCharts.getChartsForState(state)
           : <Chart>[];
-      
-      // Combine and deduplicate charts (live charts take precedence)
+
+      // Try to get cached charts from previous manual refresh (optional)
+      List<Chart> cachedCharts = [];
+      try {
+        final catalogService = ref.read(chartCatalogServiceProvider);
+        // Use cached charts without forcing bootstrap
+        cachedCharts = await catalogService.searchChartsWithFilters(
+          '', // Empty query to get all charts
+          {'state': state},
+        );
+      } catch (error) {
+        // Ignore cache errors, use test data only
+        _logger?.debug('Failed to load cached charts, using test data only: $error');
+      }
+
+      // Combine and deduplicate charts (cached charts take precedence over test charts)
       final allCharts = <String, Chart>{};
       
       // Add test charts first
@@ -1104,8 +1071,8 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
         allCharts[chart.id] = chart;
       }
       
-      // Add live charts (overwrites test charts with same ID)
-      for (final chart in liveCharts) {
+      // Add cached charts (overwrites test charts with same ID)
+      for (final chart in cachedCharts) {
         allCharts[chart.id] = chart;
       }
       
@@ -1120,13 +1087,26 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
         });
         _filterCharts();
       }
+
+      // Log success for debugging
+      _logger?.info('Loaded ${sortedCharts.length} charts for $state (${cachedCharts.length} cached, ${testCharts.length} test)');
+      
     } catch (error) {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = error.toString();
+          _errorMessage = 'Using offline charts for $state';
+          
+          // Fallback to test data only in case of any error
+          final fallbackCharts = _includeTestCharts 
+              ? WashingtonTestCharts.getChartsForState(state)
+              : <Chart>[];
+          _charts = fallbackCharts..sort(_chartPriorityComparator);
         });
+        _filterCharts();
       }
+      
+      _logger?.error('Chart loading error (using offline mode)', exception: error);
     }
   }
 
