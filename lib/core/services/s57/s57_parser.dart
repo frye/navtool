@@ -27,7 +27,11 @@ class S57Parser {
   static const int _fieldTerminator = 0x1e;
 
   /// Parse S-57 binary data and extract features and metadata
-  static S57ParsedData parse(List<int> data, {S57WarningCollector? warnings}) {
+  static S57ParsedData parse(
+    List<int> data, {
+    S57WarningCollector? warnings,
+    void Function(S57ParseProgress progress)? onProgress,
+  }) {
     if (data.isEmpty) {
       throw AppError(
         message: 'S-57 data cannot be empty',
@@ -44,8 +48,8 @@ class S57Parser {
     }
 
     try {
-      final parser = S57Parser._(data, warnings: warnings);
-      return parser._parseData();
+  final parser = S57Parser._(data, warnings: warnings, onProgress: onProgress);
+  return parser._parseData();
     } catch (e) {
       if (e is AppError) rethrow;
       throw AppError(
@@ -68,6 +72,7 @@ class S57Parser {
     String zipPath, {
     String? chartId,
     S57WarningCollector? warnings,
+    void Function(S57ParseProgress progress)? onProgress,
   }) async {
     final file = File(zipPath);
     if (!await file.exists()) {
@@ -87,7 +92,7 @@ class S57Parser {
           type: AppErrorType.parsing,
         );
       }
-      return parse(s57Bytes, warnings: warnings);
+  return parse(s57Bytes, warnings: warnings, onProgress: onProgress);
     } catch (e) {
       if (e is AppError) rethrow;
       throw AppError(
@@ -111,10 +116,12 @@ class S57Parser {
   int _position = 0;
   S57ChartMetadata? _metadata; // Chart metadata for coordinate scaling
   final S57WarningCollector? _warnings; // Optional warning collector
+  final void Function(S57ParseProgress progress)? _onProgress;
 
-  S57Parser._(List<int> data, {S57WarningCollector? warnings}) 
+  S57Parser._(List<int> data, {S57WarningCollector? warnings, void Function(S57ParseProgress progress)? onProgress}) 
     : _data = Uint8List.fromList(data),
-      _warnings = warnings;
+      _warnings = warnings,
+      _onProgress = onProgress;
 
   /// Parse the complete S-57 data structure
   S57ParsedData _parseData() {
@@ -123,14 +130,19 @@ class S57Parser {
     final metadata = _extractMetadataFromDDR(ddrRecord);
     _metadata = metadata; // Store for coordinate scaling
 
-    final features = <S57Feature>[];
+  final features = <S57Feature>[];
+  int emittedCount = 0;
     S57Bounds? chartBounds;
 
     // Extract potential features from the DDR record itself (test data packs FRID/FOID/ATTF there)
     final firstRecordFeatures = _extractFeaturesFromRecord(ddrRecord);
     if (firstRecordFeatures.isNotEmpty) {
       features.addAll(firstRecordFeatures);
+      emittedCount = features.length;
+      _maybeEmitProgress(emittedCount, phase: S57ParsePhase.metadata);
       chartBounds ??= _calculateBoundsFromFeatures(firstRecordFeatures);
+    } else {
+      _maybeEmitProgress(emittedCount, phase: S57ParsePhase.metadata);
     }
 
     // Parse remaining records (if any)
@@ -140,6 +152,8 @@ class S57Parser {
         final recordFeatures = _extractFeaturesFromRecord(record);
         if (recordFeatures.isNotEmpty) {
           features.addAll(recordFeatures);
+          emittedCount = features.length;
+          _maybeEmitProgress(emittedCount, phase: S57ParsePhase.featureRecords);
           chartBounds ??= _calculateBoundsFromFeatures(recordFeatures);
         }
       } catch (_) {
@@ -158,6 +172,8 @@ class S57Parser {
         }
       }
       chartBounds ??= _calculateBoundsFromFeatures(features);
+      emittedCount = features.length;
+      _maybeEmitProgress(emittedCount, phase: S57ParsePhase.syntheticAugmentation);
     }
 
     // Use calculated bounds or fallback to default Elliott Bay area
@@ -174,12 +190,14 @@ class S57Parser {
     final spatialIndex = S57SpatialIndex();
     spatialIndex.addFeatures(features);
 
-    return S57ParsedData(
+    final result = S57ParsedData(
       metadata: metadata,
       features: features,
       bounds: bounds,
       spatialIndex: spatialIndex,
     );
+    _maybeEmitProgress(features.length, phase: S57ParsePhase.completed, done: true);
+    return result;
   }
 
   /// Parse a single ISO 8211 record with enhanced field parsing
@@ -1344,6 +1362,39 @@ class S57Parser {
       return int.parse(str);
     } catch (e) {
       return 0;
+    }
+  }
+}
+
+/// Parsing phase enumeration for progress reporting
+enum S57ParsePhase { metadata, featureRecords, syntheticAugmentation, completed }
+
+/// Progress value emitted during parsing
+class S57ParseProgress {
+  final int featuresParsed;
+  final S57ParsePhase phase;
+  final bool done;
+  final S57ChartMetadata? metadata;
+  const S57ParseProgress({
+    required this.featuresParsed,
+    required this.phase,
+    this.done = false,
+    this.metadata,
+  });
+}
+
+extension _S57ProgressInternal on S57Parser {
+  void _maybeEmitProgress(int count, {required S57ParsePhase phase, bool done = false}) {
+    if (_onProgress == null) return;
+    try {
+      _onProgress!(S57ParseProgress(
+        featuresParsed: count,
+        phase: phase,
+        done: done,
+        metadata: _metadata,
+      ));
+    } catch (_) {
+      // Ignore listener errors
     }
   }
 }

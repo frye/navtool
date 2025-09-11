@@ -49,6 +49,8 @@ class _ChartScreenState extends State<ChartScreen> {
   Duration? _extractDuration;
   Duration? _parseDuration;
   Duration? _convertDuration;
+  DateTime? _lastProgressUpdate;
+  double? _featuresPerSecond;
   final Map<String, bool> _layerVisibility = {
     'depth': true,
     'shoreline': true,
@@ -732,7 +734,35 @@ class _ChartScreenState extends State<ChartScreen> {
         }
         try {
           final parseSw = Stopwatch()..start();
-          final s57Data = S57Parser.parse(loadResult);
+          final s57Data = S57Parser.parse(
+            loadResult,
+            onProgress: (p) {
+              if (!mounted) return;
+              if (_cancelRequested) return; // Do not update if cancelling
+              // Update incremental counts only during active phases
+              if (!p.done) {
+                final now = DateTime.now();
+                if (_lastProgressUpdate != null) {
+                  final dt = now.difference(_lastProgressUpdate!).inMilliseconds;
+                  if (dt > 0) {
+                    final delta = p.featuresParsed - (_parsedFeatureCount ?? 0);
+                    if (delta > 0) {
+                      final fps = delta / (dt / 1000.0);
+                      // Exponential moving average for stability
+                      _featuresPerSecond = _featuresPerSecond == null
+                          ? fps
+                          : (_featuresPerSecond! * 0.7 + fps * 0.3);
+                    }
+                  }
+                }
+                _lastProgressUpdate = now;
+                setState(() {
+                  _parsedFeatureCount = p.featuresParsed;
+                  _loadMessage = 'Loading: Parsing (${_parsedFeatureCount})';
+                });
+              }
+            },
+          );
           parseSw.stop();
           _parseDuration = parseSw.elapsed;
           print('[ChartScreen] S-57 parsing successful!');
@@ -967,6 +997,16 @@ class _ChartScreenState extends State<ChartScreen> {
     };
     final featureInfo = _parsedFeatureCount != null
         ? '${_parsedFeatureCount} features' : (_features.isNotEmpty ? '${_features.length} features' : '');
+    String? etaLine;
+    if (_featuresPerSecond != null && _loadStage == ChartLoadStage.parsing) {
+      // Heuristic ETA: assume 2x already parsed total (placeholder until total known)
+      final projectedTotal = (_parsedFeatureCount ?? 0) * 2;
+      final remaining = projectedTotal - (_parsedFeatureCount ?? 0);
+      if (remaining > 0 && _featuresPerSecond! > 0.1) {
+        final secs = remaining / _featuresPerSecond!;
+        etaLine = 'ETA ${(secs).toStringAsFixed(1)}s';
+      }
+    }
     final timingParts = <String>[];
     if (_extractDuration != null) timingParts.add('Extract ${_extractDuration!.inMilliseconds}ms');
     if (_parseDuration != null) timingParts.add('Parse ${_parseDuration!.inMilliseconds}ms');
@@ -1018,6 +1058,10 @@ class _ChartScreenState extends State<ChartScreen> {
                   if (timingLine != null) ...[
                     const SizedBox(height: 8),
                     Text(timingLine, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                  ],
+                  if (etaLine != null) ...[
+                    const SizedBox(height: 4),
+                    Text(etaLine, style: const TextStyle(color: Colors.white54, fontSize: 11)),
                   ],
                   const SizedBox(height: 16),
                   Row(
