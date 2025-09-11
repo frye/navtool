@@ -40,7 +40,12 @@ class _ChartScreenState extends State<ChartScreen> {
   List<MaritimeFeature> _allFeatures = [];
   late LatLng _currentPosition;
   ChartDisplayMode _displayMode = ChartDisplayMode.dayMode;
-  bool _isLoadingFeatures = false;
+  // Structured loading state (replaces boolean + sentinel patterns)
+  ChartLoadStage _loadStage = ChartLoadStage.idle;
+  String? _loadMessage; // Human readable status
+  DateTime? _loadStart; // For future ETA calculations
+  int? _parsedFeatureCount; // Updated after parse
+  bool _cancelRequested = false; // Placeholder for future cancellation support
   final Map<String, bool> _layerVisibility = {
     'depth': true,
     'shoreline': true,
@@ -70,9 +75,11 @@ class _ChartScreenState extends State<ChartScreen> {
   /// Load chart features asynchronously
   Future<void> _loadChartFeatures() async {
     if (widget.chart == null) return;
-    
+    _cancelRequested = false;
     setState(() {
-      _isLoadingFeatures = true;
+      _loadStage = ChartLoadStage.extracting;
+      _loadMessage = 'Loading';
+      _loadStart = DateTime.now();
     });
     
     try {
@@ -83,13 +90,17 @@ class _ChartScreenState extends State<ChartScreen> {
         print('[ChartScreen] Successfully loaded ${features.length} maritime features');
         setState(() {
           _features = features;
-          _isLoadingFeatures = false;
+          _parsedFeatureCount = features.length;
+          _loadStage = ChartLoadStage.complete;
+          _loadMessage = 'Complete';
         });
       } else {
         print('[ChartScreen] No features generated, using boundary fallback');
         setState(() {
           _features = _generateChartBoundaryFeatures(widget.chart!);
-          _isLoadingFeatures = false;
+          _parsedFeatureCount = _features.length;
+          _loadStage = ChartLoadStage.complete; // Completed but fallback
+          _loadMessage = 'Complete (boundary fallback)';
         });
         
         // Show user feedback about fallback
@@ -126,7 +137,9 @@ class _ChartScreenState extends State<ChartScreen> {
       
       setState(() {
         _features = _generateChartBoundaryFeatures(widget.chart!);
-        _isLoadingFeatures = false;
+        _parsedFeatureCount = _features.length;
+        _loadStage = ChartLoadStage.error;
+        _loadMessage = 'Error';
       });
       
       // Show user error feedback with retry option
@@ -198,35 +211,8 @@ class _ChartScreenState extends State<ChartScreen> {
                   },
                 ),
                 // Loading indicator overlay with enhanced progress information
-                if (_isLoadingFeatures)
-                  Container(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    child: const Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 16),
-                          Text(
-                            'Parsing S-57 chart data...',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Extracting maritime features from chart',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                if (_loadStage.isActive)
+                  _buildLoadingOverlay(),
               ],
             ),
           ),
@@ -715,15 +701,26 @@ class _ChartScreenState extends State<ChartScreen> {
     
     try {
       // Phase 1: Load S-57 chart data if available
-      final chartData = await _loadChartData(chart);
+      final loadResult = await _loadChartData(chart);
       
-      if (chartData != null && chartData.isNotEmpty) {
-        print('[ChartScreen] Starting S-57 parsing for ${chartData.length} bytes');
+      if (loadResult != null && loadResult.isNotEmpty) {
+        // If load result already populated _allFeatures (real ENC path), we can skip parsing
+        if (_allFeatures.isNotEmpty) {
+          print('[ChartScreen] Real ENC features already prepared (cached)');
+          setState(() {
+            _loadStage = ChartLoadStage.rendering;
+            _loadMessage = 'Loading: Rendering features';
+          });
+          _applyLayerFilter();
+          return _features;
+        }
         
-        // Parse S-57 data and convert to maritime features
+        setState(() {
+          _loadStage = ChartLoadStage.parsing;
+          _loadMessage = 'Loading: Parsing S-57 dataset';
+        });
         try {
-          print('[ChartScreen] Starting S-57 parsing for ${chartData.length} bytes');
-          final s57Data = S57Parser.parse(chartData);
+          final s57Data = S57Parser.parse(loadResult);
           print('[ChartScreen] S-57 parsing successful!');
           print('[ChartScreen]   Features found: ${s57Data.features.length}');
           print('[ChartScreen]   Chart bounds: ${s57Data.bounds.toMap()}');
@@ -740,6 +737,10 @@ class _ChartScreenState extends State<ChartScreen> {
           if (s57Data.features.isNotEmpty) {
             // Convert to maritime features with detailed tracking
             print('[ChartScreen] Converting ${s57Data.features.length} S-57 features to maritime features...');
+            setState(() {
+              _loadStage = ChartLoadStage.converting;
+              _loadMessage = 'Loading: Converting features';
+            });
             final maritimeFeatures = S57ToMaritimeAdapter.convertFeatures(s57Data.features);
             print('[ChartScreen] Feature conversion completed!');
             print('[ChartScreen]   Maritime features generated: ${maritimeFeatures.length}');
@@ -758,9 +759,13 @@ class _ChartScreenState extends State<ChartScreen> {
             
             if (maritimeFeatures.isNotEmpty) {
               print('[ChartScreen] SUCCESS: Loaded ${maritimeFeatures.length} real maritime features from Elliott Bay S-57 chart ${chart.id}');
-              _allFeatures = maritimeFeatures;
+              setState(() {
+                _allFeatures = maritimeFeatures;
+                _loadStage = ChartLoadStage.rendering;
+                _loadMessage = 'Loading: Rendering features';
+              });
               _applyLayerFilter();
-              return _features;
+              return _features; 
             } else {
               print('[ChartScreen] ERROR: S57ToMaritimeAdapter produced no maritime features despite ${s57Data.features.length} S-57 features');
             }
@@ -833,14 +838,19 @@ class _ChartScreenState extends State<ChartScreen> {
         final f = File(testPath);
         if (await f.exists()) {
           try {
-            print('[ChartScreen] Attempting loadFromZip for real ENC: $testPath');
-            final parsed = await S57Parser.loadFromZip(testPath, chartId: chart.id); // Parsed once
-            print('[ChartScreen] loadFromZip succeeded; feature count: ${parsed.features.length}');
-            // Cache parsed result directly to avoid re-parse later
-            _allFeatures = S57ToMaritimeAdapter.convertFeatures(parsed.features);
-            _applyLayerFilter();
-            // Return empty list to signal upstream that we already populated features (special case)
-            return <int>[];
+            setState(() {
+              _loadStage = ChartLoadStage.extracting;
+              _loadMessage = 'Loading: Extracting ENC archive';
+            });
+            print('[ChartScreen] Extracting & reading real ENC: $testPath');
+            final bytes = await f.readAsBytes();
+            final targetId = chart.id;
+            final s57Bytes = await ZipExtractor.extractS57FromZip(bytes, targetId);
+            if (s57Bytes == null) {
+              print('[ChartScreen] No .000 dataset found in real ENC ZIP');
+            } else {
+              return s57Bytes; // Will be parsed in caller
+            }
           } catch (e) {
             print('[ChartScreen] loadFromZip failed ($e), trying asset fallback');
           }
@@ -1057,3 +1067,14 @@ class _ChartScreenState extends State<ChartScreen> {
     return points;
   }
 }
+
+/// Discrete stages for chart loading lifecycle
+enum ChartLoadStage { idle, extracting, parsing, converting, rendering, complete, error }
+
+extension ChartLoadStageX on ChartLoadStage {
+  bool get isActive => switch (this) {
+    ChartLoadStage.idle || ChartLoadStage.complete || ChartLoadStage.error => false,
+    _ => true,
+  };
+}
+
