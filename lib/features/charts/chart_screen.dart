@@ -46,6 +46,9 @@ class _ChartScreenState extends State<ChartScreen> {
   DateTime? _loadStart; // For future ETA calculations
   int? _parsedFeatureCount; // Updated after parse
   bool _cancelRequested = false; // Placeholder for future cancellation support
+  Duration? _extractDuration;
+  Duration? _parseDuration;
+  Duration? _convertDuration;
   final Map<String, bool> _layerVisibility = {
     'depth': true,
     'shoreline': true,
@@ -719,8 +722,19 @@ class _ChartScreenState extends State<ChartScreen> {
           _loadStage = ChartLoadStage.parsing;
           _loadMessage = 'Loading: Parsing S-57 dataset';
         });
+        if (_cancelRequested) {
+          print('[ChartScreen] Parse cancelled by user before start');
+          setState(() {
+            _loadStage = ChartLoadStage.error;
+            _loadMessage = 'Cancelled';
+          });
+          return _generateChartBoundaryFeatures(chart);
+        }
         try {
+          final parseSw = Stopwatch()..start();
           final s57Data = S57Parser.parse(loadResult);
+          parseSw.stop();
+          _parseDuration = parseSw.elapsed;
           print('[ChartScreen] S-57 parsing successful!');
           print('[ChartScreen]   Features found: ${s57Data.features.length}');
           print('[ChartScreen]   Chart bounds: ${s57Data.bounds.toMap()}');
@@ -741,7 +755,18 @@ class _ChartScreenState extends State<ChartScreen> {
               _loadStage = ChartLoadStage.converting;
               _loadMessage = 'Loading: Converting features';
             });
+            if (_cancelRequested) {
+              print('[ChartScreen] Conversion cancelled by user');
+              setState(() {
+                _loadStage = ChartLoadStage.error;
+                _loadMessage = 'Cancelled';
+              });
+              return _generateChartBoundaryFeatures(chart);
+            }
+            final convertSw = Stopwatch()..start();
             final maritimeFeatures = S57ToMaritimeAdapter.convertFeatures(s57Data.features);
+            convertSw.stop();
+            _convertDuration = convertSw.elapsed;
             print('[ChartScreen] Feature conversion completed!');
             print('[ChartScreen]   Maritime features generated: ${maritimeFeatures.length}');
             
@@ -842,10 +867,13 @@ class _ChartScreenState extends State<ChartScreen> {
               _loadStage = ChartLoadStage.extracting;
               _loadMessage = 'Loading: Extracting ENC archive';
             });
+            final extractSw = Stopwatch()..start();
             print('[ChartScreen] Extracting & reading real ENC: $testPath');
             final bytes = await f.readAsBytes();
             final targetId = chart.id;
             final s57Bytes = await ZipExtractor.extractS57FromZip(bytes, targetId);
+            extractSw.stop();
+            _extractDuration = extractSw.elapsed;
             if (s57Bytes == null) {
               print('[ChartScreen] No .000 dataset found in real ENC ZIP');
             } else {
@@ -897,6 +925,123 @@ class _ChartScreenState extends State<ChartScreen> {
       }
     }
     setState(() => _features = filtered);
+  }
+
+  /// Cancel current loading (best-effort; parse currently synchronous)
+  void _cancelLoading() {
+    if (!_loadStage.isActive) return;
+    setState(() {
+      _cancelRequested = true;
+    });
+  }
+
+  /// Compute linear progress through stages (extracting..rendering)
+  double _computeProgress() {
+    const order = [
+      ChartLoadStage.extracting,
+      ChartLoadStage.parsing,
+      ChartLoadStage.converting,
+      ChartLoadStage.rendering,
+    ];
+    if (_loadStage == ChartLoadStage.complete) return 1.0;
+    if (_loadStage == ChartLoadStage.error || _loadStage == ChartLoadStage.idle) return 0.0;
+    final idx = order.indexOf(_loadStage);
+    if (idx == -1) return 0.0;
+    // Provide partial progress within current stage using elapsed vs simple heuristic
+    final base = idx / order.length;
+    final stagePortion = 1 / order.length;
+    return (base + stagePortion * 0.3).clamp(0.0, 0.95); // cap < 1 until complete
+  }
+
+  /// Build dynamic loading overlay UI
+  Widget _buildLoadingOverlay() {
+    final progress = _computeProgress();
+    final stageLabel = switch (_loadStage) {
+      ChartLoadStage.extracting => 'Extracting ENC Archive',
+      ChartLoadStage.parsing => 'Parsing S-57 Dataset',
+      ChartLoadStage.converting => 'Converting Features',
+      ChartLoadStage.rendering => 'Rendering Features',
+      ChartLoadStage.complete => 'Complete',
+      ChartLoadStage.error => _loadMessage ?? 'Error',
+      ChartLoadStage.idle => 'Idle',
+    };
+    final featureInfo = _parsedFeatureCount != null
+        ? '${_parsedFeatureCount} features' : (_features.isNotEmpty ? '${_features.length} features' : '');
+    final timingParts = <String>[];
+    if (_extractDuration != null) timingParts.add('Extract ${_extractDuration!.inMilliseconds}ms');
+    if (_parseDuration != null) timingParts.add('Parse ${_parseDuration!.inMilliseconds}ms');
+    if (_convertDuration != null) timingParts.add('Convert ${_convertDuration!.inMilliseconds}ms');
+    final timingLine = timingParts.isEmpty ? null : timingParts.join(' • ');
+    return Container(
+      color: Colors.black.withValues(alpha: 0.45),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Card(
+            color: Colors.grey.shade900.withValues(alpha: 0.9),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    height: 56,
+                    width: 56,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          value: _loadStage == ChartLoadStage.complete ? 1 : (_loadStage == ChartLoadStage.error ? null : progress),
+                          strokeWidth: 6,
+                        ),
+                        if (_loadStage == ChartLoadStage.complete)
+                          const Icon(Icons.check, color: Colors.lightGreenAccent, size: 32)
+                        else if (_loadStage == ChartLoadStage.error)
+                          const Icon(Icons.error_outline, color: Colors.redAccent, size: 32)
+                        else
+                          Text('${(progress * 100).floor()}%', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(stageLabel,
+                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                  if (_loadMessage != null && _loadMessage != stageLabel) ...[
+                    const SizedBox(height: 4),
+                    Text(_loadMessage!, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                  ],
+                  if (featureInfo.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(featureInfo, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                  ],
+                  if (timingLine != null) ...[
+                    const SizedBox(height: 8),
+                    Text(timingLine, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                  ],
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_loadStage.isActive)
+                        TextButton(
+                          onPressed: _cancelRequested ? null : _cancelLoading,
+                          child: Text(_cancelRequested ? 'Cancelling...' : 'Cancel', style: const TextStyle(color: Colors.redAccent)),
+                        ),
+                      if (_loadStage == ChartLoadStage.error)
+                        TextButton(
+                          onPressed: _retryChartLoading,
+                          child: const Text('Retry'),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
   
   /// Get asset path for Elliott Bay charts (primary method)
