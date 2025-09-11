@@ -8,12 +8,91 @@ import '../../widgets/macos_status_bar.dart';
 import '../about/about_dialog.dart';
 import '../about/about_screen.dart';
 import '../charts/chart_screen.dart';
+import '../gps/widgets/gps_status_panel.dart';
+import '../gps/widgets/gps_status_indicator.dart';
 import '../../core/fixtures/washington_charts.dart';
+import '../../core/state/providers.dart';
 import '../../app/routes.dart';
-import '../../core/fixtures/washington_charts.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Start GPS tracking when home screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeGpsTracking();
+    });
+  }
+
+  /// Initialize GPS tracking for real-time position updates
+  Future<void> _initializeGpsTracking() async {
+    try {
+      final gpsService = ref.read(gpsServiceProvider);
+      
+      // Check permissions first
+      final hasPermission = await gpsService.checkLocationPermission();
+      if (!hasPermission) {
+        final granted = await gpsService.requestLocationPermission();
+        if (!granted) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Location permission is required for GPS features'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      // Check if location services are enabled
+      final isEnabled = await gpsService.isLocationEnabled();
+      if (!isEnabled) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please enable location services for GPS features'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Start GPS tracking
+      await gpsService.startLocationTracking();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('GPS tracking started'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to start GPS tracking: $error'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
 
   /// Navigate to Elliott Bay Harbor Chart directly
   void _openElliottBayChart(BuildContext context) {
@@ -181,7 +260,7 @@ class HomeScreen extends ConsumerWidget {
                         ],
                       ),
                       const SizedBox(height: 32),
-                      const GpsStatusWidget(),
+                      const _HomeGpsStatusSection(),
                     ],
                   ),
                 ),
@@ -280,7 +359,7 @@ class HomeScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 40),
-                  const GpsStatusWidget(),
+                  const _HomeGpsStatusSection(),
                   const SizedBox(height: 24),
                   Card(
                     child: Padding(
@@ -500,13 +579,85 @@ class HomeScreen extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 32),
-              const GpsStatusWidget(),
+              const _HomeGpsStatusSection(),
             ],
           ),
         ),
       ),
     );
   }
+}
 
+/// Enhanced GPS status section for the home screen
+class _HomeGpsStatusSection extends ConsumerStatefulWidget {
+  const _HomeGpsStatusSection({super.key});
 
+  @override
+  ConsumerState<_HomeGpsStatusSection> createState() => _HomeGpsStatusSectionState();
+}
+
+class _HomeGpsStatusSectionState extends ConsumerState<_HomeGpsStatusSection> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // GPS Status Header
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.gps_fixed,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'GPS Navigation System',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _isExpanded = !_isExpanded;
+                    });
+                  },
+                  icon: Icon(
+                    _isExpanded ? Icons.expand_less : Icons.expand_more,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        
+        const SizedBox(height: 12),
+        
+        // GPS Status Indicator
+        const CompactGpsStatusIndicator(),
+        
+        if (_isExpanded) ...[
+          const SizedBox(height: 12),
+          
+          // Expanded GPS Status Panel
+          GpsStatusPanel(
+            isExpanded: true,
+            onToggleExpanded: () {
+              setState(() {
+                _isExpanded = false;
+              });
+            },
+          ),
+        ],
+      ],
+    );
+  }
 }

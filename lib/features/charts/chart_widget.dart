@@ -2,19 +2,24 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:math' as math;
 import '../../core/models/chart_models.dart';
 import '../../core/services/coordinate_transform.dart';
 import '../../core/services/chart_rendering_service.dart';
+import '../gps/widgets/vessel_position_overlay.dart';
+import '../gps/providers/gps_providers.dart';
 import 'widgets/chart_display_controls.dart';
 import 'widgets/chart_info_overlay.dart';
 
 /// Main chart widget that displays maritime charts with interactive controls
-class ChartWidget extends StatefulWidget {
+class ChartWidget extends ConsumerStatefulWidget {
   final LatLng initialCenter;
   final double initialZoom;
   final List<MaritimeFeature> features;
   final ChartDisplayMode displayMode;
+  final bool showVesselPosition;
+  final bool showVesselTrack;
   final VoidCallback? onChartTap;
   final Function(LatLng)? onPositionChanged;
 
@@ -24,15 +29,17 @@ class ChartWidget extends StatefulWidget {
     this.initialZoom = 10.0,
     this.features = const [],
     this.displayMode = ChartDisplayMode.dayMode,
+    this.showVesselPosition = true,
+    this.showVesselTrack = true,
     this.onChartTap,
     this.onPositionChanged,
   });
 
   @override
-  State<ChartWidget> createState() => _ChartWidgetState();
+  ConsumerState<ChartWidget> createState() => _ChartWidgetState();
 }
 
-class _ChartWidgetState extends State<ChartWidget> {
+class _ChartWidgetState extends ConsumerState<ChartWidget> {
   late LatLng _center;
   late double _zoom;
   late ChartDisplayMode _displayMode;
@@ -139,6 +146,11 @@ class _ChartWidgetState extends State<ChartWidget> {
                     layerVisibility: _layerVisibility,
                   ),
                 ),
+                
+                // Vessel position overlay
+                if (widget.showVesselPosition)
+                  _buildVesselPositionOverlay(constraints),
+                
                 // Enhanced chart display controls
                 ChartDisplayControls(
                   zoom: _zoom,
@@ -346,24 +358,59 @@ class _ChartWidgetState extends State<ChartWidget> {
     return counts;
   }
 
-  /// Center on current position (placeholder implementation)
+  /// Build vessel position overlay widget
+  Widget _buildVesselPositionOverlay(BoxConstraints constraints) {
+    final transform = CoordinateTransform(
+      zoom: _zoom,
+      center: _center,
+      screenSize: Size(constraints.maxWidth, constraints.maxHeight),
+    );
+
+    return VesselPositionOverlay(
+      transform: transform,
+      canvasSize: Size(constraints.maxWidth, constraints.maxHeight),
+      showTrack: widget.showVesselTrack,
+      showHeading: true,
+      showAccuracyCircle: true,
+      trackDuration: const Duration(minutes: 30),
+      vesselColor: Colors.red,
+      trackColor: Colors.blue.withAlpha(180),
+      vesselSize: 16.0,
+    );
+  }
+
+  /// Center on current GPS position
   void _centerOnPosition() async {
     try {
-      // TODO: Integrate with GPS service to get actual position
-      // For now, just show a message indicating GPS integration is in progress
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'GPS service implemented - integration with chart display coming soon',
+      final gpsPosition = ref.read(latestGpsPositionProvider);
+      if (gpsPosition != null) {
+        setState(() {
+          _center = LatLng(gpsPosition.latitude, gpsPosition.longitude);
+        });
+        widget.onPositionChanged?.call(_center);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Centered on vessel position: ${gpsPosition.toCoordinateString()}'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.green,
           ),
-          duration: Duration(seconds: 2),
-        ),
-      );
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No GPS position available'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     } catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Error accessing GPS position'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text('Error centering on GPS position: $error'),
+          duration: const Duration(seconds: 2),
+          backgroundColor: Colors.red,
         ),
       );
     }

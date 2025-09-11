@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../features/gps/providers/gps_providers.dart';
+import '../../features/gps/widgets/gps_status_panel.dart';
+import '../../core/models/gps_signal_quality.dart';
 
 /// Status bar that displays comprehensive navigation and system information
 /// at the bottom of the application window. Provides marine navigation-focused
@@ -31,11 +34,33 @@ class StatusBar extends ConsumerWidget {
           ),
           _buildDivider(context),
           Flexible(
-            child: _StatusSegment(
-              icon: Icons.gps_fixed,
-              text: 'GPS: 8 satellites',
-              color: Colors.blue,
-              onTap: () => _showGpsStatus(context),
+            child: Consumer(
+              builder: (context, ref, child) {
+                final signalQuality = ref.watch(gpsSignalQualityProvider);
+                final isTracking = ref.watch(isGpsTrackingProvider);
+                final currentPosition = ref.watch(latestGpsPositionProvider);
+                
+                return signalQuality.when(
+                  data: (quality) => _StatusSegment(
+                    icon: _getGpsIcon(quality.strength),
+                    text: _getGpsStatusText(quality, isTracking, currentPosition),
+                    color: _getGpsStatusColor(quality.strength),
+                    onTap: () => _showGpsStatus(context, ref),
+                  ),
+                  loading: () => _StatusSegment(
+                    icon: Icons.gps_not_fixed,
+                    text: 'GPS: Acquiring...',
+                    color: Colors.grey,
+                    onTap: () => _showGpsStatus(context, ref),
+                  ),
+                  error: (_, __) => _StatusSegment(
+                    icon: Icons.gps_off,
+                    text: 'GPS: Error',
+                    color: Colors.red,
+                    onTap: () => _showGpsStatus(context, ref),
+                  ),
+                );
+              },
             ),
           ),
           _buildDivider(context),
@@ -92,19 +117,30 @@ class StatusBar extends ConsumerWidget {
     );
   }
 
-  void _showGpsStatus(BuildContext context) {
-    _showStatusDialog(
-      context,
-      'GPS Status',
-      [
-        'Satellites: 8 in view, 6 in use',
-        'Signal Quality: Good',
-        'Accuracy: ± 3.2 meters',
-        'Last Fix: 2 seconds ago',
-        'Position: 40°45\'12"N, 73°58\'24"W',
-      ],
-      Icons.gps_fixed,
-      Colors.blue,
+  void _showGpsStatus(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('GPS Navigation Status'),
+        content: SizedBox(
+          width: 400,
+          height: 500,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const GpsStatusPanel(isExpanded: true),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close),
+                  label: const Text('Close'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -251,5 +287,40 @@ class _StatusSegmentState extends State<_StatusSegment> {
         ),
       ),
     );
+  }
+
+  /// Get GPS icon based on signal strength
+  IconData _getGpsIcon(SignalStrength strength) {
+    return switch (strength) {
+      SignalStrength.excellent => Icons.gps_fixed,
+      SignalStrength.good => Icons.gps_fixed,
+      SignalStrength.fair => Icons.gps_not_fixed,
+      SignalStrength.poor => Icons.gps_not_fixed,
+      SignalStrength.unknown => Icons.gps_off,
+    };
+  }
+
+  /// Get GPS status color based on signal strength
+  Color _getGpsStatusColor(SignalStrength strength) {
+    return switch (strength) {
+      SignalStrength.excellent => Colors.green,
+      SignalStrength.good => Colors.lightGreen,
+      SignalStrength.fair => Colors.orange,
+      SignalStrength.poor => Colors.red,
+      SignalStrength.unknown => Colors.grey,
+    };
+  }
+
+  /// Get GPS status text
+  String _getGpsStatusText(quality, bool isTracking, currentPosition) {
+    if (!isTracking) {
+      return 'GPS: Not tracking';
+    }
+    
+    if (quality.accuracy != null) {
+      return 'GPS: ±${quality.accuracy!.toStringAsFixed(1)}m';
+    }
+    
+    return 'GPS: Active';
   }
 }
