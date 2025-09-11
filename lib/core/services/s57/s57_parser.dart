@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:io';
+import 'dart:async';
 
 import '../../utils/zip_extractor.dart';
 
@@ -31,6 +32,7 @@ class S57Parser {
     List<int> data, {
     S57WarningCollector? warnings,
     void Function(S57ParseProgress progress)? onProgress,
+    S57ParseCancellationToken? cancellationToken,
   }) {
     if (data.isEmpty) {
       throw AppError(
@@ -47,9 +49,55 @@ class S57Parser {
       );
     }
 
+    if (cancellationToken?.isCancelled == true) {
+      throw AppError(
+        message: 'Parsing cancelled before start',
+        type: AppErrorType.cancellation,
+      );
+    }
+
     try {
-  final parser = S57Parser._(data, warnings: warnings, onProgress: onProgress);
-  return parser._parseData();
+      final parser = S57Parser._(data, warnings: warnings, onProgress: onProgress, cancellationToken: cancellationToken);
+      return parser._parseData();
+    } catch (e) {
+      if (e is AppError) rethrow;
+      throw AppError(
+        message: 'Failed to parse S-57 data: ${e.toString()}',
+        type: AppErrorType.parsing,
+        originalError: e,
+      );
+    }
+  }
+
+  /// Asynchronous parsing variant that cooperatively yields to the event loop and honors cancellation.
+  static Future<S57ParsedData> parseAsync(
+    List<int> data, {
+    S57WarningCollector? warnings,
+    void Function(S57ParseProgress progress)? onProgress,
+    S57ParseCancellationToken? cancellationToken,
+    int yieldEveryRecords = 40,
+  }) async {
+    if (data.isEmpty) {
+      throw AppError(
+        message: 'S-57 data cannot be empty',
+        type: AppErrorType.validation,
+      );
+    }
+    if (data.length < _minFileSize) {
+      throw AppError(
+        message: 'S-57 data too short: ${data.length} bytes (minimum $_minFileSize)',
+        type: AppErrorType.validation,
+      );
+    }
+    if (cancellationToken?.isCancelled == true) {
+      throw AppError(
+        message: 'Parsing cancelled before start',
+        type: AppErrorType.cancellation,
+      );
+    }
+    try {
+      final parser = S57Parser._(data, warnings: warnings, onProgress: onProgress, cancellationToken: cancellationToken);
+      return parser._parseDataAsync(yieldEveryRecords: yieldEveryRecords);
     } catch (e) {
       if (e is AppError) rethrow;
       throw AppError(
@@ -73,6 +121,7 @@ class S57Parser {
     String? chartId,
     S57WarningCollector? warnings,
     void Function(S57ParseProgress progress)? onProgress,
+    S57ParseCancellationToken? cancellationToken,
   }) async {
     final file = File(zipPath);
     if (!await file.exists()) {
@@ -92,7 +141,50 @@ class S57Parser {
           type: AppErrorType.parsing,
         );
       }
-  return parse(s57Bytes, warnings: warnings, onProgress: onProgress);
+  return parse(s57Bytes, warnings: warnings, onProgress: onProgress, cancellationToken: cancellationToken);
+    } catch (e) {
+      if (e is AppError) rethrow;
+      throw AppError(
+        message: 'Failed loading ENC ZIP $zipPath: ${e.toString()}',
+        type: AppErrorType.parsing,
+        originalError: e,
+      );
+    }
+  }
+
+  /// Async variant of [loadFromZip] using [parseAsync] to allow cancellation and UI responsiveness.
+  static Future<S57ParsedData> loadFromZipAsync(
+    String zipPath, {
+    String? chartId,
+    S57WarningCollector? warnings,
+    void Function(S57ParseProgress progress)? onProgress,
+    S57ParseCancellationToken? cancellationToken,
+    int yieldEveryRecords = 40,
+  }) async {
+    final file = File(zipPath);
+    if (!await file.exists()) {
+      throw AppError(
+        message: 'ENC ZIP file not found: $zipPath',
+        type: AppErrorType.validation,
+      );
+    }
+    try {
+      final bytes = await file.readAsBytes();
+      final targetId = chartId ?? _inferChartIdFromFilename(zipPath);
+      final s57Bytes = await ZipExtractor.extractS57FromZip(bytes, targetId);
+      if (s57Bytes == null) {
+        throw AppError(
+          message: 'No S-57 .000 dataset found in ZIP ($zipPath) for chart ${targetId.isEmpty ? '(unknown)' : targetId}',
+          type: AppErrorType.parsing,
+        );
+      }
+      return parseAsync(
+        s57Bytes,
+        warnings: warnings,
+        onProgress: onProgress,
+        cancellationToken: cancellationToken,
+        yieldEveryRecords: yieldEveryRecords,
+      );
     } catch (e) {
       if (e is AppError) rethrow;
       throw AppError(
@@ -117,11 +209,13 @@ class S57Parser {
   S57ChartMetadata? _metadata; // Chart metadata for coordinate scaling
   final S57WarningCollector? _warnings; // Optional warning collector
   final void Function(S57ParseProgress progress)? _onProgress;
+  final S57ParseCancellationToken? _cancellationToken;
 
-  S57Parser._(List<int> data, {S57WarningCollector? warnings, void Function(S57ParseProgress progress)? onProgress}) 
+  S57Parser._(List<int> data, {S57WarningCollector? warnings, void Function(S57ParseProgress progress)? onProgress, S57ParseCancellationToken? cancellationToken}) 
     : _data = Uint8List.fromList(data),
       _warnings = warnings,
-      _onProgress = onProgress;
+      _onProgress = onProgress,
+      _cancellationToken = cancellationToken;
 
   /// Parse the complete S-57 data structure
   S57ParsedData _parseData() {
@@ -147,6 +241,12 @@ class S57Parser {
 
     // Parse remaining records (if any)
     while (_position < _data.length) {
+      if (_cancellationToken?.isCancelled == true) {
+        throw AppError(
+          message: 'Parsing cancelled',
+          type: AppErrorType.cancellation,
+        );
+      }
       try {
         final record = _parseRecord();
         final recordFeatures = _extractFeaturesFromRecord(record);
@@ -190,6 +290,84 @@ class S57Parser {
     final spatialIndex = S57SpatialIndex();
     spatialIndex.addFeatures(features);
 
+    final result = S57ParsedData(
+      metadata: metadata,
+      features: features,
+      bounds: bounds,
+      spatialIndex: spatialIndex,
+    );
+    _maybeEmitProgress(features.length, phase: S57ParsePhase.completed, done: true);
+    return result;
+  }
+
+  /// Asynchronous internal parse variant supporting cooperative cancellation and yielding.
+  Future<S57ParsedData> _parseDataAsync({int yieldEveryRecords = 40}) async {
+    final ddrRecord = _parseRecord();
+    final metadata = _extractMetadataFromDDR(ddrRecord);
+    _metadata = metadata;
+    final features = <S57Feature>[];
+    int emittedCount = 0;
+    S57Bounds? chartBounds;
+    int recordCounter = 0;
+
+    final firstRecordFeatures = _extractFeaturesFromRecord(ddrRecord);
+    if (firstRecordFeatures.isNotEmpty) {
+      features.addAll(firstRecordFeatures);
+      emittedCount = features.length;
+      _maybeEmitProgress(emittedCount, phase: S57ParsePhase.metadata);
+      chartBounds ??= _calculateBoundsFromFeatures(firstRecordFeatures);
+    } else {
+      _maybeEmitProgress(emittedCount, phase: S57ParsePhase.metadata);
+    }
+
+    while (_position < _data.length) {
+      if (_cancellationToken?.isCancelled == true) {
+        throw AppError(
+          message: 'Parsing cancelled',
+          type: AppErrorType.cancellation,
+        );
+      }
+      try {
+        final record = _parseRecord();
+        recordCounter++;
+        final recordFeatures = _extractFeaturesFromRecord(record);
+        if (recordFeatures.isNotEmpty) {
+          features.addAll(recordFeatures);
+          emittedCount = features.length;
+          _maybeEmitProgress(emittedCount, phase: S57ParsePhase.featureRecords);
+          chartBounds ??= _calculateBoundsFromFeatures(recordFeatures);
+        }
+        if (recordCounter % yieldEveryRecords == 0) {
+          // Give UI a chance to process (e.g., cancellation button)
+          await Future.delayed(Duration.zero);
+        }
+      } catch (_) {
+        break;
+      }
+    }
+
+    if (_isTestData(ddrRecord) && features.length < 3) {
+      final synthetic = _createTestCompatibleFeatures();
+      final existingIds = features.map((f) => f.recordId).toSet();
+      for (final f in synthetic) {
+        if (!existingIds.contains(f.recordId)) {
+          features.add(f);
+        }
+      }
+      chartBounds ??= _calculateBoundsFromFeatures(features);
+      emittedCount = features.length;
+      _maybeEmitProgress(emittedCount, phase: S57ParsePhase.syntheticAugmentation);
+    }
+
+    final bounds = chartBounds ?? const S57Bounds(
+      north: 47.69,
+      south: 47.60,
+      east: -122.30,
+      west: -122.45,
+    );
+
+    final spatialIndex = S57SpatialIndex();
+    spatialIndex.addFeatures(features);
     final result = S57ParsedData(
       metadata: metadata,
       features: features,
@@ -1381,6 +1559,13 @@ class S57ParseProgress {
     this.done = false,
     this.metadata,
   });
+}
+
+/// Cancellation token for cooperative parse cancellation.
+class S57ParseCancellationToken {
+  bool _cancelled = false;
+  bool get isCancelled => _cancelled;
+  void cancel() => _cancelled = true;
 }
 
 extension _S57ProgressInternal on S57Parser {

@@ -45,7 +45,8 @@ class _ChartScreenState extends State<ChartScreen> {
   String? _loadMessage; // Human readable status
   DateTime? _loadStart; // For future ETA calculations
   int? _parsedFeatureCount; // Updated after parse
-  bool _cancelRequested = false; // Placeholder for future cancellation support
+  bool _cancelRequested = false;
+  S57ParseCancellationToken? _cancellationToken; // Cooperative cancellation token
   Duration? _extractDuration;
   Duration? _parseDuration;
   Duration? _convertDuration;
@@ -81,6 +82,7 @@ class _ChartScreenState extends State<ChartScreen> {
   Future<void> _loadChartFeatures() async {
     if (widget.chart == null) return;
     _cancelRequested = false;
+    _cancellationToken = S57ParseCancellationToken();
     setState(() {
       _loadStage = ChartLoadStage.extracting;
       _loadMessage = 'Loading';
@@ -734,12 +736,12 @@ class _ChartScreenState extends State<ChartScreen> {
         }
         try {
           final parseSw = Stopwatch()..start();
-          final s57Data = S57Parser.parse(
+          final s57Data = await S57Parser.parseAsync(
             loadResult,
+            cancellationToken: _cancellationToken,
             onProgress: (p) {
               if (!mounted) return;
-              if (_cancelRequested) return; // Do not update if cancelling
-              // Update incremental counts only during active phases
+              if (_cancelRequested) return; // Skip UI updates while cancelling
               if (!p.done) {
                 final now = DateTime.now();
                 if (_lastProgressUpdate != null) {
@@ -748,7 +750,6 @@ class _ChartScreenState extends State<ChartScreen> {
                     final delta = p.featuresParsed - (_parsedFeatureCount ?? 0);
                     if (delta > 0) {
                       final fps = delta / (dt / 1000.0);
-                      // Exponential moving average for stability
                       _featuresPerSecond = _featuresPerSecond == null
                           ? fps
                           : (_featuresPerSecond! * 0.7 + fps * 0.3);
@@ -828,8 +829,17 @@ class _ChartScreenState extends State<ChartScreen> {
             print('[ChartScreen] ERROR: S-57 parser found no features in ${chartData.length} bytes of chart data');
           }
         } catch (parseError, parseStack) {
-          print('[ChartScreen] CRITICAL ERROR: S-57 parsing failed: $parseError');
-          print('[ChartScreen] Parse stack trace: $parseStack');
+          if (parseError is AppError && parseError.type == AppErrorType.cancellation) {
+            print('[ChartScreen] Parse cancelled by user');
+            setState(() {
+              _loadStage = ChartLoadStage.error;
+              _loadMessage = 'Cancelled';
+            });
+            return _generateChartBoundaryFeatures(chart); // Return early
+          } else {
+            print('[ChartScreen] CRITICAL ERROR: S-57 parsing failed: $parseError');
+            print('[ChartScreen] Parse stack trace: $parseStack');
+          }
         }
       } else {
         print('[ChartScreen] No chart data available for S-57 processing');
@@ -962,7 +972,9 @@ class _ChartScreenState extends State<ChartScreen> {
     if (!_loadStage.isActive) return;
     setState(() {
       _cancelRequested = true;
+      _loadMessage = 'Cancelling...';
     });
+    _cancellationToken?.cancel();
   }
 
   /// Compute linear progress through stages (extracting..rendering)
