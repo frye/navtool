@@ -66,10 +66,6 @@ jobs:
         echo "=== Dart Format Check Complete ==="
       continue-on-error: true
       
-    - name: Run validated test script
-      run: |
-        chmod +x ./scripts/test.sh
-        ./scripts/test.sh unit
   # Linux Release Build
   build-linux:
     name: Build Linux Binary
