@@ -13,6 +13,7 @@ import '../../core/services/s57/s57_parser.dart';
 
 import '../../core/adapters/s57_to_maritime_adapter.dart';
 import '../../core/utils/zip_extractor.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'chart_widget.dart';
 
 /// Screen that displays maritime charts with navigation controls
@@ -35,9 +36,17 @@ class ChartScreen extends StatefulWidget {
 
 class _ChartScreenState extends State<ChartScreen> {
   late List<MaritimeFeature> _features;
+  // Preserve full unfiltered feature list for layer visibility toggling
+  List<MaritimeFeature> _allFeatures = [];
   late LatLng _currentPosition;
   ChartDisplayMode _displayMode = ChartDisplayMode.dayMode;
   bool _isLoadingFeatures = false;
+  final Map<String, bool> _layerVisibility = {
+    'depth': true,
+    'shoreline': true,
+    'nav_aids': true,
+    'land': true,
+  };
 
   @override
   void initState() {
@@ -49,6 +58,7 @@ class _ChartScreenState extends State<ChartScreen> {
       final c = widget.chart!.bounds.center;
       _currentPosition = LatLng(c.latitude, c.longitude);
       _features = []; // Start with empty features
+      _loadLayerVisibility(); // Load persisted layer settings first
       _loadChartFeatures(); // Load features asynchronously
     } else {
       _currentPosition =
@@ -579,19 +589,24 @@ class _ChartScreenState extends State<ChartScreen> {
           children: [
             const Text('Currently loaded features:'),
             const SizedBox(height: 12),
-            ..._buildFeatureTypeCounts().entries.map((entry) =>
-              ListTile(
-                leading: Icon(_getFeatureTypeIcon(entry.key)),
+            ..._buildFeatureTypeCounts().entries.map((entry) {
+              final layerKey = _mapFeatureTypeToLayer(entry.key);
+              final enabled = _layerVisibility[layerKey] ?? true;
+              return SwitchListTile(
+                secondary: Icon(_getFeatureTypeIcon(entry.key)),
                 title: Text(entry.key.name),
-                trailing: Text('${entry.value}'),
+                subtitle: Text('${entry.value} items'),
+                value: enabled,
+                onChanged: (val) async {
+                  setState(() => _layerVisibility[layerKey] = val);
+                  await _persistLayerVisibility();
+                  _applyLayerFilter();
+                },
                 dense: true,
-              ),
-            ),
+              );
+            }),
             const SizedBox(height: 16),
-            const Text(
-              'Layer visibility controls will be implemented in a future version.',
-              style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
-            ),
+            const Text('Layer visibility (persisted per chart)', style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
           ],
         ),
         actions: [
@@ -602,6 +617,37 @@ class _ChartScreenState extends State<ChartScreen> {
         ],
       ),
     );
+  }
+
+  String _mapFeatureTypeToLayer(MaritimeFeatureType type) {
+    return switch (type) {
+      MaritimeFeatureType.depthArea || MaritimeFeatureType.depthContour => 'depth',
+      MaritimeFeatureType.shoreline => 'shoreline',
+      MaritimeFeatureType.buoy || MaritimeFeatureType.beacon || MaritimeFeatureType.lighthouse || MaritimeFeatureType.daymark => 'nav_aids',
+      MaritimeFeatureType.landArea => 'land',
+      _ => 'other',
+    };
+  }
+
+  Future<void> _persistLayerVisibility() async {
+    if (widget.chart == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'layer_visibility_${widget.chart!.id}';
+    await prefs.setString(key, _layerVisibility.entries.map((e) => '${e.key}:${e.value}').join(','));
+  }
+
+  Future<void> _loadLayerVisibility() async {
+    if (widget.chart == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'layer_visibility_${widget.chart!.id}';
+    final stored = prefs.getString(key);
+    if (stored != null) {
+      for (final part in stored.split(',')) {
+        final kv = part.split(':');
+        if (kv.length == 2) _layerVisibility[kv[0]] = kv[1] == 'true';
+      }
+      if (mounted) setState(() {});
+    }
   }
 
   /// Build feature type counts for display
@@ -712,7 +758,9 @@ class _ChartScreenState extends State<ChartScreen> {
             
             if (maritimeFeatures.isNotEmpty) {
               print('[ChartScreen] SUCCESS: Loaded ${maritimeFeatures.length} real maritime features from Elliott Bay S-57 chart ${chart.id}');
-              return maritimeFeatures;
+              _allFeatures = maritimeFeatures;
+              _applyLayerFilter();
+              return _features;
             } else {
               print('[ChartScreen] ERROR: S57ToMaritimeAdapter produced no maritime features despite ${s57Data.features.length} S-57 features');
             }
@@ -779,54 +827,42 @@ class _ChartScreenState extends State<ChartScreen> {
     print('[ChartScreen] Loading chart data for ${chart.id}');
     
     try {
-      // Phase 1 Implementation: Load Elliott Bay charts from assets
-      final assetPath = _getElliottBayAssetPath(chart.id);
-      if (assetPath != null) {
-        print('[ChartScreen] Loading chart from asset: $assetPath');
-        
-        try {
-          // Load from asset bundle for reliable runtime access
-          final ByteData byteData = await rootBundle.load(assetPath);
-          final List<int> bytes = byteData.buffer.asUint8List();
-          
-          print('[ChartScreen] Successfully loaded ${bytes.length} bytes from asset bundle');
-          return bytes;
-        } catch (assetError) {
-          print('[ChartScreen] Asset loading failed: $assetError, trying fallback');
-        }
-      }
-      
-      // Fallback: Try test fixture path for development
-      print('[ChartScreen] Trying test fixture fallback for ${chart.id}');
+      // Phase 4 Policy: Prefer real ENC ZIP fixture first
       final testPath = _getElliottBayTestPath(chart.id);
       if (testPath != null) {
-        final file = File(testPath);
-        if (await file.exists()) {
-          print('[ChartScreen] Loading chart from test fixture: $testPath');
-          final zipBytes = await file.readAsBytes();
-          print('[ChartScreen] Successfully loaded ${zipBytes.length} bytes from test fixture');
-          
-          // Extract S-57 data from ZIP archive
-          final s57Bytes = await ZipExtractor.extractS57FromZip(zipBytes, chart.id);
-          if (s57Bytes != null) {
-            print('[ChartScreen] Successfully extracted ${s57Bytes.length} bytes of S-57 data from ZIP');
-            return s57Bytes;
-          } else {
-            print('[ChartScreen] Failed to extract S-57 data from ZIP archive');
-            
-            // Debug: List ZIP contents
-            final zipListing = ZipExtractor.getZipListing(zipBytes);
-            print('[ChartScreen] ZIP contents:');
-            for (final item in zipListing) {
-              print('[ChartScreen]   $item');
-            }
+        final f = File(testPath);
+        if (await f.exists()) {
+          try {
+            print('[ChartScreen] Attempting loadFromZip for real ENC: $testPath');
+            final parsed = await S57Parser.loadFromZip(testPath, chartId: chart.id); // Parsed once
+            print('[ChartScreen] loadFromZip succeeded; feature count: ${parsed.features.length}');
+            // Cache parsed result directly to avoid re-parse later
+            _allFeatures = S57ToMaritimeAdapter.convertFeatures(parsed.features);
+            _applyLayerFilter();
+            // Return empty list to signal upstream that we already populated features (special case)
+            return <int>[];
+          } catch (e) {
+            print('[ChartScreen] loadFromZip failed ($e), trying asset fallback');
           }
         } else {
-          print('[ChartScreen] Test fixture file does not exist: $testPath');
+          print('[ChartScreen] Real ENC fixture missing: $testPath');
         }
       }
-      
-      print('[ChartScreen] No chart data source found for ${chart.id}');
+
+      // Asset fallback (.000 packaged in assets)
+      final assetPath = _getElliottBayAssetPath(chart.id);
+      if (assetPath != null) {
+        try {
+          final data = await rootBundle.load(assetPath);
+          final bytes = data.buffer.asUint8List();
+          print('[ChartScreen] Loaded asset ENC .000 (${bytes.length} bytes)');
+          return bytes;
+        } catch (e) {
+          print('[ChartScreen] Asset load failed: $e');
+        }
+      }
+
+      print('[ChartScreen] No ENC source found (fixture or asset) for ${chart.id}');
       
     } catch (e, stackTrace) {
       print('[ChartScreen] ERROR loading chart data for ${chart.id}: $e');
@@ -834,6 +870,23 @@ class _ChartScreenState extends State<ChartScreen> {
     }
     
     return null;
+  }
+
+  /// Apply layer visibility toggles to full feature set
+  void _applyLayerFilter() {
+    if (_allFeatures.isEmpty) {
+      setState(() => _features = []);
+      return;
+    }
+    final filtered = <MaritimeFeature>[];
+    for (final f in _allFeatures) {
+      final layer = _mapFeatureTypeToLayer(f.type);
+      final visible = _layerVisibility[layer] ?? true;
+      if (visible || layer == 'other') {
+        filtered.add(f);
+      }
+    }
+    setState(() => _features = filtered);
   }
   
   /// Get asset path for Elliott Bay charts (primary method)

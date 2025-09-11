@@ -1,6 +1,9 @@
 import 'dart:typed_data';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:io';
+
+import '../../utils/zip_extractor.dart';
 
 import 's57_models.dart';
 import 's57_spatial_index.dart';
@@ -51,6 +54,57 @@ class S57Parser {
         originalError: e,
       );
     }
+  }
+
+  /// Convenience helper: load and parse S-57 data directly from a NOAA ENC ZIP file on disk.
+  ///
+  /// Steps:
+  /// 1. Reads the ZIP file from [zipPath]
+  /// 2. Extracts the .000 S-57 dataset matching [chartId] (or any .000 if chartId omitted)
+  /// 3. Parses the extracted bytes with [parse]
+  ///
+  /// Returns [S57ParsedData] on success or throws [AppError] if file missing or parsing fails.
+  static Future<S57ParsedData> loadFromZip(
+    String zipPath, {
+    String? chartId,
+    S57WarningCollector? warnings,
+  }) async {
+    final file = File(zipPath);
+    if (!await file.exists()) {
+      throw AppError(
+        message: 'ENC ZIP file not found: $zipPath',
+        type: AppErrorType.validation,
+      );
+    }
+
+    try {
+      final bytes = await file.readAsBytes();
+      final targetId = chartId ?? _inferChartIdFromFilename(zipPath);
+      final s57Bytes = await ZipExtractor.extractS57FromZip(bytes, targetId);
+      if (s57Bytes == null) {
+        throw AppError(
+          message: 'No S-57 .000 dataset found in ZIP ($zipPath) for chart ${targetId.isEmpty ? '(unknown)' : targetId}',
+          type: AppErrorType.parsing,
+        );
+      }
+      return parse(s57Bytes, warnings: warnings);
+    } catch (e) {
+      if (e is AppError) rethrow;
+      throw AppError(
+        message: 'Failed loading ENC ZIP $zipPath: ${e.toString()}',
+        type: AppErrorType.parsing,
+        originalError: e,
+      );
+    }
+  }
+
+  /// Infer chart ID from a fixture filename like `.../US5WA50M_harbor_elliott_bay.zip`.
+  static String _inferChartIdFromFilename(String path) {
+    final base = path.split(Platform.pathSeparator).last;
+    final upper = base.toUpperCase();
+    final match = RegExp(r'(US\d+[A-Z]\d+M)').firstMatch(upper);
+    if (match != null) return match.group(1)!;
+    return '';
   }
 
   final Uint8List _data;

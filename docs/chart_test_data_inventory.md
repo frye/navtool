@@ -63,6 +63,22 @@ US3WA01M: [Checksum available in download logs]
 - Memory usage with actual chart complexity
 - Rendering performance with authentic feature density
 
+## Phase 4 Real Data Policy (Issue #203)
+
+During Phase 4 (Elliott Bay Chart Loading UX Improvements), all new or modified widget/integration tests that exercise chart loading, progress overlays, layer visibility, or chart information dialogs MUST parse real NOAA ENC fixtures (no synthetic placeholder feature sets). Specifically:
+
+- Required fixtures: `US5WA50M_harbor_elliott_bay.zip`, `US3WA01M_coastal_puget_sound.zip`
+- Tests must decompress in-memory and parse the `.000` dataset
+- Feature counts asserted must derive from actual parsed features
+- Any missing fixture results in an explicit skip with guidance (not silent pass)
+- Synthetic byte arrays remain only in low-level parser unit tests isolated from UX
+
+Helper utilities:
+- `S57Parser.loadFromZip(path, chartId: id)` simplifies real chart parsing
+- `bin/validate_enc_fixtures.dart` verifies size & checksums
+
+Acceptance success criteria include verification that user-visible counts, statistics, and layer toggles reflect real ENC content, eliminating reliance on sample items (3) placeholder data.
+
 ## Important Disclaimers
 
 ⚠️ **These are snapshot copies for testing only** - not suitable for navigation
