@@ -13,7 +13,7 @@ import 's57/spatial_index_interface.dart';
 
 /// Service responsible for rendering maritime charts
 class ChartRenderingService {
-  final CoordinateTransform _transform;
+  CoordinateTransform _transform;
   final List<MaritimeFeature> _features;
   final ChartDisplayMode _displayMode;
   final Map<String, bool> _layerVisibility = {};
@@ -40,6 +40,20 @@ class ChartRenderingService {
     
     // Build spatial index for performance
     _buildSpatialIndex();
+  }
+
+  /// Update features and rebuild spatial index  
+  void updateFeatures(List<MaritimeFeature> newFeatures) {
+    _features.clear();
+    _features.addAll(newFeatures);
+    _buildSpatialIndex();
+    print('[ChartRenderingService] Updated with ${newFeatures.length} features');
+  }
+
+  /// Update coordinate transform for viewport changes
+  void updateTransform(CoordinateTransform newTransform) {
+    _transform = newTransform;
+    print('[ChartRenderingService] Updated transform: center=${newTransform.center}, zoom=${newTransform.zoom}');
   }
 
   /// Render the chart to a Canvas
@@ -88,24 +102,50 @@ class ChartRenderingService {
     _renderCompass(canvas, size);
   }
 
-  /// Get features visible in current viewport
+  /// Get features visible in current viewport with Elliott Bay optimizations
   List<MaritimeFeature> _getVisibleFeatures() {
     final currentScale = _transform.chartScale;
+    final bounds = _transform.visibleBounds;
     print('[ChartRenderingService] Current scale: $currentScale');
+    print('[ChartRenderingService] Viewport bounds: $bounds');
+    
+    // Elliott Bay optimization: Add buffer to bounds for edge features like lighthouses
+    final bufferedBounds = LatLngBounds(
+      north: bounds.north + 0.001, // ~100m buffer for edge cases
+      south: bounds.south - 0.001,
+      east: bounds.east + 0.001,
+      west: bounds.west - 0.001,
+    );
+    print('[ChartRenderingService] Buffered bounds: $bufferedBounds');
     
     final visibleFeatures = <MaritimeFeature>[];
     
     for (final feature in _features) {
-      final isVisible = _transform.isFeatureVisible(feature);
+      // Enhanced spatial culling with buffered bounds for critical navigation features
+      bool isVisible = _transform.isFeatureVisible(feature);
+      
+      // Special handling for critical navigation features that might be at viewport edges
+      if (!isVisible && (feature.type == MaritimeFeatureType.lighthouse ||
+                         feature.type == MaritimeFeatureType.buoy ||
+                         feature.type == MaritimeFeatureType.beacon)) {
+        isVisible = bufferedBounds.contains(feature.position);
+        print('[ChartRenderingService] Critical feature ${feature.type} buffered visibility: $isVisible');
+      }
+      
       final isVisibleAtScale = feature.isVisibleAtScale(currentScale);
       
-      print('[ChartRenderingService] Feature ${feature.type}: isVisible=$isVisible, isVisibleAtScale=$isVisibleAtScale');
+      // Layer visibility check
+      final layerName = _getLayerNameForFeature(feature.type);
+      final isLayerVisible = _layerVisibility[layerName] ?? true;
       
-      if (isVisible && isVisibleAtScale) {
+      print('[ChartRenderingService] Feature ${feature.type}: spatial=$isVisible, scale=$isVisibleAtScale, layer=$isLayerVisible');
+      
+      if (isVisible && isVisibleAtScale && isLayerVisible) {
         visibleFeatures.add(feature);
       }
     }
     
+    print('[ChartRenderingService] Visible features after enhanced filtering: ${visibleFeatures.length}');
     return visibleFeatures;
   }
 
@@ -572,15 +612,18 @@ class ChartRenderingService {
 
   // ===== Enhanced Methods for TDD Implementation =====
 
-  /// Initialize layer visibility settings
+  /// Initialize layer visibility settings with Elliott Bay optimizations
   void _initializeLayerVisibility() {
-    _layerVisibility['depth_contours'] = true;
-    _layerVisibility['navigation_aids'] = true;
-    _layerVisibility['shoreline'] = true;
-    _layerVisibility['restricted_areas'] = true;
-    _layerVisibility['anchorages'] = true;
-    _layerVisibility['chart_grid'] = false;
-    _layerVisibility['chart_boundaries'] = true;
+    _layerVisibility['depth_contours'] = true;     // Enable depth contours by default
+    _layerVisibility['depth_areas'] = true;        // Enable depth areas for harbor charts  
+    _layerVisibility['navigation_aids'] = true;    // Critical - always enabled
+    _layerVisibility['soundings'] = true;          // Enable for detailed depth info
+    _layerVisibility['shoreline'] = true;          // Essential for navigation
+    _layerVisibility['restricted_areas'] = true;   // Safety critical
+    _layerVisibility['anchorages'] = true;         // Useful for mariners
+    _layerVisibility['obstructions'] = true;       // Safety critical for Elliott Bay
+    _layerVisibility['chart_grid'] = false;        // Optional - disabled by default
+    _layerVisibility['chart_boundaries'] = false;  // Optional - disabled by default
   }
 
   /// Initialize S-52 symbology system
@@ -611,17 +654,22 @@ class ChartRenderingService {
     _layerVisibility[layerName] = visible;
   }
 
-  /// Get layer rendering priority
+  /// Get layer rendering priority (higher values render on top)
   int getLayerPriority(MaritimeFeatureType type) {
     return switch (type) {
       MaritimeFeatureType.lighthouse => 100,
+      MaritimeFeatureType.buoy => 95, // Buoys are critical navigation aids
       MaritimeFeatureType.beacon => 90,
-      MaritimeFeatureType.buoy => 80,
-      MaritimeFeatureType.daymark => 70,
+      MaritimeFeatureType.daymark => 85,
+      MaritimeFeatureType.obstruction => 80, // Safety critical
       MaritimeFeatureType.shoreline => 60,
       MaritimeFeatureType.depthContour => 50,
+      MaritimeFeatureType.soundings => 45,
+      MaritimeFeatureType.depthArea => 40,
+      MaritimeFeatureType.anchorage => 35,
+      MaritimeFeatureType.restrictedArea => 30,
       MaritimeFeatureType.landArea => 10,
-      _ => 30,
+      _ => 25,
     };
   }
 
@@ -940,10 +988,12 @@ class ChartRenderingService {
 
   // ===== Enhanced Helper Methods =====
 
-  /// Get layer name for feature type
+  /// Get layer name for feature type with Elliott Bay optimizations
   String _getLayerNameForFeature(MaritimeFeatureType type) {
     return switch (type) {
       MaritimeFeatureType.depthContour => 'depth_contours',
+      MaritimeFeatureType.depthArea => 'depth_areas',
+      MaritimeFeatureType.soundings => 'soundings',
       MaritimeFeatureType.lighthouse ||
       MaritimeFeatureType.beacon ||
       MaritimeFeatureType.buoy ||
@@ -951,6 +1001,7 @@ class ChartRenderingService {
       MaritimeFeatureType.shoreline => 'shoreline',
       MaritimeFeatureType.restrictedArea => 'restricted_areas',
       MaritimeFeatureType.anchorage => 'anchorages',
+      MaritimeFeatureType.obstruction => 'obstructions',
       _ => 'other',
     };
   }
