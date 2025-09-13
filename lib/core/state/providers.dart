@@ -32,6 +32,7 @@ import '../services/settings_service_impl.dart';
 import '../services/noaa/progressive_chart_loader.dart';
 import '../services/background_sync_service.dart';
 import '../providers/noaa_providers.dart';
+import '../providers/gps_tracking_provider.dart';
 import 'app_state.dart';
 import 'app_state_notifier.dart';
 import 'download_state.dart';

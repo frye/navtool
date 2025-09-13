@@ -3,6 +3,7 @@
 *.log
 *.pyc
 *.swp
+*.cpuprofile
 .env
 .env.local
 .DS_Store
@@ -48,6 +49,9 @@ app.*.symbols
 
 # Obfuscation related
 app.*.map.json
+
+# Node.js files (should not be in Flutter projects)
+package-lock.json
 
 # Android Studio will place build artifacts here
 /android/app/debug

@@ -3,18 +3,18 @@
 // Do not manually edit this file.
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i3;
+import 'dart:async' as _i4;
 
 import 'package:mockito/mockito.dart' as _i1;
 import 'package:mockito/src/dummies.dart' as _i8;
 import 'package:navtool/core/error/app_error.dart' as _i10;
 import 'package:navtool/core/logging/app_logger.dart' as _i9;
-import 'package:navtool/core/models/chart.dart' as _i4;
+import 'package:navtool/core/models/chart.dart' as _i5;
 import 'package:navtool/core/models/geographic_bounds.dart' as _i6;
-import 'package:navtool/core/services/noaa/chart_catalog_service.dart' as _i2;
+import 'package:navtool/core/services/noaa/chart_catalog_service.dart' as _i3;
 import 'package:navtool/core/services/noaa/noaa_api_client.dart' as _i7;
 import 'package:navtool/core/services/noaa/state_region_mapping_service.dart'
-    as _i5;
+    as _i2;
 
 // ignore_for_file: type=lint
 // ignore_for_file: avoid_redundant_argument_values
@@ -30,149 +30,210 @@ import 'package:navtool/core/services/noaa/state_region_mapping_service.dart'
 // ignore_for_file: camel_case_types
 // ignore_for_file: subtype_of_sealed_class
 
+class _FakeValidationResult_0 extends _i1.SmartFake
+    implements _i2.ValidationResult {
+  _FakeValidationResult_0(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeStateCoverageInfo_1 extends _i1.SmartFake
+    implements _i2.StateCoverageInfo {
+  _FakeStateCoverageInfo_1(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
 /// A class which mocks [ChartCatalogService].
 ///
 /// See the documentation for Mockito's code generation for more information.
 class MockChartCatalogService extends _i1.Mock
-    implements _i2.ChartCatalogService {
+    implements _i3.ChartCatalogService {
   MockChartCatalogService() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i3.Future<_i4.Chart?> getCachedChart(String? chartId) =>
+  _i4.Future<_i5.Chart?> getCachedChart(String? chartId) =>
       (super.noSuchMethod(
             Invocation.method(#getCachedChart, [chartId]),
-            returnValue: _i3.Future<_i4.Chart?>.value(),
+            returnValue: _i4.Future<_i5.Chart?>.value(),
           )
-          as _i3.Future<_i4.Chart?>);
+          as _i4.Future<_i5.Chart?>);
 
   @override
-  _i3.Future<void> cacheChart(_i4.Chart? chart) =>
+  _i4.Future<void> cacheChart(_i5.Chart? chart) =>
       (super.noSuchMethod(
             Invocation.method(#cacheChart, [chart]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 
   @override
-  _i3.Future<_i4.Chart?> getChartById(String? chartId) =>
+  _i4.Future<_i5.Chart?> getChartById(String? chartId) =>
       (super.noSuchMethod(
             Invocation.method(#getChartById, [chartId]),
-            returnValue: _i3.Future<_i4.Chart?>.value(),
+            returnValue: _i4.Future<_i5.Chart?>.value(),
           )
-          as _i3.Future<_i4.Chart?>);
+          as _i4.Future<_i5.Chart?>);
 
   @override
-  _i3.Future<List<_i4.Chart>> searchCharts(String? query) =>
+  _i4.Future<List<_i5.Chart>> searchCharts(String? query) =>
       (super.noSuchMethod(
             Invocation.method(#searchCharts, [query]),
-            returnValue: _i3.Future<List<_i4.Chart>>.value(<_i4.Chart>[]),
+            returnValue: _i4.Future<List<_i5.Chart>>.value(<_i5.Chart>[]),
           )
-          as _i3.Future<List<_i4.Chart>>);
+          as _i4.Future<List<_i5.Chart>>);
 
   @override
-  _i3.Future<List<_i4.Chart>> searchChartsWithFilters(
+  _i4.Future<List<_i5.Chart>> searchChartsWithFilters(
     String? query,
     Map<String, String>? filters,
   ) =>
       (super.noSuchMethod(
             Invocation.method(#searchChartsWithFilters, [query, filters]),
-            returnValue: _i3.Future<List<_i4.Chart>>.value(<_i4.Chart>[]),
+            returnValue: _i4.Future<List<_i5.Chart>>.value(<_i5.Chart>[]),
           )
-          as _i3.Future<List<_i4.Chart>>);
+          as _i4.Future<List<_i5.Chart>>);
 
   @override
-  _i3.Future<bool> refreshCatalog({bool? force = false}) =>
+  _i4.Future<bool> refreshCatalog({bool? force = false}) =>
       (super.noSuchMethod(
             Invocation.method(#refreshCatalog, [], {#force: force}),
-            returnValue: _i3.Future<bool>.value(false),
+            returnValue: _i4.Future<bool>.value(false),
           )
-          as _i3.Future<bool>);
+          as _i4.Future<bool>);
 
   @override
-  _i3.Future<void> ensureCatalogBootstrapped() =>
+  _i4.Future<void> ensureCatalogBootstrapped() =>
       (super.noSuchMethod(
             Invocation.method(#ensureCatalogBootstrapped, []),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 
   @override
-  _i3.Future<int> getCachedChartCount() =>
+  _i4.Future<int> getCachedChartCount() =>
       (super.noSuchMethod(
             Invocation.method(#getCachedChartCount, []),
-            returnValue: _i3.Future<int>.value(0),
+            returnValue: _i4.Future<int>.value(0),
           )
-          as _i3.Future<int>);
+          as _i4.Future<int>);
 }
 
 /// A class which mocks [StateRegionMappingService].
 ///
 /// See the documentation for Mockito's code generation for more information.
 class MockStateRegionMappingService extends _i1.Mock
-    implements _i5.StateRegionMappingService {
+    implements _i2.StateRegionMappingService {
   MockStateRegionMappingService() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i3.Future<List<String>> getChartCellsForState(String? stateName) =>
+  _i4.Future<List<String>> getChartCellsForState(String? stateName) =>
       (super.noSuchMethod(
             Invocation.method(#getChartCellsForState, [stateName]),
-            returnValue: _i3.Future<List<String>>.value(<String>[]),
+            returnValue: _i4.Future<List<String>>.value(<String>[]),
           )
-          as _i3.Future<List<String>>);
+          as _i4.Future<List<String>>);
 
   @override
-  _i3.Future<_i6.GeographicBounds?> getStateBounds(String? stateName) =>
+  _i4.Future<_i6.GeographicBounds?> getStateBounds(String? stateName) =>
       (super.noSuchMethod(
             Invocation.method(#getStateBounds, [stateName]),
-            returnValue: _i3.Future<_i6.GeographicBounds?>.value(),
+            returnValue: _i4.Future<_i6.GeographicBounds?>.value(),
           )
-          as _i3.Future<_i6.GeographicBounds?>);
+          as _i4.Future<_i6.GeographicBounds?>);
 
   @override
-  _i3.Future<List<String>> getSupportedStates() =>
+  _i4.Future<List<String>> getSupportedStates() =>
       (super.noSuchMethod(
             Invocation.method(#getSupportedStates, []),
-            returnValue: _i3.Future<List<String>>.value(<String>[]),
+            returnValue: _i4.Future<List<String>>.value(<String>[]),
           )
-          as _i3.Future<List<String>>);
+          as _i4.Future<List<String>>);
 
   @override
-  _i3.Future<String?> getStateFromCoordinates(
+  _i4.Future<String?> getStateFromCoordinates(
     double? latitude,
     double? longitude,
   ) =>
       (super.noSuchMethod(
             Invocation.method(#getStateFromCoordinates, [latitude, longitude]),
-            returnValue: _i3.Future<String?>.value(),
+            returnValue: _i4.Future<String?>.value(),
           )
-          as _i3.Future<String?>);
+          as _i4.Future<String?>);
 
   @override
-  _i3.Future<void> updateStateCellMapping(
+  _i4.Future<void> updateStateCellMapping(
     String? stateName,
     List<String>? mapping,
   ) =>
       (super.noSuchMethod(
             Invocation.method(#updateStateCellMapping, [stateName, mapping]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 
   @override
-  _i3.Future<void> clearStateMappings() =>
+  _i4.Future<void> clearStateMappings() =>
       (super.noSuchMethod(
             Invocation.method(#clearStateMappings, []),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<List<_i2.MarineRegion>> getMarineRegions(String? stateName) =>
+      (super.noSuchMethod(
+            Invocation.method(#getMarineRegions, [stateName]),
+            returnValue: _i4.Future<List<_i2.MarineRegion>>.value(
+              <_i2.MarineRegion>[],
+            ),
+          )
+          as _i4.Future<List<_i2.MarineRegion>>);
+
+  @override
+  _i4.Future<List<String>> getChartCellsForRegion(
+    String? stateName,
+    String? regionName,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getChartCellsForRegion, [stateName, regionName]),
+            returnValue: _i4.Future<List<String>>.value(<String>[]),
+          )
+          as _i4.Future<List<String>>);
+
+  @override
+  _i4.Future<_i2.ValidationResult> validateStateRegionMapping(
+    String? stateName,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#validateStateRegionMapping, [stateName]),
+            returnValue: _i4.Future<_i2.ValidationResult>.value(
+              _FakeValidationResult_0(
+                this,
+                Invocation.method(#validateStateRegionMapping, [stateName]),
+              ),
+            ),
+          )
+          as _i4.Future<_i2.ValidationResult>);
+
+  @override
+  _i4.Future<_i2.StateCoverageInfo> getStateCoverageInfo(String? stateName) =>
+      (super.noSuchMethod(
+            Invocation.method(#getStateCoverageInfo, [stateName]),
+            returnValue: _i4.Future<_i2.StateCoverageInfo>.value(
+              _FakeStateCoverageInfo_1(
+                this,
+                Invocation.method(#getStateCoverageInfo, [stateName]),
+              ),
+            ),
+          )
+          as _i4.Future<_i2.StateCoverageInfo>);
 }
 
 /// A class which mocks [NoaaApiClient].
@@ -184,36 +245,36 @@ class MockNoaaApiClient extends _i1.Mock implements _i7.NoaaApiClient {
   }
 
   @override
-  _i3.Future<String> fetchChartCatalog({Map<String, String>? filters}) =>
+  _i4.Future<String> fetchChartCatalog({Map<String, String>? filters}) =>
       (super.noSuchMethod(
             Invocation.method(#fetchChartCatalog, [], {#filters: filters}),
-            returnValue: _i3.Future<String>.value(
+            returnValue: _i4.Future<String>.value(
               _i8.dummyValue<String>(
                 this,
                 Invocation.method(#fetchChartCatalog, [], {#filters: filters}),
               ),
             ),
           )
-          as _i3.Future<String>);
+          as _i4.Future<String>);
 
   @override
-  _i3.Future<_i4.Chart?> getChartMetadata(String? cellName) =>
+  _i4.Future<_i5.Chart?> getChartMetadata(String? cellName) =>
       (super.noSuchMethod(
             Invocation.method(#getChartMetadata, [cellName]),
-            returnValue: _i3.Future<_i4.Chart?>.value(),
+            returnValue: _i4.Future<_i5.Chart?>.value(),
           )
-          as _i3.Future<_i4.Chart?>);
+          as _i4.Future<_i5.Chart?>);
 
   @override
-  _i3.Future<bool> isChartAvailable(String? cellName) =>
+  _i4.Future<bool> isChartAvailable(String? cellName) =>
       (super.noSuchMethod(
             Invocation.method(#isChartAvailable, [cellName]),
-            returnValue: _i3.Future<bool>.value(false),
+            returnValue: _i4.Future<bool>.value(false),
           )
-          as _i3.Future<bool>);
+          as _i4.Future<bool>);
 
   @override
-  _i3.Future<void> downloadChart(
+  _i4.Future<void> downloadChart(
     String? cellName,
     String? savePath, {
     _i7.NoaaProgressCallback? onProgress,
@@ -224,27 +285,27 @@ class MockNoaaApiClient extends _i1.Mock implements _i7.NoaaApiClient {
               [cellName, savePath],
               {#onProgress: onProgress},
             ),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 
   @override
-  _i3.Stream<double> getDownloadProgress(String? cellName) =>
+  _i4.Stream<double> getDownloadProgress(String? cellName) =>
       (super.noSuchMethod(
             Invocation.method(#getDownloadProgress, [cellName]),
-            returnValue: _i3.Stream<double>.empty(),
+            returnValue: _i4.Stream<double>.empty(),
           )
-          as _i3.Stream<double>);
+          as _i4.Stream<double>);
 
   @override
-  _i3.Future<void> cancelDownload(String? cellName) =>
+  _i4.Future<void> cancelDownload(String? cellName) =>
       (super.noSuchMethod(
             Invocation.method(#cancelDownload, [cellName]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 }
 
 /// A class which mocks [AppLogger].

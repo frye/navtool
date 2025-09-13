@@ -2,21 +2,27 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:math' as math;
 import '../../core/models/chart_models.dart';
 import '../../core/services/coordinate_transform.dart';
 import '../../core/services/chart_rendering_service.dart';
+import '../../core/providers/gps_tracking_provider.dart';
 import 'widgets/chart_display_controls.dart';
 import 'widgets/chart_info_overlay.dart';
+import 'widgets/vessel_overlay.dart';
 
-/// Main chart widget that displays maritime charts with interactive controls
-class ChartWidget extends StatefulWidget {
+/// Main chart widget that displays maritime charts with interactive controls and GPS integration
+class ChartWidget extends ConsumerStatefulWidget {
   final LatLng initialCenter;
   final double initialZoom;
   final List<MaritimeFeature> features;
   final ChartDisplayMode displayMode;
   final VoidCallback? onChartTap;
   final Function(LatLng)? onPositionChanged;
+  final bool showVesselPosition;
+  final bool showTrackHistory;
+  final bool autoFollowVessel;
 
   const ChartWidget({
     super.key,
@@ -26,13 +32,16 @@ class ChartWidget extends StatefulWidget {
     this.displayMode = ChartDisplayMode.dayMode,
     this.onChartTap,
     this.onPositionChanged,
+    this.showVesselPosition = true,
+    this.showTrackHistory = true,
+    this.autoFollowVessel = false,
   });
 
   @override
-  State<ChartWidget> createState() => _ChartWidgetState();
+  ConsumerState<ChartWidget> createState() => _ChartWidgetState();
 }
 
-class _ChartWidgetState extends State<ChartWidget> {
+class _ChartWidgetState extends ConsumerState<ChartWidget> {
   late LatLng _center;
   late double _zoom;
   late ChartDisplayMode _displayMode;
@@ -70,6 +79,8 @@ class _ChartWidgetState extends State<ChartWidget> {
       'anchorages': true,
       'chart_grid': false,
       'chart_boundaries': true,
+      'vessel_position': widget.showVesselPosition,
+      'track_history': widget.showTrackHistory,
     };
     
     _availableLayers = _layerVisibility.keys.toList();
@@ -112,8 +123,36 @@ class _ChartWidgetState extends State<ChartWidget> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch GPS tracking state for vessel position updates
+    final vesselPosition = ref.watch(currentGpsPositionProvider);
+    final trackHistory = ref.watch(gpsTrackHistoryProvider);
+    final isTracking = ref.watch(isGpsTrackingProvider);
+
+    // Auto-follow vessel if enabled and position is available
+    if (widget.autoFollowVessel && vesselPosition != null && isTracking) {
+      final vesselLatLng = LatLng(vesselPosition.latitude, vesselPosition.longitude);
+      // Only update center if vessel has moved significantly
+      final distance = _calculateDistance(_center, vesselLatLng);
+      if (distance > 100) { // More than 100 meters
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _center = vesselLatLng;
+            });
+          }
+        });
+      }
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
+        // Create coordinate transform for vessel overlay
+        final transform = CoordinateTransform(
+          zoom: _zoom,
+          center: _center,
+          screenSize: Size(constraints.maxWidth, constraints.maxHeight),
+        );
+
         return GestureDetector(
           onTap: widget.onChartTap,
           onScaleStart: _onScaleStart,
@@ -139,6 +178,18 @@ class _ChartWidgetState extends State<ChartWidget> {
                     layerVisibility: _layerVisibility,
                   ),
                 ),
+                // Vessel position and track overlay
+                if (widget.showVesselPosition && _layerVisibility['vessel_position'] == true)
+                  widget.showTrackHistory && _layerVisibility['track_history'] == true
+                      ? VesselTrackOverlay(
+                          currentPosition: vesselPosition,
+                          trackHistory: trackHistory,
+                          transform: transform,
+                        )
+                      : VesselOverlay(
+                          position: vesselPosition,
+                          transform: transform,
+                        ),
                 // Enhanced chart display controls
                 ChartDisplayControls(
                   zoom: _zoom,
@@ -159,6 +210,13 @@ class _ChartWidgetState extends State<ChartWidget> {
                   onLayerToggle: _toggleLayer,
                   onShowChartInfo: _showChartInfo,
                 ),
+                // GPS follow button (if vessel position is available)
+                if (vesselPosition != null)
+                  Positioned(
+                    top: 120,
+                    left: 16,
+                    child: _buildVesselFollowButton(vesselPosition),
+                  ),
                 // Enhanced chart info overlay
                 if (_isInfoOverlayOpen)
                   Positioned(
@@ -298,6 +356,45 @@ class _ChartWidgetState extends State<ChartWidget> {
     setState(() {
       _rotation = 0.0;
     });
+  }
+
+  /// Build vessel follow button
+  Widget _buildVesselFollowButton(position) {
+    return FloatingActionButton(
+      mini: true,
+      onPressed: () => _centerOnVessel(position),
+      backgroundColor: Theme.of(context).colorScheme.primary,
+      foregroundColor: Theme.of(context).colorScheme.onPrimary,
+      tooltip: 'Center on vessel',
+      child: const Icon(Icons.my_location),
+    );
+  }
+
+  /// Center map on vessel position
+  void _centerOnVessel(position) {
+    setState(() {
+      _center = LatLng(position.latitude, position.longitude);
+    });
+    widget.onPositionChanged?.call(_center);
+  }
+
+  /// Calculate distance between two LatLng points in meters
+  double _calculateDistance(LatLng point1, LatLng point2) {
+    const double earthRadius = 6371000; // Earth's radius in meters
+    
+    final double lat1Rad = point1.latitude * math.pi / 180;
+    final double lat2Rad = point2.latitude * math.pi / 180;
+    final double deltaLatRad = (point2.latitude - point1.latitude) * math.pi / 180;
+    final double deltaLonRad = (point2.longitude - point1.longitude) * math.pi / 180;
+    
+    final double a = math.sin(deltaLatRad / 2) * math.sin(deltaLatRad / 2) +
+        math.cos(lat1Rad) *
+            math.cos(lat2Rad) *
+            math.sin(deltaLonRad / 2) *
+            math.sin(deltaLonRad / 2);
+    final double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    
+    return earthRadius * c;
   }
 
   /// Toggle layer panel visibility

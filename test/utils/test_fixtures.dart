@@ -49,7 +49,7 @@ class TestFixtures {
       bounds:
           bounds ??
           GeographicBounds(north: 25.0, south: 24.0, east: -80.0, west: -81.0),
-      lastUpdate: lastUpdate ?? DateTime(2024, 1, 15),
+      lastUpdate: lastUpdate ?? DateTime.now().subtract(const Duration(days: 30)), // Recent update to avoid outdated warnings
       state: state ?? 'Florida',
       type: type ?? ChartType.harbor,
       source: source ?? ChartSource.noaa,
@@ -166,7 +166,7 @@ class MockDataGenerators {
 
   /// Generate charts for specific state testing
   static List<Chart> generateChartsForState(String state, int count) {
-    final bounds = _getStateBounds(state);
+    final bounds = getStateBounds(state);
 
     return List.generate(count, (i) {
       final chartBounds = _generateBoundsWithinState(bounds);
@@ -182,6 +182,7 @@ class MockDataGenerators {
           ChartType.approach,
           ChartType.coastal,
         ][_random.nextInt(3)],
+        lastUpdate: DateTime.now().subtract(Duration(days: _random.nextInt(90))), // Recent updates (0-90 days ago)
       );
     });
   }
@@ -253,7 +254,7 @@ class MockDataGenerators {
     ];
   }
 
-  static GeographicBounds _getStateBounds(String state) {
+  static GeographicBounds getStateBounds(String state) {
     // Simplified state bounds for testing
     final stateBounds = {
       'Florida': GeographicBounds(
@@ -581,6 +582,19 @@ class MarineTestUtils {
       200000, // Overview
     ];
   }
+
+  /// Get geographic bounds for US states (marine focus)
+  static GeographicBounds getStateBounds(String state) {
+    // Use the same bounds as MockDataGenerators for consistency
+    return MockDataGenerators.getStateBounds(state);
+  }
+
+  /// Generate test charts for a specific state
+  static List<Chart> generateTestChartsForState(String state, {int count = 5}) {
+    return MockDataGenerators.generateChartsForState(state, count);
+  }
+
+
 }
 
 extension GeographicBoundsTestHelpers on GeographicBounds {

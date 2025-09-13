@@ -117,6 +117,15 @@ class CoordinateTransform {
     return bearingDeg;
   }
 
+  /// Convert meters to pixels at the current location and zoom level
+  double metersToPixels(double meters) {
+    // Use the current center latitude for the calculation
+    const double earthCircumference = 2 * math.pi * 6378137; // WGS84 Earth radius
+    final double metersPerDegree = earthCircumference / 360.0 * math.cos(_center.latitude * math.pi / 180);
+    final double degreesPerMeter = 1.0 / metersPerDegree;
+    return meters * degreesPerMeter * _pixelsPerDegree;
+  }
+
   /// Get the scale factor for the current zoom level
   double get scaleFactor => math.pow(2, _zoom).toDouble();
 

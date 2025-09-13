@@ -2,14 +2,22 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
 import '../../core/models/chart.dart';
 import 'dart:math' as math;
 import '../../core/models/chart_models.dart';
 import '../../core/services/chart_rendering_service.dart';
+import '../../core/services/s57/s57_parser.dart';
+import '../../core/services/s57/s57_models.dart';
+import '../../core/adapters/s57_to_maritime_adapter.dart';
+import '../../core/providers/gps_tracking_provider.dart';
 import 'chart_widget.dart';
+import 'widgets/enhanced_gps_status_widget.dart';
 
-/// Screen that displays maritime charts with navigation controls
-class ChartScreen extends StatefulWidget {
+/// Screen that displays maritime charts with navigation controls and GPS integration
+class ChartScreen extends ConsumerStatefulWidget {
   final Chart?
   chart; // Real NOAA chart metadata (optional for backward compatibility)
   final String? chartTitle; // Fallback title if chart not provided
@@ -23,26 +31,53 @@ class ChartScreen extends StatefulWidget {
   });
 
   @override
-  State<ChartScreen> createState() => _ChartScreenState();
+  ConsumerState<ChartScreen> createState() => _ChartScreenState();
 }
 
-class _ChartScreenState extends State<ChartScreen> {
+class _ChartScreenState extends ConsumerState<ChartScreen> {
   late List<MaritimeFeature> _features;
   late LatLng _currentPosition;
   ChartDisplayMode _displayMode = ChartDisplayMode.dayMode;
+  bool _isLoadingFeatures = false;
 
   @override
   void initState() {
     super.initState();
+    
+    // Initialize position and default features immediately
     if (widget.chart != null) {
       // Center at chart bounds center
       final c = widget.chart!.bounds.center;
       _currentPosition = LatLng(c.latitude, c.longitude);
-      _features = _generateFeaturesFromChart(widget.chart!);
+      _features = []; // Start with empty features
+      _loadChartFeatures(); // Load features asynchronously
     } else {
       _currentPosition =
           widget.initialPosition ?? const LatLng(37.7749, -122.4194);
       _features = _generateSampleFeatures(); // fallback for legacy route usage
+    }
+  }
+  
+  /// Load chart features asynchronously
+  Future<void> _loadChartFeatures() async {
+    if (widget.chart == null) return;
+    
+    setState(() {
+      _isLoadingFeatures = true;
+    });
+    
+    try {
+      final features = await _generateFeaturesFromChart(widget.chart!);
+      setState(() {
+        _features = features;
+        _isLoadingFeatures = false;
+      });
+    } catch (e) {
+      print('Error loading chart features: $e');
+      setState(() {
+        _features = _generateChartBoundaryFeatures(widget.chart!);
+        _isLoadingFeatures = false;
+      });
     }
   }
 
@@ -71,20 +106,50 @@ class _ChartScreenState extends State<ChartScreen> {
           _buildStatusBar(),
           // Main chart area
           Expanded(
-            child: ChartWidget(
-              initialCenter: _currentPosition,
-              initialZoom: 12.0,
-              features: _features,
-              displayMode: _displayMode,
-              onPositionChanged: (newPosition) {
-                setState(() {
-                  _currentPosition = newPosition;
-                });
-              },
+            child: Stack(
+              children: [
+                ChartWidget(
+                  initialCenter: _currentPosition,
+                  initialZoom: 12.0,
+                  features: _features,
+                  displayMode: _displayMode,
+                  showVesselPosition: true,
+                  showTrackHistory: true,
+                  autoFollowVessel: false, // User can toggle this
+                  onPositionChanged: (newPosition) {
+                    setState(() {
+                      _currentPosition = newPosition;
+                    });
+                  },
+                ),
+                // Loading indicator overlay
+                if (_isLoadingFeatures)
+                  Container(
+                    color: Colors.black.withOpacity(0.3),
+                    child: const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 16),
+                          Text(
+                            'Loading S-57 chart data...',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
       ),
+      drawer: _buildNavigationDrawer(),
       floatingActionButton: _buildFloatingActions(),
     );
   }
@@ -176,6 +241,165 @@ class _ChartScreenState extends State<ChartScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  /// Build navigation drawer with GPS status and controls
+  Widget _buildNavigationDrawer() {
+    return Drawer(
+      child: Column(
+        children: [
+          DrawerHeader(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Navigation',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onPrimary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  widget.chartTitle ?? widget.chart?.title ?? 'Marine Chart',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // GPS Status Section
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  // Enhanced GPS Status Widget
+                  const EnhancedGpsStatusWidget(
+                    expandedByDefault: true,
+                    showNavigationData: true,
+                    showTrackControls: true,
+                  ),
+                  const SizedBox(height: 16),
+                  // GPS Tracking Controls
+                  _buildGpsTrackingControls(),
+                  const SizedBox(height: 16),
+                  // Chart Controls
+                  _buildChartControls(),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build GPS tracking control buttons
+  Widget _buildGpsTrackingControls() {
+    final isTracking = ref.watch(isGpsTrackingProvider);
+    final trackingNotifier = ref.read(gpsTrackingProvider.notifier);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'GPS Tracking',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      if (isTracking) {
+                        await trackingNotifier.stopTracking();
+                      } else {
+                        await trackingNotifier.startTracking();
+                      }
+                    },
+                    icon: Icon(isTracking ? Icons.stop : Icons.play_arrow),
+                    label: Text(isTracking ? 'Stop' : 'Start'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isTracking
+                          ? Theme.of(context).colorScheme.error
+                          : Theme.of(context).colorScheme.primary,
+                      foregroundColor: isTracking
+                          ? Theme.of(context).colorScheme.onError
+                          : Theme.of(context).colorScheme.onPrimary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () async {
+                    final position = await trackingNotifier.getCurrentPosition();
+                    if (position != null && mounted) {
+                      setState(() {
+                        _currentPosition = LatLng(position.latitude, position.longitude);
+                      });
+                    }
+                  },
+                  icon: const Icon(Icons.my_location),
+                  tooltip: 'Center on GPS',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Build chart control buttons
+  Widget _buildChartControls() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Display Mode',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SegmentedButton<ChartDisplayMode>(
+              segments: const [
+                ButtonSegment(
+                  value: ChartDisplayMode.dayMode,
+                  label: Text('Day'),
+                  icon: Icon(Icons.light_mode, size: 16),
+                ),
+                ButtonSegment(
+                  value: ChartDisplayMode.nightMode,
+                  label: Text('Night'),
+                  icon: Icon(Icons.dark_mode, size: 16),
+                ),
+              ],
+              selected: {_displayMode},
+              onSelectionChanged: (Set<ChartDisplayMode> selection) {
+                setState(() {
+                  _displayMode = selection.first;
+                });
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -358,7 +582,33 @@ class _ChartScreenState extends State<ChartScreen> {
   }
 
   /// Generate minimal real features from a NOAA chart's bounding box
-  List<MaritimeFeature> _generateFeaturesFromChart(Chart chart) {
+  /// Generate maritime features from S-57 chart data
+  Future<List<MaritimeFeature>> _generateFeaturesFromChart(Chart chart) async {
+    try {
+      // For Phase 2: Try to load S-57 chart data if available
+      final chartData = await _loadChartData(chart);
+      
+      if (chartData != null) {
+        // Parse S-57 data and convert to maritime features
+        final s57Data = S57Parser.parse(chartData);
+        final maritimeFeatures = S57ToMaritimeAdapter.convertFeatures(s57Data.features);
+        
+        if (maritimeFeatures.isNotEmpty) {
+          print('Successfully loaded ${maritimeFeatures.length} maritime features from S-57 chart ${chart.id}');
+          return maritimeFeatures;
+        }
+      }
+    } catch (e) {
+      // Log error but continue with fallback
+      print('Warning: Failed to load S-57 chart data for ${chart.id}: $e');
+    }
+    
+    // Fallback: Generate basic chart boundary features as before
+    return _generateChartBoundaryFeatures(chart);
+  }
+  
+  /// Generate basic chart boundary features (fallback)
+  List<MaritimeFeature> _generateChartBoundaryFeatures(Chart chart) {
     final b = chart.bounds;
     final c = b.center;
     final center = LatLng(c.latitude, c.longitude);
@@ -391,6 +641,43 @@ class _ChartScreenState extends State<ChartScreen> {
         attributes: {'role': 'center'},
       ),
     ];
+  }
+  
+  /// Load S-57 chart data for the given chart
+  Future<List<int>?> _loadChartData(Chart chart) async {
+    try {
+      // Phase 3 Implementation: Load Elliott Bay test charts
+      final chartPath = _getElliottBayChartPath(chart.id);
+      if (chartPath != null) {
+        final file = File(chartPath);
+        if (await file.exists()) {
+          return await file.readAsBytes();
+        }
+      }
+      
+      // TODO: Future implementation will:
+      // 1. Check local storage for other chart files
+      // 2. Download from NOAA if not available locally  
+      // 3. Return raw S-57 bytes for parsing
+      
+    } catch (e) {
+      print('Error loading chart data for ${chart.id}: $e');
+    }
+    
+    return null;
+  }
+  
+  /// Get file path for Elliott Bay test charts
+  String? _getElliottBayChartPath(String chartId) {
+    // Map Elliott Bay chart IDs to actual S-57 files
+    return switch (chartId) {
+      'US5WA50M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000',
+      'US3WA01M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US3WA01M/US3WA01M.000',
+      // Add other Elliott Bay chart variations
+      'US5WA17M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000', // Alias for harbor chart
+      'US5WA18M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US3WA01M/US3WA01M.000', // Alias for approach chart
+      _ => null,
+    };
   }
 
   /// Generate sample maritime features for demonstration (legacy fallback)
