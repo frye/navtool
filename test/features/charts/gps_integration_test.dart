@@ -9,9 +9,9 @@ import 'package:navtool/core/models/position_history.dart';
 import 'package:navtool/core/logging/app_logger.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-// Mock classes
-class MockGpsService extends Mock implements GpsService {}
-class MockAppLogger extends Mock implements AppLogger {}
+// Generate mocks
+@GenerateMocks([GpsService, AppLogger])
+import 'gps_integration_test.mocks.dart';
 
 void main() {
   group('GPS Integration Tests', () {

@@ -58,3 +58,4 @@ package-lock.json
 /android/app/profile
 /android/app/release
 flutter.tar.xz
+macos/DerivedData/
