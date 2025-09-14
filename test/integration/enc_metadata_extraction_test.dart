@@ -13,11 +13,21 @@ void main() {
     testWidgets('should extract metadata from chart ID and filename', (
       tester,
     ) async {
-      const testChartPath =
-          'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip';
+      // Test with S57 format first, fallback to ZIP
+      const testChartS57Path = 'test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000';
+      const testChartZipPath = 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip';
+      
+      String testChartPath;
+      if (await File(testChartS57Path).exists()) {
+        testChartPath = testChartS57Path;
+      } else {
+        testChartPath = testChartZipPath;
+      }
 
       // Test metadata extraction from filename (works without parsing large file)
-      final cellId = testChartPath.split('/').last.split('_')[0];
+      final cellId = testChartPath.contains('.000') 
+          ? testChartPath.split('/').last.split('.')[0]  // S57 format: US5WA50M.000
+          : testChartPath.split('/').last.split('_')[0]; // ZIP format: US5WA50M_harbor_elliott_bay.zip
       expect(cellId, equals('US5WA50M'));
 
       // Test usage band extraction

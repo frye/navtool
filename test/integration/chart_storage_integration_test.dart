@@ -22,14 +22,45 @@ void main() {
     late ChartStorageAnalyzer analyzer;
     late AppLogger logger;
 
-    // Test chart paths
-    final testChartsPath = 'test/fixtures/charts/noaa_enc';
-    final harborChartPath = '$testChartsPath/US5WA50M_harbor_elliott_bay.zip';
-    final coastalChartPath = '$testChartsPath/US3WA01M_coastal_puget_sound.zip';
+    // Test chart paths - support both S57 and ZIP formats
+    final testChartsS57Path = 'test/fixtures/charts/s57_data/ENC_ROOT';
+    final testChartsZipPath = 'test/fixtures/charts/noaa_enc';
+    final harborChartS57Path = '$testChartsS57Path/US5WA50M/US5WA50M.000';
+    final coastalChartS57Path = '$testChartsS57Path/US3WA01M/US3WA01M.000';
+    final harborChartZipPath = '$testChartsZipPath/US5WA50M_harbor_elliott_bay.zip';
+    final coastalChartZipPath = '$testChartsZipPath/US3WA01M_coastal_puget_sound.zip';
 
     setUpAll(() {
       sqfliteFfiInit();
     });
+    
+    // Helper function to get chart data from either S57 or ZIP format
+    Future<List<int>?> getChartData(String chartId) async {
+      final s57Path = chartId == 'US5WA50M' ? harborChartS57Path : coastalChartS57Path;
+      final zipPath = chartId == 'US5WA50M' ? harborChartZipPath : coastalChartZipPath;
+      
+      if (await File(s57Path).exists()) {
+        return await File(s57Path).readAsBytes();
+      } else if (await File(zipPath).exists()) {
+        // For ZIP files, we'd need to extract - for now, skip ZIP extraction in this test
+        // This maintains existing behavior but supports the new S57 format
+        return await File(zipPath).readAsBytes();
+      }
+      return null;
+    }
+    
+    // Helper function to get chart file path (preferring S57)
+    String? getChartPath(String chartId) {
+      final s57Path = chartId == 'US5WA50M' ? harborChartS57Path : coastalChartS57Path;
+      final zipPath = chartId == 'US5WA50M' ? harborChartZipPath : coastalChartZipPath;
+      
+      if (File(s57Path).existsSync()) {
+        return s57Path;
+      } else if (File(zipPath).existsSync()) {
+        return zipPath;
+      }
+      return null;
+    }
 
     setUp(() async {
       logger = TestLoggerAdapter();
@@ -54,13 +85,14 @@ void main() {
     });
 
     test('should integrate S-57 parsing with storage for harbor chart', () async {
-      final harborFile = File(harborChartPath);
-      if (!await harborFile.exists()) {
-        print('⏭️  Skipping harbor chart integration - File not found: $harborChartPath');
+      final harborChartPath = getChartPath('US5WA50M');
+      if (harborChartPath == null) {
+        print('⏭️  Skipping harbor chart integration - No chart file found (checked both S57 and ZIP formats)');
         return;
       }
 
       print('🔗 Testing complete S-57 to storage integration for harbor chart...');
+      print('📁 Using chart file: $harborChartPath');
 
       final harborChart = Chart(
         id: 'US5WA50M',

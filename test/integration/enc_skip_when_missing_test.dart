@@ -105,8 +105,8 @@ void main() {
       if (!hasEnvVar) {
         expect(
           fixtures.fixturesPath,
-          equals('test/fixtures/charts/noaa_enc'),
-          reason: 'Should use default path when environment variable not set',
+          equals('test/fixtures/charts/s57_data/ENC_ROOT'),
+          reason: 'Should use new default S57 path when environment variable not set',
         );
         print('Using default fixtures path (no NOAA_ENC_FIXTURES set)');
       } else {
@@ -242,8 +242,9 @@ void main() {
         '  Secondary: ${EncTestUtilities.secondaryChartId} (Usage Band 3 - Coastal)',
       );
       print('');
-      print('Default Path:');
-      print('  test/fixtures/charts/noaa_enc/');
+      print('Default Paths:');
+      print('  Primary: test/fixtures/charts/s57_data/ENC_ROOT/ (S57 format)');
+      print('  Legacy: test/fixtures/charts/noaa_enc/ (ZIP format)');
       print('');
       print('Download Sources:');
       print('  - NOAA ENC Portal: https://charts.noaa.gov/ENCs/');
