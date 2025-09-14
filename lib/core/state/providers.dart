@@ -31,6 +31,7 @@ import '../services/settings_service.dart';
 import '../services/settings_service_impl.dart';
 import '../services/noaa/progressive_chart_loader.dart';
 import '../services/background_sync_service.dart';
+import '../services/gps_track_recording_service.dart';
 import '../providers/noaa_providers.dart';
 import 'app_state.dart';
 import 'app_state_notifier.dart';
@@ -57,6 +58,15 @@ final gpsServiceProvider = Provider<GpsService>((ref) {
     logger.info('Using geolocator-based GPS implementation');
     return GpsServiceImpl(logger: logger);
   }
+});
+
+// GPS Track Recording Service
+final gpsTrackRecordingServiceProvider = Provider<GpsTrackRecordingService>((ref) {
+  return GpsTrackRecordingService(
+    logger: ref.read(loggerProvider),
+    storageService: ref.read(storageServiceProvider),
+    gpsService: ref.read(gpsServiceProvider),
+  );
 });
 
 // Background Task Service
@@ -223,6 +233,47 @@ final currentPositionProvider = Provider<GpsPosition?>((ref) {
 final gpsPositionProvider = FutureProvider<GpsPosition?>((ref) async {
   final gpsService = ref.read(gpsServiceProvider);
   return await gpsService.getCurrentPosition();
+});
+
+// Real-time GPS position stream provider
+final gpsPositionStreamProvider = StreamProvider<GpsPosition>((ref) {
+  final gpsService = ref.read(gpsServiceProvider);
+  
+  // Auto-dispose cleanup
+  ref.onDispose(() {
+    gpsService.stopLocationTracking();
+  });
+  
+  return Stream.fromFuture(
+    gpsService.startLocationTracking().then((_) => gpsService.getLocationStream())
+  ).asyncExpand((stream) => stream);
+});
+
+// GPS signal quality provider
+final gpsSignalQualityProvider = FutureProvider<GpsSignalQuality?>((ref) async {
+  final gpsPosition = await ref.watch(gpsPositionProvider.future);
+  if (gpsPosition == null) return null;
+  
+  final gpsService = ref.read(gpsServiceProvider);
+  return await gpsService.assessSignalQuality(gpsPosition);
+});
+
+// Course over ground provider  
+final courseOverGroundProvider = FutureProvider<CourseOverGround?>((ref) async {
+  final gpsService = ref.read(gpsServiceProvider);
+  return await gpsService.calculateCourseOverGround(const Duration(minutes: 2));
+});
+
+// Speed over ground provider
+final speedOverGroundProvider = FutureProvider<SpeedOverGround?>((ref) async {
+  final gpsService = ref.read(gpsServiceProvider);
+  return await gpsService.calculateSpeedOverGround(const Duration(minutes: 2));
+});
+
+// GPS track recording status provider
+final gpsTrackRecordingStatusProvider = Provider<bool>((ref) {
+  final trackingService = ref.read(gpsTrackRecordingServiceProvider);
+  return trackingService.isRecording;
 });
 
 final currentChartProvider = Provider<Chart?>((ref) {

@@ -3,6 +3,7 @@ import '../models/chart.dart';
 import '../models/route.dart';
 import '../models/waypoint.dart';
 import '../models/geographic_bounds.dart';
+import 'gps_track_recording_service.dart';
 
 /// Service interface for storage operations
 abstract class StorageService {
@@ -75,4 +76,21 @@ abstract class StorageService {
 
   /// Clear charts with invalid bounds (cache invalidation)
   Future<int> clearChartsWithInvalidBounds();
+
+  // GPS Track Operations
+
+  /// Store a GPS track
+  Future<void> saveGpsTrack(GpsTrack track);
+
+  /// Load a GPS track by ID
+  Future<GpsTrack?> getGpsTrack(String trackId);
+
+  /// Delete a GPS track
+  Future<void> deleteGpsTrack(String trackId);
+
+  /// Get all GPS tracks
+  Future<List<GpsTrack>> getAllGpsTracks();
+
+  /// Get GPS tracks within a date range
+  Future<List<GpsTrack>> getGpsTracksInDateRange(DateTime startDate, DateTime endDate);
 }

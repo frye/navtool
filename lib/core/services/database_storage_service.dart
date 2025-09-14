@@ -1,13 +1,16 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as path;
 import '../models/chart.dart';
 import '../models/route.dart';
 import '../models/waypoint.dart';
 import '../models/geographic_bounds.dart';
+import '../models/gps_position.dart';
 import '../logging/app_logger.dart';
 import 'storage_service.dart';
+import 'gps_track_recording_service.dart';
 
 /// SQLite implementation of StorageService for marine navigation data
 class DatabaseStorageService implements StorageService {
@@ -20,7 +23,7 @@ class DatabaseStorageService implements StorageService {
       _testDatabase = testDatabase;
 
   /// Database schema version
-  static const int _databaseVersion = 2;
+  static const int _databaseVersion = 3;
 
   /// Database name
   static const String _databaseName = 'navtool.db';
@@ -64,6 +67,9 @@ class DatabaseStorageService implements StorageService {
 
     if (oldVersion < 2) {
       await _migrateToVersion2(db);
+    }
+    if (oldVersion < 3) {
+      await _migrateToVersion3(db);
     }
   }
 
@@ -195,6 +201,44 @@ class DatabaseStorageService implements StorageService {
       CREATE VIEW IF NOT EXISTS chart_metadata AS 
       SELECT * FROM charts
     ''');
+
+    // GPS tracks table for recorded vessel tracks
+    await db.execute('''
+      CREATE TABLE gps_tracks (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        start_time INTEGER NOT NULL,
+        end_time INTEGER,
+        is_active INTEGER DEFAULT 0,
+        point_count INTEGER DEFAULT 0,
+        total_distance REAL DEFAULT 0.0,
+        total_duration INTEGER DEFAULT 0,
+        average_speed REAL DEFAULT 0.0,
+        max_speed REAL DEFAULT 0.0,
+        average_accuracy REAL DEFAULT 0.0,
+        best_accuracy REAL DEFAULT 0.0,
+        marine_grade_percentage REAL DEFAULT 0.0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+
+    // GPS track points for detailed position data
+    await db.execute('''
+      CREATE TABLE gps_track_points (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        track_id TEXT NOT NULL,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        timestamp INTEGER NOT NULL,
+        altitude REAL,
+        accuracy REAL,
+        heading REAL,
+        speed REAL,
+        point_order INTEGER NOT NULL,
+        FOREIGN KEY (track_id) REFERENCES gps_tracks (id) ON DELETE CASCADE
+      )
+    ''');
   }
 
   /// Create database indexes for performance
@@ -250,6 +294,23 @@ class DatabaseStorageService implements StorageService {
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_chart_history_detected ON chart_update_history (update_detected_at)',
+    );
+
+    // GPS track indexes
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_gps_tracks_start_time ON gps_tracks (start_time)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_gps_tracks_is_active ON gps_tracks (is_active)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_gps_track_points_track_id ON gps_track_points (track_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_gps_track_points_timestamp ON gps_track_points (timestamp)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_gps_track_points_location ON gps_track_points (latitude, longitude)',
     );
   }
 
@@ -396,6 +457,77 @@ class DatabaseStorageService implements StorageService {
     });
 
     _logger.info('Database migration to version 2 completed');
+  }
+
+  /// Migrate database from version 2 to version 3 (GPS Track support)
+  Future<void> _migrateToVersion3(Database db) async {
+    _logger.info('Migrating database to version 3 - adding GPS track support');
+
+    await db.transaction((txn) async {
+      try {
+        // Create GPS tracks table
+        await txn.execute('''
+          CREATE TABLE IF NOT EXISTS gps_tracks (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            start_time INTEGER NOT NULL,
+            end_time INTEGER,
+            is_active INTEGER DEFAULT 0,
+            point_count INTEGER DEFAULT 0,
+            total_distance REAL DEFAULT 0.0,
+            total_duration INTEGER DEFAULT 0,
+            average_speed REAL DEFAULT 0.0,
+            max_speed REAL DEFAULT 0.0,
+            average_accuracy REAL DEFAULT 0.0,
+            best_accuracy REAL DEFAULT 0.0,
+            marine_grade_percentage REAL DEFAULT 0.0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          )
+        ''');
+
+        // Create GPS track points table
+        await txn.execute('''
+          CREATE TABLE IF NOT EXISTS gps_track_points (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            track_id TEXT NOT NULL,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL,
+            timestamp INTEGER NOT NULL,
+            altitude REAL,
+            accuracy REAL,
+            heading REAL,
+            speed REAL,
+            point_order INTEGER NOT NULL,
+            FOREIGN KEY (track_id) REFERENCES gps_tracks (id) ON DELETE CASCADE
+          )
+        ''');
+
+        // Create GPS track indexes
+        await txn.execute(
+          'CREATE INDEX IF NOT EXISTS idx_gps_tracks_start_time ON gps_tracks (start_time)',
+        );
+        await txn.execute(
+          'CREATE INDEX IF NOT EXISTS idx_gps_tracks_is_active ON gps_tracks (is_active)',
+        );
+        await txn.execute(
+          'CREATE INDEX IF NOT EXISTS idx_gps_track_points_track_id ON gps_track_points (track_id)',
+        );
+        await txn.execute(
+          'CREATE INDEX IF NOT EXISTS idx_gps_track_points_timestamp ON gps_track_points (timestamp)',
+        );
+        await txn.execute(
+          'CREATE INDEX IF NOT EXISTS idx_gps_track_points_location ON gps_track_points (latitude, longitude)',
+        );
+
+        _logger.info('GPS track tables and indexes created successfully');
+      } catch (e) {
+        _logger.error('Failed to create GPS track tables: $e');
+        rethrow;
+      }
+    });
+
+    _logger.info('Database migration to version 3 completed');
   }
 
   // ---------------------------------------------------------------------------
@@ -1420,6 +1552,236 @@ class DatabaseStorageService implements StorageService {
     } catch (e) {
       _logger.error('Failed to clear state-chart mappings: $e');
       rethrow;
+    }
+  }
+
+  // GPS Track Operations
+
+  /// Store a GPS track
+  @override
+  Future<void> saveGpsTrack(GpsTrack track) async {
+    final db = _database!;
+
+    try {
+      await db.transaction((txn) async {
+        // Save track metadata
+        await txn.insert(
+          'gps_tracks',
+          {
+            'id': track.id,
+            'name': track.name,
+            'start_time': track.startTime.millisecondsSinceEpoch,
+            'end_time': track.endTime?.millisecondsSinceEpoch,
+            'is_active': track.isActive ? 1 : 0,
+            'point_count': track.positions.length,
+            'total_distance': track.statistics?.totalDistance ?? 0.0,
+            'total_duration': track.statistics?.totalDuration.inMilliseconds ?? 0,
+            'average_speed': track.statistics?.averageSpeed ?? 0.0,
+            'max_speed': track.statistics?.maxSpeed ?? 0.0,
+            'average_accuracy': track.statistics?.averageAccuracy ?? 0.0,
+            'best_accuracy': track.statistics?.bestAccuracy ?? 0.0,
+            'marine_grade_percentage': track.statistics?.marineGradePercentage ?? 0.0,
+            'created_at': DateTime.now().millisecondsSinceEpoch,
+            'updated_at': DateTime.now().millisecondsSinceEpoch,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+
+        // Delete existing track points for this track
+        await txn.delete(
+          'gps_track_points',
+          where: 'track_id = ?',
+          whereArgs: [track.id],
+        );
+
+        // Insert track points
+        for (int i = 0; i < track.positions.length; i++) {
+          final position = track.positions[i];
+          await txn.insert('gps_track_points', {
+            'track_id': track.id,
+            'latitude': position.latitude,
+            'longitude': position.longitude,
+            'timestamp': position.timestamp.millisecondsSinceEpoch,
+            'altitude': position.altitude,
+            'accuracy': position.accuracy,
+            'heading': position.heading,
+            'speed': position.speed,
+            'point_order': i,
+          });
+        }
+      });
+
+      _logger.debug('Saved GPS track: ${track.id} with ${track.positions.length} points');
+    } catch (e) {
+      _logger.error('Failed to save GPS track: ${track.id}', exception: e);
+      rethrow;
+    }
+  }
+
+  /// Load a GPS track by ID
+  @override
+  Future<GpsTrack?> getGpsTrack(String trackId) async {
+    final db = _database!;
+
+    try {
+      // Get track metadata
+      final trackResults = await db.query(
+        'gps_tracks',
+        where: 'id = ?',
+        whereArgs: [trackId],
+      );
+
+      if (trackResults.isEmpty) {
+        return null;
+      }
+
+      final trackData = trackResults.first;
+
+      // Get track points
+      final pointResults = await db.query(
+        'gps_track_points',
+        where: 'track_id = ?',
+        whereArgs: [trackId],
+        orderBy: 'point_order ASC',
+      );
+
+      // Convert points to GpsPosition objects
+      final positions = pointResults.map((point) {
+        return GpsPosition(
+          latitude: point['latitude'] as double,
+          longitude: point['longitude'] as double,
+          timestamp: DateTime.fromMillisecondsSinceEpoch(point['timestamp'] as int),
+          altitude: point['altitude'] as double?,
+          accuracy: point['accuracy'] as double?,
+          heading: point['heading'] as double?,
+          speed: point['speed'] as double?,
+        );
+      }).toList();
+
+      // Create statistics if available
+      TrackStatistics? statistics;
+      if ((trackData['total_distance'] as double?) != null) {
+        statistics = TrackStatistics(
+          totalDistance: trackData['total_distance'] as double,
+          totalDuration: Duration(milliseconds: trackData['total_duration'] as int),
+          averageSpeed: trackData['average_speed'] as double,
+          maxSpeed: trackData['max_speed'] as double,
+          averageAccuracy: trackData['average_accuracy'] as double,
+          bestAccuracy: trackData['best_accuracy'] as double,
+          pointCount: trackData['point_count'] as int,
+          marineGradePercentage: trackData['marine_grade_percentage'] as double,
+        );
+      }
+
+      return GpsTrack(
+        id: trackData['id'] as String,
+        name: trackData['name'] as String,
+        startTime: DateTime.fromMillisecondsSinceEpoch(trackData['start_time'] as int),
+        endTime: trackData['end_time'] != null
+            ? DateTime.fromMillisecondsSinceEpoch(trackData['end_time'] as int)
+            : null,
+        positions: positions,
+        isActive: (trackData['is_active'] as int) == 1,
+        statistics: statistics,
+      );
+    } catch (e) {
+      _logger.error('Failed to load GPS track: $trackId', exception: e);
+      return null;
+    }
+  }
+
+  /// Delete a GPS track
+  @override
+  Future<void> deleteGpsTrack(String trackId) async {
+    final db = _database!;
+
+    try {
+      await db.transaction((txn) async {
+        // Delete track points (should cascade, but explicit for safety)
+        await txn.delete(
+          'gps_track_points',
+          where: 'track_id = ?',
+          whereArgs: [trackId],
+        );
+
+        // Delete track metadata
+        await txn.delete(
+          'gps_tracks',
+          where: 'id = ?',
+          whereArgs: [trackId],
+        );
+      });
+
+      _logger.info('Deleted GPS track: $trackId');
+    } catch (e) {
+      _logger.error('Failed to delete GPS track: $trackId', exception: e);
+      rethrow;
+    }
+  }
+
+  /// Get all GPS tracks
+  @override
+  Future<List<GpsTrack>> getAllGpsTracks() async {
+    final db = _database!;
+
+    try {
+      final results = await db.query(
+        'gps_tracks',
+        orderBy: 'start_time DESC',
+      );
+
+      final tracks = <GpsTrack>[];
+      
+      for (final trackData in results) {
+        final trackId = trackData['id'] as String;
+        final track = await getGpsTrack(trackId);
+        if (track != null) {
+          tracks.add(track);
+        }
+      }
+
+      _logger.debug('Retrieved ${tracks.length} GPS tracks');
+      return tracks;
+    } catch (e) {
+      _logger.error('Failed to get all GPS tracks', exception: e);
+      return [];
+    }
+  }
+
+  /// Get GPS tracks within a date range
+  @override
+  Future<List<GpsTrack>> getGpsTracksInDateRange(
+    DateTime startDate, 
+    DateTime endDate,
+  ) async {
+    final db = _database!;
+
+    try {
+      final results = await db.query(
+        'gps_tracks',
+        where: 'start_time >= ? AND start_time <= ?',
+        whereArgs: [
+          startDate.millisecondsSinceEpoch,
+          endDate.millisecondsSinceEpoch,
+        ],
+        orderBy: 'start_time DESC',
+      );
+
+      final tracks = <GpsTrack>[];
+      
+      for (final trackData in results) {
+        final trackId = trackData['id'] as String;
+        final track = await getGpsTrack(trackId);
+        if (track != null) {
+          tracks.add(track);
+        }
+      }
+
+      _logger.debug('Retrieved ${tracks.length} GPS tracks in date range');
+      return tracks;
+    } catch (e) {
+      _logger.error('Failed to get GPS tracks in date range', exception: e);
+      return [];
     }
   }
 

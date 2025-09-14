@@ -2,21 +2,27 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:math' as math;
 import '../../core/models/chart_models.dart';
 import '../../core/services/coordinate_transform.dart';
 import '../../core/services/chart_rendering_service.dart';
+import '../../core/state/providers.dart';
 import 'widgets/chart_display_controls.dart';
 import 'widgets/chart_info_overlay.dart';
+import 'widgets/vessel_position_overlay.dart';
+import 'widgets/gps_control_panel.dart';
 
 /// Main chart widget that displays maritime charts with interactive controls
-class ChartWidget extends StatefulWidget {
+class ChartWidget extends ConsumerStatefulWidget {
   final LatLng initialCenter;
   final double initialZoom;
   final List<MaritimeFeature> features;
   final ChartDisplayMode displayMode;
   final VoidCallback? onChartTap;
   final Function(LatLng)? onPositionChanged;
+  final bool showGpsOverlay;
+  final bool showGpsControls;
 
   const ChartWidget({
     super.key,
@@ -26,13 +32,15 @@ class ChartWidget extends StatefulWidget {
     this.displayMode = ChartDisplayMode.dayMode,
     this.onChartTap,
     this.onPositionChanged,
+    this.showGpsOverlay = true,
+    this.showGpsControls = true,
   });
 
   @override
-  State<ChartWidget> createState() => _ChartWidgetState();
+  ConsumerState<ChartWidget> createState() => _ChartWidgetState();
 }
 
-class _ChartWidgetState extends State<ChartWidget> {
+class _ChartWidgetState extends ConsumerState<ChartWidget> {
   late LatLng _center;
   late double _zoom;
   late ChartDisplayMode _displayMode;
@@ -139,6 +147,17 @@ class _ChartWidgetState extends State<ChartWidget> {
                     layerVisibility: _layerVisibility,
                   ),
                 ),
+                
+                // GPS Vessel position overlay
+                if (widget.showGpsOverlay)
+                  VesselPositionOverlay(
+                    coordinateTransform: CoordinateTransform(
+                      zoom: _zoom,
+                      center: _center,
+                      screenSize: Size(constraints.maxWidth, constraints.maxHeight),
+                    ),
+                  ),
+                
                 // Enhanced chart display controls
                 ChartDisplayControls(
                   zoom: _zoom,
@@ -174,6 +193,18 @@ class _ChartWidgetState extends State<ChartWidget> {
                       isExpanded: _isInfoOverlayExpanded,
                       onToggleExpanded: _toggleInfoOverlayExpanded,
                       onClose: _closeInfoOverlay,
+                    ),
+                  ),
+                
+                // GPS Control Panel
+                if (widget.showGpsControls)
+                  Positioned(
+                    bottom: 16,
+                    left: 16,
+                    child: GpsControlPanel(
+                      isCompact: true,
+                      onCenterOnVessel: _centerOnVessel,
+                      showTrackControls: true,
                     ),
                   ),
               ],
@@ -348,24 +379,68 @@ class _ChartWidgetState extends State<ChartWidget> {
 
   /// Center on current position (placeholder implementation)
   void _centerOnPosition() async {
+    await _centerOnVessel();
+  }
+
+  /// Center the chart on the current vessel position
+  void _centerOnVessel() async {
     try {
-      // TODO: Integrate with GPS service to get actual position
-      // For now, just show a message indicating GPS integration is in progress
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'GPS service implemented - integration with chart display coming soon',
-          ),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      final gpsPosition = await ref.read(gpsPositionProvider.future);
+      
+      if (gpsPosition != null) {
+        setState(() {
+          _center = LatLng(gpsPosition.latitude, gpsPosition.longitude);
+        });
+        widget.onPositionChanged?.call(_center);
+        
+        // Show confirmation
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Centered on vessel position'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        // Try to get position with fallback (Seattle)
+        final gpsService = ref.read(gpsServiceProvider);
+        final fallbackPosition = await gpsService.getCurrentPositionWithFallback();
+        
+        if (fallbackPosition != null) {
+          setState(() {
+            _center = LatLng(fallbackPosition.latitude, fallbackPosition.longitude);
+          });
+          widget.onPositionChanged?.call(_center);
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Centered on fallback position (GPS unavailable)'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('GPS position not available'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      }
     } catch (error) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Error accessing GPS position'),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error accessing GPS position: $error'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
