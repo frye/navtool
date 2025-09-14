@@ -1,8 +1,8 @@
 import '../models/chart.dart';
 import '../models/geographic_bounds.dart';
 
-/// Washington State chart test data using existing Elliott Bay test charts
-/// Based on actual NOAA test fixtures in test/fixtures/charts/noaa_enc/
+/// Washington State chart test data using real S57 ENC test fixtures
+/// Based on actual NOAA S57 charts in test/fixtures/charts/s57_data/ENC_ROOT/
 class WashingtonTestCharts {
   /// Elliott Bay test charts with real file data available
   static final List<Chart> _elliottBayCharts = [
@@ -21,7 +21,7 @@ class WashingtonTestCharts {
       type: ChartType.harbor,
       description: 'Harbor-scale chart covering Elliott Bay and Seattle Harbor',
       isDownloaded: true,
-      fileSize: 147361, // 143.9 KB from test fixtures
+      fileSize: 411513, // Raw S57 .000 file size from actual fixture
       edition: 1,
       updateNumber: 0,
       source: ChartSource.noaa,
@@ -44,7 +44,7 @@ class WashingtonTestCharts {
       type: ChartType.coastal,
       description: 'Coastal-scale chart covering broader Puget Sound region',
       isDownloaded: true,
-      fileSize: 640268, // 625.3 KB from test fixtures
+      fileSize: 1583161, // Raw S57 .000 file size from actual fixture
       edition: 1,
       updateNumber: 0,
       source: ChartSource.noaa,
@@ -171,13 +171,13 @@ class WashingtonTestCharts {
     return _elliottBayCharts.any((chart) => chart.id == chartId);
   }
   
-  /// Get the file path for a real Elliott Bay test chart
+  /// Get the file path for a real S57 ENC test chart
   static String? getTestChartPath(String chartId) {
     switch (chartId) {
       case 'US5WA50M':
-        return 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip';
+        return 'test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000';
       case 'US3WA01M':
-        return 'test/fixtures/charts/noaa_enc/US3WA01M_coastal_puget_sound.zip';
+        return 'test/fixtures/charts/s57_data/ENC_ROOT/US3WA01M/US3WA01M.000';
       default:
         return null;
     }

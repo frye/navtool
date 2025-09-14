@@ -22,10 +22,10 @@ void main() {
     late ChartStorageAnalyzer analyzer;
     late AppLogger logger;
 
-    // Test chart paths
-    final testChartsPath = 'test/fixtures/charts/noaa_enc';
-    final harborChartPath = '$testChartsPath/US5WA50M_harbor_elliott_bay.zip';
-    final coastalChartPath = '$testChartsPath/US3WA01M_coastal_puget_sound.zip';
+    // Test chart paths - updated to real S57 .000 files
+    final testChartsPath = 'test/fixtures/charts/s57_data/ENC_ROOT';
+    final harborChartPath = '$testChartsPath/US5WA50M/US5WA50M.000';
+    final coastalChartPath = '$testChartsPath/US3WA01M/US3WA01M.000';
 
     setUpAll(() {
       sqfliteFfiInit();

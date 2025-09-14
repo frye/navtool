@@ -565,7 +565,7 @@ class _ChartScreenState extends State<ChartScreen> {
                     'Test fixture: ${_getElliottBayTestPath(widget.chart!.id) ?? 'Not available'}',
                   ]),
                   _buildDiagnosticSection('Troubleshooting Steps', [
-                    '1. Verify test data files exist in test/fixtures/charts/noaa_enc/',
+                    '1. Verify test data files exist in test/fixtures/charts/s57_data/ENC_ROOT/',
                     '2. Check that ZIP files contain .000 S-57 data files',
                     '3. Ensure archive package is properly installed',
                     '4. Run Elliott Bay rendering tests to validate pipeline',
@@ -995,13 +995,13 @@ class _ChartScreenState extends State<ChartScreen> {
   
   /// Get test fixture path for Elliott Bay charts (fallback for development)
   String? _getElliottBayTestPath(String chartId) {
-    // Map Elliott Bay chart IDs to actual test fixture ZIP files
+    // Map Elliott Bay chart IDs to actual S57 .000 files
     return switch (chartId) {
-      'US5WA50M' => 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip',
-      'US3WA01M' => 'test/fixtures/charts/noaa_enc/US3WA01M_coastal_puget_sound.zip',
-      // Add other Elliott Bay chart variations
-      'US5WA17M' => 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip', // Alias for harbor chart
-      'US5WA18M' => 'test/fixtures/charts/noaa_enc/US3WA01M_coastal_puget_sound.zip', // Alias for approach chart
+      'US5WA50M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000',
+      'US3WA01M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US3WA01M/US3WA01M.000',
+      // Add other Elliott Bay chart variations (aliases)
+      'US5WA17M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000', // Alias for harbor chart
+      'US5WA18M' => 'test/fixtures/charts/s57_data/ENC_ROOT/US3WA01M/US3WA01M.000', // Alias for approach chart
       _ => null,
     };
   }

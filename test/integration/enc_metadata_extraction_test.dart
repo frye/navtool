@@ -14,7 +14,7 @@ void main() {
       tester,
     ) async {
       const testChartPath =
-          'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip';
+          'test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000';
 
       // Test metadata extraction from filename (works without parsing large file)
       final cellId = testChartPath.split('/').last.split('_')[0];

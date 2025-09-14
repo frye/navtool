@@ -105,7 +105,7 @@ void main() {
       if (!hasEnvVar) {
         expect(
           fixtures.fixturesPath,
-          equals('test/fixtures/charts/noaa_enc'),
+          equals('test/fixtures/charts/s57_data/ENC_ROOT'),
           reason: 'Should use default path when environment variable not set',
         );
         print('Using default fixtures path (no NOAA_ENC_FIXTURES set)');
@@ -128,8 +128,8 @@ void main() {
         print('  1. Set NOAA_ENC_FIXTURES environment variable');
         print('  2. Download NOAA ENC charts to the specified directory');
         print('  3. Ensure charts are named correctly:');
-        print('     - US5WA50M_harbor_elliott_bay.zip (or similar)');
-        print('     - US3WA01M_coastal_puget_sound.zip (or similar)');
+        print('     - US5WA50M/US5WA50M.000 (Elliott Bay S57 chart)');
+        print('     - US3WA01M/US3WA01M.000 (Puget Sound S57 chart)');
         return;
       }
 
@@ -243,7 +243,7 @@ void main() {
       );
       print('');
       print('Default Path:');
-      print('  test/fixtures/charts/noaa_enc/');
+      print('  test/fixtures/charts/s57_data/ENC_ROOT/');
       print('');
       print('Download Sources:');
       print('  - NOAA ENC Portal: https://charts.noaa.gov/ENCs/');

@@ -54,7 +54,7 @@ class _TestLoggerAdapter implements AppLogger {
 /// and regression testing for real NOAA ENC files.
 class EncTestUtilities {
   static const String _defaultFixturesEnvVar = 'NOAA_ENC_FIXTURES';
-  static const String _defaultFixturesPath = 'test/fixtures/charts/noaa_enc';
+  static const String _defaultFixturesPath = 'test/fixtures/charts/s57_data/ENC_ROOT';
   static const String _goldenSnapshotsPath = 'test/fixtures/golden';
   static const String _allowSnapshotGenEnvVar = 'ALLOW_SNAPSHOT_GEN';
 

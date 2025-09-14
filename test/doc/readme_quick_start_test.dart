@@ -9,8 +9,8 @@ import 'package:navtool/s57.dart';
 void main() {
   group('README Quick Start Documentation', () {
     test('quick start snippet executes successfully', () async {
-      // Use test fixture if available, skip test if not present
-      final testChartPath = 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip';
+      // Use real S57 chart file if available, skip test if not present
+      final testChartPath = 'test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000';
       final testFile = File(testChartPath);
       
       if (!testFile.existsSync()) {

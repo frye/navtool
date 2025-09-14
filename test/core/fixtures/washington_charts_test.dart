@@ -28,12 +28,12 @@ void main() {
       final us5wa50m = elliottBayCharts.firstWhere((c) => c.id == 'US5WA50M');
       expect(us5wa50m.title, contains('Elliott Bay Harbor'));
       expect(us5wa50m.type, equals(ChartType.harbor));
-      expect(us5wa50m.fileSize, equals(147361)); // Matches actual test file
+      expect(us5wa50m.fileSize, equals(411513)); // Real S57 .000 file size
       
       final us3wa01m = elliottBayCharts.firstWhere((c) => c.id == 'US3WA01M');
       expect(us3wa01m.title, contains('PUGET SOUND'));
       expect(us3wa01m.type, equals(ChartType.coastal));
-      expect(us3wa01m.fileSize, equals(640268)); // Matches actual test file
+      expect(us3wa01m.fileSize, equals(1583161)); // Real S57 .000 file size
     });
     
     test('should return charts for Washington state', () {
@@ -59,11 +59,11 @@ void main() {
     test('should return correct test chart paths', () {
       expect(
         WashingtonTestCharts.getTestChartPath('US5WA50M'), 
-        equals('test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip'),
+        equals('test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000'),
       );
       expect(
         WashingtonTestCharts.getTestChartPath('US3WA01M'),
-        equals('test/fixtures/charts/noaa_enc/US3WA01M_coastal_puget_sound.zip'),
+        equals('test/fixtures/charts/s57_data/ENC_ROOT/US3WA01M/US3WA01M.000'),
       );
       expect(WashingtonTestCharts.getTestChartPath('US1WC01M'), isNull);
       expect(WashingtonTestCharts.getTestChartPath('NONEXISTENT'), isNull);
