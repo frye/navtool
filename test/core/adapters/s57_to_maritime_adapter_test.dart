@@ -3,10 +3,69 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/adapters/s57_to_maritime_adapter.dart';
 import 'package:navtool/core/models/chart_models.dart';
 import 'package:navtool/core/services/s57/s57_models.dart';
+import '../../utils/s57_test_fixtures.dart';
 
 void main() {
   group('S57ToMaritimeAdapter', () {
-    group('convertFeatures', () {
+    late FixtureAvailability availability;
+    
+    setUpAll(() async {
+      availability = await S57TestFixtures.checkFixtureAvailability();
+    });
+
+    group('convertFeatures with Real Data', () {
+      test('should convert Elliott Bay S57 features to maritime features', () async {
+        if (!availability.elliottBayAvailable) {
+          print('Elliott Bay fixture not available - skipping test');
+          return;
+        }
+
+        // Load real Elliott Bay S57 data
+        final s57Data = await S57TestFixtures.loadParsedElliottBay();
+        
+        // Convert to maritime features
+        final result = S57ToMaritimeAdapter.convertFeatures(s57Data.features);
+        
+        expect(result, isNotEmpty);
+        
+        // Analyze conversion results
+        final conversionStats = <String, int>{};
+        for (final feature in result) {
+          final typeName = feature.type.toString();
+          conversionStats[typeName] = (conversionStats[typeName] ?? 0) + 1;
+        }
+        
+        print('Elliott Bay conversion stats: $conversionStats');
+        print('Converted ${result.length} maritime features from ${s57Data.features.length} S57 features');
+        
+        // Validate maritime features have required properties
+        for (final feature in result) {
+          expect(feature.coordinates, isNotEmpty);
+          expect(feature.type, isA<MaritimeFeatureType>());
+        }
+      });
+
+      test('should convert Puget Sound S57 features efficiently', () async {
+        if (!availability.pugetSoundAvailable) {
+          print('Puget Sound fixture not available - skipping test');
+          return;
+        }
+
+        // Load real Puget Sound S57 data
+        final s57Data = await S57TestFixtures.loadParsedPugetSound();
+        
+        final stopwatch = Stopwatch()..start();
+        final result = S57ToMaritimeAdapter.convertFeatures(s57Data.features);
+        stopwatch.stop();
+        
+        expect(result, isNotEmpty);
+        
+        print('Puget Sound conversion: ${result.length} maritime features from ${s57Data.features.length} S57 features in ${stopwatch.elapsedMilliseconds}ms');
+        
+        // Should convert efficiently even with larger dataset
+        expect(stopwatch.elapsedMilliseconds, lessThan(10000)); // 10 seconds max
+      });
+
       test('should convert empty list to empty list', () {
         final result = S57ToMaritimeAdapter.convertFeatures([]);
         expect(result, isEmpty);

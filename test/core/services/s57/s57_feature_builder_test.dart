@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:navtool/core/services/s57/s57_models.dart';
 import 'package:navtool/core/services/s57/s57_object_catalog.dart';
 import 'package:navtool/core/services/s57/s57_feature_builder.dart';
+import '../../utils/s57_test_fixtures.dart';
 
 void main() {
   group('S57FeatureBuilder', () {
@@ -293,6 +294,83 @@ void main() {
         S57FeatureBuilderFactory.reset();
         expect(S57FeatureBuilderFactory.objectCatalog, isNull);
         expect(S57FeatureBuilderFactory.attributeCatalog, isNull);
+      });
+    });
+
+    group('Real Data Integration', () {
+      late FixtureAvailability availability;
+      
+      setUpAll(() async {
+        availability = await S57TestFixtures.checkFixtureAvailability();
+      });
+
+      test('should validate real Elliott Bay features', () async {
+        if (!availability.elliottBayAvailable) {
+          print('Elliott Bay fixture not available - skipping test');
+          return;
+        }
+
+        final s57Data = await S57TestFixtures.loadParsedElliottBay();
+        
+        // Validate that real features follow expected patterns
+        expect(s57Data.features, isNotEmpty);
+        
+        var validFeatures = 0;
+        final featureTypeAnalysis = <S57FeatureType, int>{};
+        
+        for (final feature in s57Data.features) {
+          // Validate basic feature structure
+          expect(feature.recordId, greaterThan(0));
+          expect(feature.featureType, isA<S57FeatureType>());
+          expect(feature.geometryType, isA<S57GeometryType>());
+          expect(feature.coordinates, isNotEmpty);
+          expect(feature.attributes, isA<Map<String, dynamic>>());
+          
+          // Count feature types
+          featureTypeAnalysis[feature.featureType] = 
+              (featureTypeAnalysis[feature.featureType] ?? 0) + 1;
+          
+          validFeatures++;
+        }
+        
+        print('Elliott Bay feature validation: $validFeatures valid features');
+        print('Feature type distribution: $featureTypeAnalysis');
+        
+        expect(validFeatures, equals(s57Data.features.length));
+      });
+
+      test('should validate Puget Sound feature complexity', () async {
+        if (!availability.pugetSoundAvailable) {
+          print('Puget Sound fixture not available - skipping test');
+          return;
+        }
+
+        final s57Data = await S57TestFixtures.loadParsedPugetSound();
+        
+        // Puget Sound should have more diverse features
+        final featureTypes = s57Data.features.map((f) => f.featureType).toSet();
+        expect(featureTypes.length, greaterThan(3), 
+          reason: 'Coastal chart should have diverse feature types');
+        
+        // Analyze attribute complexity
+        var featuresWithAttributes = 0;
+        var totalAttributes = 0;
+        
+        for (final feature in s57Data.features) {
+          if (feature.attributes.isNotEmpty) {
+            featuresWithAttributes++;
+            totalAttributes += feature.attributes.length;
+          }
+        }
+        
+        print('Puget Sound attribute analysis: $featuresWithAttributes features with $totalAttributes total attributes');
+        
+        if (featuresWithAttributes > 0) {
+          final avgAttributes = totalAttributes / featuresWithAttributes;
+          print('Average attributes per feature: ${avgAttributes.toStringAsFixed(2)}');
+        }
+        
+        expect(s57Data.features, isNotEmpty);
       });
     });
   });
