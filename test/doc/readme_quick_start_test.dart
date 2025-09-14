@@ -9,13 +9,25 @@ import 'package:navtool/s57.dart';
 void main() {
   group('README Quick Start Documentation', () {
     test('quick start snippet executes successfully', () async {
-      // Use test fixture if available, skip test if not present
-      final testChartPath = 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip';
-      final testFile = File(testChartPath);
+      // Use test fixture if available, prefer S57 over ZIP format
+      final testChartS57Path = 'test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000';
+      final testChartZipPath = 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip';
       
-      if (!testFile.existsSync()) {
+      File? testFile;
+      String? testChartPath;
+      
+      if (File(testChartS57Path).existsSync()) {
+        testFile = File(testChartS57Path);
+        testChartPath = testChartS57Path;
+      } else if (File(testChartZipPath).existsSync()) {
+        testFile = File(testChartZipPath);
+        testChartPath = testChartZipPath;
+      }
+      
+      if (testFile == null) {
         print('⚠️  Test chart fixture not available, skipping doc test');
-        print('   Expected: $testChartPath');
+        print('   Checked S57: $testChartS57Path');
+        print('   Checked ZIP: $testChartZipPath');
         return; // Skip test gracefully
       }
 

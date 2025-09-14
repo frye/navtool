@@ -56,15 +56,25 @@ void main() {
       expect(WashingtonTestCharts.hasRealChartData('NONEXISTENT'), isFalse);
     });
     
-    test('should return correct test chart paths', () {
+    test('should return correct test chart paths (preferring S57 format)', () {
+      // Test that we get S57 paths when available
+      final us5wa50mPath = WashingtonTestCharts.getTestChartPath('US5WA50M');
+      final us3wa01mPath = WashingtonTestCharts.getTestChartPath('US3WA01M');
+      
+      // Should return S57 paths if available, ZIP paths if not
+      expect(us5wa50mPath, isNotNull);
+      expect(us3wa01mPath, isNotNull);
+      
+      // Test specific format paths
       expect(
-        WashingtonTestCharts.getTestChartPath('US5WA50M'), 
+        WashingtonTestCharts.getTestChartS57Path('US5WA50M'), 
+        equals('test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000'),
+      );
+      expect(
+        WashingtonTestCharts.getTestChartZipPath('US5WA50M'), 
         equals('test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip'),
       );
-      expect(
-        WashingtonTestCharts.getTestChartPath('US3WA01M'),
-        equals('test/fixtures/charts/noaa_enc/US3WA01M_coastal_puget_sound.zip'),
-      );
+      
       expect(WashingtonTestCharts.getTestChartPath('US1WC01M'), isNull);
       expect(WashingtonTestCharts.getTestChartPath('NONEXISTENT'), isNull);
     });

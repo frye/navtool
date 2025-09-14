@@ -136,17 +136,25 @@ void main() {
     });
 
     test('Elliott Bay ZIP extraction and S-57 parsing integration', () async {
-      // This test uses the test fixture ZIP files if available
+      // This test uses the test fixture files if available
       final elliottBayZip = File('test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip');
+      final elliottBayS57 = File('test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000');
       
-      if (!await elliottBayZip.exists()) {
-        print('Elliott Bay ZIP test fixture not available, skipping integration test');
+      List<int>? s57Bytes;
+      
+      if (await elliottBayS57.exists()) {
+        // Use S57 file directly (preferred)
+        s57Bytes = await elliottBayS57.readAsBytes();
+        print('Elliott Bay integration test: Using S57 file directly');
+      } else if (await elliottBayZip.exists()) {
+        // Fallback to ZIP extraction
+        final zipBytes = await elliottBayZip.readAsBytes();
+        s57Bytes = await ZipExtractor.extractS57FromZip(zipBytes, 'US5WA50M');
+        print('Elliott Bay integration test: Using ZIP extraction');
+      } else {
+        print('Elliott Bay test fixtures not available, skipping integration test');
         return;
       }
-      
-      // Extract S-57 data from ZIP
-      final zipBytes = await elliottBayZip.readAsBytes();
-      final s57Bytes = await ZipExtractor.extractS57FromZip(zipBytes, 'US5WA50M');
       
       expect(s57Bytes, isNotNull, reason: 'Should extract S-57 data from Elliott Bay ZIP');
       expect(s57Bytes!.length, greaterThan(1000), reason: 'Extracted S-57 data should be substantial');

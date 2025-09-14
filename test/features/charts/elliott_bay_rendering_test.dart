@@ -17,48 +17,77 @@ void main() {
   group('Elliott Bay Chart Rendering Pipeline', () {
     late File elliottBayZipFile;
     late File pugetSoundZipFile;
+    late File elliottBayS57File;
+    late File pugetSoundS57File;
     
     setUpAll(() async {
-      // Verify test data files exist
+      // Check both ZIP and S57 formats for test data files
       elliottBayZipFile = File('test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip');
       pugetSoundZipFile = File('test/fixtures/charts/noaa_enc/US3WA01M_coastal_puget_sound.zip');
+      elliottBayS57File = File('test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000');
+      pugetSoundS57File = File('test/fixtures/charts/s57_data/ENC_ROOT/US3WA01M/US3WA01M.000');
       
       print('[ElliottBayTest] Checking test data availability:');
       print('[ElliottBayTest] Elliott Bay ZIP exists: ${await elliottBayZipFile.exists()}');
       print('[ElliottBayTest] Puget Sound ZIP exists: ${await pugetSoundZipFile.exists()}');
+      print('[ElliottBayTest] Elliott Bay S57 exists: ${await elliottBayS57File.exists()}');
+      print('[ElliottBayTest] Puget Sound S57 exists: ${await pugetSoundS57File.exists()}');
     });
     
-    group('ZIP File Extraction', () {
-      test('should extract S-57 data from Elliott Bay ZIP', () async {
-        if (!await elliottBayZipFile.exists()) {
-          fail('Elliott Bay test data not found: ${elliottBayZipFile.path}');
+    group('Chart Data Extraction', () {
+      test('should extract S-57 data from Elliott Bay chart (ZIP or S57)', () async {
+        List<int>? s57Bytes;
+        String? dataSource;
+        
+        if (await elliottBayS57File.exists()) {
+          // Use S57 file directly (preferred)
+          s57Bytes = await elliottBayS57File.readAsBytes();
+          dataSource = 'S57 file';
+        } else if (await elliottBayZipFile.exists()) {
+          // Fallback to ZIP extraction
+          final zipBytes = await elliottBayZipFile.readAsBytes();
+          expect(zipBytes.length, greaterThan(1000)); // Sanity check ZIP file size
+          
+          print('[ElliottBayTest] Elliott Bay ZIP size: ${zipBytes.length} bytes');
+          
+          // Debug: List ZIP contents
+          final zipListing = ZipExtractor.getZipListing(zipBytes);
+          print('[ElliottBayTest] Elliott Bay ZIP contents:');
+          for (String entry in zipListing) {
+            print('[ElliottBayTest]   - $entry');
+          }
+          
+          s57Bytes = ZipExtractor.extractS57FromZip(zipBytes, 'US5WA50M');
+          dataSource = 'ZIP file';
+        } else {
+          fail('Elliott Bay test data not found. Checked both ZIP and S57 formats.');
         }
         
-        final zipBytes = await elliottBayZipFile.readAsBytes();
-        expect(zipBytes.length, greaterThan(1000)); // Sanity check ZIP file size
-        
-        print('[ElliottBayTest] Elliott Bay ZIP size: ${zipBytes.length} bytes');
-        
-        // Debug: List ZIP contents
-        final zipListing = ZipExtractor.getZipListing(zipBytes);
-        print('[ElliottBayTest] Elliott Bay ZIP contents:');
-        for (final item in zipListing) {
-          print('[ElliottBayTest]   $item');
-        }
-        
-        // Extract S-57 data
-        final s57Bytes = await ZipExtractor.extractS57FromZip(zipBytes, 'US5WA50M');
-        
-        expect(s57Bytes, isNotNull, reason: 'Should extract S-57 .000 file from Elliott Bay ZIP');
-        expect(s57Bytes!.length, greaterThan(1000), reason: 'S-57 file should have reasonable size');
-        
-        print('[ElliottBayTest] Extracted S-57 data: ${s57Bytes.length} bytes');
+        expect(s57Bytes, isNotNull);
+        expect(s57Bytes!.length, greaterThan(1000)); // S-57 files should be substantial
+        print('[ElliottBayTest] Elliott Bay S-57 data extracted from $dataSource: ${s57Bytes.length} bytes');
       });
       
-      test('should extract S-57 data from Puget Sound ZIP', () async {
-        if (!await pugetSoundZipFile.exists()) {
-          fail('Puget Sound test data not found: ${pugetSoundZipFile.path}');
+      test('should extract S-57 data from Puget Sound chart (ZIP or S57)', () async {
+        List<int>? s57Bytes;
+        String? dataSource;
+        
+        if (await pugetSoundS57File.exists()) {
+          // Use S57 file directly (preferred)
+          s57Bytes = await pugetSoundS57File.readAsBytes();
+          dataSource = 'S57 file';
+        } else if (await pugetSoundZipFile.exists()) {
+          // Fallback to ZIP extraction
+          final zipBytes = await pugetSoundZipFile.readAsBytes();
+          s57Bytes = ZipExtractor.extractS57FromZip(zipBytes, 'US3WA01M');
+          dataSource = 'ZIP file';
+        } else {
+          fail('Puget Sound test data not found. Checked both ZIP and S57 formats.');
         }
+        
+        expect(s57Bytes, isNotNull);
+        expect(s57Bytes!.length, greaterThan(1000)); // S-57 files should be substantial
+        print('[ElliottBayTest] Puget Sound S-57 data extracted from $dataSource: ${s57Bytes.length} bytes');
         
         final zipBytes = await pugetSoundZipFile.readAsBytes();
         expect(zipBytes.length, greaterThan(1000));

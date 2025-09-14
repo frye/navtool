@@ -54,17 +54,20 @@ class _TestLoggerAdapter implements AppLogger {
 /// and regression testing for real NOAA ENC files.
 class EncTestUtilities {
   static const String _defaultFixturesEnvVar = 'NOAA_ENC_FIXTURES';
-  static const String _defaultFixturesPath = 'test/fixtures/charts/noaa_enc';
+  static const String _defaultFixturesPath = 'test/fixtures/charts/s57_data/ENC_ROOT';
+  static const String _legacyZipPath = 'test/fixtures/charts/noaa_enc';
   static const String _goldenSnapshotsPath = 'test/fixtures/golden';
   static const String _allowSnapshotGenEnvVar = 'ALLOW_SNAPSHOT_GEN';
 
   /// Primary test chart (Harbor usage band 5)
   static const String primaryChartId = 'US5WA50M';
-  static const String primaryChartFile = 'US5WA50M_harbor_elliott_bay.zip';
+  static const String primaryChartFile = 'US5WA50M.000';
+  static const String primaryChartZipFile = 'US5WA50M_harbor_elliott_bay.zip';
 
   /// Secondary test chart (Coastal usage band 3)
   static const String secondaryChartId = 'US3WA01M';
-  static const String secondaryChartFile = 'US3WA01M_coastal_puget_sound.zip';
+  static const String secondaryChartFile = 'US3WA01M.000';
+  static const String secondaryChartZipFile = 'US3WA01M_coastal_puget_sound.zip';
 
   final CompressionService _compressionService;
 
@@ -83,11 +86,33 @@ class EncTestUtilities {
       return FixtureDiscoveryResult.notFound(fixturesPath);
     }
 
-    final primaryFile = File('$fixturesPath/$primaryChartFile');
-    final secondaryFile = File('$fixturesPath/$secondaryChartFile');
+    final primaryFile = File('$fixturesPath/$primaryChartId/$primaryChartFile');
+    final secondaryFile = File('$fixturesPath/$secondaryChartId/$secondaryChartFile');
 
     return FixtureDiscoveryResult(
       fixturesPath: fixturesPath,
+      primaryChartAvailable: primaryFile.existsSync(),
+      secondaryChartAvailable: secondaryFile.existsSync(),
+      primaryChartPath: primaryFile.existsSync() ? primaryFile.path : null,
+      secondaryChartPath: secondaryFile.existsSync()
+          ? secondaryFile.path
+          : null,
+    );
+  }
+  
+  /// Discover legacy ZIP format fixtures  
+  static FixtureDiscoveryResult discoverZipFixtures() {
+    final fixturesDir = Directory(_legacyZipPath);
+
+    if (!fixturesDir.existsSync()) {
+      return FixtureDiscoveryResult.notFound(_legacyZipPath);
+    }
+
+    final primaryFile = File('$_legacyZipPath/$primaryChartZipFile');
+    final secondaryFile = File('$_legacyZipPath/$secondaryChartZipFile');
+
+    return FixtureDiscoveryResult(
+      fixturesPath: _legacyZipPath,
       primaryChartAvailable: primaryFile.existsSync(),
       secondaryChartAvailable: secondaryFile.existsSync(),
       primaryChartPath: primaryFile.existsSync() ? primaryFile.path : null,
@@ -144,6 +169,38 @@ class EncTestUtilities {
         rethrow;
       }
       throw Exception('Failed to extract/parse chart $chartId: $e');
+    }
+  }
+
+  /// Parse S-57 chart data directly from extracted S57 file with timeout
+  Future<S57ParsedData> parseChartFile(String s57FilePath) async {
+    final s57File = File(s57FilePath);
+    if (!s57File.existsSync()) {
+      throw FileSystemException('S57 chart file not found', s57FilePath);
+    }
+
+    final s57Data = await s57File.readAsBytes();
+    final chartId = _extractChartIdFromFilename(s57FilePath);
+
+    try {
+      // Parse with timeout to prevent hanging
+      return Future(() {
+        return S57Parser.parse(s57Data);
+      }).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw TimeoutException(
+          'S57 parsing timed out',
+          const Duration(seconds: 30),
+        ),
+      );
+    } catch (e) {
+      if (e is TimeoutException) {
+        testLogger.warn(
+          'Chart parsing timed out for $chartId - this is a known performance limitation',
+        );
+        rethrow;
+      }
+      throw Exception('Failed to parse chart $chartId: $e');
     }
   }
 

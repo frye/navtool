@@ -172,7 +172,32 @@ class WashingtonTestCharts {
   }
   
   /// Get the file path for a real Elliott Bay test chart
+  /// Get test chart path, preferring S57 format over ZIP
   static String? getTestChartPath(String chartId) {
+    // Check S57 format first (preferred)
+    final s57Path = getTestChartS57Path(chartId);
+    if (s57Path != null) {
+      return s57Path;
+    }
+    
+    // Fallback to legacy ZIP format
+    return getTestChartZipPath(chartId);
+  }
+  
+  /// Get S57 format test chart path
+  static String? getTestChartS57Path(String chartId) {
+    switch (chartId) {
+      case 'US5WA50M':
+        return 'test/fixtures/charts/s57_data/ENC_ROOT/US5WA50M/US5WA50M.000';
+      case 'US3WA01M':
+        return 'test/fixtures/charts/s57_data/ENC_ROOT/US3WA01M/US3WA01M.000';
+      default:
+        return null;
+    }
+  }
+  
+  /// Get legacy ZIP format test chart path
+  static String? getTestChartZipPath(String chartId) {
     switch (chartId) {
       case 'US5WA50M':
         return 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip';
