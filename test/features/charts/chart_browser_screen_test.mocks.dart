@@ -6,13 +6,14 @@
 import 'dart:async' as _i5;
 
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:navtool/core/error/app_error.dart' as _i9;
-import 'package:navtool/core/logging/app_logger.dart' as _i8;
+import 'package:navtool/core/error/app_error.dart' as _i10;
+import 'package:navtool/core/logging/app_logger.dart' as _i9;
 import 'package:navtool/core/models/chart.dart' as _i6;
 import 'package:navtool/core/models/gps_position.dart' as _i7;
 import 'package:navtool/core/models/gps_signal_quality.dart' as _i2;
 import 'package:navtool/core/models/position_history.dart' as _i3;
-import 'package:navtool/core/services/gps_service.dart' as _i10;
+import 'package:navtool/core/services/gps_service.dart' as _i11;
+import 'package:navtool/core/services/noaa/chart_catalog_service.dart' as _i8;
 import 'package:navtool/core/services/noaa/noaa_chart_discovery_service.dart'
     as _i4;
 
@@ -130,10 +131,89 @@ class MockNoaaChartDiscoveryService extends _i1.Mock
           as _i5.Future<int>);
 }
 
+/// A class which mocks [ChartCatalogService].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockChartCatalogService extends _i1.Mock
+    implements _i8.ChartCatalogService {
+  MockChartCatalogService() {
+    _i1.throwOnMissingStub(this);
+  }
+
+  @override
+  _i5.Future<_i6.Chart?> getCachedChart(String? chartId) =>
+      (super.noSuchMethod(
+            Invocation.method(#getCachedChart, [chartId]),
+            returnValue: _i5.Future<_i6.Chart?>.value(),
+          )
+          as _i5.Future<_i6.Chart?>);
+
+  @override
+  _i5.Future<void> cacheChart(_i6.Chart? chart) =>
+      (super.noSuchMethod(
+            Invocation.method(#cacheChart, [chart]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<_i6.Chart?> getChartById(String? chartId) =>
+      (super.noSuchMethod(
+            Invocation.method(#getChartById, [chartId]),
+            returnValue: _i5.Future<_i6.Chart?>.value(),
+          )
+          as _i5.Future<_i6.Chart?>);
+
+  @override
+  _i5.Future<List<_i6.Chart>> searchCharts(String? query) =>
+      (super.noSuchMethod(
+            Invocation.method(#searchCharts, [query]),
+            returnValue: _i5.Future<List<_i6.Chart>>.value(<_i6.Chart>[]),
+          )
+          as _i5.Future<List<_i6.Chart>>);
+
+  @override
+  _i5.Future<List<_i6.Chart>> searchChartsWithFilters(
+    String? query,
+    Map<String, String>? filters,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#searchChartsWithFilters, [query, filters]),
+            returnValue: _i5.Future<List<_i6.Chart>>.value(<_i6.Chart>[]),
+          )
+          as _i5.Future<List<_i6.Chart>>);
+
+  @override
+  _i5.Future<bool> refreshCatalog({bool? force = false}) =>
+      (super.noSuchMethod(
+            Invocation.method(#refreshCatalog, [], {#force: force}),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<void> ensureCatalogBootstrapped() =>
+      (super.noSuchMethod(
+            Invocation.method(#ensureCatalogBootstrapped, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<int> getCachedChartCount() =>
+      (super.noSuchMethod(
+            Invocation.method(#getCachedChartCount, []),
+            returnValue: _i5.Future<int>.value(0),
+          )
+          as _i5.Future<int>);
+}
+
 /// A class which mocks [AppLogger].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockAppLogger extends _i1.Mock implements _i8.AppLogger {
+class MockAppLogger extends _i1.Mock implements _i9.AppLogger {
   MockAppLogger() {
     _i1.throwOnMissingStub(this);
   }
@@ -183,7 +263,7 @@ class MockAppLogger extends _i1.Mock implements _i8.AppLogger {
       );
 
   @override
-  void logError(_i9.AppError? error) => super.noSuchMethod(
+  void logError(_i10.AppError? error) => super.noSuchMethod(
     Invocation.method(#logError, [error]),
     returnValueForMissingStub: null,
   );
@@ -192,7 +272,7 @@ class MockAppLogger extends _i1.Mock implements _i8.AppLogger {
 /// A class which mocks [GpsService].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockGpsService extends _i1.Mock implements _i10.GpsService {
+class MockGpsService extends _i1.Mock implements _i11.GpsService {
   MockGpsService() {
     _i1.throwOnMissingStub(this);
   }
