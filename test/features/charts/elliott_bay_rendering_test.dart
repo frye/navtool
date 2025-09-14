@@ -20,8 +20,8 @@ void main() {
     
     setUpAll(() async {
       // Verify test data files exist
-      elliottBayZipFile = File('test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip');
-      pugetSoundZipFile = File('test/fixtures/charts/noaa_enc/US3WA01M_coastal_puget_sound.zip');
+      elliottBayZipFile = File('test/fixtures/charts/s57_data/US5WA50M_harbor_elliott_bay.zip');
+      pugetSoundZipFile = File('test/fixtures/charts/s57_data/US3WA01M_coastal_puget_sound.zip');
       
       print('[ElliottBayTest] Checking test data availability:');
       print('[ElliottBayTest] Elliott Bay ZIP exists: ${await elliottBayZipFile.exists()}');

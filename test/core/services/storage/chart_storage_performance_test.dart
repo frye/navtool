@@ -28,7 +28,7 @@ void main() {
     late AppLogger logger;
     
     // Test chart data paths
-    final testChartsPath = 'test/fixtures/charts/noaa_enc';
+    final testChartsPath = 'test/fixtures/charts/s57_data';
     final harborChartPath = '$testChartsPath/US5WA50M_harbor_elliott_bay.zip';
     final coastalChartPath = '$testChartsPath/US3WA01M_coastal_puget_sound.zip';
 

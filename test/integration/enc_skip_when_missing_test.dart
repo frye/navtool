@@ -105,7 +105,7 @@ void main() {
       if (!hasEnvVar) {
         expect(
           fixtures.fixturesPath,
-          equals('test/fixtures/charts/noaa_enc'),
+          equals('test/fixtures/charts/s57_data'),
           reason: 'Should use default path when environment variable not set',
         );
         print('Using default fixtures path (no NOAA_ENC_FIXTURES set)');
@@ -243,7 +243,7 @@ void main() {
       );
       print('');
       print('Default Path:');
-      print('  test/fixtures/charts/noaa_enc/');
+      print('  test/fixtures/charts/s57_data/');
       print('');
       print('Download Sources:');
       print('  - NOAA ENC Portal: https://charts.noaa.gov/ENCs/');

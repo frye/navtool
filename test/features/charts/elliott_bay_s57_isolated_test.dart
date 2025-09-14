@@ -137,7 +137,7 @@ void main() {
 
     test('Elliott Bay ZIP extraction and S-57 parsing integration', () async {
       // This test uses the test fixture ZIP files if available
-      final elliottBayZip = File('test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip');
+      final elliottBayZip = File('test/fixtures/charts/s57_data/US5WA50M_harbor_elliott_bay.zip');
       
       if (!await elliottBayZip.exists()) {
         print('Elliott Bay ZIP test fixture not available, skipping integration test');

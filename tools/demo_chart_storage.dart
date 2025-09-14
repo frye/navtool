@@ -66,12 +66,12 @@ Future<void> main() async {
   print('✅ Storage service initialized');
   
   // Test chart paths
-  final harborChartPath = 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip';
+  final harborChartPath = 'test/fixtures/charts/s57_data/US5WA50M_harbor_elliott_bay.zip';
   final harborFile = File(harborChartPath);
   
   if (!await harborFile.exists()) {
     print('❌ Test chart not found: $harborChartPath');
-    print('   Download from: test/fixtures/charts/noaa_enc/README.md');
+    print('   Download from: test/fixtures/charts/s57_data/README.md');
     return;
   }
   

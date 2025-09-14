@@ -10,7 +10,7 @@ void main() {
   group('README Quick Start Documentation', () {
     test('quick start snippet executes successfully', () async {
       // Use test fixture if available, skip test if not present
-      final testChartPath = 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip';
+      final testChartPath = 'test/fixtures/charts/s57_data/US5WA50M_harbor_elliott_bay.zip';
       final testFile = File(testChartPath);
       
       if (!testFile.existsSync()) {

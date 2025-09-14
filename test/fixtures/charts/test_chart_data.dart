@@ -1,31 +1,39 @@
 import 'dart:io';
 import 'package:path/path.dart' as path;
+import '../utils/fixture_paths.dart';
 
 /// Test chart data paths and utilities for accessing NOAA ENC test fixtures
+/// 
+/// DEPRECATED: Use FixturePaths.ChartPaths constants instead for new code.
+/// This class is maintained for backward compatibility only.
 class TestChartData {
-  static const String _baseFixturesPath = 'test/fixtures/charts/noaa_enc';
+  @Deprecated('Use FixturePaths.s57Data instead')
+  static const String _baseFixturesPath = 'test/fixtures/charts/s57_data';
 
   /// Elliott Bay harbor-scale chart (US5WA50M)
-  static String get elliottBayHarborChart =>
-      path.join(_baseFixturesPath, 'US5WA50M_harbor_elliott_bay.zip');
+  @Deprecated('Use FixturePaths.ChartPaths.elliottBayZip instead')
+  static String get elliottBayHarborChart => FixturePaths.ChartPaths.elliottBayZip;
 
   /// Puget Sound coastal-scale chart (US3WA01M)
-  static String get pugetSoundCoastalChart =>
-      path.join(_baseFixturesPath, 'US3WA01M_coastal_puget_sound.zip');
+  @Deprecated('Use FixturePaths.ChartPaths.pugetSoundZip instead')
+  static String get pugetSoundCoastalChart => FixturePaths.ChartPaths.pugetSoundZip;
 
   /// Get absolute path to chart fixture
+  @Deprecated('Use FixtureUtils.getAbsolutePath instead')
   static String getAbsolutePath(String relativePath) {
-    return path.join(Directory.current.path, relativePath);
+    return FixtureUtils.getAbsolutePath(relativePath);
   }
 
   /// Verify chart fixture exists
+  @Deprecated('Use FixtureUtils.exists instead')
   static bool chartExists(String chartPath) {
-    return File(getAbsolutePath(chartPath)).existsSync();
+    return FixtureUtils.exists(chartPath);
   }
 
   /// Get all available test chart paths
+  @Deprecated('Use FixturePaths.ChartPaths constants instead')
   static List<String> getAllTestCharts() {
-    return [elliottBayHarborChart, pugetSoundCoastalChart];
+    return [FixturePaths.ChartPaths.elliottBayZip, FixturePaths.ChartPaths.pugetSoundZip];
   }
 
   /// Chart metadata for test validation

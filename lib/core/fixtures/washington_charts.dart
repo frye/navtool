@@ -2,7 +2,7 @@ import '../models/chart.dart';
 import '../models/geographic_bounds.dart';
 
 /// Washington State chart test data using existing Elliott Bay test charts
-/// Based on actual NOAA test fixtures in test/fixtures/charts/noaa_enc/
+/// Based on actual NOAA test fixtures in test/fixtures/charts/s57_data/
 class WashingtonTestCharts {
   /// Elliott Bay test charts with real file data available
   static final List<Chart> _elliottBayCharts = [
@@ -175,9 +175,9 @@ class WashingtonTestCharts {
   static String? getTestChartPath(String chartId) {
     switch (chartId) {
       case 'US5WA50M':
-        return 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip';
+        return 'test/fixtures/charts/s57_data/US5WA50M_harbor_elliott_bay.zip';
       case 'US3WA01M':
-        return 'test/fixtures/charts/noaa_enc/US3WA01M_coastal_puget_sound.zip';
+        return 'test/fixtures/charts/s57_data/US3WA01M_coastal_puget_sound.zip';
       default:
         return null;
     }

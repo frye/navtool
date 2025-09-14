@@ -59,11 +59,11 @@ void main() {
     test('should return correct test chart paths', () {
       expect(
         WashingtonTestCharts.getTestChartPath('US5WA50M'), 
-        equals('test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip'),
+        equals('test/fixtures/charts/s57_data/US5WA50M_harbor_elliott_bay.zip'),
       );
       expect(
         WashingtonTestCharts.getTestChartPath('US3WA01M'),
-        equals('test/fixtures/charts/noaa_enc/US3WA01M_coastal_puget_sound.zip'),
+        equals('test/fixtures/charts/s57_data/US3WA01M_coastal_puget_sound.zip'),
       );
       expect(WashingtonTestCharts.getTestChartPath('US1WC01M'), isNull);
       expect(WashingtonTestCharts.getTestChartPath('NONEXISTENT'), isNull);
