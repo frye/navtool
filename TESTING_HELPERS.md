@@ -1,6 +1,41 @@
 # Testing Helpers & Reliability Utilities
 
-This document summarizes the timing, flakiness, and filesystem mitigation helpers introduced during Phases D3 and E.
+This document summarizes the timing, flakiness, and filesystem mitigation helpers introduced during Phases D3 and E, plus the new S57TestFixtures utility for real NOAA ENC data testing.
+
+## S57TestFixtures Utility (Real NOAA ENC Data)
+
+### Overview
+The `S57TestFixtures` utility (`test/utils/s57_test_fixtures.dart`) provides access to real NOAA Electronic Navigational Chart (ENC) S57 sample data, replacing artificial/synthetic chart data for improved test validity in marine navigation safety.
+
+### Available Real S57 Charts
+- **Elliott Bay Harbor (US5WA50M)**: 411KB harbor-scale chart for detailed navigation testing
+- **Puget Sound Coastal (US3WA01M)**: 1.58MB coastal-scale chart for broad area testing
+
+### Key Features
+- **Parsed Chart Caching**: Avoids expensive re-parsing during test execution
+- **Metadata Validation**: Ensures charts meet marine navigation standards
+- **Error Handling**: Graceful handling of missing fixtures in CI environments
+- **Geographic Bounds**: Automatic calculation and validation of chart coverage
+
+### Usage Patterns
+```dart
+// Load parsed chart with caching
+final chartData = await S57TestFixtures.loadParsedElliottBay();
+
+// Validate chart metadata
+S57TestFixtures.validateChartMetadata(chartData, ChartType.harbor);
+
+// Get specific feature types
+final beacons = S57TestFixtures.getFeaturesOfType(chartData, S57FeatureType.beacon);
+```
+
+### Migration from Synthetic Data
+- **MANDATE**: New marine navigation tests MUST use real S57 data via `S57TestFixtures`
+- **Legacy Support**: Existing tests using `TestFixtures.createTestChart()` should migrate incrementally
+- **Safety Critical**: Real NOAA ENC data provides authentic marine navigation scenarios
+
+### Documentation
+See `docs/S57_TEST_FIXTURES_USAGE.md` for comprehensive usage guide and migration patterns.
 
 ## Timing & Flakiness
 
