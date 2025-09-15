@@ -15,6 +15,9 @@ import '../../core/adapters/s57_to_maritime_adapter.dart';
 import '../../core/utils/zip_extractor.dart';
 import 'chart_widget.dart';
 
+// Import S57TestFixtures for reliable real data access
+import '../../../test/utils/s57_test_fixtures.dart';
+
 /// Screen that displays maritime charts with navigation controls
 class ChartScreen extends StatefulWidget {
   final Chart?
@@ -918,62 +921,82 @@ class _ChartScreenState extends State<ChartScreen> {
     ];
   }
   
-  /// Load S-57 chart data for the given chart
+  /// Load S-57 chart data for the given chart using S57TestFixtures
   Future<List<int>?> _loadChartData(Chart chart) async {
-    print('[ChartScreen] Loading chart data for ${chart.id}');
+    print('[ChartScreen] Loading chart data for ${chart.id} using S57TestFixtures');
     
     try {
-      // Phase 1 Implementation: Load Elliott Bay charts from assets
-      final assetPath = _getElliottBayAssetPath(chart.id);
-      if (assetPath != null) {
-        print('[ChartScreen] Loading chart from asset: $assetPath');
+      // Use S57TestFixtures for consistent, reliable data access
+      final chartData = await S57TestFixtures.loadChartById(chart.id);
+      
+      if (chartData != null && chartData.isNotEmpty) {
+        print('[ChartScreen] Successfully loaded ${chartData.length} bytes from S57TestFixtures');
+        print('[ChartScreen] Chart description: ${S57TestFixtures.getChartDescription(chart.id)}');
+        return chartData;
+      } else {
+        print('[ChartScreen] S57TestFixtures returned null/empty data for ${chart.id}');
         
-        try {
-          // Load from asset bundle for reliable runtime access
-          final ByteData byteData = await rootBundle.load(assetPath);
-          final List<int> bytes = byteData.buffer.asUint8List();
-          
-          print('[ChartScreen] Successfully loaded ${bytes.length} bytes from asset bundle');
-          return bytes;
-        } catch (assetError) {
-          print('[ChartScreen] Asset loading failed: $assetError, trying fallback');
+        // Check if chart is supported
+        final availableCharts = S57TestFixtures.getAvailableCharts();
+        if (!availableCharts.contains(chart.id)) {
+          print('[ChartScreen] Chart ${chart.id} not supported. Available: ${availableCharts.join(', ')}');
+        } else {
+          print('[ChartScreen] Chart ${chart.id} should be supported but data loading failed');
         }
       }
       
-      // Fallback: Try test fixture path for development
-      print('[ChartScreen] Trying test fixture fallback for ${chart.id}');
+      // Legacy fallback for backward compatibility (only if S57TestFixtures fails)
+      print('[ChartScreen] Attempting legacy fallback for ${chart.id}');
+      return await _loadChartDataLegacy(chart);
+      
+    } catch (e, stackTrace) {
+      print('[ChartScreen] ERROR loading chart data via S57TestFixtures: $e');
+      print('[ChartScreen] Stack trace: $stackTrace');
+      
+      // Fallback to legacy method
+      print('[ChartScreen] Falling back to legacy data loading');
+      return await _loadChartDataLegacy(chart);
+    }
+  }
+  
+  /// Legacy chart data loading method (fallback only)
+  Future<List<int>?> _loadChartDataLegacy(Chart chart) async {
+    print('[ChartScreen] Legacy chart data loading for ${chart.id}');
+    
+    try {
+      // Try test fixture path for development/testing environments
       final testPath = _getElliottBayTestPath(chart.id);
       if (testPath != null) {
         final file = File(testPath);
         if (await file.exists()) {
-          print('[ChartScreen] Loading chart from test fixture: $testPath');
+          print('[ChartScreen] Loading chart from legacy test fixture: $testPath');
           final zipBytes = await file.readAsBytes();
-          print('[ChartScreen] Successfully loaded ${zipBytes.length} bytes from test fixture');
+          print('[ChartScreen] Successfully loaded ${zipBytes.length} bytes from legacy test fixture');
           
           // Extract S-57 data from ZIP archive
           final s57Bytes = await ZipExtractor.extractS57FromZip(zipBytes, chart.id);
           if (s57Bytes != null) {
-            print('[ChartScreen] Successfully extracted ${s57Bytes.length} bytes of S-57 data from ZIP');
+            print('[ChartScreen] Successfully extracted ${s57Bytes.length} bytes of S-57 data from ZIP (legacy)');
             return s57Bytes;
           } else {
-            print('[ChartScreen] Failed to extract S-57 data from ZIP archive');
+            print('[ChartScreen] Failed to extract S-57 data from ZIP archive (legacy)');
             
             // Debug: List ZIP contents
             final zipListing = ZipExtractor.getZipListing(zipBytes);
-            print('[ChartScreen] ZIP contents:');
+            print('[ChartScreen] ZIP contents (legacy debug):');
             for (final item in zipListing) {
               print('[ChartScreen]   $item');
             }
           }
         } else {
-          print('[ChartScreen] Test fixture file does not exist: $testPath');
+          print('[ChartScreen] Legacy test fixture file does not exist: $testPath');
         }
       }
       
-      print('[ChartScreen] No chart data source found for ${chart.id}');
+      print('[ChartScreen] No legacy chart data source found for ${chart.id}');
       
     } catch (e, stackTrace) {
-      print('[ChartScreen] ERROR loading chart data for ${chart.id}: $e');
+      print('[ChartScreen] ERROR in legacy chart data loading for ${chart.id}: $e');
       print('[ChartScreen] Stack trace: $stackTrace');
     }
     
