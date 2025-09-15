@@ -156,6 +156,8 @@ class S57FeatureBuilder {
       S57FeatureType.coastline => 'Coastline',
       S57FeatureType.shoreline => 'Shoreline',
       S57FeatureType.landArea => 'Land Area',
+      S57FeatureType.shoreConstruction => 'Shore Construction',
+      S57FeatureType.builtArea => 'Built Area',
       S57FeatureType.obstruction => 'Obstruction',
       S57FeatureType.wreck => 'Wreck',
       S57FeatureType.underwater => 'Underwater Rock',
