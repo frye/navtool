@@ -19,7 +19,7 @@ class S57TestFixtures {
   static const String zipFixturesPath = 'test/fixtures/charts/noaa_enc';
   
   /// Cache for parsed chart data (performance optimization)
-  static final Map<String, S57Data> _parsedCache = {};
+  static final Map<String, S57ParsedData> _parsedCache = {};
   
   /// Cache for raw chart bytes (performance optimization)
   static final Map<String, List<int>> _bytesCache = {};
@@ -107,8 +107,8 @@ class S57TestFixtures {
   }
 
   /// Load parsed Elliott Bay chart (cached for performance)
-  /// Returns complete S57Data with all maritime features parsed
-  static Future<S57Data> loadParsedElliottBay() async {
+  /// Returns complete S57ParsedData with all maritime features parsed
+  static Future<S57ParsedData> loadParsedElliottBay() async {
     const cacheKey = 'US5WA50M_parsed';
     
     if (_parsedCache.containsKey(cacheKey)) {
@@ -137,8 +137,8 @@ class S57TestFixtures {
   }
 
   /// Load parsed Puget Sound chart (cached for performance)
-  /// Returns complete S57Data with all maritime features parsed  
-  static Future<S57Data> loadParsedPugetSound() async {
+  /// Returns complete S57ParsedData with all maritime features parsed  
+  static Future<S57ParsedData> loadParsedPugetSound() async {
     const cacheKey = 'US3WA01M_parsed';
     
     if (_parsedCache.containsKey(cacheKey)) {
@@ -168,7 +168,7 @@ class S57TestFixtures {
 
   /// Get chart metadata validation helper
   /// Validates that loaded charts have expected characteristics
-  static Map<String, dynamic> validateChartMetadata(S57Data chartData, String expectedChartId) {
+  static Map<String, dynamic> validateChartMetadata(S57ParsedData chartData, String expectedChartId) {
     final validation = <String, dynamic>{
       'chartId': expectedChartId,
       'valid': true,
@@ -226,7 +226,7 @@ class S57TestFixtures {
 
   /// Load parsed chart by ID with error handling
   /// Provides unified interface for loading any supported parsed test chart
-  static Future<S57Data?> loadParsedChartById(String chartId) async {
+  static Future<S57ParsedData?> loadParsedChartById(String chartId) async {
     try {
       switch (chartId) {
         case 'US5WA50M':
