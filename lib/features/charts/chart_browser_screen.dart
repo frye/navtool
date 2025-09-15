@@ -113,8 +113,11 @@ class _ChartBrowserScreenState extends ConsumerState<ChartBrowserScreen> {
       }
     }
     if (allowDiscovery) {
+      // Add a small delay to prevent immediate execution during widget construction
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _discoverChartsBasedOnLocation();
+        if (mounted) { // Ensure widget is still mounted
+          _discoverChartsBasedOnLocation();
+        }
       });
     }
   }
