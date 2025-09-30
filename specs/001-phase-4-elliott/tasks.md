@@ -662,13 +662,49 @@ flutter test test/features/charts/chart_progress_indicator_test.dart
 ## Task Completion Tracking
 
 Track progress by marking tasks complete:
-- [ ] Phase 3.1: Setup (T001-T003)
-- [ ] Phase 3.2: Tests (T004-T016) ← Must fail before 3.3
-- [ ] Phase 3.3: Core Implementation (T017-T022)
-- [ ] Phase 3.4: UI Integration (T023-T026)
-- [ ] Phase 3.5: Polish (T027-T032)
+- [x] **Phase 3.1: Setup (T001-T003)** ✅ COMPLETE
+  - Dependencies verified, test fixtures noted (missing but expected for TDD)
+  - Analysis options validated, `flutter analyze --fatal-infos` passes
 
-**Ready for execution**: ✅ All tasks defined, ordered, and validated
+- [x] **Phase 3.2: Tests (T004-T016)** ✅ COMPLETE (Committed: 2f01632)
+  - **85 comprehensive tests created** following TDD Principle III
+  - **Unit Tests (56)**: T004-T008, T016
+    - T004: ZipExtractor (8 tests **PASS** - feature already exists, **T017 SKIP**)
+    - T005: ChartIntegrityRegistry (10 tests **FAIL** - need persistence)
+    - T006: ChartLoadingService (10 tests **FAIL** - service doesn't exist)
+    - T007: ChartLoadingQueue (9 tests **FAIL** - queue doesn't exist)
+    - T008: ChartLoadError (11 tests **PASS** - feature exists, **T021 SKIP**)
+    - T016: ChartLoadLogger (8 tests **FAIL** - logger doesn't exist)
+  - **Widget Tests (29)**: T009-T015
+    - T009: First load hash capture (3 tests)
+    - T010: Integrity match success (3 tests)
+    - T011: Integrity mismatch UI - **ENHANCED** (5 tests, +4 for retry/dismiss)
+    - T012: Transient retry backoff - **ENHANCED** (5 tests, +4 for exponential timing)
+    - T013: Retry exhaustion (4 tests)
+    - T014: Sequential queue UI (4 tests)
+    - T015: Progress indicator 500ms threshold (5 tests)
+  - **Result**: 77/85 tests FAIL correctly (missing features), 8/85 PASS (existing features)
+  - **Efficiency**: 2 tasks skippable (T017 ZipExtractor, T021 ChartLoadError) saves ~8 hours
+  - **Documentation**: See `PHASE_3_2_TDD_TESTS_COMPLETE.md` for detailed analysis
+
+- [ ] **Phase 3.3: Core Implementation (T018-T020, T022)** ← IN PROGRESS
+  - T017: ZipExtractor (**SKIP** - already complete)
+  - T018: ChartIntegrityRegistry persistence (3-4h) - captureFirstLoad, initialize, clear
+  - T019: ChartLoadingQueue FIFO (3-4h) - sequential processing, deduplication
+  - T020: ChartLoadingService retry logic (4-5h) - exponential backoff, max 4 retries
+  - T021: ChartLoadError (**SKIP** - already complete)
+  - T022: ChartLoadTestHooks enhancements (2-3h) - simulateLoadDuration, fastRetry
+  - **Goal**: All 56 unit tests PASS (48 currently failing + 8 already passing)
+
+- [ ] **Phase 3.4: UI Integration (T023-T026)**
+  - Integrate ChartLoadingService, add retry/dismiss buttons, 500ms threshold, queue UI
+  - **Goal**: All 29 widget tests PASS
+
+- [ ] **Phase 3.5: Polish (T027-T032)**
+  - Integration tests, manual validation, performance checks, documentation
+  - **Goal**: All 85 tests PASS, coverage >90%, manual validation complete
+
+**Current Status**: Phase 3.2 COMPLETE ✅ | Ready for Phase 3.3 implementation
 
 ---
 
