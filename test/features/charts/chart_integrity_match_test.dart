@@ -50,7 +50,7 @@ void main() {
 
       // ACT: Load chart
       await tester.pumpWidget(MaterialApp(home: ChartScreen(chart: chart)));
-      await tester.pumpAndSettle(const Duration(seconds: 5));
+      await tester.pumpAndSettle(const Duration(milliseconds: 500));
 
       // ASSERT: No error messages
       expect(find.byIcon(Icons.error), findsNothing,
@@ -77,7 +77,7 @@ void main() {
 
       // ACT: Load chart
       await tester.pumpWidget(MaterialApp(home: ChartScreen(chart: chart)));
-      await tester.pumpAndSettle(const Duration(seconds: 5));
+      await tester.pumpAndSettle(const Duration(milliseconds: 500));
 
       // ASSERT: Success indicator shown (optional feature)
       // Could be a snackbar, icon, or status message
@@ -107,7 +107,7 @@ void main() {
 
       // ACT: Load chart again
       await tester.pumpWidget(MaterialApp(home: ChartScreen(chart: chart)));
-      await tester.pumpAndSettle(const Duration(seconds: 5));
+      await tester.pumpAndSettle(const Duration(milliseconds: 500));
 
       // ASSERT: Timestamp updated (lastVerifiedTimestamp field)
       final updatedRecord = registry.get('US5WA50M');

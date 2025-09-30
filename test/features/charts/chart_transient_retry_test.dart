@@ -53,7 +53,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 250));
 
       // Eventually the overlay should disappear (load complete) OR show complete state with check icon
-      await tester.pumpAndSettle(const Duration(seconds: 3));
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
 
       // Success criteria: either overlay gone or complete state with check icon
       final overlayStillVisible = find.byKey(const Key('chart-loading-overlay')).evaluate().isNotEmpty;
@@ -118,7 +118,7 @@ void main() {
       expect(retryTimings[3] - retryTimings[2], lessThanOrEqualTo(450),
           reason: 'Third backoff should be ~400ms');
 
-      await tester.pumpAndSettle(const Duration(seconds: 2));
+      await tester.pumpAndSettle(const Duration(milliseconds: 200));
     }, timeout: const Timeout(Duration(seconds: 30)));
 
     testWidgets('T012.2: Retry count included in success result', (tester) async {
@@ -133,7 +133,7 @@ void main() {
 
       // ACT: Load chart
       await tester.pumpWidget(MaterialApp(home: ChartScreen(chart: chart)));
-      await tester.pumpAndSettle(const Duration(seconds: 5));
+      await tester.pumpAndSettle(const Duration(milliseconds: 500));
 
       // ASSERT: Success message includes retry count
       // Expected: "Loaded successfully after 3 attempts"
@@ -179,7 +179,7 @@ void main() {
           reason: 'Should maintain progress indicator during second retry');
 
       // ASSERT: Progress indicator disappears on success
-      await tester.pumpAndSettle(const Duration(seconds: 3));
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
       expect(find.byType(CircularProgressIndicator), findsNothing,
           reason: 'Should dismiss progress indicator after success');
     }, timeout: const Timeout(Duration(seconds: 20)));
@@ -201,7 +201,7 @@ void main() {
       await tester.pump();
 
       // All retries should complete quickly with fast mode
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      await tester.pumpAndSettle(const Duration(milliseconds: 200));
 
       stopwatch.stop();
 
