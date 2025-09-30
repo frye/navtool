@@ -293,7 +293,7 @@ void main() {
         
         // Chart may load very quickly, so loading indicator might not be visible in tests
         // Let the chart loading complete (allow sufficient time)
-        await tester.pumpAndSettle(const Duration(seconds: 5));
+        await tester.pumpAndSettle(const Duration(milliseconds: 500));
         
         // Verify chart has finished loading (loading indicator should be gone if it was shown)
         expect(find.textContaining('Loading'), findsNothing, 

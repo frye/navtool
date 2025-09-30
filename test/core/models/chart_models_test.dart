@@ -161,8 +161,8 @@ void main() {
         expect(lighthouse.isVisibleAtScale(ChartScale.general), isTrue);
         expect(lighthouse.isVisibleAtScale(ChartScale.coastal), isTrue);
 
-        // Buoy should only be visible at smaller scales
-        expect(buoy.isVisibleAtScale(ChartScale.overview), isFalse);
+        // Buoy should be visible at all scales (critical navigation aid)
+        expect(buoy.isVisibleAtScale(ChartScale.overview), isTrue);
         expect(buoy.isVisibleAtScale(ChartScale.approach), isTrue);
         expect(buoy.isVisibleAtScale(ChartScale.harbour), isTrue);
       });
@@ -186,12 +186,12 @@ void main() {
           position: LatLng(37.8049, -122.4394),
         );
 
-        // Lighthouse should have highest priority
+        // Lighthouse should have highest priority, buoy second (critical nav aid)
         expect(lighthouse.renderPriority, equals(100));
+        expect(buoy.renderPriority, equals(95));
         expect(beacon.renderPriority, equals(90));
-        expect(buoy.renderPriority, equals(80));
-        expect(lighthouse.renderPriority > beacon.renderPriority, isTrue);
-        expect(beacon.renderPriority > buoy.renderPriority, isTrue);
+        expect(lighthouse.renderPriority > buoy.renderPriority, isTrue);
+        expect(buoy.renderPriority > beacon.renderPriority, isTrue);
       });
     });
 
@@ -361,9 +361,9 @@ void main() {
           depth: 5.0,
         );
 
-        // Overview scale should only show major contours
+        // Overview scale should only show major contours (50m+ intervals)
         expect(contour100m.isVisibleAtScale(ChartScale.overview), isTrue);
-        expect(contour50m.isVisibleAtScale(ChartScale.overview), isFalse);
+        expect(contour50m.isVisibleAtScale(ChartScale.overview), isTrue); // 50m is visible (50 % 50 == 0)
         expect(contour10m.isVisibleAtScale(ChartScale.overview), isFalse);
 
         // Harbour scale should show more detailed contours

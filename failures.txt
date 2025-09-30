@@ -1,0 +1,200 @@
+  Expected: false
+    Actual: <true>
+  
+  package:matcher                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18  expect
+  test/core/models/chart_models_test.dart 165:9       main.<fn>.<fn>.<fn>
+  
+
+To run this test again: /Users/frye/Devel/flutter/flutter/bin/cache/dart-sdk/bin/dart test /Users/frye/Devel/repos/navtool/test/core/models/chart_models_test.dart -p vm --plain-name 'Chart Models Tests PointFeature Tests should return correct visibility at different scales'
+00:04 +165 -2: /Users/frye/Devel/repos/navtool/test/core/models/chart_models_test.dart: Chart Models Tests PointFeature Tests should return correct render priorities [E]                              
+  Expected: <80>
+    Actual: <95>
+  
+  package:matcher                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18  expect
+  test/core/models/chart_models_test.dart 192:9       main.<fn>.<fn>.<fn>
+  
+
+To run this test again: /Users/frye/Devel/flutter/flutter/bin/cache/dart-sdk/bin/dart test /Users/frye/Devel/repos/navtool/test/core/models/chart_models_test.dart -p vm --plain-name 'Chart Models Tests PointFeature Tests should return correct render priorities'
+00:04 +166 -2: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:04 +167 -2: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:04 +168 -2: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:04 +169 -2: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:04 +170 -2: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:04 +171 -2: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:04 +172 -2: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:04 +172 -3: /Users/frye/Devel/repos/navtool/test/core/models/chart_models_test.dart: Chart Models Tests DepthContour Tests should return correct visibility based on scale and depth [E]            
+  Expected: false
+    Actual: <true>
+  
+  package:matcher                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18  expect
+  test/core/models/chart_models_test.dart 366:9       main.<fn>.<fn>.<fn>
+  
+
+To run this test again: /Users/frye/Devel/flutter/flutter/bin/cache/dart-sdk/bin/dart test /Users/frye/Devel/repos/navtool/test/core/models/chart_models_test.dart -p vm --plain-name 'Chart Models Tests DepthContour Tests should return correct visibility based on scale and depth'
+00:05 +172 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +173 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +174 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +175 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +176 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +177 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +178 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +179 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +180 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +181 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +182 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +183 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +184 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +185 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +186 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +187 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +188 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +189 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +190 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +191 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +192 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +193 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +194 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should demonstrate rate limiting preventing server overload          00:05 +195 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_test.dart: RateLimiter Tests Concurrent Access should handle concurrent acquire calls safely                               00:05 +196 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_test.dart: RateLimiter Tests Concurrent Access should handle concurrent acquire calls safely                               00:05 +197 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_test.dart: RateLimiter Tests Concurrent Access should handle concurrent acquire calls safely                               00:05 +198 -3: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_test.dart: RateLimiter Tests Concurrent Access should handle concurrent acquire calls safely                               00:05 +198 -4: /Users/frye/Devel/repos/navtool/test/core/models/chart_tile_management_test.dart: Chart Tile Management ChartTile should filter visible features by scale [E]                           
+  Expected: not contains MaritimeFeatureType:<MaritimeFeatureType.buoy>
+    Actual: Set:[
+              MaritimeFeatureType:MaritimeFeatureType.lighthouse,
+              MaritimeFeatureType:MaritimeFeatureType.buoy
+            ]
+  
+  package:matcher                                        expect
+  package:flutter_test/src/widget_tester.dart 473:18     expect
+  test/core/models/chart_tile_management_test.dart 70:9  main.<fn>.<fn>.<fn>
+  
+
+To run this test again: /Users/frye/Devel/flutter/flutter/bin/cache/dart-sdk/bin/dart test /Users/frye/Devel/repos/navtool/test/core/models/chart_tile_management_test.dart -p vm --plain-name 'Chart Tile Management ChartTile should filter visible features by scale'
+00:05 +199 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_test.dart: RateLimiter Tests Concurrent Access should handle concurrent acquire calls safely                               00:05 +200 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_test.dart: RateLimiter Tests Concurrent Access should handle concurrent acquire calls safely                               00:05 +201 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_test.dart: RateLimiter Tests Concurrent Access should handle concurrent acquire calls safely                               00:05 +202 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_test.dart: RateLimiter Tests Concurrent Access should handle concurrent acquire calls safely                               00:05 +203 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_test.dart: RateLimiter Tests Concurrent Access should handle concurrent acquire calls safely                               00:05 +204 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_test.dart: RateLimiter Tests Concurrent Access should handle concurrent acquire calls safely                               00:05 +205 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_test.dart: RateLimiter Tests Concurrent Access should handle concurrent acquire calls safely                               00:05 +206 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_test.dart: RateLimiter Tests Concurrent Access should handle concurrent acquire calls safely                               00:05 +207 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_test.dart: RateLimiter Tests Concurrent Access should handle concurrent acquire calls safely                               00:05 +208 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_test.dart: RateLimiter Tests Concurrent Access should handle concurrent acquire calls safely                               00:05 +209 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:05 +210 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:05 +211 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:05 +212 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:05 +213 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +213 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +214 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +215 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +216 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +217 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +218 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +219 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +220 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +221 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +222 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +223 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +224 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +225 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +226 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +227 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +228 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +229 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +230 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +231 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +232 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +233 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +234 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +235 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +236 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +237 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +238 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +239 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +240 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +240 -4: /Users/frye/Devel/repos/navtool/test/core/state/providers_test.dart: Providers Tests Core State Providers should create appStateProvider successfully                                   
+[00:25:38] [INFO] Initializing application state
+[00:25:38] [INFO] Application state initialized successfully
+00:06 +241 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +241 -4: /Users/frye/Devel/repos/navtool/test/core/state/providers_test.dart: Providers Tests Core State Providers should create appSettingsProvider successfully                                
+[00:25:38] [INFO] Settings initialized from storage
+00:06 +242 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +243 -4: /Users/frye/Devel/repos/navtool/test/core/utils/rate_limiter_integration_test.dart: Rate Limiter Integration Tests should handle burst traffic gracefully                               00:06 +243 -4: /Users/frye/Devel/repos/navtool/test/core/state/providers_test.dart: Providers Tests Core State Providers should provide notifiers for state management                                 
+[00:25:38] [INFO] Initializing application state
+[00:25:38] [INFO] Application state initialized successfully
+[00:25:38] [INFO] Settings initialized from storage
+--
+Expected: an object with length of <2>
+  Actual: []
+   Which: has length of <0>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure>.<anonymous closure>.<anonymous closure> (file:///Users/frye/Devel/repos/navtool/test/core/services/state_region_mapping_service_enhanced_test.dart:117:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1059:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/frye/Devel/repos/navtool/test/core/services/state_region_mapping_service_enhanced_test.dart line 117
+The test description was:
+  should get chart cells for specific Alaska region
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:33 +1382 ~17 -8: /Users/frye/Devel/repos/navtool/test/core/services/state_region_mapping_service_enhanced_test.dart: Enhanced StateRegionMappingService Tests Regional Chart Discovery should get chart cells for specific Alaska region [E]
+  Test failed. See exception logs above.
+--
+Expected: an object with length of <2>
+  Actual: []
+   Which: has length of <0>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure>.<anonymous closure>.<anonymous closure> (file:///Users/frye/Devel/repos/navtool/test/core/services/state_region_mapping_service_enhanced_test.dart:136:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1059:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/frye/Devel/repos/navtool/test/core/services/state_region_mapping_service_enhanced_test.dart line 136
+The test description was:
+  should get chart cells for California regions
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:33 +1382 ~17 -9: /Users/frye/Devel/repos/navtool/test/core/services/state_region_mapping_service_enhanced_test.dart: Enhanced StateRegionMappingService Tests Regional Chart Discovery should get chart cells for California regions [E]
+  Test failed. See exception logs above.
+--
+Expected: an object with length of <2>
+  Actual: []
+   Which: has length of <0>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure>.<anonymous closure>.<anonymous closure> (file:///Users/frye/Devel/repos/navtool/test/core/services/state_region_mapping_service_enhanced_test.dart:154:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1059:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/frye/Devel/repos/navtool/test/core/services/state_region_mapping_service_enhanced_test.dart line 154
+The test description was:
+  should handle single-region states in getChartCellsForRegion
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:34 +1382 ~17 -10: /Users/frye/Devel/repos/navtool/test/core/services/state_region_mapping_service_enhanced_test.dart: Enhanced StateRegionMappingService Tests Regional Chart Discovery should handle single-region states in getChartCellsForRegion [E]
+  Test failed. See exception logs above.
+--
+Expected: throws <Instance of 'StateNotSupportedException'>
+  Actual: <Closure: () => Future<List<String>>>
+   Which: threw AppError:<AppError(network): Failed to fetch chart cells for region [Original:
+StateNotSupportedException: Region Invalid Region not found in state Alaska]>
+          stack package:navtool/core/services/noaa/state_region_mapping_service.dart 868:7
+StateRegionMappingServiceImpl.getChartCellsForRegion
+                test/core/services/state_region_mapping_service_enhanced_test.dart 160:32
+main.<fn>.<fn>.<fn>.<fn>
+                package:matcher                                                             expect
+                package:flutter_test/src/widget_tester.dart 473:18                          expect
+                test/core/services/state_region_mapping_service_enhanced_test.dart 159:9
+main.<fn>.<fn>.<fn>
+                package:flutter_test/src/widget_tester.dart 192:29
+testWidgets.<fn>.<fn>
+                ===== asynchronous gap ===========================
+                package:matcher                                                             expect
+                package:flutter_test/src/widget_tester.dart 473:18                          expect
+                test/core/services/state_region_mapping_service_enhanced_test.dart 159:9
+main.<fn>.<fn>.<fn>
+                package:flutter_test/src/widget_tester.dart 192:29
+testWidgets.<fn>.<fn>
+--
+Expected: an object with length of <100>
+  Actual: []
+   Which: has length of <0>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure>.<anonymous closure>.<anonymous closure> (file:///Users/frye/Devel/repos/navtool/test/core/services/state_region_mapping_service_enhanced_test.dart:409:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1059:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/frye/Devel/repos/navtool/test/core/services/state_region_mapping_service_enhanced_test.dart line 409
+The test description was:
+  should handle large dataset efficiently
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:34 +1391 ~17 -15: /Users/frye/Devel/repos/navtool/test/core/services/state_region_mapping_service_enhanced_test.dart: Enhanced StateRegionMappingService Tests Performance and Edge Cases should handle large dataset efficiently [E]
+  Test failed. See exception logs above.
+--
+Expected: <1>
+  Actual: <2>
+Unexpected number of calls
+
+When the exception was thrown, this was the stack:
+#0      fail (package:matcher/src/expect/expect.dart:149:31)
+#1      _expect (package:matcher/src/expect/expect.dart:144:3)
+#2      expect (package:matcher/src/expect/expect.dart:56:3)
+#3      VerificationResult.called (package:mockito/src/mock.dart:1069:5)
+#4      main.<anonymous closure>.<anonymous closure>.<anonymous closure> (file:///Users/frye/Devel/repos/navtool/test/core/services/state_region_mapping_service_enhanced_test.dart:424:14)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1059:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  should maintain cache consistency across operations
+════════════════════════════════════════════════════════════════════════════════════════════════════
+--
+Expected: throws <Instance of 'Exception'>
+  Actual: <Closure: () => Future<StateCoverageInfo>>
+   Which: returned a Future that emitted <Instance of 'StateCoverageInfo'>
+
+When the exception was thrown, this was the stack:
+#0      fail (package:matcher/src/expect/expect.dart:149:31)
+#1      _expect.<anonymous closure> (package:matcher/src/expect/expect.dart:125:9)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 6 frames from dart:async and package:stack_trace)
+
+The test description was:
+  should gracefully handle partial service failures
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:34 +1391 ~17 -17: /Users/frye/Devel/repos/navtool/test/core/services/state_region_mapping_service_enhanced_test.dart: Enhanced StateRegionMappingService Tests Error Recovery should gracefully handle partial service failures [E]
+  Test failed. See exception logs above.

@@ -46,7 +46,7 @@ void main() {
       for (int i = 0; i < 6; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
-      await tester.pumpAndSettle(const Duration(seconds: 3));
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
 
       // ASSERT: Error dialog appears with exhaustion message
       expect(find.byType(AlertDialog), findsOneWidget,
@@ -73,7 +73,7 @@ void main() {
       for (int i = 0; i < 6; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
-      await tester.pumpAndSettle(const Duration(seconds: 3));
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
 
       // ASSERT: Retry button present
       final retryButton = find.descendant(
@@ -108,7 +108,7 @@ void main() {
       for (int i = 0; i < 6; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
-      await tester.pumpAndSettle(const Duration(seconds: 3));
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
 
       // ASSERT: Dismiss button present
       final dismissButton = find.descendant(
@@ -144,7 +144,7 @@ void main() {
       for (int i = 0; i < 6; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
-      await tester.pumpAndSettle(const Duration(seconds: 3));
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
 
       // Find and tap retry button
       final retryButton = find.descendant(
@@ -155,7 +155,7 @@ void main() {
       // ACT: Manual retry after exhaustion
       ChartLoadTestHooks.failParsingAttempts = 2; // Succeed after 2 retries
       await tester.tap(retryButton);
-      await tester.pumpAndSettle(const Duration(seconds: 3));
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
 
       // ASSERT: Should retry again with reset counter
       // Success means retry counter was reset

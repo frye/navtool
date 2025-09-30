@@ -25,7 +25,7 @@ void main() {
       zipPath = 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip';
     });
 
-    tearDown() {
+    tearDown(() {
       ChartLoadTestHooks.reset();
     });
 
@@ -68,7 +68,7 @@ void main() {
       await tester.pump();
 
       // Wait for error dialog to appear
-      await tester.pumpAndSettle(const Duration(seconds: 3));
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
 
       // ASSERT: Error dialog displayed
       expect(find.byType(AlertDialog), findsOneWidget,
@@ -109,7 +109,7 @@ void main() {
 
       await tester.pumpWidget(MaterialApp(home: ChartScreen(chart: chart)));
       await tester.pump();
-      await tester.pumpAndSettle(const Duration(seconds: 3));
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
 
       // Find and tap retry button
       final retryButton = find.descendant(
@@ -142,7 +142,7 @@ void main() {
 
       await tester.pumpWidget(MaterialApp(home: ChartScreen(chart: chart)));
       await tester.pump();
-      await tester.pumpAndSettle(const Duration(seconds: 3));
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
 
       // Find and tap dismiss button
       final dismissButton = find.descendant(
@@ -175,7 +175,7 @@ void main() {
 
       await tester.pumpWidget(MaterialApp(home: ChartScreen(chart: chart)));
       await tester.pump();
-      await tester.pumpAndSettle(const Duration(seconds: 3));
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
 
       // ASSERT: Error dialog is visible
       expect(find.byType(AlertDialog), findsOneWidget);

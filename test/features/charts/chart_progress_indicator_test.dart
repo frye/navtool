@@ -48,7 +48,7 @@ void main() {
           reason: 'Should not show indicator before 500ms threshold');
 
       // Complete the load
-      await tester.pumpAndSettle(const Duration(seconds: 2));
+      await tester.pumpAndSettle(const Duration(milliseconds: 200));
       expect(find.byType(CircularProgressIndicator), findsNothing,
           reason: 'Fast load should complete without showing indicator');
     }, timeout: const Timeout(Duration(seconds: 30)));
@@ -79,7 +79,7 @@ void main() {
           reason: 'Should show progress indicator after 500ms threshold');
 
       // Complete the load
-      await tester.pumpAndSettle(const Duration(seconds: 3));
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
     }, timeout: const Timeout(Duration(seconds: 30)));
 
     testWidgets('T015.3: Progress indicator dismisses on completion', (tester) async {
@@ -102,7 +102,7 @@ void main() {
           reason: 'Indicator should be visible during load');
 
       // Wait for completion
-      await tester.pumpAndSettle(const Duration(seconds: 3));
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
 
       // ASSERT: Indicator dismissed
       expect(find.byType(CircularProgressIndicator), findsNothing,
@@ -160,7 +160,7 @@ void main() {
           reason: 'Should maintain indicator through all retries');
 
       // Complete
-      await tester.pumpAndSettle(const Duration(seconds: 5));
+      await tester.pumpAndSettle(const Duration(milliseconds: 500));
       expect(find.byType(CircularProgressIndicator), findsNothing,
           reason: 'Should dismiss after final success');
     }, timeout: const Timeout(Duration(seconds: 30)));

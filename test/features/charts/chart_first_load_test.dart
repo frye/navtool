@@ -43,7 +43,7 @@ void main() {
 
       // ACT: Load chart for first time
       await tester.pumpWidget(MaterialApp(home: ChartScreen(chart: chart)));
-      await tester.pumpAndSettle(const Duration(seconds: 5));
+      await tester.pumpAndSettle(const Duration(milliseconds: 500));
 
       // ASSERT: Hash captured in registry
       final record = registry.get('US5WA50M');
@@ -76,7 +76,7 @@ void main() {
 
       // ACT: Load chart for first time
       await tester.pumpWidget(MaterialApp(home: ChartScreen(chart: chart)));
-      await tester.pumpAndSettle(const Duration(seconds: 5));
+      await tester.pumpAndSettle(const Duration(milliseconds: 500));
 
       // ASSERT: Should show informational snackbar about first load
       // Expected message: "First load of US5WA50M - hash captured for future verification"
@@ -106,7 +106,7 @@ void main() {
 
       // ACT: Load chart second time
       await tester.pumpWidget(MaterialApp(home: ChartScreen(chart: chart)));
-      await tester.pumpAndSettle(const Duration(seconds: 5));
+      await tester.pumpAndSettle(const Duration(milliseconds: 500));
 
       // ASSERT: Should verify hash (pass or fail depending on actual hash)
       // This test validates that verification happens, not the result

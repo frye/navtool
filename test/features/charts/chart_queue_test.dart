@@ -37,7 +37,7 @@ void main() {
 
       // ACT: Load single chart
       await tester.pumpWidget(MaterialApp(home: ChartScreen(chart: chart)));
-      await tester.pumpAndSettle(const Duration(seconds: 5));
+      await tester.pumpAndSettle(const Duration(milliseconds: 500));
 
       // ASSERT: No queue status message
       expect(find.textContaining('in queue'), findsNothing,
