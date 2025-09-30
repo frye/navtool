@@ -240,6 +240,7 @@ dart format .                       # <1 minute
 - **State Management:** Check `lib/core/state/providers.dart` after adding new providers
 - **Error Handling:** Update `lib/core/error/` when adding new error scenarios
 - **Test Fixtures:** Update `test/utils/test_fixtures.dart` for new marine test data
+- **Chart Loading (Phase 4):** See `specs/001-phase-4-elliott/` for Elliott Bay UX improvements
 
 ## Platform-Specific Notes
 
@@ -275,9 +276,10 @@ dart format .                       # <1 minute
 
 ### Error Handling Patterns
 - Use `NoaaErrorClassifier` for API error categorization
-- Implement retry logic with exponential backoff for marine connectivity
+- Implement retry logic with exponential backoff for marine connectivity (100/200/400/800ms)
 - Add error scenarios to `test/core/error/noaa_error_handling_test.dart`
 - Follow marine safety patterns for critical navigation errors
+- **Chart Loading Errors:** Use structured `ChartLoadError` types (integrity, parsing, extraction)
 
 ## CI/CD Integration
 
@@ -378,6 +380,8 @@ The repository uses comprehensive GitHub Actions workflows:
 - **Chart data errors:** Check NOAA API rate limiting and authentication
 - **Offline functionality:** Ensure proper error handling for satellite connectivity loss
 - **Network resilience:** Test with `NetworkResilience` class for marine conditions
+- **Chart Loading:** Use `ChartLoadTestHooks` for fault injection (integrity mismatch, transient failures)
+- **ZIP Extraction:** NOAA charts have multiple layouts (root, ENC_ROOT/*, nested) - use multi-pattern fallback
 
 ### Build Performance Issues
 - **Slow initial builds:** Normal for Flutter desktop apps (15-30 minutes first time)

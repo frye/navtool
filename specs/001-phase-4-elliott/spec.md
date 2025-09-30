@@ -110,8 +110,8 @@ As a marine navigator, when I load Elliott Bay nautical charts into NavTool, I n
 - **FR-012**: System MUST report failure after exhausting retry attempts with user options to: (1) manually retry the operation, or (2) dismiss the error and return to chart browser
 
 #### ZIP Extraction Robustness
-- **FR-013**: System MUST extract NOAA ENC chart datasets from ZIP archives
-- **FR-014**: System MUST handle multiple common NOAA ZIP layouts (root directory, ENC_ROOT/*, nested chart-id folders)
+- **FR-013**: System MUST extract NOAA ENC chart datasets from NOAA ENC ZIP archives
+- **FR-014**: System MUST handle multiple common NOAA ENC ZIP archive layouts (root directory, ENC_ROOT/*, nested chart-id folders)
 - **FR-015**: System MUST perform case-insensitive file matching within ZIP archives
 - **FR-016**: System MUST locate and extract .000 cell files for requested chart IDs
 - **FR-017**: System MUST return extracted chart data bytes for subsequent parsing
