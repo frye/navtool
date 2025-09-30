@@ -132,7 +132,7 @@ void main() {
     /// Helper function to pump with specific duration instead of waiting for settle
     Future<void> pumpAndWait(
       WidgetTester tester, {
-      Duration wait = const Duration(milliseconds: 100), // Reduced from 800ms to 100ms
+      Duration wait = const Duration(milliseconds: 500), // Stable timing for complex UI interactions
     }) async {
       await tester.pump();
       await tester.pump(wait);
@@ -188,7 +188,7 @@ void main() {
         await pumpAndWait(tester);
 
         // Assert
-        expect(find.byType(DropdownButton<String>), findsOneWidget);
+        expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
         expect(find.text('Select State'), findsOneWidget);
       });
 
@@ -269,9 +269,9 @@ void main() {
         await pumpAndWait(tester);
 
         // Select California from dropdown
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await pumpAndWait(tester);
-        await tester.tap(find.text('California'));
+        await tester.tap(find.text('California').last); // Use .last to get dropdown item, not label
         await pumpAndWait(tester);
 
         // Assert
@@ -325,7 +325,7 @@ void main() {
         await pumpAndWait(tester);
 
         // Select state to trigger error
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await pumpAndWait(tester);
         await tester.tap(find.text('California'));
         await pumpAndWait(tester);
@@ -351,7 +351,7 @@ void main() {
         await pumpAndWait(tester);
 
         // Select California
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await pumpAndWait(tester);
         await tester.tap(find.text('California'));
         await pumpAndWait(tester);
@@ -388,7 +388,7 @@ void main() {
         await pumpAndWait(tester);
 
         // Select California
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await pumpAndWait(tester);
         await tester.tap(find.text('California'));
         await pumpAndWait(tester);
@@ -461,7 +461,7 @@ void main() {
         await pumpAndWait(tester);
 
         // Select California first
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await pumpAndWait(tester);
         await tester.tap(find.text('California'));
         await pumpAndWait(tester);
@@ -489,7 +489,7 @@ void main() {
         await pumpAndWait(tester);
 
         // Select California first
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await pumpAndWait(tester);
         await tester.tap(find.text('California'));
         await pumpAndWait(tester);
@@ -589,7 +589,7 @@ void main() {
         await pumpAndWait(tester);
 
         // Select California
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await pumpAndWait(tester);
         await tester.tap(find.text('California'));
         await pumpAndWait(tester);
@@ -617,7 +617,7 @@ void main() {
         await pumpAndWait(tester);
 
         // Select California and chart
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await pumpAndWait(tester);
         await tester.tap(find.text('California'));
         await pumpAndWait(tester);
@@ -644,7 +644,7 @@ void main() {
         await pumpAndWait(tester);
 
         // Select California
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await pumpAndWait(tester);
         await tester.tap(find.text('California'));
         await pumpAndWait(tester);
@@ -671,7 +671,7 @@ void main() {
         await pumpAndWait(tester);
 
         // Select California
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await pumpAndWait(tester);
         await tester.tap(find.text('California'));
         await pumpAndWait(tester);
@@ -722,7 +722,7 @@ void main() {
         await pumpAndWait(tester);
 
         // Select California
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await pumpAndWait(tester);
         await tester.tap(find.text('California'));
         await pumpAndWait(tester);
@@ -774,7 +774,7 @@ void main() {
         await pumpAndWait(tester);
 
         // Select state first
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await pumpAndWait(tester);
         await tester.tap(find.text('California'));
         await pumpAndWait(tester);
@@ -862,7 +862,7 @@ void main() {
         await pumpAndWait(tester);
 
         // Select California
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await pumpAndWait(tester);
         await tester.tap(find.text('California'));
         await pumpAndWait(tester);
@@ -958,7 +958,7 @@ void main() {
           await pumpAndWait(tester);
 
           // Assert - Should show state dropdown for manual selection
-          expect(find.byType(DropdownButton<String>), findsOneWidget);
+          expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
           expect(find.text('Select State'), findsOneWidget);
           expect(
             find.text(
@@ -985,7 +985,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
 
         // Select California to load charts
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await tester.pump(const Duration(milliseconds: 100));
         await tester.tap(find.text('California'));
         await tester.pump(const Duration(milliseconds: 100));
@@ -1015,7 +1015,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
 
         // Select California to load charts
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await tester.pump(const Duration(milliseconds: 100));
         
         await tester.tap(find.text('California'));
@@ -1052,7 +1052,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
 
         // Select California to load charts
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await tester.pump(const Duration(milliseconds: 100));
         await tester.tap(find.text('California'));
         await tester.pump(const Duration(milliseconds: 100));
@@ -1089,7 +1089,7 @@ void main() {
         await pumpAndWait(tester);
 
         // Select California and enable filters
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await pumpAndWait(tester);
         await tester.tap(find.text('California'));
         await pumpAndWait(tester);
@@ -1099,7 +1099,7 @@ void main() {
         await pumpAndWait(tester);
 
         // Change to Florida (state change should reset filters)
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await pumpAndWait(tester);
         await tester.tap(find.text('Florida'));
         await pumpAndWait(tester);
@@ -1127,7 +1127,7 @@ void main() {
         await pumpAndWait(tester);
 
         // Load charts
-        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
         await pumpAndWait(tester);
         await tester.tap(find.text('California'));
         await pumpAndWait(tester);
