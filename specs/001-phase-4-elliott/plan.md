@@ -118,22 +118,18 @@ specs/[###-feature]/
 ```
 lib/
 ├── core/
-│   ├── services/
-│   │   ├── chart_integrity_registry.dart        # [MODIFY] Add first-load capture
-│   │   └── ...
 │   └── utils/
-│       ├── zip_extractor.dart                   # [MODIFY] Fix NOAA layout support
-│       └── ...
+│       └── zip_extractor.dart                   # [EXISTS] Multi-pattern support already works
 ├── features/
 │   └── charts/
 │       ├── chart_load_error.dart                # [EXISTS] Structured error types
-│       ├── chart_load_test_hooks.dart           # [EXISTS] Fault injection hooks
-│       ├── screens/
-│       │   └── chart_browser_screen.dart        # [MODIFY] Add retry/dismiss UI
-│       └── services/
-│           └── chart_loading_service.dart       # [MODIFY] Add retry logic, queue
-└── widgets/
-    └── ...
+│       ├── chart_screen.dart                    # [MODIFY] Add progress overlay & error dialog
+│       └── widgets/
+│           ├── chart_loading_overlay.dart       # [NEW] Progress indicator widget
+│           └── chart_load_error_dialog.dart     # [NEW] Error dialog widget
+└── ...
+
+**MVP SIMPLIFICATION**: Skips ChartLoadingService, ChartIntegrityRegistry, and ChartLoadingQueue. Uses direct loading in ChartScreen with UI widgets for progress and errors.
 
 test/
 ├── core/

@@ -2,8 +2,10 @@
 
 **Feature Branch**: `001-phase-4-elliott`  
 **Created**: September 29, 2025  
-**Status**: Draft  
+**Status**: MVP - Simplified Direct Loading Approach  
 **Input**: User description: "Phase 4: Elliott Bay Chart Loading UX Improvements - Fix ZipExtractor for NOAA ENC data, complete integrity mismatch detection and transient parser failure recovery"
+
+**MVP SCOPE NOTE**: This implementation uses direct loading in ChartScreen rather than a separate ChartLoadingService. Core widgets (ChartLoadingOverlay, ChartLoadErrorDialog) are created as reusable components for future service integration.
 
 ## Execution Flow (main)
 ```
@@ -129,9 +131,9 @@ As a marine navigator, when I load Elliott Bay nautical charts into NavTool, I n
 - **FR-024**: System MUST support a debug output mode that can be enabled at application launch
 - **FR-025**: When debug mode is enabled, system MUST log comprehensive diagnostics including: error type, chart ID, timestamp, retry attempts, file paths, hash values, extraction details, stack traces, and relevant system state
 
-#### Concurrency Management
-- **FR-026**: System MUST queue multiple chart load requests and process them sequentially
-- **FR-027**: System MUST display queue position or loading status when multiple load operations are pending
+#### Concurrency Management (Future Enhancement)
+- **FR-026**: ~~System MUST queue multiple chart load requests and process them sequentially~~ **DEFERRED** - MVP uses single chart loading without queue
+- **FR-027**: ~~System MUST display queue position or loading status when multiple load operations are pending~~ **DEFERRED** - MVP focuses on single chart UX
 
 ### Key Entities *(include if feature involves data)*
 

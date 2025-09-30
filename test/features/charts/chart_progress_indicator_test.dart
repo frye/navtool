@@ -17,15 +17,11 @@ import 'package:navtool/features/charts/chart_load_test_hooks.dart';
 /// Validates 500ms progress indicator threshold behavior
 void main() {
   group('Chart Progress Indicator Timing (T015 - MUST FAIL)', () {
-    late String zipPath;
-
-    setUpAll(() {
-      zipPath = 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip';
-    });
+    final String zipPath = 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip';
 
     tearDown() {
       ChartLoadTestHooks.reset();
-    });
+    }
 
     testWidgets('T015.1: Fast load (<500ms) shows no progress indicator', (tester) async {
       if (!File(zipPath).existsSync()) {
