@@ -159,6 +159,7 @@ class S57FeatureBuilder {
       S57FeatureType.obstruction => 'Obstruction',
       S57FeatureType.wreck => 'Wreck',
       S57FeatureType.underwater => 'Underwater Rock',
+      S57FeatureType.shoreConstruction => 'Shore Construction',
       S57FeatureType.unknown => 'Unknown Feature',
     };
   }

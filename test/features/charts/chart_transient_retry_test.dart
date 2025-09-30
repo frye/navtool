@@ -23,7 +23,7 @@ void main() {
       zipPath = 'test/fixtures/charts/noaa_enc/US5WA50M_harbor_elliott_bay.zip';
     });
 
-    tearDown() {
+    tearDown(() {
       ChartLoadTestHooks.reset();
     });
 
