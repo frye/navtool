@@ -170,10 +170,11 @@ python tools/download_gshhg.py --all
 
 | Resolution | File Size | Zoom Range |
 |------------|-----------|------------|
-| crude | ~120 KB | 0-2 (bundled) |
-| low | ~1 MB | 2-5 |
-| intermediate | ~3.5 MB | 5-8 |
-| high | ~12 MB | 8+ |
+| crude | ~120 KB | 0-0.5 (bundled) |
+| low | ~1 MB | 0.5-2 |
+| intermediate | ~3.5 MB | 2-5 |
+| high | ~12 MB | 5-8 |
+| full | ~180 MB | 8+ |
 
 ## LOD System
 
@@ -181,12 +182,39 @@ NavTool implements multi-level-of-detail rendering:
 
 | LOD | Tolerance | Zoom Range | Detail Level |
 |-----|-----------|------------|--------------|
-| 0 | 0.0 | 15+ | Full source resolution |
-| 1 | 0.00005° | 10-15 | Ultra-high |
-| 2 | 0.0001° | 6-10 | Very high |
-| 3 | 0.0003° | 3-6 | High |
-| 4 | 0.0008° | 1.5-3 | Medium |
-| 5 | 0.002° | 0-1.5 | Low (overview) |
+| 0 | 0.0 | 10+ | Full source resolution |
+| 1 | 0.00005° | 6-10 | Ultra-high |
+| 2 | 0.0001° | 4-6 | Very high |
+| 3 | 0.0003° | 2-4 | High |
+| 4 | 0.0008° | 1-2 | Medium |
+| 5 | 0.002° | 0.5-1 | Low (overview) |
+
+Below zoom 0.5, ENC data is not displayed and only GSHHG global data is shown.
+
+## Multi-Layer Rendering
+
+The app renders GSHHG and ENC data together seamlessly:
+
+1. **Separate LOD Lists**: Regional (ENC) and Global (GSHHG) managed independently
+2. **GSHHG Fill-Only**: No stroke - prevents double coastlines in overlap areas
+3. **ENC on Top**: Provides detailed coastline stroke
+4. **Same Land Color**: Both layers use identical teal so boundaries invisible
+5. **View Bounds Expansion**: 100% expansion shows GSHHG context around ENC
+6. **LOD0 Optimization**: GSHHG disabled at highest zoom level
+
+### Rendering Order
+
+```dart
+// In CoastlineRenderer.paint():
+1. Draw water background (blue)
+2. Draw GSHHG fill only (teal, no stroke)
+3. Draw ENC fill + stroke on top (teal + dark teal stroke)
+```
+
+This ensures:
+- No double coastlines (only ENC draws strokes)
+- Seamless transitions when panning outside ENC coverage
+- GSHHG extends beyond ENC bounding box naturally
 
 ## Key Services
 

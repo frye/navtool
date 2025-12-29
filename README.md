@@ -32,10 +32,12 @@ A cross-platform marine chart viewer for displaying official NOAA nautical chart
 
 | Source | Resolution | Coverage | Use Case |
 |--------|-----------|----------|----------|
-| **GSHHG Crude** | ~80m | Global | Bundled, zoom 0-2 |
-| **GSHHG Low** | ~40m | Global | On-demand, zoom 2-5 |
-| **GSHHG Intermediate** | ~20m | Global | On-demand, zoom 5-8 |
-| **NOAA ENC** | ~1-5m | US Coastal | Regional, zoom 8+ |
+| **GSHHG Crude** | ~80m | Global | Bundled, zoom 0-0.5 |
+| **GSHHG Low** | ~40m | Global | On-demand, zoom 0.5-2 |
+| **GSHHG Intermediate** | ~20m | Global | On-demand, zoom 2-5 |
+| **GSHHG High** | ~10m | Global | On-demand, zoom 5-8 |
+| **GSHHG Full** | ~200m | Global | On-demand, zoom 8+ |
+| **NOAA ENC** | ~1-5m | US Coastal | Regional, zoom 0.5+ (overlays GSHHG) |
 
 ## Getting Started
 
@@ -185,12 +187,14 @@ The app uses 6 LOD levels for smooth zoom transitions:
 
 | LOD | Tolerance | Zoom Range | Detail Level |
 |-----|-----------|------------|--------------|
-| 0 | 0.0 | 15+ | Full source resolution |
-| 1 | 0.00005° | 10-15 | Ultra-high |
-| 2 | 0.0001° | 6-10 | Very high |
-| 3 | 0.0003° | 3-6 | High |
-| 4 | 0.0008° | 1.5-3 | Medium |
-| 5 | 0.002° | 0-1.5 | Low (overview) |
+| 0 | 0.0 | 10+ | Full source resolution |
+| 1 | 0.00005° | 6-10 | Ultra-high |
+| 2 | 0.0001° | 4-6 | Very high |
+| 3 | 0.0003° | 2-4 | High |
+| 4 | 0.0008° | 1-2 | Medium |
+| 5 | 0.002° | 0.5-1 | Low (overview) |
+
+Below zoom 0.5, ENC regional data hands off to GSHHG global data.
 
 ## Adding Custom Regions
 
@@ -221,14 +225,28 @@ python tools/download_enc_direct.py --region my_harbor
 - **Latitude Correction**: `cos(centerLat)` factor for proper aspect ratio
 - **Coordinate System**: WGS84 (EPSG:4326)
 
+### Multi-Layer Rendering
+
+The app uses a seamless multi-layer approach:
+
+1. **GSHHG Background**: Draws as fill-only (no stroke) providing base land mass
+2. **ENC Overlay**: Draws on top with fill + stroke for detailed coastlines
+3. **Same Land Color**: Both layers use identical color so overlap is invisible
+4. **LOD0 Optimization**: GSHHG disabled at highest zoom (user zoomed into ENC only)
+
+This approach eliminates double-coastline artifacts since:
+- GSHHG provides land fill everywhere (no visible stroke)
+- ENC provides the accurate detailed coastline on top
+- View bounds expanded 100% to show GSHHG context around ENC regions
+
 ### Rendering Pipeline
 
 1. **Manifest Load**: Read `manifest.json` for available regions (O(1) lookup)
-2. **Data Selection**: Choose best data source (ENC > GSHHG)
-3. **LOD Selection**: Pick appropriate detail level for zoom
+2. **Data Selection**: Select best ENC (regional) and GSHHG (global) for zoom
+3. **LOD Selection**: Pick appropriate detail level for each layer
 4. **Binary Parse**: Load NVTL format into `CoastlineData`
 5. **Path Building**: Convert polygons to Flutter `Path` objects
-6. **Rendering**: `CustomPainter` draws water → land → coastline stroke
+6. **Rendering**: `CustomPainter` draws water → GSHHG fill → ENC fill + stroke
 
 ## Future Roadmap
 
