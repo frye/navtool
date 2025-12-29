@@ -1,0 +1,3 @@
+# Placeholder for NOAA chart data
+# Run the download script to populate this directory:
+# python tools/download_noaa_data.py --region seattle --output assets/charts/

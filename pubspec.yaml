@@ -1,0 +1,28 @@
+name: navtool
+description: A cross-platform NOAA chart viewer for displaying coastlines and navigation data.
+publish_to: 'none'
+version: 1.0.0+1
+
+# IMPORTANT: This app is for NATIVE PLATFORMS ONLY (Windows, macOS, Linux, iOS, Android)
+# DO NOT run on web, web-server, or any browser-based platform.
+# See PLATFORMS.md for details.
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  path_provider: ^2.1.1
+  vector_math: ^2.1.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/charts/
