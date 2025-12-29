@@ -55,6 +55,20 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "pyshp"])
     import shapefile
 
+try:
+    from shapely.geometry import shape, mapping
+    from shapely.ops import unary_union
+    from shapely.validation import make_valid
+    HAS_SHAPELY = True
+except ImportError:
+    print("Installing required package: shapely")
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "shapely"])
+    from shapely.geometry import shape, mapping
+    from shapely.ops import unary_union
+    from shapely.validation import make_valid
+    HAS_SHAPELY = True
+
 # ENC Direct to GIS REST Service endpoints
 ENC_DIRECT_BASE = "https://encdirect.noaa.gov/arcgis/rest/services"
 
@@ -320,8 +334,8 @@ def is_rectangular_feature(feature: dict, tolerance: float = 0.001) -> bool:
     """
     Check if a feature is a rectangular polygon (likely an ENC cell boundary).
     
-    Rectangular features typically have exactly 5 points (4 corners + closing point)
-    and all angles are ~90 degrees.
+    Rectangular features typically have 4-8 points and axis-aligned edges.
+    Also checks for near-rectangular bounding box ratio.
     """
     geom = feature.get("geometry", {})
     geom_type = geom.get("type", "")
@@ -335,25 +349,130 @@ def is_rectangular_feature(feature: dict, tolerance: float = 0.001) -> bool:
     
     exterior = coords[0]
     
-    # Rectangles have exactly 5 points (4 corners + closing point)
-    if len(exterior) != 5:
+    # Skip if too few points or too many (complex shapes are not cell boundaries)
+    if len(exterior) < 4 or len(exterior) > 10:
         return False
     
-    # Check if all edges are axis-aligned (horizontal or vertical)
-    # This is typical of ENC cell boundaries
-    axis_aligned_count = 0
-    for i in range(4):
-        p1 = exterior[i]
-        p2 = exterior[i + 1]
-        dx = abs(p1[0] - p2[0])
-        dy = abs(p1[1] - p2[1])
-        
-        # Check if edge is nearly horizontal or vertical
-        if dx < tolerance or dy < tolerance:
-            axis_aligned_count += 1
+    # Calculate bounding box
+    lons = [p[0] for p in exterior]
+    lats = [p[1] for p in exterior]
+    min_lon, max_lon = min(lons), max(lons)
+    min_lat, max_lat = min(lats), max(lats)
     
-    # If all 4 edges are axis-aligned, it's a rectangle
-    return axis_aligned_count == 4
+    bbox_width = max_lon - min_lon
+    bbox_height = max_lat - min_lat
+    
+    if bbox_width < 0.0001 or bbox_height < 0.0001:
+        return False
+    
+    # Calculate polygon area vs bounding box area
+    # Rectangles will have area ratio close to 1.0
+    # Use shoelace formula for polygon area
+    n = len(exterior) - 1  # Exclude closing point
+    polygon_area = 0.0
+    for i in range(n):
+        j = (i + 1) % n
+        polygon_area += exterior[i][0] * exterior[j][1]
+        polygon_area -= exterior[j][0] * exterior[i][1]
+    polygon_area = abs(polygon_area) / 2.0
+    
+    bbox_area = bbox_width * bbox_height
+    area_ratio = polygon_area / bbox_area if bbox_area > 0 else 0
+    
+    # If polygon fills >95% of its bounding box, it's likely a rectangle
+    if area_ratio > 0.95:
+        return True
+    
+    # Also check for axis-aligned edges (original check)
+    if len(exterior) == 5:
+        axis_aligned_count = 0
+        for i in range(4):
+            p1 = exterior[i]
+            p2 = exterior[i + 1]
+            dx = abs(p1[0] - p2[0])
+            dy = abs(p1[1] - p2[1])
+            if dx < tolerance or dy < tolerance:
+                axis_aligned_count += 1
+        if axis_aligned_count == 4:
+            return True
+    
+    return False
+
+
+def merge_land_polygons(features: List[dict]) -> List[dict]:
+    """
+    Merge overlapping land polygons to eliminate ENC cell boundaries.
+    
+    ENC data stores land areas clipped to chart cell boundaries, creating
+    rectangular edges where polygons meet. This function unions all land
+    polygons into a single continuous landmass.
+    """
+    print("  Merging overlapping land polygons...")
+    
+    # Separate polygons from other geometry types
+    polygons = []
+    other_features = []
+    
+    for feature in features:
+        geom = feature.get("geometry", {})
+        geom_type = geom.get("type", "")
+        
+        if geom_type in ("Polygon", "MultiPolygon"):
+            try:
+                geom_obj = shape(geom)
+                if not geom_obj.is_valid:
+                    geom_obj = make_valid(geom_obj)
+                if geom_obj.is_valid and not geom_obj.is_empty:
+                    polygons.append(geom_obj)
+            except Exception as e:
+                print(f"    Warning: Could not parse polygon: {e}")
+        else:
+            other_features.append(feature)
+    
+    if not polygons:
+        print("    No polygons to merge")
+        return features
+    
+    print(f"    Merging {len(polygons)} polygons...")
+    
+    try:
+        # Union all polygons - this eliminates internal boundaries
+        merged = unary_union(polygons)
+        
+        # Convert back to GeoJSON features
+        result = []
+        
+        if merged.geom_type == "Polygon":
+            result.append({
+                "type": "Feature",
+                "properties": {"merged": True},
+                "geometry": mapping(merged)
+            })
+        elif merged.geom_type == "MultiPolygon":
+            for poly in merged.geoms:
+                result.append({
+                    "type": "Feature",
+                    "properties": {"merged": True},
+                    "geometry": mapping(poly)
+                })
+        elif merged.geom_type == "GeometryCollection":
+            for geom in merged.geoms:
+                if geom.geom_type in ("Polygon", "MultiPolygon"):
+                    result.append({
+                        "type": "Feature",
+                        "properties": {"merged": True},
+                        "geometry": mapping(geom)
+                    })
+        
+        print(f"    Merged into {len(result)} polygon(s)")
+        
+        # Return merged polygons plus any non-polygon features
+        return result + other_features
+        
+    except Exception as e:
+        print(f"    Warning: Merge failed: {e}")
+        print("    Returning original features")
+        return features
 
 
 def discover_coastline_layers(service_path: str) -> Dict[str, int]:
@@ -750,6 +869,11 @@ def main():
         action="store_true",
         help="Download from all scale bands and merge"
     )
+    parser.add_argument(
+        "--no-merge",
+        action="store_true",
+        help="Disable polygon merging (keeps ENC cell boundaries)"
+    )
     
     args = parser.parse_args()
     
@@ -776,9 +900,12 @@ def main():
     
     all_features = []
     
-    if args.all_scale_bands:
-        # Download from all scale bands, prioritizing more detailed ones
-        scale_priority = ["harbor", "approach", "berthing", "coastal"]
+    # Default to using multiple scale bands for complete coverage
+    if args.all_scale_bands or args.scale_band == "harbor":
+        # Download from multiple scale bands for complete coastline coverage
+        # Harbor provides detail, approach/coastal fill in gaps
+        scale_priority = ["harbor", "approach", "coastal"]
+        print(f"\nDownloading from multiple scale bands for complete coverage...")
         for scale_band in scale_priority:
             print(f"\n{'='*60}")
             print(f"Querying {scale_band} scale band...")
@@ -798,13 +925,19 @@ def main():
         print("Hint: Use --all-scale-bands to try multiple scale bands.")
         return
     
+    print(f"\nTotal features collected: {len(all_features)}")
+    
+    # Merge overlapping land polygons to eliminate cell boundaries
+    if not args.no_merge:
+        print("\nMerging land polygons to eliminate cell boundaries...")
+        all_features = merge_land_polygons(all_features)
+        print(f"After merge: {len(all_features)} features")
+    
     # Combine into final GeoJSON
     geojson = {
         "type": "FeatureCollection",
         "features": all_features
     }
-    
-    print(f"\nTotal features collected: {len(all_features)}")
     
     # Count total points
     total_points = 0
