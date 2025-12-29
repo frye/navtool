@@ -821,6 +821,52 @@ def simplify_geojson(geojson: dict, tolerance: float) -> dict:
     return {"type": "FeatureCollection", "features": out_features}
 
 
+def update_manifest(
+    manifest_path: Path,
+    region_id: str,
+    region_name: str,
+    bounds: Tuple[float, float, float, float],
+    lod_files: List[str]
+):
+    """Update or create manifest.json with ENC region entry."""
+    from datetime import datetime
+    
+    # Load existing manifest or create new
+    if manifest_path.exists():
+        with open(manifest_path, 'r') as f:
+            manifest = json.load(f)
+    else:
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest = {
+            "version": 1,
+            "lastUpdated": datetime.now().isoformat(),
+            "regions": {}
+        }
+    
+    # Extract LOD numbers from filenames
+    lods = []
+    for f in lod_files:
+        for i in range(6):
+            if f"lod{i}" in f:
+                lods.append(i)
+                break
+    
+    # Add/update ENC region entry
+    manifest["regions"][region_id] = {
+        "name": region_name,
+        "bounds": list(bounds),
+        "source": "enc",
+        "lods": sorted(set(lods)),
+        "files": lod_files,
+        "lastUpdated": datetime.now().isoformat()
+    }
+    
+    manifest["lastUpdated"] = datetime.now().isoformat()
+    
+    with open(manifest_path, 'w') as f:
+        json.dump(manifest, f, indent=2)
+
+
 # LOD simplification tolerances (degrees). Lower = more detailed.
 LOD_LEVELS = [
     ("lod0", 0.0),         # Finest (full source detail)
@@ -873,6 +919,17 @@ def main():
         "--no-merge",
         action="store_true",
         help="Disable polygon merging (keeps ENC cell boundaries)"
+    )
+    parser.add_argument(
+        "--manifest",
+        type=str,
+        default="assets/charts/manifest.json",
+        help="Path to manifest.json to update (default: assets/charts/manifest.json)"
+    )
+    parser.add_argument(
+        "--no-manifest",
+        action="store_true",
+        help="Skip updating manifest.json"
     )
     
     args = parser.parse_args()
@@ -1012,6 +1069,18 @@ def main():
     print(f"  Source points: {total_points:,}")
     print(f"  GeoJSON size: {os.path.getsize(geojson_path) / 1024:.1f} KB")
     print(f"  Binary size: {os.path.getsize(binary_path) / 1024:.1f} KB")
+    
+    # Update manifest
+    if not args.no_manifest:
+        manifest_path = Path(args.manifest)
+        update_manifest(
+            manifest_path=manifest_path,
+            region_id=args.region,
+            region_name=region_info['name'],
+            bounds=region_info['bounds'],
+            lod_files=[f"{args.region}_coastline_{suffix}.bin" for suffix, _ in LOD_LEVELS]
+        )
+        print(f"\n  Manifest updated: {manifest_path}")
     
     print(f"\n{'='*60}")
     print(f"Done! ENC coastline data saved to {output_dir}")

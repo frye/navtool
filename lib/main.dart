@@ -1,9 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'models/geo_types.dart';
 import 'parser/coastline_parser.dart';
 import 'renderer/coastline_renderer.dart';
+import 'services/coastline_data_manager.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,21 +39,54 @@ class ChartViewerScreen extends StatefulWidget {
 }
 
 class _ChartViewerScreenState extends State<ChartViewerScreen> {
+  final CoastlineDataManager _dataManager = CoastlineDataManager();
+  
   CoastlineData? _coastlineData;
   List<CoastlineData>? _lodData;
   bool _isLoading = true;
   String? _error;
+  
+  // Download progress
+  StreamSubscription<DownloadProgress>? _downloadSubscription;
+  DownloadProgress? _currentDownload;
 
   @override
   void initState() {
     super.initState();
-    _loadCoastlineData();
+    _initializeDataManager();
   }
 
   @override
   void dispose() {
+    _downloadSubscription?.cancel();
+    _dataManager.dispose();
     debugPrint('NavTool exited cleanly (window closed by user).');
     super.dispose();
+  }
+
+  Future<void> _initializeDataManager() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      await _dataManager.initialize();
+      
+      // Subscribe to download progress
+      _downloadSubscription = _dataManager.downloadProgress.listen((progress) {
+        setState(() {
+          _currentDownload = progress.isComplete ? null : progress;
+        });
+      });
+      
+      await _loadCoastlineData();
+    } catch (e) {
+      setState(() {
+        _error = 'Failed to initialize: $e';
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _loadCoastlineData() async {
@@ -61,7 +96,19 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
     });
 
     try {
-      // Try to load multiple LOD binaries (highest detail first)
+      // First, try to load ENC data for a specific region (Seattle as default)
+      final encLods = await _dataManager.getCoastlineLods('seattle');
+      
+      if (encLods != null && encLods.isNotEmpty) {
+        setState(() {
+          _lodData = encLods;
+          _coastlineData = encLods.first;
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Try to load single ENC binary files
       final lodData = await _loadAvailableLods();
       if (lodData.isNotEmpty) {
         setState(() {
@@ -72,7 +119,27 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
         return;
       }
 
-      // Try to load single binary format as fallback
+      // Fall back to GSHHG global data
+      try {
+        final gshhgData = await CoastlineParser.loadBinaryAsset(
+          'assets/gshhg/gshhg_crude.bin',
+          name: 'GSHHG Global (Crude)',
+        );
+        setState(() {
+          _coastlineData = gshhgData.copyWith(
+            lodLevel: 5,
+            minZoom: 0.0,
+            maxZoom: 2.0,
+          );
+          _lodData = [_coastlineData!];
+          _isLoading = false;
+        });
+        return;
+      } catch (e) {
+        print('GSHHG crude not found: $e');
+      }
+
+      // Try legacy single file formats
       try {
         final data = await CoastlineParser.loadBinaryAsset(
           'assets/charts/seattle_coastline.bin',
@@ -85,11 +152,9 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
         });
         return;
       } catch (e) {
-        // Binary not available, try GeoJSON
         print('Binary format not found, trying GeoJSON: $e');
       }
 
-      // Try to load GeoJSON
       try {
         final data = await CoastlineParser.parseGeoJsonAsset(
           'assets/charts/seattle_coastline.geojson',
@@ -105,10 +170,11 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
         print('GeoJSON not found: $e');
       }
 
-      // No data found - show demo data
+      // No data found
       setState(() {
-        _coastlineData = _createDemoData();
-        _lodData = null;
+        _error = 'No coastline data available.\n\n'
+            'Run the GSHHG download script to get global coastline data:\n'
+            'python tools/download_gshhg.py --bundle-crude';
         _isLoading = false;
       });
     } catch (e) {
@@ -119,168 +185,7 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
     }
   }
 
-  /// Creates demo coastline data for Seattle area for testing.
-  CoastlineData _createDemoData() {
-    // Simplified demo coastline around Seattle/Puget Sound area
-    // This is placeholder data - real data should be downloaded from NOAA
-    final polygons = [
-      // Main land mass (simplified Washington State coastline)
-      CoastlinePolygon(
-        exteriorRing: [
-          const GeoPoint(-122.80, 47.20),
-          const GeoPoint(-122.75, 47.25),
-          const GeoPoint(-122.70, 47.30),
-          const GeoPoint(-122.65, 47.40),
-          const GeoPoint(-122.60, 47.50),
-          const GeoPoint(-122.55, 47.60),
-          const GeoPoint(-122.50, 47.70),
-          const GeoPoint(-122.45, 47.75),
-          const GeoPoint(-122.35, 47.80),
-          const GeoPoint(-122.20, 47.85),
-          const GeoPoint(-122.10, 47.80),
-          const GeoPoint(-122.00, 47.75),
-          const GeoPoint(-121.90, 47.70),
-          const GeoPoint(-121.85, 47.60),
-          const GeoPoint(-121.80, 47.50),
-          const GeoPoint(-121.85, 47.40),
-          const GeoPoint(-121.90, 47.30),
-          const GeoPoint(-122.00, 47.25),
-          const GeoPoint(-122.10, 47.20),
-          const GeoPoint(-122.20, 47.18),
-          const GeoPoint(-122.30, 47.17),
-          const GeoPoint(-122.40, 47.16),
-          const GeoPoint(-122.50, 47.15),
-          const GeoPoint(-122.60, 47.16),
-          const GeoPoint(-122.70, 47.18),
-          const GeoPoint(-122.80, 47.20),
-        ],
-        interiorRings: [
-          // Puget Sound water body (hole in the land)
-          [
-            const GeoPoint(-122.50, 47.30),
-            const GeoPoint(-122.45, 47.35),
-            const GeoPoint(-122.40, 47.45),
-            const GeoPoint(-122.35, 47.55),
-            const GeoPoint(-122.30, 47.60),
-            const GeoPoint(-122.25, 47.55),
-            const GeoPoint(-122.20, 47.45),
-            const GeoPoint(-122.25, 47.35),
-            const GeoPoint(-122.30, 47.30),
-            const GeoPoint(-122.40, 47.28),
-            const GeoPoint(-122.50, 47.30),
-          ],
-        ],
-      ),
-      // Bainbridge Island
-      CoastlinePolygon(
-        exteriorRing: [
-          const GeoPoint(-122.58, 47.62),
-          const GeoPoint(-122.52, 47.65),
-          const GeoPoint(-122.48, 47.68),
-          const GeoPoint(-122.50, 47.72),
-          const GeoPoint(-122.55, 47.70),
-          const GeoPoint(-122.60, 47.67),
-          const GeoPoint(-122.58, 47.62),
-        ],
-      ),
-      // Vashon Island
-      CoastlinePolygon(
-        exteriorRing: [
-          const GeoPoint(-122.48, 47.38),
-          const GeoPoint(-122.42, 47.42),
-          const GeoPoint(-122.40, 47.48),
-          const GeoPoint(-122.44, 47.52),
-          const GeoPoint(-122.50, 47.50),
-          const GeoPoint(-122.52, 47.44),
-          const GeoPoint(-122.48, 47.38),
-        ],
-      ),
-    ];
-
-    return CoastlineData(
-      polygons: polygons,
-      bounds: const GeoBounds(
-        minLon: -122.80,
-        minLat: 47.15,
-        maxLon: -121.80,
-        maxLat: 47.85,
-      ),
-      name: 'Seattle Demo (Placeholder)',
-      lastUpdated: DateTime.now(),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('NavTool - NOAA Chart Viewer'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadCoastlineData,
-            tooltip: 'Reload Chart',
-          ),
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: _showAboutDialog,
-            tooltip: 'About',
-          ),
-        ],
-      ),
-      body: _buildBody(),
-    );
-  }
-
-  Widget _buildBody() {
-    if (_isLoading) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Loading coastline data...'),
-          ],
-        ),
-      );
-    }
-
-    if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.red),
-            const SizedBox(height: 16),
-            Text(_error!, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loadCoastlineData,
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (_coastlineData == null) {
-      return const Center(
-        child: Text('No coastline data available'),
-      );
-    }
-
-    return ChartView(
-      coastlineData: _coastlineData!,
-      coastlineLods: _lodData,
-      initialZoom: 1.0,
-      minZoom: 0.5,
-      maxZoom: 50.0,
-    );
-  }
-
   Future<List<CoastlineData>> _loadAvailableLods() async {
-    // Ordered from highest detail to lowest. Thresholds tuned for OSM high-res data.
     final candidates = [
       _LodConfig(
         asset: 'assets/charts/seattle_coastline_lod0.bin',
@@ -347,6 +252,88 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
 
     return loaded;
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('NavTool - NOAA Chart Viewer'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadCoastlineData,
+            tooltip: 'Reload Chart',
+          ),
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            onPressed: _showAboutDialog,
+            tooltip: 'About',
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Download status bar
+          if (_currentDownload != null)
+            _DownloadStatusBar(progress: _currentDownload!),
+          
+          // Main content
+          Expanded(child: _buildBody()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Loading coastline data...'),
+          ],
+        ),
+      );
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 16),
+              Text(_error!, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _loadCoastlineData,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_coastlineData == null) {
+      return const Center(
+        child: Text('No coastline data available'),
+      );
+    }
+
+    return ChartView(
+      coastlineData: _coastlineData!,
+      coastlineLods: _lodData,
+      initialZoom: 1.0,
+      minZoom: 0.1,
+      maxZoom: 50.0,
+    );
+  }
+
   void _showAboutDialog() {
     showDialog(
       context: context,
@@ -360,18 +347,72 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
             SizedBox(height: 8),
             Text('A cross-platform application for viewing NOAA nautical charts.'),
             SizedBox(height: 16),
-            Text('Controls:', style: TextStyle(fontWeight: FontWeight.bold)),
-            Text('• Pinch to zoom'),
-            Text('• Drag to pan'),
-            Text('• Use buttons for zoom control'),
+            Text('Data Sources:', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text('• NOAA ENC Direct (high resolution)'),
+            Text('• GSHHG Database (global coverage)'),
             SizedBox(height: 16),
-            Text('Data: NOAA coastline data'),
+            Text('Controls:', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text('• Pinch/scroll to zoom'),
+            Text('• Drag to pan'),
+            Text('• Double-tap to center'),
+            Text('• Buttons for zoom control'),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Download status bar widget showing progress.
+class _DownloadStatusBar extends StatelessWidget {
+  final DownloadProgress progress;
+
+  const _DownloadStatusBar({required this.progress});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.blue.shade900,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  progress.description,
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+                const SizedBox(height: 4),
+                LinearProgressIndicator(
+                  value: progress.progress,
+                  backgroundColor: Colors.white24,
+                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '${(progress.progress * 100).toInt()}%',
+            style: const TextStyle(color: Colors.white, fontSize: 12),
           ),
         ],
       ),

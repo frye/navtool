@@ -83,6 +83,10 @@ unlinked_spec.ds
 # NOAA data cache
 .noaa_cache/
 
+# GSHHG intermediate files (keep only .bin files)
+assets/gshhg/*.zip
+assets/gshhg/*.geojson
+
 # Python virtual environments
 venv/
 .env

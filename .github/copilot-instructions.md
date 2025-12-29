@@ -2,7 +2,10 @@
 
 ## Project Overview
 
-NavTool is a Flutter-based marine navigation chart viewer for Windows, macOS, Linux, iOS, and Android. It displays official NOAA Electronic Navigational Chart (ENC) data for coastal areas of the United States.
+NavTool is a Flutter-based marine navigation chart viewer for Windows, macOS, Linux, iOS, and Android. It displays official NOAA chart data using a multi-layer approach:
+
+1. **GSHHG** (Global) - Bundled crude resolution + on-demand higher resolutions
+2. **NOAA ENC Direct** (Regional) - High-resolution US coastal data
 
 ## Critical Requirements
 
@@ -17,13 +20,11 @@ NavTool is a Flutter-based marine navigation chart viewer for Windows, macOS, Li
   - Provides ~1-5m resolution coastlines from official ENCs
   - Data updated weekly from official NOAA ENCs
   
-- **NOAA Electronic Navigational Charts (ENCs)** - Official S-57 format charts
-  - https://nauticalcharts.noaa.gov/charts/noaa-enc.html
-  - If processing S-57 directly, prefer using NOAA ENC Direct to GIS instead
-
 - **NOAA GSHHG** (Global Self-consistent Hierarchical High-resolution Geography)
   - https://www.ngdc.noaa.gov/mgg/shorelines/
-  - Lower resolution (~80m), use only as fallback or for overview scales
+  - Global coverage at multiple resolutions (crude ~80m to full ~200m)
+  - Crude resolution bundled with app for instant global display
+  - Higher resolutions downloaded on-demand
 
 ❌ **Prohibited Data Sources:**
 - OpenStreetMap coastlines or any OSM data
@@ -40,7 +41,52 @@ NavTool is a Flutter-based marine navigation chart viewer for Windows, macOS, Li
 - ✅ **Douglas-Peucker simplification** is acceptable for LOD (level-of-detail) optimization
 - ✅ Points may be reduced at low zoom levels, but original source accuracy must be preserved
 
-### Binary Format
+## Architecture
+
+### Multi-Layer Data System
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Chart Data Layers                           │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌────────────────────┐  ┌────────────────────────────────────┐ │
+│  │ GSHHG (Global)     │  │ NOAA ENC Direct (Regional)         │ │
+│  │ • Bundled crude    │  │ • High resolution (~1-5m)          │ │
+│  │ • On-demand higher │  │ • Downloaded per region            │ │
+│  │ • ~80m resolution  │  │ • Harbor/Approach/Coastal scales   │ │
+│  └────────────────────┘  └────────────────────────────────────┘ │
+│                                                                  │
+│  Priority: ENC (if available) > GSHHG (higher res) > GSHHG crude│
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Manifest System
+
+The app uses `assets/charts/manifest.json` for O(1) chart lookup - critical for low-power devices like Raspberry Pi:
+
+```json
+{
+  "version": 1,
+  "regions": {
+    "gshhg_crude_global": {
+      "name": "GSHHG Crude (Global)",
+      "bounds": [-180, -90, 180, 90],
+      "source": "gshhg",
+      "gshhgResolution": "crude",
+      "files": ["gshhg_crude.bin"]
+    },
+    "seattle": {
+      "name": "Seattle / Puget Sound",
+      "bounds": [-123.5, 47.0, -121.5, 48.5],
+      "source": "enc",
+      "lods": [0, 1, 2, 3, 4, 5],
+      "files": ["seattle_coastline_lod0.bin", ...]
+    }
+  }
+}
+```
+
+### Binary Format (NVTL)
 
 NavTool uses a custom binary format (`.bin` files) for optimized coastline loading:
 
@@ -65,92 +111,136 @@ Per Polygon:
 ```
 navtool/
 ├── lib/
-│   ├── main.dart              # App entry, LOD loading
-│   ├── navtool.dart           # Main widget
+│   ├── main.dart                    # App entry point
 │   ├── models/
-│   │   └── geo_types.dart     # Geographic data structures
+│   │   ├── geo_types.dart           # Geographic data structures
+│   │   └── chart_manifest.dart      # Manifest model for chart regions
 │   ├── parser/
-│   │   └── coastline_parser.dart  # GeoJSON/binary parsing
-│   └── renderer/
-│       └── coastline_renderer.dart # Canvas rendering, LOD selection
+│   │   └── coastline_parser.dart    # GeoJSON/binary parsing
+│   ├── renderer/
+│   │   └── coastline_renderer.dart  # Canvas rendering, LOD selection
+│   └── services/
+│       └── coastline_data_manager.dart  # Multi-source data manager
 ├── assets/
-│   └── charts/                # Chart data files (.bin, .geojson)
+│   ├── charts/                      # ENC regional data
+│   │   └── manifest.json            # Chart region index
+│   └── gshhg/                       # Global GSHHG data
+│       └── gshhg_crude.bin          # Bundled crude resolution
 ├── tools/
-│   ├── download_enc_direct.py # PRIMARY: NOAA ENC Direct downloader
-│   ├── download_noaa_data.py  # GSHHG downloader (lower resolution)
-│   └── download_enc_data.py   # S-57 direct parser (requires GDAL)
+│   ├── download_enc_direct.py       # NOAA ENC Direct downloader
+│   └── download_gshhg.py            # GSHHG global data downloader
 └── ...
 ```
 
 ## Data Download Tools
 
-### Recommended: `download_enc_direct.py`
+### ENC Regional Data: `download_enc_direct.py`
 
 Use this tool for high-resolution NOAA ENC coastline data:
 
 ```bash
-# Download Seattle area (harbor scale - highest detail)
-python tools/download_enc_direct.py --region seattle --scale-band harbor
+# Download Seattle area (default: harbor + approach + coastal scales)
+python tools/download_enc_direct.py --region seattle
 
 # List available regions
 python tools/download_enc_direct.py --list-regions
-
-# List scale bands
-python tools/download_enc_direct.py --list-scale-bands
 
 # Download from all scale bands for maximum coverage
 python tools/download_enc_direct.py --region seattle --all-scale-bands
 ```
 
-Scale bands (most to least detailed):
-- `berthing` - ~1:5,000 (port facilities)
-- `harbor` - ~1:10,000-1:50,000 (harbors) **← Recommended**
-- `approach` - ~1:50,000-1:150,000 (approaches)
-- `coastal` - ~1:150,000-1:600,000 (coastal)
-- `general` - ~1:600,000-1:1,500,000 (general)
-- `overview` - 1:1,500,000+ (overview)
+The script automatically:
+- Downloads from multiple scale bands (harbor, approach, coastal)
+- Merges overlapping polygons using Shapely to eliminate ENC cell boundaries
+- Generates LOD0-LOD5 files with Douglas-Peucker simplification
+- Updates the manifest.json file
 
-### Fallback: `download_noaa_data.py`
+### GSHHG Global Data: `download_gshhg.py`
 
-Use for GSHHG data (lower resolution, ~80m):
+Use for global coastline coverage:
 
 ```bash
-python tools/download_noaa_data.py --region seattle --resolution f
+# List available resolutions
+python tools/download_gshhg.py --list-resolutions
+
+# Download additional resolutions
+python tools/download_gshhg.py --resolution low
+python tools/download_gshhg.py --all
 ```
+
+| Resolution | File Size | Zoom Range |
+|------------|-----------|------------|
+| crude | ~120 KB | 0-2 (bundled) |
+| low | ~1 MB | 2-5 |
+| intermediate | ~3.5 MB | 5-8 |
+| high | ~12 MB | 8+ |
 
 ## LOD System
 
 NavTool implements multi-level-of-detail rendering:
 
-- `lod0` - Full source resolution (highest detail)
-- `lod1` - Ultra-high detail
-- `lod2` - Very high detail
-- `lod3` - High detail
-- `lod4` - Medium detail
-- `lod5` - Low detail (overview)
+| LOD | Tolerance | Zoom Range | Detail Level |
+|-----|-----------|------------|--------------|
+| 0 | 0.0 | 15+ | Full source resolution |
+| 1 | 0.00005° | 10-15 | Ultra-high |
+| 2 | 0.0001° | 6-10 | Very high |
+| 3 | 0.0003° | 3-6 | High |
+| 4 | 0.0008° | 1.5-3 | Medium |
+| 5 | 0.002° | 0-1.5 | Low (overview) |
 
-LOD files are named: `{region}_coastline_lod{N}.bin`
+## Key Services
 
-The renderer automatically selects appropriate LOD based on zoom level.
+### CoastlineDataManager
+
+Manages multi-source coastline data:
+
+```dart
+final manager = CoastlineDataManager();
+await manager.initialize(); // Loads manifest
+
+// Get best data for visible region
+final data = await manager.getCoastlineData(bounds, zoom);
+
+// Get all LOD levels for a region
+final lods = await manager.getCoastlineLods('seattle');
+
+// Listen to download progress
+manager.downloadProgress.listen((progress) {
+  print('${progress.description}: ${progress.progress * 100}%');
+});
+```
+
+### ChartManifest
+
+Provides O(1) lookup for chart regions:
+
+```dart
+final manifest = ChartManifest.parse(jsonString);
+
+// Find regions overlapping visible area
+final encRegions = manifest.findEncRegions(visibleBounds);
+final gshhgRegions = manifest.findGshhgRegions(visibleBounds);
+```
 
 ## Flutter/Dart Guidelines
 
 - Target Flutter 3.x
 - Use `CustomPainter` for canvas rendering
-- Binary assets are loaded via `rootBundle`
+- Binary assets loaded via `rootBundle`
 - Coordinate system: WGS84 (EPSG:4326)
-- Rendering: lon/lat to screen pixel transformation
+- Latitude correction: `cos(centerLat)` for proper aspect ratio at all latitudes
 
 ## Dependencies
 
 ### Dart/Flutter
 - Standard Flutter SDK
-- No additional packages required for core functionality
+- `path_provider` for app data directory
+- `vector_math` for math operations
 
 ### Python (Data Tools)
 - `pyshp` - Shapefile reading (required)
-- Standard library only for network/file operations
-- **GDAL is NOT required** for ENC Direct downloads
+- `shapely` - Polygon merging for ENC data (auto-installed)
+- Standard library for network/file operations
 
 ## Testing
 
@@ -159,27 +249,31 @@ When testing coastline rendering:
 2. Check that no jagged edges appear at high zoom
 3. Ensure LOD switching is smooth
 4. Validate binary file parsing (check magic number "NVTL")
+5. Test global view with GSHHG crude data
+6. Test regional zoom with ENC data
 
 ## Common Issues
 
+### "No coastline data available"
+- Ensure GSHHG crude is bundled in `assets/gshhg/gshhg_crude.bin`
+- Run `python tools/download_gshhg.py --bundle-crude` if missing
+
 ### "Coastline too coarse at high zoom"
-- Source data resolution is insufficient
-- Use `download_enc_direct.py` with `--scale-band harbor` for higher resolution
-- Ensure LOD0 is loading (check console for "Using LOD: 0")
+- Download ENC data for the region: `python tools/download_enc_direct.py --region <name>`
+- Ensure LOD0 is loading (check console for LOD switch messages)
+
+### "ENC cell boundaries visible as rectangles"
+- Re-download with polygon merging: `python tools/download_enc_direct.py --region <name>`
+- Do NOT use `--no-merge` flag
 
 ### "Binary file format error"
 - Magic number mismatch - should be ASCII "NVTL"
 - Re-generate binary files with latest Python tools
-
-### "No features found"
-- Region may not have ENC coverage at selected scale band
-- Try `--all-scale-bands` option
-- Check NOAA ENC Direct viewer to verify coverage
 
 ## Important Notes
 
 1. **This is a marine application** - data accuracy is critical for safety
 2. **NOAA-only sources** - never use non-NOAA coastline data
 3. **No smoothing** - preserve original geometry precision
-4. **Weekly updates** - NOAA ENC Direct data is updated weekly
-5. **Not for navigation** - ENC Direct data is for GIS purposes only; official ENCs required for actual navigation
+4. **Manifest-based** - always update manifest.json when adding regions
+5. **Not for navigation** - this is for GIS/planning purposes only

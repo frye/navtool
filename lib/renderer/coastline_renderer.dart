@@ -92,11 +92,15 @@ class CoastlineRenderer extends CustomPainter {
 
   /// Convert geographic coordinates to screen coordinates.
   /// Uses equirectangular projection with latitude correction for proper aspect ratio.
+  /// The correction factor cos(lat) compensates for longitude convergence toward poles:
+  /// - At equator (0°): 1° lon = 1° lat in distance
+  /// - At 47° (Seattle): 1° lon ≈ 0.68° lat in distance
+  /// - At 60° (Alaska): 1° lon = 0.5° lat in distance
   Offset _geoToScreen(GeoPoint point, Size size) {
     final bounds = coastlineData.bounds;
     
     // Calculate latitude correction factor (cosine of center latitude)
-    // At Seattle (~47°N), 1° longitude is ~68% the width of 1° latitude
+    // This scales longitude to match the actual ground distance at this latitude
     final centerLatRad = bounds.centerLat * math.pi / 180.0; // Convert to radians
     final latCorrection = centerLatRad.abs() < 1.5 ? math.cos(centerLatRad) : 0.1; // cos(lat), min 0.1
     
