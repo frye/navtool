@@ -40,11 +40,17 @@ class CoastlineRenderer extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Clip canvas to viewport for efficiency
+    canvas.clipRect(Rect.fromLTWH(0, 0, size.width, size.height));
+
     // Fill background with water color
     final waterPaint = Paint()
       ..color = waterColor
       ..style = PaintingStyle.fill;
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), waterPaint);
+
+    // Calculate visible geographic bounds for polygon culling
+    final visibleBounds = _getVisibleBounds(size);
 
     // Draw GSHHG background layer first (if available)
     // Only draw FILL (no stroke) - ENC will provide the detailed coastline on top
@@ -54,7 +60,7 @@ class CoastlineRenderer extends CustomPainter {
         ..color = landColor  // Use same land color so it blends with ENC
         ..style = PaintingStyle.fill;
 
-      final bgPath = _buildLandPath(backgroundData!, size);
+      final bgPath = _buildLandPath(backgroundData!, size, visibleBounds);
       canvas.drawPath(bgPath, bgLandPaint);
       // NO stroke for GSHHG - only ENC draws the detailed coastline stroke
     }
@@ -68,15 +74,20 @@ class CoastlineRenderer extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
-    final path = _buildLandPath(coastlineData, size);
+    final path = _buildLandPath(coastlineData, size, visibleBounds);
     canvas.drawPath(path, landPaint);
     canvas.drawPath(path, strokePaint);
   }
 
-  ui.Path _buildLandPath(CoastlineData data, Size size) {
+  ui.Path _buildLandPath(CoastlineData data, Size size, GeoBounds? visibleBounds) {
     final path = ui.Path();
 
     for (final polygon in data.polygons) {
+      // Skip polygons entirely outside visible bounds (viewport culling)
+      if (visibleBounds != null && !polygon.bounds.intersects(visibleBounds)) {
+        continue;
+      }
+
       // Draw exterior ring
       _addRingToPath(path, polygon.exteriorRing, size);
 
@@ -146,6 +157,57 @@ class CoastlineRenderer extends CustomPainter {
     );
   }
 
+  /// Convert screen coordinates to geographic coordinates (inverse of _geoToScreen).
+  GeoPoint _screenToGeo(Offset screenPoint, Size size) {
+    // Calculate latitude correction factor
+    final centerLatRad = projectionBounds.centerLat * math.pi / 180.0;
+    final latCorrection = centerLatRad.abs() < 1.5 ? math.cos(centerLatRad) : 0.1;
+    
+    // Calculate corrected dimensions
+    final correctedWidth = projectionBounds.width * latCorrection;
+    final correctedHeight = projectionBounds.height;
+    
+    // Determine scale to fit view while maintaining aspect ratio
+    final scaleX = size.width / correctedWidth;
+    final scaleY = size.height / correctedHeight;
+    final baseScale = scaleX < scaleY ? scaleX : scaleY;
+    
+    // Calculate the rendered size
+    final renderedWidth = correctedWidth * baseScale;
+    final renderedHeight = correctedHeight * baseScale;
+    
+    // Center offsets
+    final centerOffsetX = (size.width - renderedWidth * zoom) / 2;
+    final centerOffsetY = (size.height - renderedHeight * zoom) / 2;
+    
+    // Reverse the screen transformation
+    final baseX = (screenPoint.dx - centerOffsetX - panOffset.dx) / (baseScale * zoom);
+    final baseY = (screenPoint.dy - centerOffsetY - panOffset.dy) / (baseScale * zoom);
+    
+    // Convert normalized coordinates back to geographic
+    final longitude = (baseX / latCorrection) + projectionBounds.minLon;
+    final latitude = projectionBounds.maxLat - baseY;
+    
+    return GeoPoint(longitude, latitude);
+  }
+
+  /// Calculate the geographic bounds visible in the current viewport.
+  GeoBounds _getVisibleBounds(Size size) {
+    // Convert the four screen corners to geographic coordinates
+    final topLeft = _screenToGeo(Offset.zero, size);
+    final topRight = _screenToGeo(Offset(size.width, 0), size);
+    final bottomLeft = _screenToGeo(Offset(0, size.height), size);
+    final bottomRight = _screenToGeo(Offset(size.width, size.height), size);
+    
+    // Find the bounding box of all four corners
+    final minLon = [topLeft.longitude, topRight.longitude, bottomLeft.longitude, bottomRight.longitude].reduce(math.min);
+    final maxLon = [topLeft.longitude, topRight.longitude, bottomLeft.longitude, bottomRight.longitude].reduce(math.max);
+    final minLat = [topLeft.latitude, topRight.latitude, bottomLeft.latitude, bottomRight.latitude].reduce(math.min);
+    final maxLat = [topLeft.latitude, topRight.latitude, bottomLeft.latitude, bottomRight.latitude].reduce(math.max);
+    
+    return GeoBounds(minLon: minLon, minLat: minLat, maxLon: maxLon, maxLat: maxLat);
+  }
+
   @override
   bool shouldRepaint(CoastlineRenderer oldDelegate) {
     return oldDelegate.panOffset != panOffset ||
@@ -175,7 +237,7 @@ class ChartView extends StatefulWidget {
     this.globalLods,
     this.viewBounds,
     this.minZoom = 0.1,
-    this.maxZoom = 50.0,
+    this.maxZoom = 1000.0,
     this.initialZoom = 1.0,
   });
 

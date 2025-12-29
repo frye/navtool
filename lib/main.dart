@@ -349,9 +349,6 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
       coastlineLods: _regionalLods,
       globalLods: _globalLods,
       viewBounds: _viewBounds,
-      initialZoom: 1.0,
-      minZoom: 0.1,
-      maxZoom: 50.0,
     );
   }
 
