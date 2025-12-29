@@ -141,7 +141,7 @@ class CoastlineParser {
   //     - Point count: 4 bytes (uint32)
   //     - Points: N x 2 x float64
 
-  static const _magic = 0x4E56544C; // "NVTL"
+  static const _magicString = 'NVTL';
   static const _version = 1;
 
   /// Convert coastline data to optimized binary format.
@@ -159,9 +159,11 @@ class CoastlineParser {
     final buffer = ByteData(size);
     int offset = 0;
 
-    // Write header
-    buffer.setUint32(offset, _magic, Endian.little);
-    offset += 4;
+    // Write magic as ASCII "NVTL"
+    for (final codeUnit in _magicString.codeUnits) {
+      buffer.setUint8(offset, codeUnit);
+      offset += 1;
+    }
     buffer.setUint16(offset, _version, Endian.little);
     offset += 2;
     buffer.setUint32(offset, data.polygons.length, Endian.little);
@@ -212,9 +214,9 @@ class CoastlineParser {
     int offset = 0;
 
     // Read header
-    final magic = buffer.getUint32(offset, Endian.little);
+    final magicBytes = bytes.sublist(offset, offset + 4);
     offset += 4;
-    if (magic != _magic) {
+    if (String.fromCharCodes(magicBytes) != _magicString) {
       throw FormatException('Invalid binary format: bad magic number');
     }
 

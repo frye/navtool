@@ -25,6 +25,7 @@ import json
 import os
 import struct
 import sys
+import math
 import zipfile
 from pathlib import Path
 from typing import List, Tuple
@@ -65,6 +66,17 @@ REGIONS = {
 # NOAA GSHHG data URL (hosted by NOAA/NGDC)
 GSHHG_URL = "https://www.ngdc.noaa.gov/mgg/shorelines/data/gshhg/latest/gshhg-shp-2.3.7.zip"
 GSHHG_FILENAME = "gshhg-shp-2.3.7.zip"
+
+# LOD simplification tolerances (degrees). Lower = more detailed.
+# Spread tolerances further apart so each level is visually distinct.
+LOD_LEVELS = [
+    ("lod0", 0.0),         # Finest (full source detail)
+    ("lod1", 0.0002),      # Ultra-high
+    ("lod2", 0.0005),      # Very high
+    ("lod3", 0.0010),      # High
+    ("lod4", 0.0030),      # Medium
+    ("lod5", 0.0080),      # Low
+]
 
 
 def download_gshhg(cache_dir: Path) -> Path:
@@ -201,6 +213,81 @@ def shapes_to_geojson(shapes: List, bounds: Tuple[float, float, float, float]) -
         "type": "FeatureCollection",
         "features": features
     }
+
+
+def _perpendicular_distance(point, start, end) -> float:
+    """Perpendicular distance from point to line segment (lon/lat)."""
+    (px, py), (sx, sy), (ex, ey) = point, start, end
+    line_mag = math.hypot(ex - sx, ey - sy)
+    if line_mag == 0:
+        return math.hypot(px - sx, py - sy)
+    u = max(0.0, min(1.0, ((px - sx) * (ex - sx) + (py - sy) * (ey - sy)) / (line_mag ** 2)))
+    ix = sx + u * (ex - sx)
+    iy = sy + u * (ey - sy)
+    return math.hypot(px - ix, py - iy)
+
+
+def douglas_peucker(points: List[Tuple[float, float]], tolerance: float) -> List[Tuple[float, float]]:
+    """Simplify a polyline using Douglas-Peucker. Points may already be closed."""
+    if len(points) <= 2 or tolerance <= 0:
+        return points
+
+    # If closed ring, keep closure for later
+    is_closed = points[0] == points[-1]
+    working = points[:-1] if is_closed else points
+
+    def _simplify(segment):
+        start, end = segment[0], segment[-1]
+        max_dist = -1.0
+        index = 0
+        for i in range(1, len(segment) - 1):
+                        dist = _perpendicular_distance(segment[i], start, end)
+                        if dist > max_dist:
+                                max_dist = dist
+                                index = i
+        if max_dist > tolerance:
+                        left = _simplify(segment[: index + 1])
+                        right = _simplify(segment[index:])
+                        return left[:-1] + right
+        else:
+                        return [start, end]
+
+    simplified = _simplify(working)
+    if is_closed:
+        if simplified[0] != simplified[-1]:
+            simplified.append(simplified[0])
+    return simplified
+
+
+def simplify_geojson(geojson: dict, tolerance: float) -> dict:
+    """Return a simplified copy of a GeoJSON FeatureCollection."""
+    if tolerance <= 0:
+        return geojson
+
+    out_features = []
+    for feature in geojson.get("features", []):
+        geom = feature.get("geometry", {})
+        if geom.get("type") != "Polygon":
+            continue
+        new_coords = []
+        for ring in geom.get("coordinates", []):
+            simplified = douglas_peucker([(p[0], p[1]) for p in ring], tolerance)
+            if len(simplified) < 4:
+                simplified = ring  # fallback to original ring
+            if simplified[0] != simplified[-1]:
+                simplified.append(simplified[0])
+            new_coords.append([(p[0], p[1]) for p in simplified])
+
+        out_features.append({
+            "type": "Feature",
+            "properties": feature.get("properties", {}),
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": new_coords
+            }
+        })
+
+    return {"type": "FeatureCollection", "features": out_features}
 
 
 def geojson_to_binary(geojson: dict) -> bytes:
@@ -357,29 +444,39 @@ def main():
     print("Converting to GeoJSON...")
     geojson = shapes_to_geojson(shapes, region_info['bounds'])
     
-    # Save GeoJSON
+    # Save base (full detail) with legacy names
     geojson_path = output_dir / f"{args.region}_coastline.geojson"
     with open(geojson_path, 'w') as f:
         json.dump(geojson, f)
-    print(f"Saved GeoJSON: {geojson_path}")
-    
-    # Convert to binary format
-    print("Converting to binary format...")
     binary_data = geojson_to_binary(geojson)
-    
-    # Save binary
     binary_path = output_dir / f"{args.region}_coastline.bin"
     with open(binary_path, 'wb') as f:
         f.write(binary_data)
-    print(f"Saved binary: {binary_path}")
-    
-    # Print statistics
-    print(f"\nStatistics:")
+
+    print(f"Saved base GeoJSON: {geojson_path}")
+    print(f"Saved base binary: {binary_path}")
+
+    # Generate LOD variants
+    for suffix, tolerance in LOD_LEVELS:
+        lod_geojson = geojson if tolerance == 0 else simplify_geojson(geojson, tolerance)
+        lod_geojson_path = output_dir / f"{args.region}_coastline_{suffix}.geojson"
+        with open(lod_geojson_path, 'w') as f:
+            json.dump(lod_geojson, f)
+
+        lod_binary_path = output_dir / f"{args.region}_coastline_{suffix}.bin"
+        with open(lod_binary_path, 'wb') as f:
+            f.write(geojson_to_binary(lod_geojson))
+
+        print(f"Saved {suffix} GeoJSON (tol={tolerance}): {lod_geojson_path}")
+        print(f"Saved {suffix} binary: {lod_binary_path}")
+
+    # Print statistics for base file
+    print(f"\nStatistics (base):")
     print(f"  Features: {len(geojson['features'])}")
     print(f"  GeoJSON size: {os.path.getsize(geojson_path) / 1024:.1f} KB")
     print(f"  Binary size: {os.path.getsize(binary_path) / 1024:.1f} KB")
     print(f"  Compression: {os.path.getsize(binary_path) / os.path.getsize(geojson_path) * 100:.1f}%")
-    
+
     print(f"\nDone! Chart data saved to {output_dir}")
 
 

@@ -107,12 +107,19 @@ class CoastlineData {
   final GeoBounds bounds;
   final String? name;
   final DateTime? lastUpdated;
+  // Optional level-of-detail metadata used to pick the best dataset for a zoom level.
+  final int? lodLevel; // 0 = highest detail
+  final double? minZoom;
+  final double? maxZoom;
 
   const CoastlineData({
     required this.polygons,
     required this.bounds,
     this.name,
     this.lastUpdated,
+    this.lodLevel,
+    this.minZoom,
+    this.maxZoom,
   });
 
   int get polygonCount => polygons.length;
@@ -126,5 +133,33 @@ class CoastlineData {
       }
     }
     return count;
+  }
+
+  /// Returns a copy with optional overrides; keeps data immutable.
+  CoastlineData copyWith({
+    List<CoastlinePolygon>? polygons,
+    GeoBounds? bounds,
+    String? name,
+    DateTime? lastUpdated,
+    int? lodLevel,
+    double? minZoom,
+    double? maxZoom,
+  }) {
+    return CoastlineData(
+      polygons: polygons ?? this.polygons,
+      bounds: bounds ?? this.bounds,
+      name: name ?? this.name,
+      lastUpdated: lastUpdated ?? this.lastUpdated,
+      lodLevel: lodLevel ?? this.lodLevel,
+      minZoom: minZoom ?? this.minZoom,
+      maxZoom: maxZoom ?? this.maxZoom,
+    );
+  }
+
+  /// Checks whether this dataset is intended for the given zoom.
+  bool supportsZoom(double zoom) {
+    final min = minZoom ?? double.negativeInfinity;
+    final max = maxZoom ?? double.infinity;
+    return zoom >= min && zoom < max;
   }
 }

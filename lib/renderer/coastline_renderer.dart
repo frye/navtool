@@ -124,6 +124,7 @@ class CoastlineRenderer extends CustomPainter {
 /// Interactive chart view widget with pan and zoom support.
 class ChartView extends StatefulWidget {
   final CoastlineData coastlineData;
+  final List<CoastlineData>? coastlineLods; // Optional list of LOD datasets
   final double minZoom;
   final double maxZoom;
   final double initialZoom;
@@ -131,6 +132,7 @@ class ChartView extends StatefulWidget {
   const ChartView({
     super.key,
     required this.coastlineData,
+    this.coastlineLods,
     this.minZoom = 0.5,
     this.maxZoom = 20.0,
     this.initialZoom = 1.0,
@@ -144,6 +146,7 @@ class _ChartViewState extends State<ChartView> {
   late double _zoom;
   Offset _panOffset = Offset.zero;
   Offset? _lastFocalPoint;
+  CoastlineData? _lastActive;
 
   @override
   void initState() {
@@ -194,6 +197,12 @@ class _ChartViewState extends State<ChartView> {
 
   @override
   Widget build(BuildContext context) {
+    final activeData = _selectCoastlineData(_zoom);
+    if (!identical(activeData, _lastActive)) {
+      debugPrint('LOD switch -> ${activeData.name ?? 'unknown'} (lod=${activeData.lodLevel}, points=${activeData.totalPoints}, zoom=${_zoom.toStringAsFixed(2)})');
+      _lastActive = activeData;
+    }
+
     return Stack(
       children: [
         GestureDetector(
@@ -205,7 +214,7 @@ class _ChartViewState extends State<ChartView> {
               return CustomPaint(
                 size: Size(constraints.maxWidth, constraints.maxHeight),
                 painter: CoastlineRenderer(
-                  coastlineData: widget.coastlineData,
+                  coastlineData: activeData,
                   panOffset: _panOffset,
                   zoom: _zoom,
                   viewSize: Size(constraints.maxWidth, constraints.maxHeight),
@@ -264,7 +273,7 @@ class _ChartViewState extends State<ChartView> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  widget.coastlineData.name ?? 'Chart',
+                  activeData.name ?? 'Chart',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
@@ -274,12 +283,17 @@ class _ChartViewState extends State<ChartView> {
                   'Zoom: ${_zoom.toStringAsFixed(2)}x',
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
+                if (activeData.lodLevel != null)
+                  Text(
+                    'LOD: ${activeData.lodLevel}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
                 Text(
-                  'Polygons: ${widget.coastlineData.polygonCount}',
+                  'Polygons: ${activeData.polygonCount}',
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
                 Text(
-                  'Points: ${widget.coastlineData.totalPoints}',
+                  'Points: ${activeData.totalPoints}',
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
               ],
@@ -288,5 +302,38 @@ class _ChartViewState extends State<ChartView> {
         ),
       ],
     );
+  }
+
+  List<CoastlineData> _lodsSorted() {
+    final lods = widget.coastlineLods;
+    if (lods == null || lods.isEmpty) {
+      return [widget.coastlineData];
+    }
+
+    final sorted = List<CoastlineData>.of(lods);
+    sorted.sort((a, b) {
+      final aMin = a.minZoom ?? double.negativeInfinity;
+      final bMin = b.minZoom ?? double.negativeInfinity;
+      if (aMin != bMin) return bMin.compareTo(aMin); // higher minZoom = higher detail
+
+      final aLod = a.lodLevel ?? 999;
+      final bLod = b.lodLevel ?? 999;
+      if (aLod != bLod) return aLod.compareTo(bLod);
+
+      return b.totalPoints.compareTo(a.totalPoints); // more points treated as higher detail
+    });
+    return sorted;
+  }
+
+  CoastlineData _selectCoastlineData(double zoom) {
+    final sorted = _lodsSorted();
+    for (final data in sorted) {
+      if (data.supportsZoom(zoom)) {
+        return data;
+      }
+    }
+
+    // Fallback: pick the highest-detail entry (first after sorting)
+    return sorted.first;
   }
 }

@@ -38,6 +38,7 @@ class ChartViewerScreen extends StatefulWidget {
 
 class _ChartViewerScreenState extends State<ChartViewerScreen> {
   CoastlineData? _coastlineData;
+  List<CoastlineData>? _lodData;
   bool _isLoading = true;
   String? _error;
 
@@ -47,6 +48,12 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
     _loadCoastlineData();
   }
 
+  @override
+  void dispose() {
+    debugPrint('NavTool exited cleanly (window closed by user).');
+    super.dispose();
+  }
+
   Future<void> _loadCoastlineData() async {
     setState(() {
       _isLoading = true;
@@ -54,7 +61,18 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
     });
 
     try {
-      // Try to load binary format first (faster)
+      // Try to load multiple LOD binaries (highest detail first)
+      final lodData = await _loadAvailableLods();
+      if (lodData.isNotEmpty) {
+        setState(() {
+          _lodData = lodData;
+          _coastlineData = lodData.first;
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Try to load single binary format as fallback
       try {
         final data = await CoastlineParser.loadBinaryAsset(
           'assets/charts/seattle_coastline.bin',
@@ -62,6 +80,7 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
         );
         setState(() {
           _coastlineData = data;
+          _lodData = null;
           _isLoading = false;
         });
         return;
@@ -78,6 +97,7 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
         );
         setState(() {
           _coastlineData = data;
+          _lodData = null;
           _isLoading = false;
         });
         return;
@@ -88,6 +108,7 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
       // No data found - show demo data
       setState(() {
         _coastlineData = _createDemoData();
+        _lodData = null;
         _isLoading = false;
       });
     } catch (e) {
@@ -251,12 +272,81 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
 
     return ChartView(
       coastlineData: _coastlineData!,
+      coastlineLods: _lodData,
       initialZoom: 1.0,
       minZoom: 0.5,
       maxZoom: 50.0,
     );
   }
 
+  Future<List<CoastlineData>> _loadAvailableLods() async {
+    // Ordered from highest detail to lowest. Thresholds tuned for OSM high-res data.
+    final candidates = [
+      _LodConfig(
+        asset: 'assets/charts/seattle_coastline_lod0.bin',
+        lodLevel: 0,
+        minZoom: 15,
+        maxZoom: 1e9,
+        label: 'Seattle Coastline (LOD0 – finest)'
+      ),
+      _LodConfig(
+        asset: 'assets/charts/seattle_coastline_lod1.bin',
+        lodLevel: 1,
+        minZoom: 10,
+        maxZoom: 15,
+        label: 'Seattle Coastline (LOD1 – ultra)'
+      ),
+      _LodConfig(
+        asset: 'assets/charts/seattle_coastline_lod2.bin',
+        lodLevel: 2,
+        minZoom: 6,
+        maxZoom: 10,
+        label: 'Seattle Coastline (LOD2 – very high)'
+      ),
+      _LodConfig(
+        asset: 'assets/charts/seattle_coastline_lod3.bin',
+        lodLevel: 3,
+        minZoom: 3,
+        maxZoom: 6,
+        label: 'Seattle Coastline (LOD3 – high)'
+      ),
+      _LodConfig(
+        asset: 'assets/charts/seattle_coastline_lod4.bin',
+        lodLevel: 4,
+        minZoom: 1.5,
+        maxZoom: 3,
+        label: 'Seattle Coastline (LOD4 – medium)'
+      ),
+      _LodConfig(
+        asset: 'assets/charts/seattle_coastline_lod5.bin',
+        lodLevel: 5,
+        minZoom: 0.5,
+        maxZoom: 1.5,
+        label: 'Seattle Coastline (LOD5 – low)'
+      ),
+    ];
+
+    final loaded = <CoastlineData>[];
+    for (final config in candidates) {
+      try {
+        final data = await CoastlineParser.loadBinaryAsset(
+          config.asset,
+          name: config.label,
+        );
+        loaded.add(
+          data.copyWith(
+            lodLevel: config.lodLevel,
+            minZoom: config.minZoom,
+            maxZoom: config.maxZoom,
+          ),
+        );
+      } catch (_) {
+        // Asset not present; continue to next.
+      }
+    }
+
+    return loaded;
+  }
   void _showAboutDialog() {
     showDialog(
       context: context,
@@ -287,4 +377,20 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
       ),
     );
   }
+}
+
+class _LodConfig {
+  final String asset;
+  final int lodLevel;
+  final double minZoom;
+  final double maxZoom;
+  final String label;
+
+  const _LodConfig({
+    required this.asset,
+    required this.lodLevel,
+    required this.minZoom,
+    required this.maxZoom,
+    required this.label,
+  });
 }
