@@ -42,7 +42,9 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
   final CoastlineDataManager _dataManager = CoastlineDataManager();
   
   CoastlineData? _coastlineData;
-  List<CoastlineData>? _lodData;
+  List<CoastlineData>? _regionalLods;  // ENC regional data
+  List<CoastlineData>? _globalLods;    // GSHHG global data
+  GeoBounds? _viewBounds;              // Expanded view bounds
   bool _isLoading = true;
   String? _error;
   
@@ -96,26 +98,27 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
     });
 
     try {
-      final allLods = <CoastlineData>[];
+      final regionalLods = <CoastlineData>[];
+      final globalLods = <CoastlineData>[];
 
       // Load ENC data for regional detail (Seattle)
       final encLods = await _dataManager.getCoastlineLods('seattle');
       if (encLods != null && encLods.isNotEmpty) {
-        allLods.addAll(encLods);
+        regionalLods.addAll(encLods);
         debugPrint('Loaded ${encLods.length} Seattle ENC LODs');
       } else {
         // Try legacy direct file loading
         final legacyLods = await _loadAvailableLods();
-        allLods.addAll(legacyLods);
+        regionalLods.addAll(legacyLods);
         if (legacyLods.isNotEmpty) {
           debugPrint('Loaded ${legacyLods.length} legacy ENC LODs');
         }
       }
 
       // Load GSHHG global data for different zoom levels
-      await _loadGshhgData(allLods);
+      await _loadGshhgData(globalLods);
 
-      if (allLods.isEmpty) {
+      if (regionalLods.isEmpty && globalLods.isEmpty) {
         setState(() {
           _error = 'No coastline data available.\n\n'
               'Run the GSHHG download script to get global coastline data:\n'
@@ -125,34 +128,37 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
         return;
       }
 
-      // Sort LODs: for overlapping zoom ranges, prefer regional (ENC) over global (GSHHG)
-      // at high zoom, but prefer global at low zoom for world view
-      allLods.sort((a, b) {
-        final aMin = a.minZoom ?? double.negativeInfinity;
-        final bMin = b.minZoom ?? double.negativeInfinity;
-        
-        // Primary sort by minZoom descending (high detail first)
-        if (aMin != bMin) {
-          return bMin.compareTo(aMin);
-        }
-        
-        // Secondary: at same minZoom, prefer regional (ENC) over global for detail
-        if (a.isGlobal != b.isGlobal) {
-          return a.isGlobal ? 1 : -1; // Regional first
-        }
-        
-        // Tertiary: more points = more detail
-        return b.totalPoints.compareTo(a.totalPoints);
-      });
+      // Determine the view bounds - expand regional bounds to show GSHHG context
+      GeoBounds? viewBounds;
+      if (regionalLods.isNotEmpty) {
+        final regionalBounds = regionalLods.first.bounds;
+        // Expand bounds by 100% on each side to show surrounding GSHHG data
+        // This gives a 3x wider/taller view to see coastlines beyond the ENC region
+        final expandLon = regionalBounds.width * 1.0;
+        final expandLat = regionalBounds.height * 1.0;
+        viewBounds = GeoBounds(
+          minLon: regionalBounds.minLon - expandLon,
+          minLat: regionalBounds.minLat - expandLat,
+          maxLon: regionalBounds.maxLon + expandLon,
+          maxLat: regionalBounds.maxLat + expandLat,
+        );
+        debugPrint('View bounds expanded: ${viewBounds.minLon.toStringAsFixed(1)}, ${viewBounds.minLat.toStringAsFixed(1)} to ${viewBounds.maxLon.toStringAsFixed(1)}, ${viewBounds.maxLat.toStringAsFixed(1)}');
+      }
 
-      debugPrint('Total LODs available: ${allLods.length}');
-      for (final lod in allLods) {
+      debugPrint('Regional LODs: ${regionalLods.length}');
+      for (final lod in regionalLods) {
+        debugPrint('  ${lod.name}: zoom ${lod.minZoom?.toStringAsFixed(1) ?? "?"}-${lod.maxZoom?.toStringAsFixed(1) ?? "∞"}, ${lod.totalPoints} points');
+      }
+      debugPrint('Global LODs: ${globalLods.length}');
+      for (final lod in globalLods) {
         debugPrint('  ${lod.name}: zoom ${lod.minZoom?.toStringAsFixed(1) ?? "?"}-${lod.maxZoom?.toStringAsFixed(1) ?? "∞"}, ${lod.totalPoints} points');
       }
 
       setState(() {
-        _lodData = allLods;
-        _coastlineData = allLods.first;
+        _regionalLods = regionalLods.isNotEmpty ? regionalLods : null;
+        _globalLods = globalLods.isNotEmpty ? globalLods : null;
+        _viewBounds = viewBounds;
+        _coastlineData = regionalLods.isNotEmpty ? regionalLods.first : globalLods.first;
         _isLoading = false;
       });
     } catch (e) {
@@ -340,7 +346,9 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
 
     return ChartView(
       coastlineData: _coastlineData!,
-      coastlineLods: _lodData,
+      coastlineLods: _regionalLods,
+      globalLods: _globalLods,
+      viewBounds: _viewBounds,
       initialZoom: 1.0,
       minZoom: 0.1,
       maxZoom: 50.0,

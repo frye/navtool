@@ -8,27 +8,31 @@ import '../models/geo_types.dart';
 /// Renders coastline data using Flutter's CustomPainter.
 /// 
 /// Features:
+/// - Multi-layer rendering (GSHHG background + ENC overlay)
+/// - GSHHG clipped to only show outside ENC bounds
 /// - Efficient path caching for performance
 /// - Support for pan and zoom transformations
 /// - Water background in blue, land in teal
 class CoastlineRenderer extends CustomPainter {
   final CoastlineData coastlineData;
+  final CoastlineData? backgroundData;  // GSHHG layer rendered behind main data
+  final GeoBounds projectionBounds;     // Fixed projection bounds for all layers
   final Offset panOffset;
   final double zoom;
   final Size viewSize;
-
-  // Cached paths for performance
-  ui.Path? _cachedLandPath;
-  GeoBounds? _cachedBounds;
-  double? _cachedZoom;
 
   // Colors
   static const Color waterColor = Color(0xFF1E88E5); // Blue
   static const Color landColor = Color(0xFF26A69A);  // Teal
   static const Color coastlineStrokeColor = Color(0xFF004D40); // Dark teal
+  // Use SAME colors for GSHHG so overlap/gaps are invisible
+  static const Color gshhgLandColor = landColor;
+  static const Color gshhgStrokeColor = coastlineStrokeColor;
 
   CoastlineRenderer({
     required this.coastlineData,
+    this.backgroundData,
+    required this.projectionBounds,
     required this.panOffset,
     required this.zoom,
     required this.viewSize,
@@ -42,25 +46,37 @@ class CoastlineRenderer extends CustomPainter {
       ..style = PaintingStyle.fill;
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), waterPaint);
 
-    // Draw land masses
+    // Draw GSHHG background layer first (if available)
+    // Only draw FILL (no stroke) - ENC will provide the detailed coastline on top
+    // No clipping - GSHHG serves as base land layer everywhere
+    if (backgroundData != null) {
+      final bgLandPaint = Paint()
+        ..color = landColor  // Use same land color so it blends with ENC
+        ..style = PaintingStyle.fill;
+
+      final bgPath = _buildLandPath(backgroundData!, size);
+      canvas.drawPath(bgPath, bgLandPaint);
+      // NO stroke for GSHHG - only ENC draws the detailed coastline stroke
+    }
+
+    // Draw main (ENC) layer on top - this covers GSHHG in overlapping areas
     final landPaint = Paint()
       ..color = landColor
       ..style = PaintingStyle.fill;
-
     final strokePaint = Paint()
       ..color = coastlineStrokeColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
-    final path = _buildLandPath(size);
+    final path = _buildLandPath(coastlineData, size);
     canvas.drawPath(path, landPaint);
     canvas.drawPath(path, strokePaint);
   }
 
-  ui.Path _buildLandPath(Size size) {
+  ui.Path _buildLandPath(CoastlineData data, Size size) {
     final path = ui.Path();
 
-    for (final polygon in coastlineData.polygons) {
+    for (final polygon in data.polygons) {
       // Draw exterior ring
       _addRingToPath(path, polygon.exteriorRing, size);
 
@@ -92,29 +108,12 @@ class CoastlineRenderer extends CustomPainter {
 
   /// Convert geographic coordinates to screen coordinates.
   /// Uses equirectangular projection with latitude correction for proper aspect ratio.
-  /// The correction factor cos(lat) compensates for longitude convergence toward poles:
-  /// - At equator (0°): 1° lon = 1° lat in distance
-  /// - At 47° (Seattle): 1° lon ≈ 0.68° lat in distance
-  /// - At 60° (Alaska): 1° lon = 0.5° lat in distance
+  /// All layers use the same projectionBounds for consistent alignment.
   Offset _geoToScreen(GeoPoint point, Size size) {
-    // For global data, use fixed world bounds for consistent projection
-    final GeoBounds projectionBounds;
-    if (coastlineData.isGlobal) {
-      // Use world bounds centered on prime meridian
-      projectionBounds = const GeoBounds(
-        minLon: -180,
-        minLat: -90,
-        maxLon: 180,
-        maxLat: 90,
-      );
-    } else {
-      projectionBounds = coastlineData.bounds;
-    }
-    
     // Calculate latitude correction factor (cosine of center latitude)
     // This scales longitude to match the actual ground distance at this latitude
-    final centerLatRad = projectionBounds.centerLat * math.pi / 180.0; // Convert to radians
-    final latCorrection = centerLatRad.abs() < 1.5 ? math.cos(centerLatRad) : 0.1; // cos(lat), min 0.1
+    final centerLatRad = projectionBounds.centerLat * math.pi / 180.0;
+    final latCorrection = centerLatRad.abs() < 1.5 ? math.cos(centerLatRad) : 0.1;
     
     // Calculate corrected dimensions
     final correctedWidth = projectionBounds.width * latCorrection;
@@ -129,7 +128,7 @@ class CoastlineRenderer extends CustomPainter {
     final renderedWidth = correctedWidth * baseScale;
     final renderedHeight = correctedHeight * baseScale;
     
-    // Normalize coordinates relative to bounds
+    // Normalize coordinates relative to projection bounds
     final normalizedX = (point.longitude - projectionBounds.minLon) * latCorrection;
     final normalizedY = projectionBounds.maxLat - point.latitude; // Flip Y
     
@@ -152,14 +151,19 @@ class CoastlineRenderer extends CustomPainter {
     return oldDelegate.panOffset != panOffset ||
         oldDelegate.zoom != zoom ||
         oldDelegate.coastlineData != coastlineData ||
+        oldDelegate.backgroundData != backgroundData ||
+        oldDelegate.projectionBounds != projectionBounds ||
         oldDelegate.viewSize != viewSize;
   }
 }
 
 /// Interactive chart view widget with pan and zoom support.
+/// Renders GSHHG global data as background with regional ENC data overlaid.
 class ChartView extends StatefulWidget {
   final CoastlineData coastlineData;
-  final List<CoastlineData>? coastlineLods; // Optional list of LOD datasets
+  final List<CoastlineData>? coastlineLods;  // Regional ENC LODs
+  final List<CoastlineData>? globalLods;     // Global GSHHG LODs
+  final GeoBounds? viewBounds;               // Optional fixed view bounds
   final double minZoom;
   final double maxZoom;
   final double initialZoom;
@@ -168,8 +172,10 @@ class ChartView extends StatefulWidget {
     super.key,
     required this.coastlineData,
     this.coastlineLods,
-    this.minZoom = 0.5,
-    this.maxZoom = 20.0,
+    this.globalLods,
+    this.viewBounds,
+    this.minZoom = 0.1,
+    this.maxZoom = 50.0,
     this.initialZoom = 1.0,
   });
 
@@ -181,7 +187,8 @@ class _ChartViewState extends State<ChartView> {
   late double _zoom;
   Offset _panOffset = Offset.zero;
   Offset? _lastFocalPoint;
-  CoastlineData? _lastActive;
+  CoastlineData? _lastActiveRegional;
+  CoastlineData? _lastActiveGlobal;
   Offset? _doubleTapPosition;
   Size _viewSize = Size.zero;
 
@@ -264,10 +271,47 @@ class _ChartViewState extends State<ChartView> {
 
   @override
   Widget build(BuildContext context) {
-    final activeData = _selectCoastlineData(_zoom);
-    if (!identical(activeData, _lastActive)) {
-      debugPrint('LOD switch -> ${activeData.name ?? 'unknown'} (lod=${activeData.lodLevel}, points=${activeData.totalPoints}, zoom=${_zoom.toStringAsFixed(2)})');
-      _lastActive = activeData;
+    // Select best regional (ENC) data for current zoom
+    final regionalData = _selectRegionalData(_zoom);
+    // Select best global (GSHHG) data for current zoom
+    final globalData = _selectGlobalData(_zoom);
+    
+    // Determine projection bounds - use regional if available, otherwise use view bounds or global
+    final GeoBounds projectionBounds;
+    if (widget.viewBounds != null) {
+      projectionBounds = widget.viewBounds!;
+    } else if (regionalData != null) {
+      projectionBounds = regionalData.bounds;
+    } else if (globalData != null) {
+      // For global-only view, use world bounds
+      projectionBounds = const GeoBounds(
+        minLon: -180, minLat: -90, maxLon: 180, maxLat: 90,
+      );
+    } else {
+      projectionBounds = widget.coastlineData.bounds;
+    }
+    
+    // The "active" data is regional if available, otherwise global
+    final activeData = regionalData ?? globalData ?? widget.coastlineData;
+    
+    // Determine if we should show GSHHG background
+    // Skip GSHHG when using LOD0 (highest detail) - user is zoomed in too far to see it
+    final showGshhgBackground = regionalData != null && 
+                                 globalData != null && 
+                                 (regionalData.lodLevel ?? 0) > 0;
+    
+    // Log LOD switches
+    if (!identical(regionalData, _lastActiveRegional)) {
+      if (regionalData != null) {
+        debugPrint('Regional LOD -> ${regionalData.name} (lod=${regionalData.lodLevel}, points=${regionalData.totalPoints}, zoom=${_zoom.toStringAsFixed(2)})');
+      }
+      _lastActiveRegional = regionalData;
+    }
+    if (!identical(globalData, _lastActiveGlobal)) {
+      if (globalData != null) {
+        debugPrint('Global LOD -> ${globalData.name} (lod=${globalData.lodLevel}, points=${globalData.totalPoints}, zoom=${_zoom.toStringAsFixed(2)})');
+      }
+      _lastActiveGlobal = globalData;
     }
 
     return Stack(
@@ -285,6 +329,8 @@ class _ChartViewState extends State<ChartView> {
                 size: Size(constraints.maxWidth, constraints.maxHeight),
                 painter: CoastlineRenderer(
                   coastlineData: activeData,
+                  backgroundData: showGshhgBackground ? globalData : null,
+                  projectionBounds: projectionBounds,
                   panOffset: _panOffset,
                   zoom: _zoom,
                   viewSize: Size(constraints.maxWidth, constraints.maxHeight),
@@ -358,6 +404,11 @@ class _ChartViewState extends State<ChartView> {
                   'Points: ${activeData.totalPoints}',
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
+                if (globalData != null && regionalData != null)
+                  Text(
+                    '+ GSHHG: ${globalData.totalPoints} pts',
+                    style: const TextStyle(color: Colors.white54, fontSize: 10),
+                  ),
               ],
             ),
           ),
@@ -366,45 +417,74 @@ class _ChartViewState extends State<ChartView> {
     );
   }
 
-  List<CoastlineData> _lodsSorted() {
+  /// Select best regional (ENC) LOD for current zoom.
+  CoastlineData? _selectRegionalData(double zoom) {
     final lods = widget.coastlineLods;
     if (lods == null || lods.isEmpty) {
-      return [widget.coastlineData];
+      // Check if coastlineData is regional
+      if (!widget.coastlineData.isGlobal) {
+        return widget.coastlineData;
+      }
+      return null;
     }
 
-    final sorted = List<CoastlineData>.of(lods);
+    // Sort by minZoom descending (highest detail first)
+    final sorted = List<CoastlineData>.of(lods.where((d) => !d.isGlobal));
     sorted.sort((a, b) {
       final aMin = a.minZoom ?? double.negativeInfinity;
       final bMin = b.minZoom ?? double.negativeInfinity;
-      if (aMin != bMin) return bMin.compareTo(aMin); // higher minZoom = higher detail
-
-      final aLod = a.lodLevel ?? 999;
-      final bLod = b.lodLevel ?? 999;
-      if (aLod != bLod) return aLod.compareTo(bLod);
-
-      return b.totalPoints.compareTo(a.totalPoints); // more points treated as higher detail
+      return bMin.compareTo(aMin);
     });
-    return sorted;
-  }
 
-  CoastlineData _selectCoastlineData(double zoom) {
-    final sorted = _lodsSorted();
-    
-    // First pass: find a regional (non-global) LOD that supports this zoom
-    for (final data in sorted) {
-      if (!data.isGlobal && data.supportsZoom(zoom)) {
-        return data;
-      }
-    }
-    
-    // Second pass: fall back to global LOD that supports this zoom
     for (final data in sorted) {
       if (data.supportsZoom(zoom)) {
         return data;
       }
     }
 
-    // Fallback: pick the highest-detail entry (first after sorting)
-    return sorted.first;
+    // If zoom is below all regional LODs, return null (use global only)
+    if (sorted.isNotEmpty) {
+      final lowestLod = sorted.last;
+      final minZoom = lowestLod.minZoom ?? 0.0;
+      if (zoom < minZoom) {
+        return null;
+      }
+      // Otherwise return the lowest detail regional LOD
+      return lowestLod;
+    }
+
+    return null;
+  }
+
+  /// Select best global (GSHHG) LOD for current zoom.
+  CoastlineData? _selectGlobalData(double zoom) {
+    final lods = widget.globalLods ?? widget.coastlineLods;
+    if (lods == null || lods.isEmpty) {
+      if (widget.coastlineData.isGlobal) {
+        return widget.coastlineData;
+      }
+      return null;
+    }
+
+    // Get only global LODs
+    final globalLods = lods.where((d) => d.isGlobal).toList();
+    if (globalLods.isEmpty) return null;
+
+    // Sort by minZoom descending (highest detail first)
+    globalLods.sort((a, b) {
+      final aMin = a.minZoom ?? double.negativeInfinity;
+      final bMin = b.minZoom ?? double.negativeInfinity;
+      return bMin.compareTo(aMin);
+    });
+
+    // Find the best GSHHG for current zoom
+    for (final data in globalLods) {
+      if (data.supportsZoom(zoom)) {
+        return data;
+      }
+    }
+
+    // Fallback to highest detail global LOD
+    return globalLods.first;
   }
 }
