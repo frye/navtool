@@ -97,16 +97,28 @@ class CoastlineRenderer extends CustomPainter {
   /// - At 47° (Seattle): 1° lon ≈ 0.68° lat in distance
   /// - At 60° (Alaska): 1° lon = 0.5° lat in distance
   Offset _geoToScreen(GeoPoint point, Size size) {
-    final bounds = coastlineData.bounds;
+    // For global data, use fixed world bounds for consistent projection
+    final GeoBounds projectionBounds;
+    if (coastlineData.isGlobal) {
+      // Use world bounds centered on prime meridian
+      projectionBounds = const GeoBounds(
+        minLon: -180,
+        minLat: -90,
+        maxLon: 180,
+        maxLat: 90,
+      );
+    } else {
+      projectionBounds = coastlineData.bounds;
+    }
     
     // Calculate latitude correction factor (cosine of center latitude)
     // This scales longitude to match the actual ground distance at this latitude
-    final centerLatRad = bounds.centerLat * math.pi / 180.0; // Convert to radians
+    final centerLatRad = projectionBounds.centerLat * math.pi / 180.0; // Convert to radians
     final latCorrection = centerLatRad.abs() < 1.5 ? math.cos(centerLatRad) : 0.1; // cos(lat), min 0.1
     
     // Calculate corrected dimensions
-    final correctedWidth = bounds.width * latCorrection;
-    final correctedHeight = bounds.height;
+    final correctedWidth = projectionBounds.width * latCorrection;
+    final correctedHeight = projectionBounds.height;
     
     // Determine scale to fit view while maintaining aspect ratio
     final scaleX = size.width / correctedWidth;
@@ -118,8 +130,8 @@ class CoastlineRenderer extends CustomPainter {
     final renderedHeight = correctedHeight * baseScale;
     
     // Normalize coordinates relative to bounds
-    final normalizedX = (point.longitude - bounds.minLon) * latCorrection;
-    final normalizedY = bounds.maxLat - point.latitude; // Flip Y
+    final normalizedX = (point.longitude - projectionBounds.minLon) * latCorrection;
+    final normalizedY = projectionBounds.maxLat - point.latitude; // Flip Y
     
     // Calculate base position
     final baseX = normalizedX * baseScale * zoom;
@@ -377,6 +389,15 @@ class _ChartViewState extends State<ChartView> {
 
   CoastlineData _selectCoastlineData(double zoom) {
     final sorted = _lodsSorted();
+    
+    // First pass: find a regional (non-global) LOD that supports this zoom
+    for (final data in sorted) {
+      if (!data.isGlobal && data.supportsZoom(zoom)) {
+        return data;
+      }
+    }
+    
+    // Second pass: fall back to global LOD that supports this zoom
     for (final data in sorted) {
       if (data.supportsZoom(zoom)) {
         return data;

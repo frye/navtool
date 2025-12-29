@@ -96,85 +96,63 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
     });
 
     try {
-      // First, try to load ENC data for a specific region (Seattle as default)
+      final allLods = <CoastlineData>[];
+
+      // Load ENC data for regional detail (Seattle)
       final encLods = await _dataManager.getCoastlineLods('seattle');
-      
       if (encLods != null && encLods.isNotEmpty) {
+        allLods.addAll(encLods);
+        debugPrint('Loaded ${encLods.length} Seattle ENC LODs');
+      } else {
+        // Try legacy direct file loading
+        final legacyLods = await _loadAvailableLods();
+        allLods.addAll(legacyLods);
+        if (legacyLods.isNotEmpty) {
+          debugPrint('Loaded ${legacyLods.length} legacy ENC LODs');
+        }
+      }
+
+      // Load GSHHG global data for different zoom levels
+      await _loadGshhgData(allLods);
+
+      if (allLods.isEmpty) {
         setState(() {
-          _lodData = encLods;
-          _coastlineData = encLods.first;
+          _error = 'No coastline data available.\n\n'
+              'Run the GSHHG download script to get global coastline data:\n'
+              'python tools/download_gshhg.py --bundle-crude';
           _isLoading = false;
         });
         return;
       }
 
-      // Try to load single ENC binary files
-      final lodData = await _loadAvailableLods();
-      if (lodData.isNotEmpty) {
-        setState(() {
-          _lodData = lodData;
-          _coastlineData = lodData.first;
-          _isLoading = false;
-        });
-        return;
+      // Sort LODs: for overlapping zoom ranges, prefer regional (ENC) over global (GSHHG)
+      // at high zoom, but prefer global at low zoom for world view
+      allLods.sort((a, b) {
+        final aMin = a.minZoom ?? double.negativeInfinity;
+        final bMin = b.minZoom ?? double.negativeInfinity;
+        
+        // Primary sort by minZoom descending (high detail first)
+        if (aMin != bMin) {
+          return bMin.compareTo(aMin);
+        }
+        
+        // Secondary: at same minZoom, prefer regional (ENC) over global for detail
+        if (a.isGlobal != b.isGlobal) {
+          return a.isGlobal ? 1 : -1; // Regional first
+        }
+        
+        // Tertiary: more points = more detail
+        return b.totalPoints.compareTo(a.totalPoints);
+      });
+
+      debugPrint('Total LODs available: ${allLods.length}');
+      for (final lod in allLods) {
+        debugPrint('  ${lod.name}: zoom ${lod.minZoom?.toStringAsFixed(1) ?? "?"}-${lod.maxZoom?.toStringAsFixed(1) ?? "∞"}, ${lod.totalPoints} points');
       }
 
-      // Fall back to GSHHG global data
-      try {
-        final gshhgData = await CoastlineParser.loadBinaryAsset(
-          'assets/gshhg/gshhg_crude.bin',
-          name: 'GSHHG Global (Crude)',
-        );
-        setState(() {
-          _coastlineData = gshhgData.copyWith(
-            lodLevel: 5,
-            minZoom: 0.0,
-            maxZoom: 2.0,
-          );
-          _lodData = [_coastlineData!];
-          _isLoading = false;
-        });
-        return;
-      } catch (e) {
-        print('GSHHG crude not found: $e');
-      }
-
-      // Try legacy single file formats
-      try {
-        final data = await CoastlineParser.loadBinaryAsset(
-          'assets/charts/seattle_coastline.bin',
-          name: 'Seattle Coastline',
-        );
-        setState(() {
-          _coastlineData = data;
-          _lodData = null;
-          _isLoading = false;
-        });
-        return;
-      } catch (e) {
-        print('Binary format not found, trying GeoJSON: $e');
-      }
-
-      try {
-        final data = await CoastlineParser.parseGeoJsonAsset(
-          'assets/charts/seattle_coastline.geojson',
-          name: 'Seattle Coastline',
-        );
-        setState(() {
-          _coastlineData = data;
-          _lodData = null;
-          _isLoading = false;
-        });
-        return;
-      } catch (e) {
-        print('GeoJSON not found: $e');
-      }
-
-      // No data found
       setState(() {
-        _error = 'No coastline data available.\n\n'
-            'Run the GSHHG download script to get global coastline data:\n'
-            'python tools/download_gshhg.py --bundle-crude';
+        _lodData = allLods;
+        _coastlineData = allLods.first;
         _isLoading = false;
       });
     } catch (e) {
@@ -182,6 +160,41 @@ class _ChartViewerScreenState extends State<ChartViewerScreen> {
         _error = 'Failed to load coastline data: $e';
         _isLoading = false;
       });
+    }
+  }
+
+  /// Load available GSHHG resolutions and add them to the LOD list.
+  /// GSHHG is used as fallback when zoomed out beyond regional ENC coverage.
+  Future<void> _loadGshhgData(List<CoastlineData> allLods) async {
+    // GSHHG is for global view only - regional ENC data takes priority
+    // These ranges are for when NO regional ENC data is available
+    // When ENC is available, ENC zoom ranges take precedence
+    final gshhgConfigs = [
+      ('full', 'GSHHG Full (Global)', 0, 8.0, null),
+      ('high', 'GSHHG High (Global)', 1, 5.0, 8.0),
+      ('intermediate', 'GSHHG Intermediate (Global)', 2, 2.0, 5.0),
+      ('low', 'GSHHG Low (Global)', 3, 0.5, 2.0),
+      ('crude', 'GSHHG Crude (Global)', 4, 0.0, 0.5),
+    ];
+
+    for (final config in gshhgConfigs) {
+      final (resolution, name, lodLevel, minZoom, maxZoom) = config;
+      try {
+        final data = await CoastlineParser.loadBinaryAsset(
+          'assets/gshhg/gshhg_$resolution.bin',
+          name: name,
+        );
+        allLods.add(data.copyWith(
+          lodLevel: lodLevel,
+          minZoom: minZoom,
+          maxZoom: maxZoom,
+          isGlobal: true,  // Mark as global data for world projection
+        ));
+        debugPrint('Loaded GSHHG $resolution: ${data.totalPoints} points');
+      } catch (e) {
+        // Resolution not downloaded yet - skip
+        debugPrint('GSHHG $resolution not available: $e');
+      }
     }
   }
 

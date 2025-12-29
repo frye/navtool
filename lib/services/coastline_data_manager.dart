@@ -252,13 +252,15 @@ class CoastlineDataManager {
   }
 
   double _getMinZoomForLod(int lod) {
+    // Regional ENC LOD zoom ranges - hand off to GSHHG below 0.5
     switch (lod) {
       case 0: return 10.0;
       case 1: return 6.0;
       case 2: return 4.0;
       case 3: return 2.0;
       case 4: return 1.0;
-      default: return 0.0;
+      case 5: return 0.5;  // Below 0.5, use GSHHG global data
+      default: return 0.5;
     }
   }
 

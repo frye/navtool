@@ -111,6 +111,8 @@ class CoastlineData {
   final int? lodLevel; // 0 = highest detail
   final double? minZoom;
   final double? maxZoom;
+  // If true, this is global data (GSHHG) that should use world projection
+  final bool isGlobal;
 
   const CoastlineData({
     required this.polygons,
@@ -120,6 +122,7 @@ class CoastlineData {
     this.lodLevel,
     this.minZoom,
     this.maxZoom,
+    this.isGlobal = false,
   });
 
   int get polygonCount => polygons.length;
@@ -144,6 +147,7 @@ class CoastlineData {
     int? lodLevel,
     double? minZoom,
     double? maxZoom,
+    bool? isGlobal,
   }) {
     return CoastlineData(
       polygons: polygons ?? this.polygons,
@@ -153,6 +157,7 @@ class CoastlineData {
       lodLevel: lodLevel ?? this.lodLevel,
       minZoom: minZoom ?? this.minZoom,
       maxZoom: maxZoom ?? this.maxZoom,
+      isGlobal: isGlobal ?? this.isGlobal,
     );
   }
 
