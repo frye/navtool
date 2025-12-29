@@ -1,5 +1,7 @@
 # NavTool - NOAA Chart Viewer
 
+> ⚠️ **Experimental Project**: This is an AI-assisted learning project, not a supported product. It will most likely never be production-ready or actively maintained. Use at your own risk.
+
 A cross-platform marine chart viewer for displaying official NOAA nautical chart data. Features multi-layer coastline rendering with global GSHHG coverage and high-resolution regional ENC data.
 
 ## Features
