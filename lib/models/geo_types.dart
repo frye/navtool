@@ -49,6 +49,14 @@ class GeoBounds {
         point.latitude <= maxLat;
   }
 
+  /// Returns true if this bounds intersects (overlaps) with the other bounds.
+  bool intersects(GeoBounds other) {
+    return minLon <= other.maxLon &&
+        maxLon >= other.minLon &&
+        minLat <= other.maxLat &&
+        maxLat >= other.minLat;
+  }
+
   /// Expands bounds to include another point.
   GeoBounds expand(GeoPoint point) {
     return GeoBounds(
