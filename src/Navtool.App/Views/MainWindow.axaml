@@ -277,8 +277,7 @@
                         ClipToBounds="True">
                     <Grid>
                         <mapsui:MapControl x:Name="MapView"
-                                           Map="{Binding Map}"
-                                           Background="#DDE7EC" />
+                                           Map="{Binding Map}" />
 
                         <Border HorizontalAlignment="Center"
                                 VerticalAlignment="Top"
@@ -375,16 +374,6 @@
                             </StackPanel>
                         </Border>
 
-                        <Border HorizontalAlignment="Right"
-                                VerticalAlignment="Bottom"
-                                Margin="14"
-                                Background="#EFFFFFFF"
-                                CornerRadius="4"
-                                Padding="7,4">
-                            <TextBlock Text="{Binding OsmAttribution}"
-                                       Foreground="#435660"
-                                       FontSize="10" />
-                        </Border>
                     </Grid>
                 </Border>
 

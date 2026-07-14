@@ -135,7 +135,6 @@ public partial class MainViewModel : ViewModelBase
         Map.Layers.Add(osmLayer);
 
         _mapLayers = new RouteMapLayers(Map);
-        OsmAttribution = tileOptions.Attribution;
         UtcOffsetDisplay = FormatUtcOffset(localTimeZone.GetUtcOffset(timeProvider.GetLocalNow()));
         Map.Navigator.CenterOnAndZoomTo(
             MapProjection.ToMapPoint(new Coordinate(35, -55)),
@@ -145,8 +144,6 @@ public partial class MainViewModel : ViewModelBase
     public event EventHandler<RouteMapSelection?>? RouteSelectionChanged;
 
     public Map Map { get; }
-
-    public string OsmAttribution { get; }
 
     public string UtcOffsetDisplay { get; }
 

@@ -13,8 +13,7 @@ namespace Navtool.App.Services;
 
 public sealed record OsmTileOptions(
     bool Enabled = true,
-    string UserAgent = "Navtool/1.0",
-    string Attribution = "© OpenStreetMap contributors");
+    string UserAgent = "Navtool/1.0");
 
 public sealed class RouteMapLayers
 {

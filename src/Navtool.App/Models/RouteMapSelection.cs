@@ -18,4 +18,3 @@ public sealed record RouteMapSelection(
     public DateTimeOffset TimelineTimestamp => Point.Timestamp;
     public Coordinate FocusCoordinate => Point.Location;
 }
-}
