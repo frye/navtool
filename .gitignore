@@ -1,0 +1,6 @@
+artifacts/
+.scratch/
+**/bin/
+**/obj/
+native/Navtool.RouterBridge/build*/
+.DS_Store
