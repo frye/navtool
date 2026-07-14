@@ -1,0 +1,445 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Navtool.App.ViewModels"
+        xmlns:mapsui="using:Mapsui.UI.Avalonia"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        d:DesignWidth="1280"
+        d:DesignHeight="800"
+        x:Class="Navtool.App.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Width="1280"
+        Height="800"
+        MinWidth="1040"
+        MinHeight="680"
+        Background="#F3F6F8"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="Navtool · Weather Routing">
+
+    <Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <Window.Styles>
+        <Style Selector="TextBlock.section-title">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#52616B" />
+        </Style>
+        <Style Selector="TextBlock.muted">
+            <Setter Property="Foreground" Value="#667681" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#DCE4E8" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="14" />
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="#155B75" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="MinHeight" Value="38" />
+        </Style>
+        <Style Selector="Button.map-tool">
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="12,8" />
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="58,*">
+        <Border Grid.Row="0"
+                Background="#102E3A"
+                Padding="20,0">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <StackPanel VerticalAlignment="Center"
+                            Spacing="1">
+                    <TextBlock Text="NAVTOOL"
+                               Foreground="White"
+                               FontSize="18"
+                               FontWeight="Bold"
+                               LetterSpacing="1.5" />
+                    <TextBlock Text="OFFSHORE WEATHER ROUTING"
+                               Foreground="#9FC4D2"
+                               FontSize="9"
+                               LetterSpacing="0.8" />
+                </StackPanel>
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            VerticalAlignment="Center">
+                    <Border Background="#6B2B20"
+                            CornerRadius="12"
+                            Padding="10,5">
+                        <TextBlock Text="NOT NAVIGATION CERTIFIED"
+                                   Foreground="#FFE7DE"
+                                   FontSize="10"
+                                   FontWeight="Bold" />
+                    </Border>
+                    <Border Background="#173E4D"
+                            CornerRadius="12"
+                            Padding="10,5">
+                        <TextBlock Text="Route planning workspace"
+                                   Foreground="#CBE0E8"
+                                   FontSize="11" />
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1"
+              ColumnDefinitions="350,*">
+            <Border Grid.Column="0"
+                    Background="#F8FAFB"
+                    BorderBrush="#D9E2E6"
+                    BorderThickness="0,0,1,0">
+                <ScrollViewer>
+                    <StackPanel Margin="16"
+                                Spacing="14">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Plan a passage"
+                                       FontSize="22"
+                                       FontWeight="SemiBold"
+                                       Foreground="#173440" />
+                            <TextBlock Classes="muted"
+                                       Text="Choose endpoints, departure, and forecast models." />
+                        </StackPanel>
+
+                        <Border Classes="card">
+                            <StackPanel Spacing="10">
+                                <TextBlock Classes="section-title"
+                                           Text="1  ROUTE ENDPOINTS" />
+                                <Button Classes="map-tool"
+                                        Command="{Binding SetStartCommand}">
+                                    <Grid ColumnDefinitions="14,10,*">
+                                        <Ellipse Width="12"
+                                                 Height="12"
+                                                 Fill="#009E73"
+                                                 Stroke="White"
+                                                 StrokeThickness="2" />
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="Set start"
+                                                       FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding StartDisplay}"
+                                                       Classes="muted" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Button>
+                                <Button Classes="map-tool"
+                                        Command="{Binding SetDestinationCommand}">
+                                    <Grid ColumnDefinitions="14,10,*">
+                                        <Ellipse Width="12"
+                                                 Height="12"
+                                                 Fill="#CC3311"
+                                                 Stroke="White"
+                                                 StrokeThickness="2" />
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="Set destination"
+                                                       FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding DestinationDisplay}"
+                                                       Classes="muted" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card">
+                            <StackPanel Spacing="10">
+                                <TextBlock Classes="section-title"
+                                           Text="2  LOCAL DEPARTURE" />
+                                <Grid ColumnDefinitions="*,110"
+                                      ColumnSpacing="8">
+                                    <DatePicker SelectedDate="{Binding DepartureDate}" />
+                                    <TimePicker Grid.Column="1"
+                                                SelectedTime="{Binding DepartureTime}"
+                                                ClockIdentifier="24HourClock" />
+                                </Grid>
+                                <Border Background="#EEF4F6"
+                                        CornerRadius="5"
+                                        Padding="9,6">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Local time zone"
+                                                   Classes="muted" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding UtcOffsetDisplay}"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#214C5D" />
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card">
+                            <StackPanel Spacing="9">
+                                <TextBlock Classes="section-title"
+                                           Text="3  FORECAST MODELS" />
+                                <CheckBox IsChecked="{Binding UseNoaa}">
+                                    <StackPanel>
+                                        <TextBlock Text="NOAA GFS"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock Text="Global Forecast System"
+                                                   Classes="muted" />
+                                    </StackPanel>
+                                </CheckBox>
+                                <TextBlock Text="{Binding NoaaStatus}"
+                                           Classes="muted"
+                                           Margin="24,0,0,2"
+                                           TextWrapping="Wrap" />
+                                <CheckBox IsChecked="{Binding UseEcmwf}">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <StackPanel>
+                                            <TextBlock Text="ECMWF IFS"
+                                                       FontWeight="SemiBold" />
+                                            <TextBlock Text="European model"
+                                                       Classes="muted" />
+                                        </StackPanel>
+                                        <Border Grid.Column="1"
+                                                Background="#FFF1D6"
+                                                CornerRadius="10"
+                                                Padding="7,3"
+                                                VerticalAlignment="Center">
+                                            <TextBlock Text="EXPERIMENTAL"
+                                                       Foreground="#8A5A00"
+                                                       FontSize="9"
+                                                       FontWeight="Bold" />
+                                        </Border>
+                                    </Grid>
+                                </CheckBox>
+                                <TextBlock Text="{Binding EcmwfStatus}"
+                                           Classes="muted"
+                                           Margin="24,0,0,0"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Grid ColumnDefinitions="*,Auto"
+                              ColumnSpacing="8">
+                            <Button Classes="primary"
+                                    Command="{Binding CalculateCommand}"
+                                    Content="Calculate routes" />
+                            <Button Grid.Column="1"
+                                    Command="{Binding CancelCommand}"
+                                    IsEnabled="{Binding IsCalculating}"
+                                    Content="Cancel"
+                                    MinWidth="76" />
+                        </Grid>
+
+                        <Border Classes="card">
+                            <StackPanel Spacing="8">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Classes="section-title"
+                                               Text="STATUS" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding ProgressFraction, StringFormat={}{0:P0}}"
+                                               Classes="muted" />
+                                </Grid>
+                                <ProgressBar Minimum="0"
+                                             Maximum="1"
+                                             Value="{Binding ProgressFraction}"
+                                             Height="5" />
+                                <TextBlock Text="{Binding StatusMessage}"
+                                           TextWrapping="Wrap"
+                                           Classes="muted" />
+                                <TextBlock Text="{Binding ErrorMessage}"
+                                           TextWrapping="Wrap"
+                                           Foreground="#B42318"
+                                           FontSize="12"
+                                           FontWeight="SemiBold" />
+                            </StackPanel>
+                        </Border>
+                        <Border Background="#FFF4E5"
+                                BorderBrush="#F0C36D"
+                                BorderThickness="1"
+                                CornerRadius="7"
+                                Padding="10,8">
+                            <TextBlock Text="Planning aid only. Verify all weather and routing information independently; not certified for navigation."
+                                       TextWrapping="Wrap"
+                                       Foreground="#704800"
+                                       FontSize="11"
+                                       FontWeight="SemiBold" />
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <Grid Grid.Column="1"
+                  RowDefinitions="*,176">
+                <Border Grid.Row="0"
+                        Margin="14,14,14,8"
+                        BorderBrush="#C7D4DA"
+                        BorderThickness="1"
+                        CornerRadius="9"
+                        ClipToBounds="True">
+                    <Grid>
+                        <mapsui:MapControl x:Name="MapView"
+                                           Map="{Binding Map}"
+                                           Background="#DDE7EC" />
+
+                        <Border HorizontalAlignment="Center"
+                                VerticalAlignment="Top"
+                                Margin="16"
+                                Background="#EFFFFFFF"
+                                BorderBrush="#D7E0E4"
+                                BorderThickness="1"
+                                CornerRadius="16"
+                                Padding="14,7">
+                            <TextBlock Text="{Binding MapInstruction}"
+                                       Foreground="#29444F"
+                                       FontSize="12"
+                                       FontWeight="SemiBold" />
+                        </Border>
+
+                        <Border HorizontalAlignment="Left"
+                                VerticalAlignment="Bottom"
+                                Margin="14"
+                                Background="#F4FFFFFF"
+                                BorderBrush="#D4DEE2"
+                                BorderThickness="1"
+                                CornerRadius="7"
+                                Padding="11,9">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="ROUTES"
+                                           Classes="section-title" />
+                                <Grid ColumnDefinitions="24,*"
+                                      RowDefinitions="Auto,Auto"
+                                      RowSpacing="5">
+                                    <Border Width="20"
+                                            Height="4"
+                                            Background="#0072B2"
+                                            CornerRadius="2"
+                                            VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="NOAA GFS"
+                                               FontSize="11" />
+                                    <Border Grid.Row="1"
+                                            Width="20"
+                                            Height="4"
+                                            Background="#D55E00"
+                                            CornerRadius="2"
+                                            VerticalAlignment="Center" />
+                                    <TextBlock Grid.Row="1"
+                                               Grid.Column="1"
+                                               Text="ECMWF IFS"
+                                               FontSize="11" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Margin="14"
+                                Background="#F4FFFFFF"
+                                BorderBrush="#D4DEE2"
+                                BorderThickness="1"
+                                CornerRadius="7"
+                                Padding="11,9">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="WIND OVERLAY"
+                                           Classes="section-title" />
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="8">
+                                    <RadioButton Content="NOAA GFS"
+                                                 Command="{Binding ActivateNoaaWeatherCommand}"
+                                                 IsChecked="{Binding IsNoaaWeatherActive, Mode=OneWay}"
+                                                 IsVisible="{Binding HasNoaaWeather}" />
+                                    <RadioButton Content="ECMWF experimental"
+                                                 Command="{Binding ActivateEcmwfWeatherCommand}"
+                                                 IsChecked="{Binding IsEcmwfWeatherActive, Mode=OneWay}"
+                                                 IsVisible="{Binding HasEcmwfWeather}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding ActiveWeatherDisplay}"
+                                           Classes="muted" />
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="3">
+                                    <Border Width="19" Height="8" Background="#5BC0EB" />
+                                    <Border Width="19" Height="8" Background="#00A6A6" />
+                                    <Border Width="19" Height="8" Background="#7FB800" />
+                                    <Border Width="19" Height="8" Background="#F4D35E" />
+                                    <Border Width="19" Height="8" Background="#E4572E" />
+                                    <Border Width="19" Height="8" Background="#9B2C67" />
+                                </StackPanel>
+                                <TextBlock Text="0   5   10   15   25   35+ knots"
+                                           FontSize="10"
+                                           Foreground="#435660" />
+                                <TextBlock Text="{Binding WeatherLayerError}"
+                                           TextWrapping="Wrap"
+                                           MaxWidth="280"
+                                           Foreground="#B42318"
+                                           FontSize="11"
+                                           FontWeight="SemiBold" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border HorizontalAlignment="Right"
+                                VerticalAlignment="Bottom"
+                                Margin="14"
+                                Background="#EFFFFFFF"
+                                CornerRadius="4"
+                                Padding="7,4">
+                            <TextBlock Text="{Binding OsmAttribution}"
+                                       Foreground="#435660"
+                                       FontSize="10" />
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Row="1"
+                        Margin="14,0,14,14"
+                        Classes="card">
+                    <Grid RowDefinitions="Auto,*"
+                          ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="{Binding SelectedRouteTitle}"
+                                       FontSize="15"
+                                       FontWeight="SemiBold"
+                                       Foreground="#173440" />
+                            <TextBlock Text="{Binding SelectedRouteDetails}"
+                                       Classes="muted"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                Command="{Binding FocusSelectedRoutePointCommand}"
+                                Content="Focus on map"
+                                Padding="12,6" />
+
+                        <Grid Grid.Row="1"
+                              Grid.ColumnSpan="2"
+                              Margin="0,14,0,0"
+                              ColumnDefinitions="Auto,Auto,Auto,*,Auto"
+                              ColumnSpacing="8">
+                            <Button Content="◀"
+                                    ToolTip.Tip="Previous point"
+                                    Command="{Binding PreviousTimelineCommand}"
+                                    MinWidth="38" />
+                            <Button Grid.Column="1"
+                                    Content="●"
+                                    ToolTip.Tip="Selected shared UTC time"
+                                    IsEnabled="{Binding HasTimeline}"
+                                    MinWidth="38" />
+                            <Button Grid.Column="2"
+                                    Content="▶|"
+                                    ToolTip.Tip="Next point"
+                                    Command="{Binding NextTimelineCommand}"
+                                    MinWidth="38" />
+                            <Slider Grid.Column="3"
+                                    Minimum="0"
+                                    Maximum="1"
+                                    Value="{Binding TimelinePosition}"
+                                    IsEnabled="{Binding HasTimeline}"
+                                    VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="4"
+                                       Text="{Binding TimelineDisplay}"
+                                       Classes="muted"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>
