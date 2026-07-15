@@ -10,6 +10,8 @@ It targets macOS, Windows, and Linux.
 - Choose a local departure date/time, converted to UTC with DST validation.
 - Download geographically subsetted NOAA GFS 0.25-degree 10 m wind fields.
 - Calculate routes through the native `router-lib` bridge.
+- Watch retained isochrone frontiers and the closest provisional route stream
+  onto the map while each model calculates.
 - Compare model routes with distinct map colors. ECMWF is shown as an
   experimental option and currently fails explicitly because official indexed
   retrieval is not implemented.
@@ -61,6 +63,33 @@ dotnet run --project src/Navtool.App
 The application discovers the development bridge automatically. For a custom
 location, set `NAVTOOL_ROUTER_BRIDGE_PATH` to the shared library or its
 directory.
+
+## Streaming route visualization
+
+Navtool uses router-lib's `RoutingProgressCallback` contract. After each
+completed search step with a retained frontier, the native bridge synchronously
+copies the callback-scoped isochrone, provisional route, and cumulative
+diagnostics into immutable managed data. The callback returns promptly; Mapsui
+updates are posted through the application's progress pipeline to the Avalonia
+UI context.
+
+Each model uses its normal route color. Completed isochrone frontiers accumulate
+as thin low-opacity lines, while the model's provisional route is replaced by
+the latest snapshot. Successful search overlays remain visible with the final
+route. Failed model overlays and all cancelled-calculation overlays are cleared.
+Frontiers, routes, and map-fit bounds are unwrapped safely at the antimeridian.
+
+The final route result remains authoritative and may differ from the last
+provisional route. Router-lib progress is notification-only: cancelling in
+Navtool prevents stale updates and results from being accepted, but it does not
+interrupt an optimization already executing inside the native library.
+
+The additive C ABI entry point
+`navtool_router_calculate_route_streaming_v1` preserves the existing v1
+final-route function. Progress array pointers are valid only for the duration
+of the synchronous callback and must be copied by consumers. Navtool falls back
+to final-only route calculation when it loads an older ABI-v1 bridge that does
+not export the streaming entry point.
 
 ## Publish
 

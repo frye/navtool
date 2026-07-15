@@ -14,6 +14,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 struct navtool_router_forecast_v1 {
     explicit navtool_router_forecast_v1(sailroute::WeatherDataset value)
@@ -172,6 +173,125 @@ navtool_router_status_v1 load_forecast(
         NAVTOOL_ROUTER_STATUS_OK_V1);
 }
 
+navtool_router_coordinate_v1 copy_coordinate(
+    sailroute::Coordinate coordinate) noexcept {
+    return {
+        coordinate.latitude_degrees,
+        coordinate.longitude_degrees};
+}
+
+navtool_router_route_point_v1 copy_route_point(
+    const sailroute::RoutePoint& point) noexcept {
+    return {
+        copy_coordinate(point.position),
+        to_epoch(point.time),
+        point.heading_degrees,
+        point.boat_speed_knots,
+        point.true_wind_speed_knots,
+        point.true_wind_direction_degrees,
+        point.cumulative_distance_nautical_miles};
+}
+
+navtool_router_diagnostics_v1 copy_diagnostics(
+    const sailroute::RouteDiagnostics& diagnostics) noexcept {
+    return {
+        static_cast<uint64_t>(diagnostics.expanded_nodes),
+        static_cast<uint64_t>(diagnostics.generated_candidates),
+        static_cast<uint64_t>(diagnostics.retained_candidates),
+        static_cast<uint64_t>(diagnostics.time_steps)};
+}
+
+navtool_router_status_v1 calculate_route(
+    const navtool_router_forecast_v1* forecast,
+    double start_latitude_degrees,
+    double start_longitude_degrees,
+    double destination_latitude_degrees,
+    double destination_longitude_degrees,
+    const int64_t* departure_utc_epoch_seconds,
+    navtool_router_progress_callback_v1 on_progress,
+    void* progress_user_data,
+    char** out_route_json_utf8,
+    size_t* out_route_json_length) {
+    if (out_route_json_utf8 != nullptr) {
+        *out_route_json_utf8 = nullptr;
+    }
+    if (out_route_json_length != nullptr) {
+        *out_route_json_length = 0U;
+    }
+    if (forecast == nullptr || out_route_json_utf8 == nullptr ||
+        out_route_json_length == nullptr) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
+            "forecast and route JSON outputs must not be null");
+    }
+    if (!valid_coordinate(
+            start_latitude_degrees,
+            start_longitude_degrees) ||
+        !valid_coordinate(
+            destination_latitude_degrees,
+            destination_longitude_degrees)) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
+            "route coordinates must be finite canonical latitude/longitude values");
+    }
+
+    sailroute::RouteRequest request;
+    request.start = {
+        start_latitude_degrees,
+        start_longitude_degrees};
+    request.destination = {
+        destination_latitude_degrees,
+        destination_longitude_degrees};
+    if (departure_utc_epoch_seconds != nullptr) {
+        request.departure_time =
+            from_epoch(*departure_utc_epoch_seconds);
+    }
+
+    sailroute::RoutingProgressCallback progress_callback;
+    if (on_progress != nullptr) {
+        progress_callback =
+            [on_progress, progress_user_data](
+                const sailroute::RoutingProgress& progress) {
+                std::vector<navtool_router_coordinate_v1> isochrone_points;
+                isochrone_points.reserve(progress.isochrone.points.size());
+                for (const sailroute::Coordinate point :
+                     progress.isochrone.points) {
+                    isochrone_points.push_back(copy_coordinate(point));
+                }
+
+                std::vector<navtool_router_route_point_v1> route_points;
+                route_points.reserve(progress.provisional_route.size());
+                for (const sailroute::RoutePoint& point :
+                     progress.provisional_route) {
+                    route_points.push_back(copy_route_point(point));
+                }
+
+                const navtool_router_progress_v1 bridge_progress{
+                    to_epoch(progress.isochrone.time),
+                    isochrone_points.data(),
+                    static_cast<uint64_t>(isochrone_points.size()),
+                    route_points.data(),
+                    static_cast<uint64_t>(route_points.size()),
+                    copy_diagnostics(progress.diagnostics)};
+                on_progress(&bridge_progress, progress_user_data);
+            };
+    }
+
+    const sailroute::Router router{forecast->weather};
+    auto route = router.optimize(request, progress_callback);
+    if (!route) {
+        return map_error(route.error());
+    }
+    auto json = sailroute::route_to_json(route.value());
+    if (!json) {
+        return map_error(json.error());
+    }
+    return copy_utf8(
+        json.value(),
+        out_route_json_utf8,
+        out_route_json_length);
+}
+
 }  // namespace
 
 extern "C" {
@@ -289,51 +409,41 @@ navtool_router_status_v1 navtool_router_calculate_route_v1(
     char** out_route_json_utf8,
     size_t* out_route_json_length) {
     return protect([&] {
-        if (out_route_json_utf8 != nullptr) {
-            *out_route_json_utf8 = nullptr;
-        }
-        if (out_route_json_length != nullptr) {
-            *out_route_json_length = 0U;
-        }
-        if (forecast == nullptr || out_route_json_utf8 == nullptr ||
-            out_route_json_length == nullptr) {
-            return fail(
-                NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
-                "forecast and route JSON outputs must not be null");
-        }
-        if (!valid_coordinate(
-                start_latitude_degrees,
-                start_longitude_degrees) ||
-            !valid_coordinate(
-                destination_latitude_degrees,
-                destination_longitude_degrees)) {
-            return fail(
-                NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
-                "route coordinates must be finite canonical latitude/longitude values");
-        }
-
-        sailroute::RouteRequest request;
-        request.start = {
+        return calculate_route(
+            forecast,
             start_latitude_degrees,
-            start_longitude_degrees};
-        request.destination = {
+            start_longitude_degrees,
             destination_latitude_degrees,
-            destination_longitude_degrees};
-        if (departure_utc_epoch_seconds != nullptr) {
-            request.departure_time =
-                from_epoch(*departure_utc_epoch_seconds);
-        }
-        const sailroute::Router router{forecast->weather};
-        auto route = router.optimize(request);
-        if (!route) {
-            return map_error(route.error());
-        }
-        auto json = sailroute::route_to_json(route.value());
-        if (!json) {
-            return map_error(json.error());
-        }
-        return copy_utf8(
-            json.value(),
+            destination_longitude_degrees,
+            departure_utc_epoch_seconds,
+            nullptr,
+            nullptr,
+            out_route_json_utf8,
+            out_route_json_length);
+    });
+}
+
+navtool_router_status_v1 navtool_router_calculate_route_streaming_v1(
+    const navtool_router_forecast_v1* forecast,
+    double start_latitude_degrees,
+    double start_longitude_degrees,
+    double destination_latitude_degrees,
+    double destination_longitude_degrees,
+    const int64_t* departure_utc_epoch_seconds,
+    navtool_router_progress_callback_v1 on_progress,
+    void* progress_user_data,
+    char** out_route_json_utf8,
+    size_t* out_route_json_length) {
+    return protect([&] {
+        return calculate_route(
+            forecast,
+            start_latitude_degrees,
+            start_longitude_degrees,
+            destination_latitude_degrees,
+            destination_longitude_degrees,
+            departure_utc_epoch_seconds,
+            on_progress,
+            progress_user_data,
             out_route_json_utf8,
             out_route_json_length);
     });
@@ -444,3 +554,6 @@ void navtool_router_bridge_free_v1(void* bridge_owned_memory) {
 static_assert(sizeof(navtool_router_status_v1) == 4U);
 static_assert(sizeof(navtool_router_forecast_metadata_v1) == 40U);
 static_assert(sizeof(navtool_router_wind_sample_v1) == 24U);
+static_assert(sizeof(navtool_router_coordinate_v1) == 16U);
+static_assert(sizeof(navtool_router_route_point_v1) == 64U);
+static_assert(sizeof(navtool_router_diagnostics_v1) == 32U);

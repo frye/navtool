@@ -89,4 +89,46 @@ public sealed class NativeBridgeContractTests
         Assert.Equal(48, diagnostics.TimeSteps);
         Assert.Equal(TimeSpan.FromSeconds(2), diagnostics.CalculationDuration);
     }
+
+    [Fact]
+    public void Calculation_snapshot_preserves_frontier_route_and_diagnostics()
+    {
+        var time = new DateTimeOffset(2026, 7, 15, 3, 0, 0, TimeSpan.Zero);
+        var diagnostics = new RouteDiagnostics(100, 400, 80, 3);
+        var snapshot = new RouteCalculationSnapshot(
+            time,
+            new[]
+            {
+                new Coordinate(42, -60),
+                new Coordinate(43, -59)
+            },
+            new[]
+            {
+                new RoutePoint(new Coordinate(41, -61), time.AddHours(-1), 90, 7, 20, 180, 0),
+                new RoutePoint(new Coordinate(42, -60), time, 90, 7, 20, 180, 7)
+            },
+            diagnostics);
+
+        Assert.Equal(time, snapshot.FrontierTime);
+        Assert.Equal(2, snapshot.Frontier.Length);
+        Assert.Equal(2, snapshot.ProvisionalRoute.Length);
+        Assert.Same(diagnostics, snapshot.Diagnostics);
+        Assert.Throws<NotSupportedException>(() =>
+            ((IList<Coordinate>)snapshot.Frontier).Add(new Coordinate(44, -58)));
+    }
+
+    [Fact]
+    public void Calculation_snapshot_rejects_empty_or_misaligned_native_data()
+    {
+        var time = new DateTimeOffset(2026, 7, 15, 3, 0, 0, TimeSpan.Zero);
+        var point = new RoutePoint(new Coordinate(42, -60), time.AddMinutes(-1), 90, 7, 20, 180, 0);
+        var diagnostics = new RouteDiagnostics(1, 2, 1, 1);
+
+        Assert.Throws<ArgumentException>(() =>
+            new RouteCalculationSnapshot(time, Array.Empty<Coordinate>(), new[] { point }, diagnostics));
+        Assert.Throws<ArgumentException>(() =>
+            new RouteCalculationSnapshot(time, new[] { point.Location }, Array.Empty<RoutePoint>(), diagnostics));
+        Assert.Throws<ArgumentException>(() =>
+            new RouteCalculationSnapshot(time, new[] { point.Location }, new[] { point }, diagnostics));
+    }
 }

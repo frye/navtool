@@ -17,14 +17,51 @@ public static class RouteHitTester
         ValidateTolerance(routeTolerancePixels, nameof(routeTolerancePixels));
         ValidateTolerance(pointTolerancePixels, nameof(pointTolerancePixels));
 
+        return FindNearest(
+            routes,
+            route => route.Points
+                .Select(point => projectToScreen(point.Location))
+                .ToArray(),
+            click,
+            routeTolerancePixels,
+            pointTolerancePixels);
+    }
+
+    public static RouteMapSelection? FindNearest(
+        IEnumerable<RouteResult> routes,
+        Func<RouteResult, IReadOnlyList<ScreenPoint>> projectToScreen,
+        ScreenPoint click,
+        double routeTolerancePixels = 10,
+        double pointTolerancePixels = 14)
+    {
+        ArgumentNullException.ThrowIfNull(routes);
+        ArgumentNullException.ThrowIfNull(projectToScreen);
+        ValidateTolerance(routeTolerancePixels, nameof(routeTolerancePixels));
+        ValidateTolerance(pointTolerancePixels, nameof(pointTolerancePixels));
+
         var projectedRoutes = routes
             .Select(route => new ProjectedRoute(
                 route,
-                route.Points.Select(point => projectToScreen(point.Location)).ToArray()))
+                ValidateProjectedPoints(route, projectToScreen(route))))
             .ToArray();
 
         var pointHit = FindNearestPoint(projectedRoutes, click, pointTolerancePixels);
         return pointHit ?? FindNearestSegment(projectedRoutes, click, routeTolerancePixels);
+    }
+
+    private static ScreenPoint[] ValidateProjectedPoints(
+        RouteResult route,
+        IReadOnlyList<ScreenPoint> projected)
+    {
+        ArgumentNullException.ThrowIfNull(projected);
+        if (projected.Count != route.Points.Length)
+        {
+            throw new ArgumentException(
+                "A projected route must contain one screen point per route point.",
+                nameof(projected));
+        }
+
+        return projected.ToArray();
     }
 
     private static RouteMapSelection? FindNearestPoint(

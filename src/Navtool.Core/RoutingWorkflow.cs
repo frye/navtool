@@ -58,7 +58,8 @@ public sealed record RoutingProgress(
     ForecastModel Model,
     RoutingProgressStage Stage,
     double Fraction,
-    string? Message = null);
+    string? Message = null,
+    RouteCalculationSnapshot? Snapshot = null);
 
 public enum ModelRouteStatus
 {
@@ -270,7 +271,8 @@ public sealed class RoutingWorkflow
                     model,
                     RoutingProgressStage.CalculatingRoute,
                     0.5 + (value.Fraction * 0.5),
-                    value.Message));
+                    value.Message,
+                    value.Snapshot));
 
             var route = await _routeEngine
                 .CalculateAsync(request.Route, acquisition, routeProgress, cancellationToken)
@@ -313,8 +315,9 @@ public sealed class RoutingWorkflow
         ForecastModel model,
         RoutingProgressStage stage,
         double fraction,
-        string? message = null) =>
-        progress?.Report(new RoutingProgress(provider, model, stage, fraction, message));
+        string? message = null,
+        RouteCalculationSnapshot? snapshot = null) =>
+        progress?.Report(new RoutingProgress(provider, model, stage, fraction, message, snapshot));
 
     private sealed class SynchronousProgress<T>(Action<T> report) : IProgress<T>
     {

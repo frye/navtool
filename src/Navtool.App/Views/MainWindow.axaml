@@ -306,7 +306,7 @@
                                 <TextBlock Text="ROUTES"
                                            Classes="section-title" />
                                 <Grid ColumnDefinitions="24,*"
-                                      RowDefinitions="Auto,Auto"
+                                      RowDefinitions="Auto,Auto,Auto,Auto"
                                       RowSpacing="5">
                                     <Border Width="20"
                                             Height="4"
@@ -325,6 +325,28 @@
                                     <TextBlock Grid.Row="1"
                                                Grid.Column="1"
                                                Text="ECMWF IFS"
+                                               FontSize="11" />
+                                    <Border Grid.Row="2"
+                                            Width="20"
+                                            Height="2"
+                                            Opacity="0.28"
+                                            Background="#355866"
+                                            CornerRadius="1"
+                                            VerticalAlignment="Center" />
+                                    <TextBlock Grid.Row="2"
+                                               Grid.Column="1"
+                                               Text="Accumulated isochrones"
+                                               FontSize="11" />
+                                    <Border Grid.Row="3"
+                                            Width="20"
+                                            Height="3"
+                                            Opacity="0.72"
+                                            Background="#355866"
+                                            CornerRadius="2"
+                                            VerticalAlignment="Center" />
+                                    <TextBlock Grid.Row="3"
+                                               Grid.Column="1"
+                                               Text="Latest provisional route"
                                                FontSize="11" />
                                 </Grid>
                             </StackPanel>

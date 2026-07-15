@@ -270,11 +270,16 @@ public partial class MainViewModel : ViewModelBase
         var viewport = Map.Navigator.Viewport;
         var hit = RouteHitTester.FindNearest(
             _mapLayers.Routes,
-            point =>
-            {
-                var projected = viewport.WorldToScreen(MapProjection.ToMapPoint(point));
-                return new ScreenPoint(projected.X, projected.Y);
-            },
+            (RouteResult route) => MapProjection
+                .ToContinuousMapPointsNear(
+                    route.Points.Select(point => point.Location),
+                    worldPosition.X)
+                .Select(point =>
+                {
+                    var projected = viewport.WorldToScreen(point);
+                    return new ScreenPoint(projected.X, projected.Y);
+                })
+                .ToArray(),
             new ScreenPoint(screenPosition.X, screenPosition.Y),
             RouteHitTolerancePixels,
             RoutePointHitTolerancePixels);
@@ -331,6 +336,7 @@ public partial class MainViewModel : ViewModelBase
         IsCalculating = true;
         ProgressFraction = 0;
         StatusMessage = "Starting forecast acquisition and route calculations…";
+        _mapLayers.ClearCalculationOverlays();
         _modelProgress.Clear();
         foreach (var model in request!.Models)
         {
@@ -357,6 +363,14 @@ public partial class MainViewModel : ViewModelBase
                 $"{(value.Model == ForecastModel.EcmwfIfs ? "Experimental · " : string.Empty)}" +
                 $"{ProgressStageName(value.Stage)} {value.Fraction:P0}" +
                 $"{(string.IsNullOrWhiteSpace(value.Message) ? string.Empty : $" · {value.Message}")}");
+            if (value.Snapshot is not null)
+            {
+                _mapLayers.AddCalculationSnapshot(value.Model, value.Snapshot);
+            }
+            else if (value.Stage == RoutingProgressStage.Failed)
+            {
+                _mapLayers.ClearCalculationOverlay(value.Model);
+            }
         });
 
         try
@@ -383,6 +397,7 @@ public partial class MainViewModel : ViewModelBase
                 _logger.LogError(exception, "Route calculation workflow failed");
                 ErrorMessage = $"Route calculation failed: {exception.Message}";
                 StatusMessage = "No route result was accepted.";
+                _mapLayers.ClearCalculationOverlays();
             }
         }
         finally
@@ -447,6 +462,7 @@ public partial class MainViewModel : ViewModelBase
         cancellation?.Cancel();
         cancellation?.Dispose();
         CancelWeather();
+        _mapLayers.ClearCalculationOverlays();
         IsCalculating = false;
         StatusMessage = "Calculation cancelled.";
     }
@@ -468,7 +484,9 @@ public partial class MainViewModel : ViewModelBase
         }
 
         Map.Navigator.CenterOnAndZoomTo(
-            MapProjection.ToMapPoint(SelectedRoutePoint.FocusCoordinate),
+            MapProjection.ToContinuousMapPoints(
+                SelectedRoutePoint.Route.Points.Select(point => point.Location))[
+                SelectedRoutePoint.PointIndex],
             Math.Min(resolution, 10_000));
     }
 
@@ -549,7 +567,7 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnSelectedRoutePointChanged(RouteMapSelection? value)
     {
-        _mapLayers.SetSelectedPoint(value?.FocusCoordinate);
+        _mapLayers.SetSelectedPoint(value);
         if (value is not null)
         {
             StatusMessage = $"{ModelName(value.Route.Model)} route selected at " +
@@ -646,6 +664,7 @@ public partial class MainViewModel : ViewModelBase
             }
             else
             {
+                _mapLayers.ClearCalculationOverlay(outcome.Model);
                 var experimental = outcome.Model == ForecastModel.EcmwfIfs
                     ? "Experimental ECMWF"
                     : ModelName(outcome.Model);
