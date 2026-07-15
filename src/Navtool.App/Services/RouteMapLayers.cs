@@ -86,16 +86,15 @@ public sealed class RouteMapLayers
 
     public void FitRoutes()
     {
-        var points = Routes.SelectMany(route => route.Points).ToArray();
-        if (points.Length == 0)
-        {
-            return;
-        }
-
         var projected = Routes
             .SelectMany(route => MapProjection.ToContinuousMapPoints(
                 route.Points.Select(point => point.Location)))
             .ToArray();
+        if (projected.Length == 0)
+        {
+            return;
+        }
+
         var extent = new MRect(
             projected.Min(point => point.X),
             projected.Min(point => point.Y),

@@ -125,6 +125,7 @@ public sealed class NativeForecast : IDisposable
 public sealed class NativeRouterBridge
 {
     private readonly NativeRouterBridgeOptions _options;
+    private int _streamingProgressAvailability;
 
     public NativeRouterBridge(NativeRouterBridgeOptions? options = null)
     {
@@ -176,6 +177,14 @@ public sealed class NativeRouterBridge
     }
 
     public uint AbiVersion => NativeRouterBridgeOptions.SupportedAbiVersion;
+
+    public bool? StreamingProgressAvailable => Volatile.Read(
+        ref _streamingProgressAvailability) switch
+    {
+        > 0 => true,
+        < 0 => false,
+        _ => null
+    };
 
     public NativeForecast LoadForecast(
         string gribPath,
@@ -295,21 +304,7 @@ public sealed class NativeRouterBridge
                     callbackFailure = ExceptionDispatchInfo.Capture(exception);
                 }
             };
-            try
-            {
-                status = NativeMethods.CalculateRouteStreaming(
-                    forecast.Handle,
-                    request.Origin.Latitude,
-                    request.Origin.Longitude,
-                    request.Destination.Latitude,
-                    request.Destination.Longitude,
-                    ref departure,
-                    callback,
-                    IntPtr.Zero,
-                    out routePointer,
-                    out routeLength);
-            }
-            catch (EntryPointNotFoundException)
+            if (Volatile.Read(ref _streamingProgressAvailability) < 0)
             {
                 status = NativeMethods.CalculateRoute(
                     forecast.Handle,
@@ -320,6 +315,37 @@ public sealed class NativeRouterBridge
                     ref departure,
                     out routePointer,
                     out routeLength);
+            }
+            else
+            {
+                try
+                {
+                    status = NativeMethods.CalculateRouteStreaming(
+                        forecast.Handle,
+                        request.Origin.Latitude,
+                        request.Origin.Longitude,
+                        request.Destination.Latitude,
+                        request.Destination.Longitude,
+                        ref departure,
+                        callback,
+                        IntPtr.Zero,
+                        out routePointer,
+                        out routeLength);
+                    Volatile.Write(ref _streamingProgressAvailability, 1);
+                }
+                catch (EntryPointNotFoundException)
+                {
+                    Volatile.Write(ref _streamingProgressAvailability, -1);
+                    status = NativeMethods.CalculateRoute(
+                        forecast.Handle,
+                        request.Origin.Latitude,
+                        request.Origin.Longitude,
+                        request.Destination.Latitude,
+                        request.Destination.Longitude,
+                        ref departure,
+                        out routePointer,
+                        out routeLength);
+                }
             }
 
             GC.KeepAlive(callback);

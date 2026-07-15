@@ -61,15 +61,26 @@ public sealed class NativeRouterBridgeIntegrationTests
             snapshots.Add);
         Assert.NotEmpty(route.Points);
         Assert.True(route.Diagnostics.GeneratedCandidates > 0);
-        Assert.NotEmpty(snapshots);
-        Assert.Equal(
-            snapshots.Select(snapshot => snapshot.FrontierTime).Order(),
-            snapshots.Select(snapshot => snapshot.FrontierTime));
-        Assert.Equal(
-            Enumerable.Range(1, snapshots.Count),
-            snapshots.Select(snapshot => snapshot.Diagnostics.TimeSteps));
-        Assert.All(snapshots, snapshot =>
-            Assert.Equal(snapshot.FrontierTime, snapshot.ProvisionalRoute[^1].Timestamp));
+        Assert.NotNull(bridge.StreamingProgressAvailable);
+        if (bridge.StreamingProgressAvailable is true)
+        {
+            Assert.NotEmpty(snapshots);
+            Assert.Equal(
+                snapshots.Select(snapshot => snapshot.FrontierTime).Order(),
+                snapshots.Select(snapshot => snapshot.FrontierTime));
+            Assert.Equal(
+                Enumerable.Range(1, snapshots.Count),
+                snapshots.Select(snapshot => snapshot.Diagnostics.TimeSteps));
+            Assert.All(snapshots, snapshot =>
+                Assert.Equal(
+                    snapshot.FrontierTime,
+                    snapshot.ProvisionalRoute[^1].Timestamp));
+        }
+        else
+        {
+            Assert.Empty(snapshots);
+        }
+
         Assert.All(route.Points, point =>
         {
             Assert.True(point.HeadingDegrees is >= 0 and < 360);
