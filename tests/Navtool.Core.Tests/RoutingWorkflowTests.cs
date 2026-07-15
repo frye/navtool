@@ -152,6 +152,65 @@ public sealed class RoutingWorkflowTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => execution);
     }
 
+    [Fact]
+    public async Task Local_forecast_routes_without_a_registered_or_remote_provider()
+    {
+        var route = CreateRouteRequest();
+        var local = new LocalForecastDescriptor(
+            ForecastModel.NoaaGfs,
+            new LocalGribArtifact(Path.GetFullPath("existing.grib2"), 1_024),
+            route.DepartureTime.AddHours(-6),
+            route.DepartureTime.AddHours(-1),
+            route.LatestArrivalTime.AddHours(1),
+            new GeographicBounds(30, 55, -90, -30));
+        var workflow = new RoutingWorkflow(
+            Array.Empty<IForecastProvider>(),
+            new StubRouteEngine((request, acquisition, _, _) =>
+            {
+                Assert.Equal(ForecastAcquisitionSource.LocalFile, acquisition.Source);
+                Assert.Equal(local.Artifact, acquisition.Artifact);
+                return ValueTask.FromResult(CreateRoute(request, acquisition.Request.Model));
+            }));
+        var request = new RoutingWorkflowRequest(
+            route,
+            new[] { ForecastSelection.LocalFile(local) },
+            new GeographicBounds(35, 50, -75, -45));
+
+        var result = await workflow.ExecuteAsync(request);
+
+        var outcome = Assert.Single(result.Outcomes);
+        Assert.Equal(ModelRouteStatus.Succeeded, outcome.Status);
+        Assert.Equal(ForecastAcquisitionSource.LocalFile, outcome.Acquisition!.Source);
+    }
+
+    [Fact]
+    public async Task Local_forecast_rejects_incomplete_route_coverage()
+    {
+        var route = CreateRouteRequest();
+        var local = new LocalForecastDescriptor(
+            ForecastModel.NoaaGfs,
+            new LocalGribArtifact(Path.GetFullPath("existing.grib2")),
+            route.DepartureTime.AddHours(-6),
+            route.DepartureTime,
+            route.LatestArrivalTime.AddHours(-1),
+            new GeographicBounds(40, 45, -70, -50));
+        var workflow = new RoutingWorkflow(
+            Array.Empty<IForecastProvider>(),
+            new StubRouteEngine((_, _, _, _) =>
+                throw new InvalidOperationException("Route engine must not run.")));
+        var request = new RoutingWorkflowRequest(
+            route,
+            new[] { ForecastSelection.LocalFile(local) },
+            new GeographicBounds(35, 50, -75, -45));
+
+        var result = await workflow.ExecuteAsync(request);
+
+        var outcome = Assert.Single(result.Outcomes);
+        Assert.Equal(ModelRouteStatus.Failed, outcome.Status);
+        Assert.Equal(ModelRouteFailureStage.ForecastAcquisition, outcome.Failure!.Stage);
+        Assert.Contains("does not cover the requested route window", outcome.Failure.Message);
+    }
+
     private static RoutingWorkflowRequest CreateWorkflowRequest() =>
         new(
             CreateRouteRequest(),

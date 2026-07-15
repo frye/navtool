@@ -401,6 +401,24 @@ public sealed class NoaaGfsForecastProviderTests
         Assert.Equal(ForecastProgressStage.Completed, progress[^1].Stage);
     }
 
+    [Fact]
+    public async Task Estimate_matches_manifest_without_sending_http_request()
+    {
+        using var directory = new TestDirectory();
+        var handler = new RecordingHttpHandler((_, _, _) =>
+            Task.FromResult(RecordingHttpHandler.GribResponse()));
+        using var client = new HttpClient(handler);
+        var provider = CreateProvider(directory.Path, client);
+        var request = CreateRequest(new GeographicBounds(40, 45, -5, 5));
+
+        var estimate = provider.Estimate(request);
+
+        Assert.Equal(0, handler.RequestCount);
+        await provider.AcquireAsync(request, null, CancellationToken.None);
+        Assert.Equal(handler.RequestCount, estimate.PartCount);
+        Assert.Equal(2, estimate.RegionCount);
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     private static NoaaGfsForecastProvider CreateProvider(

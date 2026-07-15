@@ -2,9 +2,13 @@
 
 #include "sailroute/sailroute.hpp"
 
+#include <eccodes.h>
+
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
@@ -173,6 +177,7 @@ navtool_router_status_v1 load_forecast(
         NAVTOOL_ROUTER_STATUS_OK_V1);
 }
 
+#if NAVTOOL_ROUTER_HAS_PROGRESS_CALLBACK
 navtool_router_coordinate_v1 copy_coordinate(
     sailroute::Coordinate coordinate) noexcept {
     return {
@@ -200,6 +205,7 @@ navtool_router_diagnostics_v1 copy_diagnostics(
         static_cast<uint64_t>(diagnostics.retained_candidates),
         static_cast<uint64_t>(diagnostics.time_steps)};
 }
+#endif
 
 navtool_router_status_v1 calculate_route(
     const navtool_router_forecast_v1* forecast,
@@ -247,6 +253,7 @@ navtool_router_status_v1 calculate_route(
             from_epoch(*departure_utc_epoch_seconds);
     }
 
+#if NAVTOOL_ROUTER_HAS_PROGRESS_CALLBACK
     sailroute::RoutingProgressCallback progress_callback;
     if (on_progress != nullptr) {
         progress_callback =
@@ -276,9 +283,17 @@ navtool_router_status_v1 calculate_route(
                 on_progress(&bridge_progress, progress_user_data);
             };
     }
+#else
+    static_cast<void>(on_progress);
+    static_cast<void>(progress_user_data);
+#endif
 
     const sailroute::Router router{forecast->weather};
+#if NAVTOOL_ROUTER_HAS_PROGRESS_CALLBACK
     auto route = router.optimize(request, progress_callback);
+#else
+    auto route = router.optimize(request);
+#endif
     if (!route) {
         return map_error(route.error());
     }
@@ -290,6 +305,123 @@ navtool_router_status_v1 calculate_route(
         json.value(),
         out_route_json_utf8,
         out_route_json_length);
+}
+
+// ---------- GRIB inspection helpers ----------
+
+struct GribFileCloser {
+    void operator()(std::FILE* f) const noexcept {
+        if (f) {
+            std::fclose(f);
+        }
+    }
+};
+
+struct GribHandleDeleter {
+    void operator()(codes_handle* h) const noexcept {
+        if (h) {
+            codes_handle_delete(h);
+        }
+    }
+};
+
+using GribFilePtr = std::unique_ptr<std::FILE, GribFileCloser>;
+using GribHandlePtr = std::unique_ptr<codes_handle, GribHandleDeleter>;
+
+std::optional<long> optional_long_grib_key(
+    codes_handle* h,
+    const char* key) noexcept {
+    long value = 0;
+    if (codes_get_long(h, key, &value) != CODES_SUCCESS) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+std::optional<std::string> optional_string_grib_key(
+    codes_handle* h,
+    const char* key) {
+    size_t len = 0;
+    if (codes_get_size(h, key, &len) != CODES_SUCCESS || len == 0) {
+        return std::nullopt;
+    }
+    std::string value(len, '\0');
+    if (codes_get_string(h, key, value.data(), &len) != CODES_SUCCESS) {
+        return std::nullopt;
+    }
+    const auto null_pos = value.find('\0');
+    if (null_pos != std::string::npos) {
+        value.resize(null_pos);
+    }
+    return value;
+}
+
+enum class GribWindComponent { east, north };
+
+std::optional<GribWindComponent> detect_10m_wind_component(
+    codes_handle* h) {
+    // Prefer paramId (GRIB2 standard)
+    auto param_id = optional_long_grib_key(h, "paramId");
+    if (param_id == 165L) {
+        return GribWindComponent::east;
+    }
+    if (param_id == 166L) {
+        return GribWindComponent::north;
+    }
+
+    // Fall back to shortName
+    auto short_name = optional_string_grib_key(h, "shortName");
+    if (!short_name) {
+        return std::nullopt;
+    }
+    if (*short_name == "10u" || *short_name == "u10") {
+        return GribWindComponent::east;
+    }
+    if (*short_name == "10v" || *short_name == "v10") {
+        return GribWindComponent::north;
+    }
+    if (*short_name != "u" && *short_name != "v") {
+        return std::nullopt;
+    }
+
+    // Generic u/v: must be at 10 m height above ground
+    auto level_type = optional_string_grib_key(h, "typeOfLevel");
+    auto level = optional_long_grib_key(h, "level");
+    if (!level_type || !level ||
+        *level_type != "heightAboveGround" || *level != 10L) {
+        return std::nullopt;
+    }
+    return *short_name == "u" ? GribWindComponent::east : GribWindComponent::north;
+}
+
+// Returns epoch seconds, or nullopt if the encoded date/time is invalid.
+std::optional<int64_t> parse_grib_datetime(
+    long date,
+    long time) noexcept {
+    const int year = static_cast<int>(date / 10000L);
+    const unsigned month = static_cast<unsigned>((date / 100L) % 100L);
+    const unsigned day = static_cast<unsigned>(date % 100L);
+    const int hour = static_cast<int>(time / 100L);
+    const int minute = static_cast<int>(time % 100L);
+
+    using namespace std::chrono;
+    const year_month_day ymd{
+        std::chrono::year{year},
+        std::chrono::month{month},
+        std::chrono::day{day}};
+    if (!ymd.ok() || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+        return std::nullopt;
+    }
+    return static_cast<int64_t>(
+        duration_cast<seconds>(
+            (sys_days{ymd} + hours{hour} + minutes{minute})
+                .time_since_epoch())
+            .count());
+}
+
+// Converts a GRIB longitude in [0, 360] to canonical [-180, 180].
+double normalize_grib_longitude(double lon) noexcept {
+    return lon > 180.0 ? lon - 360.0 : lon;
 }
 
 }  // namespace
@@ -423,6 +555,7 @@ navtool_router_status_v1 navtool_router_calculate_route_v1(
     });
 }
 
+#if NAVTOOL_ROUTER_HAS_PROGRESS_CALLBACK
 navtool_router_status_v1 navtool_router_calculate_route_streaming_v1(
     const navtool_router_forecast_v1* forecast,
     double start_latitude_degrees,
@@ -448,6 +581,7 @@ navtool_router_status_v1 navtool_router_calculate_route_streaming_v1(
             out_route_json_length);
     });
 }
+#endif
 
 navtool_router_status_v1 navtool_router_sample_grid_v1(
     const navtool_router_forecast_v1* forecast,
@@ -549,7 +683,271 @@ void navtool_router_bridge_free_v1(void* bridge_owned_memory) {
     std::free(bridge_owned_memory);
 }
 
+uint32_t navtool_router_bridge_preflight_v1(void) {
+    return NAVTOOL_ROUTER_BRIDGE_ABI_VERSION;
+}
+
+navtool_router_status_v1 navtool_router_inspect_grib_v1(
+    const char* grib_path_utf8,
+    navtool_router_grib_descriptor_v1* out_descriptor) {
+    return protect([&]() -> navtool_router_status_v1 {
+        if (out_descriptor == nullptr) {
+            return fail(
+                NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
+                "out_descriptor must not be null");
+        }
+        if (grib_path_utf8 == nullptr || grib_path_utf8[0] == '\0') {
+            return fail(
+                NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
+                "GRIB path must be a non-empty UTF-8 string");
+        }
+
+        const auto* utf8_begin =
+            reinterpret_cast<const char8_t*>(grib_path_utf8);
+        const std::filesystem::path path{std::u8string{utf8_begin}};
+        const std::string display_path = path.string();
+
+        errno = 0;
+#ifdef _WIN32
+        GribFilePtr file{_wfopen(path.c_str(), L"rb")};
+#else
+        GribFilePtr file{std::fopen(grib_path_utf8, "rb")};
+#endif
+        if (!file) {
+            const int open_error = errno;
+            std::string message =
+                "cannot open GRIB file '" + display_path + "'";
+            if (open_error != 0) {
+                message += ": ";
+                message += std::strerror(open_error);
+            }
+            return fail(NAVTOOL_ROUTER_STATUS_FILE_IO_V1, std::move(message));
+        }
+
+        std::optional<long> detected_centre;
+        std::optional<int64_t> init_epoch;
+        int64_t first_valid = std::numeric_limits<int64_t>::max();
+        int64_t last_valid = std::numeric_limits<int64_t>::min();
+        std::optional<double> south_lat;
+        std::optional<double> north_lat;
+        std::optional<double> raw_west_lon;
+        std::optional<double> raw_east_lon;
+        bool has_u = false;
+        bool has_v = false;
+        std::size_t grib_count = 0U;
+        int decode_status = CODES_SUCCESS;
+
+        while (true) {
+            GribHandlePtr handle{codes_handle_new_from_file(
+                nullptr,
+                file.get(),
+                PRODUCT_GRIB,
+                &decode_status)};
+            if (!handle) {
+                break;
+            }
+            ++grib_count;
+
+            long edition = 0;
+            if (codes_get_long(handle.get(), "edition", &edition) !=
+                    CODES_SUCCESS ||
+                (edition != 1 && edition != 2)) {
+                return fail(
+                    NAVTOOL_ROUTER_STATUS_UNSUPPORTED_FORECAST_V1,
+                    "GRIB file contains an unsupported edition");
+            }
+
+            const auto component =
+                detect_10m_wind_component(handle.get());
+            if (!component) {
+                continue;
+            }
+            if (*component == GribWindComponent::east) {
+                has_u = true;
+            } else {
+                has_v = true;
+            }
+
+            // Model centre — must be consistent across all wind messages.
+            const auto centre =
+                optional_long_grib_key(handle.get(), "centre");
+            if (!centre) {
+                return fail(
+                    NAVTOOL_ROUTER_STATUS_FORECAST_DECODE_V1,
+                    "cannot read 'centre' key from GRIB wind message in '" +
+                        display_path + "'");
+            }
+            if (!detected_centre) {
+                detected_centre = *centre;
+            } else if (*detected_centre != *centre) {
+                return fail(
+                    NAVTOOL_ROUTER_STATUS_UNSUPPORTED_FORECAST_V1,
+                    "GRIB file '" + display_path +
+                        "' mixes wind messages from different model centres "
+                        "(" + std::to_string(*detected_centre) + " and " +
+                        std::to_string(*centre) + "); "
+                        "model identity is ambiguous");
+            }
+
+            // Init time — must be consistent (same model run).
+            const auto data_date =
+                optional_long_grib_key(handle.get(), "dataDate");
+            const auto data_time =
+                optional_long_grib_key(handle.get(), "dataTime");
+            if (!data_date || !data_time) {
+                return fail(
+                    NAVTOOL_ROUTER_STATUS_FORECAST_DECODE_V1,
+                    "cannot read init-time keys from GRIB wind message in '" +
+                        display_path + "'");
+            }
+            const auto this_init = parse_grib_datetime(*data_date, *data_time);
+            if (!this_init) {
+                return fail(
+                    NAVTOOL_ROUTER_STATUS_FORECAST_DECODE_V1,
+                    "GRIB wind message in '" + display_path +
+                        "' has an invalid init time (dataDate=" +
+                        std::to_string(*data_date) +
+                        " dataTime=" + std::to_string(*data_time) + ")");
+            }
+            if (!init_epoch) {
+                init_epoch = *this_init;
+            } else if (*init_epoch != *this_init) {
+                return fail(
+                    NAVTOOL_ROUTER_STATUS_UNSUPPORTED_FORECAST_V1,
+                    "GRIB file '" + display_path +
+                        "' contains wind messages from different model runs; "
+                        "use a single-run file");
+            }
+
+            // Validity time range.
+            const auto validity_date =
+                optional_long_grib_key(handle.get(), "validityDate");
+            const auto validity_time =
+                optional_long_grib_key(handle.get(), "validityTime");
+            if (!validity_date || !validity_time) {
+                return fail(
+                    NAVTOOL_ROUTER_STATUS_FORECAST_DECODE_V1,
+                    "cannot read validity-time keys from GRIB wind message in '" +
+                        display_path + "'");
+            }
+            const auto this_valid =
+                parse_grib_datetime(*validity_date, *validity_time);
+            if (!this_valid) {
+                return fail(
+                    NAVTOOL_ROUTER_STATUS_FORECAST_DECODE_V1,
+                    "GRIB wind message in '" + display_path +
+                        "' has an invalid validity time");
+            }
+            first_valid = std::min(first_valid, *this_valid);
+            last_valid = std::max(last_valid, *this_valid);
+
+            // Grid bounds — collect union across all wind messages.
+            double first_lat = 0.0;
+            double last_lat = 0.0;
+            double first_lon = 0.0;
+            double last_lon = 0.0;
+            if (codes_get_double(
+                    handle.get(),
+                    "latitudeOfFirstGridPointInDegrees",
+                    &first_lat) != CODES_SUCCESS ||
+                codes_get_double(
+                    handle.get(),
+                    "latitudeOfLastGridPointInDegrees",
+                    &last_lat) != CODES_SUCCESS ||
+                codes_get_double(
+                    handle.get(),
+                    "longitudeOfFirstGridPointInDegrees",
+                    &first_lon) != CODES_SUCCESS ||
+                codes_get_double(
+                    handle.get(),
+                    "longitudeOfLastGridPointInDegrees",
+                    &last_lon) != CODES_SUCCESS) {
+                return fail(
+                    NAVTOOL_ROUTER_STATUS_FORECAST_DECODE_V1,
+                    "cannot read grid-bounds keys from GRIB wind message in '" +
+                        display_path + "'");
+            }
+            const double msg_south = std::min(first_lat, last_lat);
+            const double msg_north = std::max(first_lat, last_lat);
+            if (!south_lat || msg_south < *south_lat) {
+                south_lat = msg_south;
+            }
+            if (!north_lat || msg_north > *north_lat) {
+                north_lat = msg_north;
+            }
+            // Record the first message's longitudinal extent as canonical west/east.
+            if (!raw_west_lon) {
+                raw_west_lon = first_lon;
+            }
+            if (!raw_east_lon) {
+                raw_east_lon = last_lon;
+            }
+        }
+
+        if (decode_status != CODES_SUCCESS) {
+            return fail(
+                NAVTOOL_ROUTER_STATUS_FORECAST_DECODE_V1,
+                "error while scanning GRIB messages in '" + display_path + "'");
+        }
+        if (grib_count == 0U) {
+            return fail(
+                NAVTOOL_ROUTER_STATUS_FORECAST_DECODE_V1,
+                "'" + display_path + "' contains no decodable GRIB messages");
+        }
+        if (!has_u || !has_v) {
+            return fail(
+                NAVTOOL_ROUTER_STATUS_INCOMPLETE_FORECAST_V1,
+                "'" + display_path +
+                    "' does not contain both 10 m U and V wind components; "
+                    "a complete wind forecast requires paired eastward (U) "
+                    "and northward (V) fields");
+        }
+
+        // Map centre code to supported model identity.
+        int32_t model_id = NAVTOOL_ROUTER_MODEL_UNKNOWN_V1;
+        if (detected_centre) {
+            if (*detected_centre == 7L) {
+                model_id = NAVTOOL_ROUTER_MODEL_NOAA_GFS_V1;
+            } else if (*detected_centre == 98L) {
+                model_id = NAVTOOL_ROUTER_MODEL_ECMWF_IFS_V1;
+            } else {
+                return fail(
+                    NAVTOOL_ROUTER_STATUS_UNSUPPORTED_FORECAST_V1,
+                    "GRIB centre code " +
+                        std::to_string(*detected_centre) +
+                        " is not a supported forecast model; "
+                        "expected NCEP (centre=7) for NOAA GFS or "
+                        "ECMWF (centre=98) for IFS");
+            }
+        }
+
+        const bool global_longitude_coverage =
+            std::abs(*raw_east_lon - *raw_west_lon) >= 359.0;
+        const double west = global_longitude_coverage
+            ? -180.0
+            : normalize_grib_longitude(*raw_west_lon);
+        const double east = global_longitude_coverage
+            ? 180.0
+            : normalize_grib_longitude(*raw_east_lon);
+
+        *out_descriptor = navtool_router_grib_descriptor_v1{
+            *init_epoch,
+            first_valid,
+            last_valid,
+            *south_lat,
+            west,
+            *north_lat,
+            east,
+            model_id,
+            {0U, 0U, 0U, 0U}};
+        return static_cast<navtool_router_status_v1>(
+            NAVTOOL_ROUTER_STATUS_OK_V1);
+    });
+}
+
 }  // extern "C"
+
+static_assert(sizeof(navtool_router_grib_descriptor_v1) == 64U);
 
 static_assert(sizeof(navtool_router_status_v1) == 4U);
 static_assert(sizeof(navtool_router_forecast_metadata_v1) == 40U);

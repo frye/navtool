@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
+using Avalonia.Platform.Storage;
 using Mapsui;
 using Mapsui.UI.Avalonia;
 using Navtool.App.ViewModels;
@@ -8,6 +9,12 @@ namespace Navtool.App.Views;
 
 public partial class MainWindow : Window
 {
+    private static readonly FilePickerFileType GribFileType = new("GRIB forecasts")
+    {
+        Patterns = ["*.grib", "*.grb", "*.grib2", "*.grb2", "*.gri"],
+        MimeTypes = ["application/octet-stream"]
+    };
+
     private Navigator? _subscribedNavigator;
 
     public MainWindow()
@@ -52,6 +59,28 @@ public partial class MainWindow : Window
         {
             viewModel.HandleMapClick(e.WorldPosition, e.ScreenPosition);
             e.Handled = true;
+        }
+    }
+
+    private async void OnChooseGribFileClicked(
+        object? sender,
+        Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Choose an existing GRIB forecast",
+            AllowMultiple = false,
+            FileTypeFilter = [GribFileType, FilePickerFileTypes.All]
+        });
+        var path = files.FirstOrDefault()?.TryGetLocalPath();
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            await viewModel.SelectLocalGribAsync(path);
         }
     }
 }

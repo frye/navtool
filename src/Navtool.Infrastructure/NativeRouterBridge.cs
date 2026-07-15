@@ -80,6 +80,23 @@ public sealed record NativeForecastMetadata(
     bool HasGlobalLongitudeCoverage,
     string Source);
 
+public enum NativeGribModelId
+{
+    Unknown = 0,
+    NoaaGfs = 1,
+    EcmwfIfs = 2
+}
+
+public sealed record NativeGribDescriptor(
+    NativeGribModelId ModelId,
+    DateTimeOffset InitializedAt,
+    DateTimeOffset FirstValidAt,
+    DateTimeOffset LastValidAt,
+    double SouthLatitudeDegrees,
+    double WestLongitudeDegrees,
+    double NorthLatitudeDegrees,
+    double EastLongitudeDegrees);
+
 public sealed record ViewportWindSample(
     Coordinate Location,
     DateTimeOffset ValidAt,
@@ -227,6 +244,42 @@ public sealed class NativeRouterBridge
         {
             handle?.Dispose();
             throw;
+        }
+    }
+
+    public NativeGribDescriptor InspectGrib(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        var fullPath = Path.GetFullPath(path);
+        if (!File.Exists(fullPath))
+        {
+            throw new FileNotFoundException(
+                "The GRIB file does not exist.", fullPath);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var status = NativeMethods.InspectGrib(fullPath, out var descriptor);
+        cancellationToken.ThrowIfCancellationRequested();
+        ThrowIfFailed(status, "Inspecting GRIB file");
+
+        try
+        {
+            return new NativeGribDescriptor(
+                (NativeGribModelId)descriptor.ModelId,
+                DateTimeOffset.FromUnixTimeSeconds(descriptor.InitEpochSeconds),
+                DateTimeOffset.FromUnixTimeSeconds(descriptor.FirstValidEpochSeconds),
+                DateTimeOffset.FromUnixTimeSeconds(descriptor.LastValidEpochSeconds),
+                descriptor.SouthLatitudeDegrees,
+                descriptor.WestLongitudeDegrees,
+                descriptor.NorthLatitudeDegrees,
+                descriptor.EastLongitudeDegrees);
+        }
+        catch (ArgumentOutOfRangeException exception)
+        {
+            throw new NativeRouteFormatException(
+                "The GRIB descriptor contains an invalid timestamp.", exception);
         }
     }
 
@@ -904,6 +957,20 @@ internal struct NativeForecastMetadataStruct
     public byte GlobalLongitudeCoverage;
 }
 
+[StructLayout(LayoutKind.Sequential, Size = 64)]
+internal struct NativeGribDescriptorStruct
+{
+    public long InitEpochSeconds;
+    public long FirstValidEpochSeconds;
+    public long LastValidEpochSeconds;
+    public double SouthLatitudeDegrees;
+    public double WestLongitudeDegrees;
+    public double NorthLatitudeDegrees;
+    public double EastLongitudeDegrees;
+    public int ModelId;
+    private int _reserved;
+}
+
 [StructLayout(LayoutKind.Sequential)]
 internal struct NativeWindSample
 {
@@ -1035,6 +1102,14 @@ internal static class NativeMethods
 
     [DllImport(LibraryName, EntryPoint = "navtool_router_bridge_free_v1", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void Free(IntPtr memory);
+
+    [DllImport(LibraryName, EntryPoint = "navtool_router_bridge_preflight_v1", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern uint Preflight();
+
+    [DllImport(LibraryName, EntryPoint = "navtool_router_inspect_grib_v1", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern NativeRouterStatus InspectGrib(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string gribPath,
+        out NativeGribDescriptorStruct descriptor);
 
     internal static string GetLastError()
     {

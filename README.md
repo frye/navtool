@@ -8,7 +8,10 @@ It targets macOS, Windows, and Linux.
 
 - Select start and destination points on an OpenStreetMap-based map.
 - Choose a local departure date/time, converted to UTC with DST validation.
-- Download geographically subsetted NOAA GFS 0.25-degree 10 m wind fields.
+- Set the expected passage duration so only the required forecast times are
+  acquired, up to the ten-day planning limit.
+- Download geographically subsetted NOAA GFS 0.25-degree 10 m wind fields, or
+  choose an existing GRIB through the operating system's native file picker.
 - Calculate routes through the native `router-lib` bridge.
 - Watch retained isochrone frontiers and the closest provisional route stream
   onto the map while each model calculates.
@@ -46,23 +49,32 @@ discoverable by CMake and the application.
 
 ## Build and run
 
-Build and test the native bridge:
+Build the native bridge and run the app with one command:
+
+```sh
+./scripts/run.sh
+```
+
+On Windows:
+
+```powershell
+.\scripts\run.ps1
+```
+
+The launcher builds and tests the bridge before starting Avalonia, preventing a
+long forecast download from completing only to discover that routing is not
+available. To build or test separately:
 
 ```sh
 ./scripts/build-native.sh
-```
-
-Then build, test, and run the application:
-
-```sh
 dotnet build Navtool.sln
 dotnet test Navtool.sln
-dotnet run --project src/Navtool.App
 ```
 
 The application discovers the development bridge automatically. For a custom
 location, set `NAVTOOL_ROUTER_BRIDGE_PATH` to the shared library or its
-directory.
+directory. If `router-lib` is not beside this checkout, set
+`SAILROUTE_SOURCE_DIR` before using either native script.
 
 ## Streaming route visualization
 
@@ -116,14 +128,33 @@ also be installed or packaged according to the target platform.
 | Variable | Purpose |
 | --- | --- |
 | `NAVTOOL_ROUTER_BRIDGE_PATH` | Native bridge file or directory |
+| `SAILROUTE_SOURCE_DIR` | `router-lib` checkout used by native build/run scripts |
+| `NAVTOOL_NATIVE_BUILD_DIR` | Optional native bridge build directory |
 | `NAVTOOL_APP_DATA_ROOT` | Application data root |
 | `NAVTOOL_CACHE_ROOT` | Forecast cache directory |
 | `NAVTOOL_ECMWF_EXPERIMENTAL` | `1` or `true` enables the experimental ECMWF path; acquisition still reports unsupported |
 
-NOAA data is downloaded from the operational NOMADS GFS filter. Navtool keeps
-requests sequential, requests only 10 m U/V wind, validates GRIB responses, and
-caches artifacts. NOMADS is not a bulk-download service and may be unavailable
-or throttle excessive usage.
+NOAA data is downloaded from the operational NOMADS GFS filter. Navtool derives
+an antimeridian-safe buffered passage area, requests every available forecast
+step needed for the selected duration, and shows the expected part count before
+calculation. Requests remain sequential and include only 10 m U/V wind.
+Completed parts are cached atomically, so cancellation or a transient NOMADS
+failure can resume without downloading valid parts again. NOMADS is not a
+bulk-download service and may be unavailable or throttle excessive usage.
+
+## Existing GRIB files
+
+Select **Existing GRIB file**, then **Choose GRIB file...** to open the native
+file dialog (Finder on macOS). The picker lists `.grib`, `.grb`, `.grib2`,
+`.grb2`, and `.gri`, with an all-files fallback. Navtool inspects file content
+through ecCodes; the filename does not determine compatibility.
+
+Local files are referenced in place and are not copied into Navtool's cache or
+remembered after restart. A usable file must identify NOAA GFS or ECMWF IFS,
+contain compatible paired 10 m U/V fields, and cover both the buffered route
+area and the full departure-to-arrival interval. Choosing a local file performs
+no forecast HTTP request. If inspection or routing setup fails, the app reports
+that separately from online forecast acquisition.
 
 The default map uses standard OpenStreetMap tiles with attribution. Those tiles
 are intended for normal interactive use, not bulk/offline prefetching. A
@@ -141,3 +172,8 @@ ECMWF Open Data remains an explicit experimental option. Official data supports
 field/step selection but not server-side geographic cropping, and indexed
 10u/10v retrieval has not yet been implemented in this application. No fallback
 or other model is presented as ECMWF data.
+
+Saildocs is not used as an application API: it is an asynchronous email service
+for bandwidth-constrained users rather than a reliable regional download
+endpoint. ECMWF's official object store likewise does not provide server-side
+geographic cropping, so online ECMWF acquisition remains separate future work.

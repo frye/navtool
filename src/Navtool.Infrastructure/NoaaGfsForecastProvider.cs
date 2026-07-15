@@ -31,6 +31,15 @@ public sealed record NoaaGfsOptions
     public TimeSpan MinimumRequestInterval { get; init; } = TimeSpan.FromMilliseconds(250);
 }
 
+public sealed record NoaaGfsDownloadEstimate(
+    DateTimeOffset RunTime,
+    GeographicBounds Bounds,
+    int ForecastStepCount,
+    int RegionCount)
+{
+    public int PartCount => checked(ForecastStepCount * RegionCount);
+}
+
 public class ForecastDownloadException : IOException
 {
     public ForecastDownloadException(string message)
@@ -84,6 +93,21 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
     public ForecastProvider Provider => ForecastProvider.Noaa;
 
     public ForecastModel Model => ForecastModel.NoaaGfs;
+
+    public NoaaGfsDownloadEstimate Estimate(ForecastRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Model != Model)
+        {
+            throw new ArgumentException("The NOAA GFS provider only estimates NoaaGfs requests.", nameof(request));
+        }
+
+        var runTime = SelectRun(request, _timeProvider.GetUtcNow());
+        var steps = GetRequiredForecastHours(runTime, request.From, request.Through);
+        var bounds = AlignBoundsToGrid(request.Bounds);
+        var regions = GetNomadsLongitudeWindows(bounds);
+        return new NoaaGfsDownloadEstimate(runTime, bounds, steps.Length, regions.Length);
+    }
 
     public async ValueTask<ForecastAcquisition> AcquireAsync(
         ForecastRequest request,

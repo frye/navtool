@@ -72,6 +72,221 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task PassageDurationControlsForecastWindow()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        viewModel.PassageDays = 2;
+        viewModel.PassageHours = 5;
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Equal(TimeSpan.FromHours(53), noaa.LastRequest!.Through - noaa.LastRequest.From);
+    }
+
+    [Fact]
+    public async Task InvalidPassageDurationDoesNotAcquireForecast()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        viewModel.PassageDays = 10;
+        viewModel.PassageHours = 1;
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Null(noaa.LastRequest);
+        Assert.Contains("cannot exceed 10 days", viewModel.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task LocalGribSelectionRoutesWithoutCallingForecastProvider()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var localPath = Path.GetFullPath("selected.grib2");
+        var inspector = new DelegateLocalGribInspector((path, _) =>
+        {
+            Assert.Equal(localPath, path);
+            return ValueTask.FromResult(new LocalForecastDescriptor(
+                ForecastModel.NoaaGfs,
+                new LocalGribArtifact(path),
+                Now.AddHours(-6),
+                Now.AddHours(-1),
+                Now.AddDays(5),
+                new GeographicBounds(-89, 89, -179, 179)));
+        });
+        var preflight = new DelegateNativeRoutingPreflight();
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+        {
+            Assert.Equal(ForecastAcquisitionSource.LocalFile, forecast.Source);
+            Assert.Equal(localPath, forecast.Artifact.Path);
+            return ValueTask.FromResult(CreateRoute(request, forecast.Request.Model));
+        });
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            inspector,
+            preflight);
+
+        await viewModel.SelectLocalGribAsync(localPath);
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Equal(ForecastInputMode.LocalFile, viewModel.ForecastInputMode);
+        Assert.Equal(0, noaa.CallCount);
+        Assert.Equal(2, inspector.CallCount);
+        Assert.Equal(1, preflight.CallCount);
+        Assert.Equal(1, viewModel.SuccessfulRouteCount);
+    }
+
+    [Fact]
+    public async Task NativePreflightFailureHappensBeforeForecastAcquisition()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var preflight = new DelegateNativeRoutingPreflight(
+            new NativeBridgeUnavailableException(
+                "Build the native bridge first.",
+                new DllNotFoundException()));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            nativeRoutingPreflight: preflight);
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Equal(1, preflight.CallCount);
+        Assert.Equal(0, noaa.CallCount);
+        Assert.Contains("Routing engine unavailable", viewModel.ErrorMessage);
+        Assert.Equal("No forecast was downloaded.", viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task LocalInspectorLoadsNativeImplementationOnlyWhenUsed()
+    {
+        var calls = 0;
+        var path = Path.GetFullPath("deferred.grib2");
+        var expected = new LocalForecastDescriptor(
+            ForecastModel.NoaaGfs,
+            new LocalGribArtifact(path),
+            Now.AddHours(-6),
+            Now,
+            Now.AddDays(3),
+            new GeographicBounds(-89, 89, -179, 179));
+        var deferred = new DeferredLocalGribInspector(() =>
+        {
+            calls++;
+            return new DelegateLocalGribInspector((_, _) => ValueTask.FromResult(expected));
+        });
+
+        Assert.Equal(0, calls);
+        var actual = await deferred.InspectAsync(path);
+
+        Assert.Equal(1, calls);
+        Assert.Same(expected, actual);
+    }
+
+    [Fact]
+    public async Task DeferredLocalInspectorRetriesAfterFactoryFailure()
+    {
+        var calls = 0;
+        var path = Path.GetFullPath("retry.grib2");
+        var expected = new LocalForecastDescriptor(
+            ForecastModel.NoaaGfs,
+            new LocalGribArtifact(path),
+            Now.AddHours(-6),
+            Now,
+            Now.AddDays(3),
+            new GeographicBounds(-89, 89, -179, 179));
+        var deferred = new DeferredLocalGribInspector(() =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                throw new NativeBridgeUnavailableException(
+                    "Bridge is not installed yet.",
+                    new DllNotFoundException());
+            }
+
+            return new DelegateLocalGribInspector((_, _) => ValueTask.FromResult(expected));
+        });
+
+        await Assert.ThrowsAsync<NativeBridgeUnavailableException>(
+            async () => await deferred.InspectAsync(path));
+        var actual = await deferred.InspectAsync(path);
+
+        Assert.Equal(2, calls);
+        Assert.Same(expected, actual);
+    }
+
+    [Fact]
+    public async Task LocalGribReinspectionCanBeCancelledBeforeRouting()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var path = Path.GetFullPath("cancel-inspection.grib2");
+        var descriptor = new LocalForecastDescriptor(
+            ForecastModel.NoaaGfs,
+            new LocalGribArtifact(path),
+            Now.AddHours(-6),
+            Now.AddHours(-1),
+            Now.AddDays(5),
+            new GeographicBounds(-89, 89, -179, 179));
+        var inspectionStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var inspector = new DelegateLocalGribInspector(async (_, cancellationToken) =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                return descriptor;
+            }
+
+            inspectionStarted.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new InvalidOperationException("Unreachable.");
+        });
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            inspector);
+        await viewModel.SelectLocalGribAsync(path);
+
+        var calculation = viewModel.CalculateRoutesAsync();
+        await inspectionStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.True(viewModel.CancelCommand.CanExecute(null));
+
+        viewModel.CancelCommand.Execute(null);
+        await calculation;
+
+        Assert.Equal(0, noaa.CallCount);
+        Assert.False(viewModel.IsInspectingLocalGrib);
+        Assert.Equal("GRIB inspection cancelled.", viewModel.StatusMessage);
+    }
+
+    [Fact]
     public async Task StreamingOverlaysRetainSuccessfulModelAndClearFailedModel()
     {
         var providers = new[]
@@ -311,14 +526,18 @@ public sealed class MainViewModelWorkflowTests
 
     private static MainViewModel CreateViewModel(
         RoutingWorkflow workflow,
-        IWeatherSampler sampler)
+        IWeatherSampler sampler,
+        ILocalGribInspector? localGribInspector = null,
+        INativeRoutingPreflight? nativeRoutingPreflight = null)
     {
         var viewModel = new MainViewModel(
             workflow,
             sampler,
             new FixedTimeProvider(Now),
             TimeZoneInfo.Utc,
-            new OsmTileOptions(Enabled: false));
+            new OsmTileOptions(Enabled: false),
+            localGribInspector: localGribInspector,
+            nativeRoutingPreflight: nativeRoutingPreflight);
         viewModel.SetEndpoints(
             new Coordinate(34, -64),
             new Coordinate(39, -52));
@@ -427,11 +646,14 @@ public sealed class MainViewModelWorkflowTests
 
         public ForecastRequest? LastRequest { get; private set; }
 
+        public int CallCount { get; private set; }
+
         public async ValueTask<ForecastAcquisition> AcquireAsync(
             ForecastRequest request,
             IProgress<ForecastProgress>? progress,
             CancellationToken cancellationToken)
         {
+            CallCount++;
             LastRequest = request;
             progress?.Report(new ForecastProgress(
                 Provider,
@@ -440,6 +662,36 @@ public sealed class MainViewModelWorkflowTests
                 0.5,
                 "fake forecast"));
             return await acquire(request, cancellationToken);
+        }
+    }
+
+    private sealed class DelegateLocalGribInspector(
+        Func<string, CancellationToken, ValueTask<LocalForecastDescriptor>> inspect)
+        : ILocalGribInspector
+    {
+        public int CallCount { get; private set; }
+
+        public ValueTask<LocalForecastDescriptor> InspectAsync(
+            string absolutePath,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return inspect(absolutePath, cancellationToken);
+        }
+    }
+
+    private sealed class DelegateNativeRoutingPreflight(Exception? exception = null)
+        : INativeRoutingPreflight
+    {
+        public int CallCount { get; private set; }
+
+        public void EnsureAvailable()
+        {
+            CallCount++;
+            if (exception is not null)
+            {
+                throw exception;
+            }
         }
     }
 

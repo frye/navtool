@@ -162,6 +162,7 @@ int main() {
             "route JSON does not contain points");
         navtool_router_bridge_free_v1(route_json);
 
+#if NAVTOOL_ROUTER_HAS_PROGRESS_CALLBACK
         route_json = nullptr;
         route_json_length = 0U;
         ProgressCapture progress_capture;
@@ -185,6 +186,7 @@ int main() {
             route_json_length == std::strlen(route_json),
             "streaming route JSON length mismatch");
         navtool_router_bridge_free_v1(route_json);
+#endif
 
         route_json = nullptr;
         route_json_length = 0U;
@@ -271,6 +273,88 @@ int main() {
         require_ok(
             navtool_router_forecast_destroy_v1(&forecast),
             "destroy bounded forecast");
+
+        // ---- GRIB inspection API ----
+
+        // Null checks
+        require(
+            navtool_router_inspect_grib_v1(nullptr, nullptr) ==
+                NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
+            "null path and descriptor were accepted");
+        require(
+            navtool_router_inspect_grib_v1(
+                NAVTOOL_ROUTER_SAMPLE_GRIB,
+                nullptr) ==
+                NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
+            "null descriptor was accepted");
+        require(
+            navtool_router_inspect_grib_v1(
+                nullptr,
+                new navtool_router_grib_descriptor_v1{}) ==
+                NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
+            "null path was accepted");
+
+        // Non-existent file
+        {
+            navtool_router_grib_descriptor_v1 missing_desc{};
+            require(
+                navtool_router_inspect_grib_v1(
+                    "/nonexistent/path/forecast.grib",
+                    &missing_desc) ==
+                    NAVTOOL_ROUTER_STATUS_FILE_IO_V1,
+                "missing GRIB file was not reported as FILE_IO");
+        }
+
+        // Successful inspection of the sample GRIB
+        navtool_router_grib_descriptor_v1 desc{};
+        require_ok(
+            navtool_router_inspect_grib_v1(NAVTOOL_ROUTER_SAMPLE_GRIB, &desc),
+            "inspect sample GRIB");
+
+        // Model should be NOAA GFS (centre 7)
+        require(
+            desc.model_id == NAVTOOL_ROUTER_MODEL_NOAA_GFS_V1,
+            "sample GRIB model should be NOAA GFS");
+
+        // Init time must be before first valid time
+        require(
+            desc.init_utc_epoch_seconds <= desc.first_valid_utc_epoch_seconds,
+            "init time must not be after first valid time");
+
+        // Valid time range must be ordered
+        require(
+            desc.first_valid_utc_epoch_seconds <=
+                desc.last_valid_utc_epoch_seconds,
+            "first valid time must not be after last valid time");
+
+        // Init time is plausible (after year 2000, before year 2100)
+        constexpr int64_t kYear2000Epoch = 946684800LL;
+        constexpr int64_t kYear2100Epoch = 4102444800LL;
+        require(
+            desc.init_utc_epoch_seconds > kYear2000Epoch &&
+                desc.init_utc_epoch_seconds < kYear2100Epoch,
+            "sample GRIB init time is implausible");
+
+        // Bounds should be finite and ordered
+        require(
+            std::isfinite(desc.south_latitude_degrees) &&
+                std::isfinite(desc.north_latitude_degrees) &&
+                std::isfinite(desc.west_longitude_degrees) &&
+                std::isfinite(desc.east_longitude_degrees),
+            "GRIB descriptor bounds contain non-finite values");
+        require(
+            desc.south_latitude_degrees <= desc.north_latitude_degrees,
+            "south latitude exceeds north latitude");
+        require(
+            desc.south_latitude_degrees >= -90.0 &&
+                desc.north_latitude_degrees <= 90.0,
+            "latitude bounds are out of range");
+        require(
+            desc.west_longitude_degrees >= -180.0 &&
+                desc.west_longitude_degrees <= 180.0 &&
+                desc.east_longitude_degrees >= -180.0 &&
+                desc.east_longitude_degrees <= 180.0,
+            "longitude bounds are out of range");
 
         std::cout << "Navtool router bridge tests passed\n";
         return EXIT_SUCCESS;
