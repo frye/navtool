@@ -1,6 +1,8 @@
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Net;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Navtool.Core;
 
 namespace Navtool.Infrastructure;
@@ -19,9 +21,17 @@ public sealed record NoaaGfsOptions
     public int MaximumRunLookbackCycles { get; init; } = 12;
 
     public long MaximumResponseBytes { get; init; } = 256L * 1024 * 1024;
+
+    public int MaximumDownloadAttempts { get; init; } = 3;
+
+    public TimeSpan BaseRetryDelay { get; init; } = TimeSpan.FromSeconds(1);
+
+    public TimeSpan MaximumRetryDelay { get; init; } = TimeSpan.FromSeconds(30);
+
+    public TimeSpan MinimumRequestInterval { get; init; } = TimeSpan.FromMilliseconds(250);
 }
 
-public sealed class ForecastDownloadException : IOException
+public class ForecastDownloadException : IOException
 {
     public ForecastDownloadException(string message)
         : base(message)
@@ -41,12 +51,14 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
     private readonly AtomicFileCache _cache;
     private readonly TimeProvider _timeProvider;
     private readonly NoaaGfsOptions _options;
+    private readonly ILogger<NoaaGfsForecastProvider> _logger;
 
     public NoaaGfsForecastProvider(
         HttpClient httpClient,
         AtomicFileCache cache,
         TimeProvider? timeProvider = null,
-        NoaaGfsOptions? options = null)
+        NoaaGfsOptions? options = null,
+        ILogger<NoaaGfsForecastProvider>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentNullException.ThrowIfNull(cache);
@@ -54,6 +66,7 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         _cache = cache;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _options = options ?? new NoaaGfsOptions();
+        _logger = logger ?? NullLogger<NoaaGfsForecastProvider>.Instance;
         ValidateOptions(_options);
     }
 
@@ -77,13 +90,26 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         var now = _timeProvider.GetUtcNow();
         var runTime = SelectRun(request, now);
         var steps = GetRequiredForecastHours(runTime, request.From, request.Through);
-        var regions = GetNomadsLongitudeWindows(request.Bounds);
-        var cacheKey = CreateCacheKey(request, runTime, steps);
+        var downloadBounds = AlignBoundsToGrid(request.Bounds);
+        var regions = GetNomadsLongitudeWindows(downloadBounds);
+        var cacheKey = CreateCacheKey(downloadBounds, runTime, steps);
+        _logger.LogInformation(
+            "Selected NOAA GFS run {RunTime} with {StepCount} steps, {RegionCount} regions, download bounds " +
+            "south={South}, north={North}, west={West}, east={East}, and cache key {CacheKey}",
+            runTime,
+            steps.Length,
+            regions.Length,
+            downloadBounds.South,
+            downloadBounds.North,
+            downloadBounds.West,
+            downloadBounds.East,
+            cacheKey);
 
         var cached = await _cache.TryGetFreshAsync(cacheKey, now, cancellationToken)
             .ConfigureAwait(false);
         if (cached is not null)
         {
+            _logger.LogInformation("Using cached NOAA GFS artifact {CacheKey}", cacheKey);
             cancellationToken.ThrowIfCancellationRequested();
             Report(progress, ForecastProgressStage.Completed, 1, "Using cached NOAA GFS forecast");
             return CreateAcquisition(
@@ -92,6 +118,8 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
                 cached,
                 ForecastAcquisitionSource.Cache);
         }
+
+        _logger.LogInformation("NOAA GFS cache miss for {CacheKey}", cacheKey);
 
         var requestCount = checked(steps.Length * regions.Length);
         var completed = 0;
@@ -106,13 +134,18 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
                         foreach (var region in regions)
                         {
                             token.ThrowIfCancellationRequested();
-                            var uri = BuildNomadsUri(runTime, forecastHour, request.Bounds, region);
+                            if (completed > 0 && _options.MinimumRequestInterval > TimeSpan.Zero)
+                            {
+                                await Task.Delay(_options.MinimumRequestInterval, token).ConfigureAwait(false);
+                            }
+
+                            var uri = BuildNomadsUri(runTime, forecastHour, downloadBounds, region);
                             Report(
                                 progress,
                                 ForecastProgressStage.Downloading,
                                 completed / (double)requestCount,
                                 $"Downloading GFS f{forecastHour:000}");
-                            await DownloadGribAsync(uri, output, token).ConfigureAwait(false);
+                            await DownloadGribWithRetryAsync(uri, output, token).ConfigureAwait(false);
                             completed++;
                             Report(
                                 progress,
@@ -129,6 +162,10 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
 
         cancellationToken.ThrowIfCancellationRequested();
         Report(progress, ForecastProgressStage.Completed, 1, "NOAA GFS forecast ready");
+        _logger.LogInformation(
+            "Stored NOAA GFS artifact {CacheKey} with {LengthBytes} bytes",
+            cacheKey,
+            stored.LengthBytes);
         return CreateAcquisition(request, runTime, stored, ForecastAcquisitionSource.Remote);
     }
 
@@ -249,7 +286,100 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             new NomadsLongitudeWindow(0d, right - 360d));
     }
 
-    private async ValueTask DownloadGribAsync(
+    public static GeographicBounds AlignBoundsToGrid(GeographicBounds bounds)
+    {
+        const double gridSize = 0.25;
+        var south = Math.Max(-90, Math.Floor(bounds.South / gridSize) * gridSize);
+        var north = Math.Min(90, Math.Ceiling(bounds.North / gridSize) * gridSize);
+        var west = Math.Max(-180, Math.Floor(bounds.West / gridSize) * gridSize);
+        var east = Math.Min(180, Math.Ceiling(bounds.East / gridSize) * gridSize);
+
+        var originalWidth = bounds.CrossesAntimeridian
+            ? bounds.East + 360 - bounds.West
+            : bounds.East - bounds.West;
+        var alignedWidth = bounds.CrossesAntimeridian
+            ? east + 360 - west
+            : east - west;
+        return originalWidth >= 360 - gridSize || alignedWidth >= 360
+            ? new GeographicBounds(south, north, -180, 180)
+            : new GeographicBounds(south, north, west, east);
+    }
+
+    private async ValueTask DownloadGribWithRetryAsync(
+        Uri uri,
+        Stream destination,
+        CancellationToken cancellationToken)
+    {
+        if (!destination.CanSeek)
+        {
+            throw new ArgumentException("The NOAA download destination must support rollback.", nameof(destination));
+        }
+
+        var checkpoint = destination.Position;
+        Exception? lastFailure = null;
+        for (var attempt = 1; attempt <= _options.MaximumDownloadAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _logger.LogInformation(
+                "Requesting NOAA NOMADS subset {Uri}; attempt {Attempt} of {MaximumAttempts}",
+                uri,
+                attempt,
+                _options.MaximumDownloadAttempts);
+            try
+            {
+                await DownloadGribAttemptAsync(uri, destination, cancellationToken).ConfigureAwait(false);
+                _logger.LogInformation(
+                    "Completed NOAA NOMADS subset {Uri} on attempt {Attempt}",
+                    uri,
+                    attempt);
+                return;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception) when (IsTransientFailure(exception))
+            {
+                lastFailure = exception;
+                RollBack(destination, checkpoint);
+                if (attempt == _options.MaximumDownloadAttempts)
+                {
+                    break;
+                }
+
+                var delay = GetRetryDelay(exception, attempt);
+                _logger.LogWarning(
+                    exception,
+                    "Transient NOAA NOMADS failure for {Uri}; retrying after {Delay} on attempt {NextAttempt}",
+                    uri,
+                    delay,
+                    attempt + 1);
+                if (delay > TimeSpan.Zero)
+                {
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception) when (
+                exception is not OperationCanceledException ||
+                !cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogError(
+                    exception,
+                    "NOAA NOMADS returned a non-retryable response for {Uri}",
+                    uri);
+                throw;
+            }
+        }
+
+        var exhausted = new ForecastDownloadException(
+            $"NOAA NOMADS request failed after {_options.MaximumDownloadAttempts} attempts for '{uri}': " +
+            $"{lastFailure!.Message}",
+            lastFailure);
+        _logger.LogError(exhausted, "NOAA NOMADS retries exhausted for {Uri}", uri);
+        throw exhausted;
+    }
+
+    private async ValueTask DownloadGribAttemptAsync(
         Uri uri,
         Stream destination,
         CancellationToken cancellationToken)
@@ -262,8 +392,19 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             .ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            throw new ForecastDownloadException(
-                $"NOAA NOMADS returned {(int)response.StatusCode} ({response.ReasonPhrase}) for '{uri}'.");
+            var location = response.Headers.Location is null
+                ? string.Empty
+                : $" Redirect location: '{response.Headers.Location}'.";
+            var message =
+                $"NOAA NOMADS returned {(int)response.StatusCode} ({response.ReasonPhrase}) for '{uri}'.{location}";
+            if (IsTransientStatus(response.StatusCode))
+            {
+                throw new TransientForecastDownloadException(
+                    message,
+                    GetRetryAfter(response));
+            }
+
+            throw new ForecastDownloadException(message);
         }
 
         var contentLength = response.Content.Headers.ContentLength;
@@ -336,6 +477,56 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         }
     }
 
+    private TimeSpan GetRetryDelay(Exception exception, int completedAttempts)
+    {
+        if (exception is TransientForecastDownloadException { RetryAfter: { } retryAfter })
+        {
+            return retryAfter > _options.MaximumRetryDelay
+                ? _options.MaximumRetryDelay
+                : retryAfter;
+        }
+
+        var multiplier = Math.Pow(2, completedAttempts - 1);
+        var baseMilliseconds = _options.BaseRetryDelay.TotalMilliseconds * multiplier;
+        var jitteredMilliseconds = baseMilliseconds * (1 + (Random.Shared.NextDouble() * 0.25));
+        return TimeSpan.FromMilliseconds(
+            Math.Min(jitteredMilliseconds, _options.MaximumRetryDelay.TotalMilliseconds));
+    }
+
+    private static TimeSpan? GetRetryAfter(HttpResponseMessage response)
+    {
+        var retryAfter = response.Headers.RetryAfter;
+        if (retryAfter?.Delta is { } delta && delta >= TimeSpan.Zero)
+        {
+            return delta;
+        }
+
+        if (retryAfter?.Date is { } date)
+        {
+            var delay = date - DateTimeOffset.UtcNow;
+            return delay > TimeSpan.Zero ? delay : TimeSpan.Zero;
+        }
+
+        return null;
+    }
+
+    private static bool IsTransientFailure(Exception exception) =>
+        exception is HttpRequestException or
+            HttpIOException or
+            OperationCanceledException or
+            TransientForecastDownloadException;
+
+    private static bool IsTransientStatus(HttpStatusCode statusCode) =>
+        statusCode is HttpStatusCode.RequestTimeout or
+            HttpStatusCode.TooManyRequests ||
+        (int)statusCode is 425 or >= 300 and <= 399 or >= 500 and <= 599;
+
+    private static void RollBack(Stream destination, long checkpoint)
+    {
+        destination.SetLength(checkpoint);
+        destination.Position = checkpoint;
+    }
+
     private static ForecastAcquisition CreateAcquisition(
         ForecastRequest request,
         DateTimeOffset runTime,
@@ -352,16 +543,16 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
     }
 
     private static string CreateCacheKey(
-        ForecastRequest request,
+        GeographicBounds bounds,
         DateTimeOffset runTime,
         ImmutableArray<int> steps) =>
         AtomicFileCache.CreateKey(
             "noaa-gfs",
             runTime.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
-            Format(request.Bounds.South),
-            Format(request.Bounds.North),
-            Format(request.Bounds.West),
-            Format(request.Bounds.East),
+            Format(bounds.South),
+            Format(bounds.North),
+            Format(bounds.West),
+            Format(bounds.East),
             string.Join(",", steps));
 
     private static ImmutableArray<int> BuildAvailableHours()
@@ -408,10 +599,22 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             options.ForecastHorizon <= TimeSpan.Zero ||
             options.ForecastHorizon > TimeSpan.FromHours(384) ||
             options.MaximumRunLookbackCycles < 0 ||
-            options.MaximumResponseBytes <= 0)
+            options.MaximumResponseBytes <= 0 ||
+            options.MaximumDownloadAttempts <= 0 ||
+            options.BaseRetryDelay < TimeSpan.Zero ||
+            options.MaximumRetryDelay < options.BaseRetryDelay ||
+            options.MinimumRequestInterval < TimeSpan.Zero)
         {
             throw new ArgumentException("NOAA GFS provider options are invalid.", nameof(options));
         }
+    }
+
+    private sealed class TransientForecastDownloadException(
+        string message,
+        TimeSpan? retryAfter)
+        : ForecastDownloadException(message)
+    {
+        public TimeSpan? RetryAfter { get; } = retryAfter;
     }
 }
 

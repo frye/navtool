@@ -6,6 +6,8 @@ using Mapsui.Extensions;
 using Mapsui.Manipulations;
 using Mapsui.Styles;
 using Mapsui.Tiling;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Navtool.App.Models;
 using Navtool.App.Services;
 using Navtool.Core;
@@ -26,6 +28,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IWeatherSampler? _weatherSampler;
     private readonly TimeProvider _timeProvider;
     private readonly TimeZoneInfo _localTimeZone;
+    private readonly ILogger<MainViewModel> _logger;
     private readonly Dictionary<ForecastModel, double> _modelProgress = new();
     private readonly Dictionary<ForecastModel, ForecastAcquisition> _acquisitions = new();
     private readonly object _progressGate = new();
@@ -110,11 +113,26 @@ public partial class MainViewModel : ViewModelBase
     }
 
     public MainViewModel(
+        RoutingWorkflow workflow,
+        IWeatherSampler weatherSampler,
+        ILogger<MainViewModel> logger)
+        : this(
+            workflow,
+            weatherSampler,
+            TimeProvider.System,
+            TimeZoneInfo.Local,
+            new OsmTileOptions(),
+            logger)
+    {
+    }
+
+    public MainViewModel(
         RoutingWorkflow? workflow,
         IWeatherSampler? weatherSampler,
         TimeProvider timeProvider,
         TimeZoneInfo localTimeZone,
-        OsmTileOptions tileOptions)
+        OsmTileOptions tileOptions,
+        ILogger<MainViewModel>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(localTimeZone);
@@ -123,19 +141,20 @@ public partial class MainViewModel : ViewModelBase
         _weatherSampler = weatherSampler;
         _timeProvider = timeProvider;
         _localTimeZone = localTimeZone;
+        _logger = logger ?? NullLogger<MainViewModel>.Instance;
 
         Map = new Map
         {
             CRS = "EPSG:3857",
             BackColor = Color.FromString("#DDE7EC")
         };
+        Map.Navigator.MouseWheelAnimation.UseContinuousMouseWheelZoom = true;
         var osmLayer = OpenStreetMap.CreateTileLayer(tileOptions.UserAgent);
         osmLayer.Enabled = tileOptions.Enabled;
         osmLayer.Name = "OpenStreetMap";
         Map.Layers.Add(osmLayer);
 
         _mapLayers = new RouteMapLayers(Map);
-        OsmAttribution = tileOptions.Attribution;
         UtcOffsetDisplay = FormatUtcOffset(localTimeZone.GetUtcOffset(timeProvider.GetLocalNow()));
         Map.Navigator.CenterOnAndZoomTo(
             MapProjection.ToMapPoint(new Coordinate(35, -55)),
@@ -145,8 +164,6 @@ public partial class MainViewModel : ViewModelBase
     public event EventHandler<RouteMapSelection?>? RouteSelectionChanged;
 
     public Map Map { get; }
-
-    public string OsmAttribution { get; }
 
     public string UtcOffsetDisplay { get; }
 
@@ -363,6 +380,7 @@ public partial class MainViewModel : ViewModelBase
         {
             if (IsCurrentCalculation(generation))
             {
+                _logger.LogError(exception, "Route calculation workflow failed");
                 ErrorMessage = $"Route calculation failed: {exception.Message}";
                 StatusMessage = "No route result was accepted.";
             }
@@ -633,6 +651,11 @@ public partial class MainViewModel : ViewModelBase
                     : ModelName(outcome.Model);
                 var message = $"{experimental} failed during {outcome.Failure!.Stage}: {outcome.Failure.Message}";
                 failures.Add(message);
+                _logger.LogWarning(
+                    "Forecast model {Model} failed during {FailureStage}: {FailureMessage}",
+                    outcome.Model,
+                    outcome.Failure.Stage,
+                    outcome.Failure.Message);
                 SetModelStatus(outcome.Model, message);
             }
         }
@@ -820,6 +843,11 @@ public partial class MainViewModel : ViewModelBase
         {
             if (generation == Volatile.Read(ref _weatherGeneration))
             {
+                _logger.LogWarning(
+                    exception,
+                    "Weather layer refresh failed for {Model} at {SelectedTimelineUtc}",
+                    model,
+                    selected);
                 _mapLayers.ClearWeather();
                 OnPropertyChanged(nameof(WeatherCellCount));
                 WeatherLayerError = $"{ModelName(model)} weather layer failed: {exception.Message}";

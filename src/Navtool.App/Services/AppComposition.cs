@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Navtool.App.ViewModels;
 using Navtool.Core;
 using Navtool.Infrastructure;
@@ -15,6 +16,12 @@ public static class AppComposition
     public static ServiceProvider CreateServices()
     {
         var services = new ServiceCollection();
+        services.AddLogging(builder =>
+        {
+            builder.SetMinimumLevel(LogLevel.Information);
+            builder.AddProvider(new RollingFileLoggerProvider(
+                new RollingFileLoggerOptions(Path.Combine(ResolveAppDataRoot(), "logs"))));
+        });
         services.AddHttpClient(ForecastHttpClientName, client =>
         {
             client.DefaultRequestHeaders.UserAgent.ParseAdd("Navtool/1.0");
@@ -26,7 +33,8 @@ public static class AppComposition
         services.AddSingleton<NoaaGfsForecastProvider>(provider =>
             new NoaaGfsForecastProvider(
                 provider.GetRequiredService<IHttpClientFactory>().CreateClient(ForecastHttpClientName),
-                provider.GetRequiredService<AtomicFileCache>()));
+                provider.GetRequiredService<AtomicFileCache>(),
+                logger: provider.GetRequiredService<ILogger<NoaaGfsForecastProvider>>()));
         services.AddSingleton(_ => new EcmwfOpenDataForecastProvider(
             new EcmwfOpenDataOptions { Enabled = IsExperimentalEcmwfEnabled() }));
         services.AddSingleton<DeferredNativeRouteEngine>();

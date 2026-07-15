@@ -115,4 +115,3 @@ public static class RouteHitTester
     }
     private sealed record ProjectedRoute(RouteResult Route, ScreenPoint[] Points);
 }
-}
