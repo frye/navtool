@@ -123,18 +123,17 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         }
 
         // Serialize only acquisitions that target the same cached artifact (run, bounds,
-        // steps); unrelated requests use distinct gates and run concurrently.
-        var now = _timeProvider.GetUtcNow();
-        var gateRunTime = SelectRun(request, now);
-        var gateSteps = GetRequiredForecastHours(gateRunTime, request.From, request.Through);
-        var gateBounds = AlignBoundsToGrid(request.Bounds);
-        var gateKey = CreateCacheKey(gateBounds, gateRunTime, gateSteps);
-        var gate = _acquisitionGates.GetOrAdd(gateKey, static _ => new SemaphoreSlim(1, 1));
+        // steps); unrelated requests use distinct gates and run concurrently. The plan
+        // (including the definitive cache key) is computed ONCE here and threaded into the
+        // core so the gate and the download/store always agree on the same key, even if
+        // the clock advances across a run-publish boundary while queued behind the gate.
+        var plan = CreateAcquisitionPlan(request);
+        var gate = _acquisitionGates.GetOrAdd(plan.CacheKey, static _ => new SemaphoreSlim(1, 1));
 
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return await AcquireCoreAsync(request, progress, cancellationToken).ConfigureAwait(false);
+            return await AcquireCoreAsync(request, plan, progress, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -142,19 +141,41 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         }
     }
 
+    // Resolves the definitive run selection, step set, grid-aligned bounds, and cache key
+    // for a request against a single captured "now". Computing this once (rather than
+    // recomputing inside the gated core) is what keeps the acquisition gate key and the
+    // stored artifact key identical.
+    private AcquisitionPlan CreateAcquisitionPlan(ForecastRequest request)
+    {
+        var now = _timeProvider.GetUtcNow();
+        var runTime = SelectRun(request, now);
+        var steps = GetRequiredForecastHours(runTime, request.From, request.Through);
+        var downloadBounds = AlignBoundsToGrid(request.Bounds);
+        var cacheKey = CreateCacheKey(downloadBounds, runTime, steps);
+        return new AcquisitionPlan(now, runTime, steps, downloadBounds, cacheKey);
+    }
+
+    private readonly record struct AcquisitionPlan(
+        DateTimeOffset Now,
+        DateTimeOffset RunTime,
+        ImmutableArray<int> Steps,
+        GeographicBounds DownloadBounds,
+        string CacheKey);
+
     private async ValueTask<ForecastAcquisition> AcquireCoreAsync(
         ForecastRequest request,
+        AcquisitionPlan plan,
         IProgress<ForecastProgress>? progress,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Report(progress, ForecastProgressStage.Queued, 0, "Selecting NOAA GFS run");
-        var now = _timeProvider.GetUtcNow();
-        var runTime = SelectRun(request, now);
-        var steps = GetRequiredForecastHours(runTime, request.From, request.Through);
-        var downloadBounds = AlignBoundsToGrid(request.Bounds);
+        var now = plan.Now;
+        var runTime = plan.RunTime;
+        var steps = plan.Steps;
+        var downloadBounds = plan.DownloadBounds;
         var regions = GetNomadsLongitudeWindows(downloadBounds);
-        var cacheKey = CreateCacheKey(downloadBounds, runTime, steps);
+        var cacheKey = plan.CacheKey;
         _logger.LogInformation(
             "Selected NOAA GFS run {RunTime} with {StepCount} steps, {RegionCount} regions, download bounds " +
             "south={South}, north={North}, west={West}, east={East}, and cache key {CacheKey}",

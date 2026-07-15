@@ -29,6 +29,22 @@ internal sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
     public override DateTimeOffset GetUtcNow() => utcNow;
 }
 
+// Returns a strictly increasing "now" on every read and records how many reads
+// happened. Used to prove AcquireAsync captures the clock exactly once, so its gate
+// key and the stored artifact key cannot diverge across a run-publish boundary.
+internal sealed class CountingTimeProvider(DateTimeOffset start, TimeSpan step) : TimeProvider
+{
+    private long _reads;
+
+    public int Reads => (int)Interlocked.Read(ref _reads);
+
+    public override DateTimeOffset GetUtcNow()
+    {
+        var index = Interlocked.Increment(ref _reads) - 1;
+        return start + TimeSpan.FromTicks(step.Ticks * index);
+    }
+}
+
 internal sealed class RecordingHttpHandler(
     Func<HttpRequestMessage, int, CancellationToken, Task<HttpResponseMessage>> respond)
     : HttpMessageHandler

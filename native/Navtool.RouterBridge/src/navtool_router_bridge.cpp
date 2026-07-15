@@ -425,6 +425,89 @@ double normalize_grib_longitude(double lon) noexcept {
     return lon > 180.0 ? lon - 360.0 : lon;
 }
 
+struct LongitudeCoverage {
+    double west;   // canonical [-180, 180]
+    double east;   // canonical; may be < west when the arc crosses the antimeridian
+    bool global;   // true when the union spans (effectively) the full 360 degrees
+};
+
+// Computes the minimal covering longitude arc across every wind message's grid
+// extent, treating longitude as a circle. Each input pair is a message's
+// [firstGridPoint, lastGridPoint] longitude in GRIB degrees ([0, 360), scanning
+// eastward). A single global grid yields global coverage; multiple subset windows
+// (e.g. a NOMADS request split across the antimeridian) are unioned into one arc
+// rather than trusting the first message alone.
+LongitudeCoverage compute_longitude_coverage(
+    const std::vector<std::pair<double, double>>& arcs) {
+    constexpr double kEpsilon = 1e-6;
+    auto wrap360 = [](double value) {
+        double result = std::fmod(value, 360.0);
+        if (result < 0.0) {
+            result += 360.0;
+        }
+        return result;
+    };
+
+    // Expand each eastward arc into one or two non-wrapping intervals on [0, 360].
+    std::vector<std::pair<double, double>> intervals;
+    for (const auto& [first_lon, last_lon] : arcs) {
+        const double start = wrap360(first_lon);
+        double span = wrap360(last_lon) - start;
+        if (span < 0.0) {
+            span += 360.0;
+        }
+        const double end = start + span;
+        if (end <= 360.0 + kEpsilon) {
+            intervals.emplace_back(start, std::min(end, 360.0));
+        } else {
+            intervals.emplace_back(start, 360.0);
+            intervals.emplace_back(0.0, end - 360.0);
+        }
+    }
+
+    if (intervals.empty()) {
+        return {-180.0, 180.0, true};
+    }
+
+    std::sort(intervals.begin(), intervals.end());
+    std::vector<std::pair<double, double>> merged;
+    for (const auto& interval : intervals) {
+        if (!merged.empty() && interval.first <= merged.back().second + kEpsilon) {
+            merged.back().second = std::max(merged.back().second, interval.second);
+        } else {
+            merged.push_back(interval);
+        }
+    }
+
+    double covered = 0.0;
+    for (const auto& interval : merged) {
+        covered += interval.second - interval.first;
+    }
+    if (covered >= 359.0) {
+        return {-180.0, 180.0, true};
+    }
+
+    // Find the largest uncovered gap on the circle; the covering arc is its
+    // complement. Gaps sit between consecutive merged intervals plus the seam
+    // wrapping from the last interval's end back to the first interval's start.
+    double largest_gap = (360.0 - merged.back().second) + merged.front().first;
+    double west_grib = merged.front().first;   // coverage resumes here after the seam gap
+    double east_grib = merged.back().second;   // coverage ends here before the seam gap
+    for (std::size_t i = 1; i < merged.size(); ++i) {
+        const double gap = merged[i].first - merged[i - 1].second;
+        if (gap > largest_gap) {
+            largest_gap = gap;
+            west_grib = merged[i].first;
+            east_grib = merged[i - 1].second;
+        }
+    }
+
+    return {
+        normalize_grib_longitude(west_grib),
+        normalize_grib_longitude(east_grib),
+        false};
+}
+
 }  // namespace
 
 extern "C" {
@@ -731,8 +814,7 @@ navtool_router_status_v1 navtool_router_inspect_grib_v1(
         int64_t last_valid = std::numeric_limits<int64_t>::min();
         std::optional<double> south_lat;
         std::optional<double> north_lat;
-        std::optional<double> raw_west_lon;
-        std::optional<double> raw_east_lon;
+        std::vector<std::pair<double, double>> lon_arcs;
         std::set<int64_t> u_valid_times;
         std::set<int64_t> v_valid_times;
         std::size_t grib_count = 0U;
@@ -875,13 +957,10 @@ navtool_router_status_v1 navtool_router_inspect_grib_v1(
             if (!north_lat || msg_north > *north_lat) {
                 north_lat = msg_north;
             }
-            // Record the first message's longitudinal extent as canonical west/east.
-            if (!raw_west_lon) {
-                raw_west_lon = first_lon;
-            }
-            if (!raw_east_lon) {
-                raw_east_lon = last_lon;
-            }
+            // Grid longitudinal extent — accumulate every wind message's arc so the
+            // union is computed across all of them (like the latitude bounds), which
+            // is required for artifacts assembled from multiple subset windows.
+            lon_arcs.emplace_back(first_lon, last_lon);
         }
 
         if (decode_status != CODES_SUCCESS) {
@@ -928,14 +1007,9 @@ navtool_router_status_v1 navtool_router_inspect_grib_v1(
             }
         }
 
-        const bool global_longitude_coverage =
-            std::abs(*raw_east_lon - *raw_west_lon) >= 359.0;
-        const double west = global_longitude_coverage
-            ? -180.0
-            : normalize_grib_longitude(*raw_west_lon);
-        const double east = global_longitude_coverage
-            ? 180.0
-            : normalize_grib_longitude(*raw_east_lon);
+        const LongitudeCoverage coverage = compute_longitude_coverage(lon_arcs);
+        const double west = coverage.west;
+        const double east = coverage.east;
 
         *out_descriptor = navtool_router_grib_descriptor_v1{
             *init_epoch,

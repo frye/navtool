@@ -306,6 +306,37 @@ public sealed class NoaaGfsForecastProviderTests
     }
 
     [Fact]
+    public async Task Acquire_captures_the_clock_once_so_gate_and_stored_keys_stay_aligned()
+    {
+        using var directory = new TestDirectory();
+        var handler = new RecordingHttpHandler(async (_, _, cancellationToken) =>
+        {
+            await Task.Delay(1, cancellationToken);
+            return RecordingHttpHandler.GribResponse();
+        });
+        using var client = new HttpClient(handler);
+
+        // Advance the clock by a full 6h GFS run cadence on every read: if AcquireAsync
+        // read "now" more than once, the gate key (computed up front) and the run selected
+        // inside the gated core would land in different run windows and diverge.
+        var timeProvider = new CountingTimeProvider(Now, TimeSpan.FromHours(6));
+        var provider = new NoaaGfsForecastProvider(
+            client,
+            new AtomicFileCache(new AtomicFileCacheOptions(directory.Path)),
+            timeProvider,
+            TestOptions());
+
+        var acquisition = await provider.AcquireAsync(CreateRequest(), null, CancellationToken.None);
+
+        Assert.Equal(1, timeProvider.Reads);
+        Assert.Equal(ForecastAcquisitionSource.Remote, acquisition.Source);
+        Assert.Empty(
+            Directory.EnumerateFiles(
+                Path.Combine(directory.Path, "noaa-gfs-parts"),
+                "*.partial"));
+    }
+
+    [Fact]
     public async Task Acquire_serializes_concurrent_requests_for_the_same_cache_key()
     {
         using var directory = new TestDirectory();
