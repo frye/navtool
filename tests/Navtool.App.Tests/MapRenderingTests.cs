@@ -93,6 +93,22 @@ public sealed class MapRenderingTests
     }
 
     [Fact]
+    public void WindOverlayLayersHaveNoDefaultLayerStyle()
+    {
+        var viewModel = CreateViewModel(tilesEnabled: true);
+        var layers = viewModel.Map.Layers.ToArray();
+
+        var windSpeed = layers.Single(layer => layer.Name == "Wind speed");
+        var windDirection = layers.Single(layer => layer.Name == "Wind direction");
+
+        // A MemoryLayer with no explicit Style falls back to Mapsui's default
+        // VectorStyle (gray fill + outline), which would paint a grid over the map.
+        // Only per-feature styles should render, so the layer Style must be null.
+        Assert.Null(windSpeed.Style);
+        Assert.Null(windDirection.Style);
+    }
+
+    [Fact]
     public void StreamingLayersAccumulateFrontiersReplaceProvisionalRoutesAndClearPerModel()
     {
         var map = new Map();

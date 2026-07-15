@@ -37,8 +37,8 @@ public sealed class RouteMapLayers
         [ForecastModel.NoaaGfs] = new List<IFeature>(),
         [ForecastModel.EcmwfIfs] = new List<IFeature>()
     };
-    private readonly MemoryLayer _windCells = new("Wind speed");
-    private readonly MemoryLayer _windArrows = new("Wind direction");
+    private readonly MemoryLayer _windCells = new("Wind speed") { Style = null };
+    private readonly MemoryLayer _windArrows = new("Wind direction") { Style = null };
     private readonly MemoryLayer _endpoints = new("Route endpoints");
     private readonly MemoryLayer _timelinePoints = new("Timeline route points");
     private readonly MemoryLayer _selection = new("Selected route point");
