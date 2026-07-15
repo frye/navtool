@@ -186,6 +186,25 @@ public sealed class NativeRouteJsonParserTests
         Assert.Contains("weather horizon", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Horizon_guard_reports_sub_minute_overruns_in_seconds()
+    {
+        var request = CreateRequest(TimeSpan.FromHours(10));
+        var arrival = Departure.AddHours(8);
+        var result = NativeRouteJsonParser.Parse(
+            BuildJson((Departure, 40, -60, 0), (arrival, 45, -55, 40)),
+            request,
+            ForecastModel.NoaaGfs,
+            TimeSpan.FromSeconds(1));
+
+        // A 30-second overrun must not collapse to a misleading "0m".
+        var exception = Assert.Throws<NativeRouteFormatException>(() =>
+            NativeRouterBridge.EnsureWithinForecastHorizon(result, Metadata(arrival.AddSeconds(-30))));
+
+        Assert.Contains("30s", exception.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("0m", exception.Message, StringComparison.Ordinal);
+    }
+
     private static NativeForecastMetadata Metadata(DateTimeOffset lastValidAt) => new(
         Departure,
         lastValidAt,

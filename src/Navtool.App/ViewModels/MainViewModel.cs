@@ -1282,6 +1282,11 @@ public partial class MainViewModel : ViewModelBase
 
         var hours = (int)overrun.TotalHours;
         var minutes = overrun.Minutes;
-        return hours > 0 ? $"{hours}h {minutes}m" : $"{minutes}m";
+        if (hours > 0)
+        {
+            return $"{hours}h {minutes}m";
+        }
+
+        return minutes > 0 ? $"{minutes}m" : $"{overrun.Seconds}s";
     }
 }

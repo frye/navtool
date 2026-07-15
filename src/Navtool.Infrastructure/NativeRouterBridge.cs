@@ -449,7 +449,12 @@ public sealed class NativeRouterBridge
 
         var hours = (int)duration.TotalHours;
         var minutes = duration.Minutes;
-        return hours > 0 ? $"{hours}h {minutes}m" : $"{minutes}m";
+        if (hours > 0)
+        {
+            return $"{hours}h {minutes}m";
+        }
+
+        return minutes > 0 ? $"{minutes}m" : $"{duration.Seconds}s";
     }
 
     private RouteCalculationSnapshot CopyProgress(IntPtr progressPointer)
