@@ -11,7 +11,7 @@ namespace Navtool.App.Tests;
 public sealed class MapRenderingTests
 {
     [AvaloniaFact]
-    public void MainWindow_configures_an_uncovered_continuously_zoomable_map()
+    public void MainWindowLeavesMapsuiSurfaceUncoveredAndEnablesContinuousZoom()
     {
         var viewModel = CreateViewModel(tilesEnabled: false);
         var window = new MainWindow
@@ -36,7 +36,7 @@ public sealed class MapRenderingTests
     }
 
     [Fact]
-    public void Map_composition_places_OpenStreetMap_below_route_overlays()
+    public void MapCompositionPlacesOpenStreetMapBelowRouteOverlays()
     {
         var viewModel = CreateViewModel(tilesEnabled: true);
         var layers = viewModel.Map.Layers.ToArray();
