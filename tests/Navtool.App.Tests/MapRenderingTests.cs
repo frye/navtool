@@ -11,7 +11,7 @@ namespace Navtool.App.Tests;
 public sealed class MapRenderingTests
 {
     [AvaloniaFact]
-    public void MainWindowLeavesMapsuiSurfaceUncovered()
+    public void MainWindowLeavesMapsuiSurfaceUncoveredAndEnablesContinuousZoom()
     {
         var viewModel = CreateViewModel(tilesEnabled: false);
         var window = new MainWindow
@@ -27,6 +27,7 @@ public sealed class MapRenderingTests
             Assert.NotNull(mapControl);
             Assert.Same(viewModel.Map, mapControl.Map);
             Assert.Null(mapControl.Background);
+            Assert.True(mapControl.UseContinuousMouseWheelZoom);
         }
         finally
         {

@@ -277,7 +277,8 @@
                         ClipToBounds="True">
                     <Grid>
                         <mapsui:MapControl x:Name="MapView"
-                                           Map="{Binding Map}" />
+                                           Map="{Binding Map}"
+                                           UseContinuousMouseWheelZoom="True" />
 
                         <Border HorizontalAlignment="Center"
                                 VerticalAlignment="Top"
