@@ -82,6 +82,12 @@ public readonly record struct GeographicBounds
             : coordinate.Longitude >= West && coordinate.Longitude <= East;
     }
 
+    public bool Contains(GeographicBounds other) =>
+        Contains(new Coordinate(other.South, other.West)) &&
+        Contains(new Coordinate(other.South, other.East)) &&
+        Contains(new Coordinate(other.North, other.West)) &&
+        Contains(new Coordinate(other.North, other.East));
+
     public static GeographicBounds FromCoordinates(IEnumerable<Coordinate> coordinates)
     {
         ArgumentNullException.ThrowIfNull(coordinates);
@@ -120,4 +126,121 @@ public readonly record struct GeographicBounds
 
     private static double ToSignedLongitude(double longitude) =>
         longitude > 180 ? longitude - 360 : longitude;
+}
+
+public sealed record ForecastCorridorPolicy
+{
+    public double RouteDistanceFraction { get; init; } = 0.2;
+
+    public double MinimumBufferNauticalMiles { get; init; } = 300;
+
+    public double MaximumBufferNauticalMiles { get; init; } = 900;
+}
+
+public sealed record ForecastCorridorResult(
+    GeographicBounds Bounds,
+    double RouteDistanceNauticalMiles,
+    double BufferNauticalMiles);
+
+public static class ForecastCorridor
+{
+    private const double EarthRadiusNauticalMiles = 3_440.065;
+
+    public static GeographicBounds Create(
+        Coordinate origin,
+        Coordinate destination,
+        ForecastCorridorPolicy? policy = null) =>
+        Calculate(origin, destination, policy).Bounds;
+
+    public static ForecastCorridorResult Calculate(
+        Coordinate origin,
+        Coordinate destination,
+        ForecastCorridorPolicy? policy = null)
+    {
+        var effectivePolicy = policy ?? new ForecastCorridorPolicy();
+        Validate(effectivePolicy);
+        var routeDistance = GreatCircleDistanceNauticalMiles(origin, destination);
+        var buffer = Math.Clamp(
+            routeDistance * effectivePolicy.RouteDistanceFraction,
+            effectivePolicy.MinimumBufferNauticalMiles,
+            effectivePolicy.MaximumBufferNauticalMiles);
+        var baseBounds = GeographicBounds.FromCoordinates([origin, destination]);
+        var latitudePadding = buffer / 60d;
+        var south = Math.Max(-90, baseBounds.South - latitudePadding);
+        var north = Math.Min(90, baseBounds.North + latitudePadding);
+        var polewardLatitude = Math.Max(Math.Abs(south), Math.Abs(north));
+        if (polewardLatitude >= 89.5)
+        {
+            return new ForecastCorridorResult(
+                new GeographicBounds(south, north, -180, 180),
+                routeDistance,
+                buffer);
+        }
+
+        var longitudePadding = buffer /
+            (60d * Math.Cos(polewardLatitude * Math.PI / 180d));
+        var baseWidth = LongitudeWidth(baseBounds);
+        if (baseWidth + (longitudePadding * 2) >= 360)
+        {
+            return new ForecastCorridorResult(
+                new GeographicBounds(south, north, -180, 180),
+                routeDistance,
+                buffer);
+        }
+
+        var eastUnwrapped = baseBounds.CrossesAntimeridian
+            ? baseBounds.East + 360
+            : baseBounds.East;
+        return new ForecastCorridorResult(
+            new GeographicBounds(
+                south,
+                north,
+                NormalizeLongitude(baseBounds.West - longitudePadding),
+                NormalizeLongitude(eastUnwrapped + longitudePadding)),
+            routeDistance,
+            buffer);
+    }
+
+    public static double GreatCircleDistanceNauticalMiles(
+        Coordinate origin,
+        Coordinate destination)
+    {
+        var latitude1 = origin.Latitude * Math.PI / 180d;
+        var latitude2 = destination.Latitude * Math.PI / 180d;
+        var latitudeDelta = latitude2 - latitude1;
+        var longitudeDelta =
+            (destination.Longitude - origin.Longitude) * Math.PI / 180d;
+        var haversine =
+            Math.Pow(Math.Sin(latitudeDelta / 2d), 2) +
+            (Math.Cos(latitude1) * Math.Cos(latitude2) *
+             Math.Pow(Math.Sin(longitudeDelta / 2d), 2));
+        var centralAngle = 2d * Math.Atan2(
+            Math.Sqrt(haversine),
+            Math.Sqrt(Math.Max(0, 1d - haversine)));
+        return EarthRadiusNauticalMiles * centralAngle;
+    }
+
+    private static void Validate(ForecastCorridorPolicy policy)
+    {
+        if (!double.IsFinite(policy.RouteDistanceFraction) ||
+            policy.RouteDistanceFraction <= 0 ||
+            !double.IsFinite(policy.MinimumBufferNauticalMiles) ||
+            policy.MinimumBufferNauticalMiles <= 0 ||
+            !double.IsFinite(policy.MaximumBufferNauticalMiles) ||
+            policy.MaximumBufferNauticalMiles < policy.MinimumBufferNauticalMiles)
+        {
+            throw new ArgumentOutOfRangeException(nameof(policy));
+        }
+    }
+
+    private static double LongitudeWidth(GeographicBounds bounds) =>
+        bounds.CrossesAntimeridian
+            ? bounds.East + 360 - bounds.West
+            : bounds.East - bounds.West;
+
+    private static double NormalizeLongitude(double longitude)
+    {
+        var normalized = ((longitude + 180) % 360 + 360) % 360 - 180;
+        return normalized == -180 && longitude > 0 ? 180 : normalized;
+    }
 }

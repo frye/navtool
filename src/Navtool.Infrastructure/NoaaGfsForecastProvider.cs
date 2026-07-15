@@ -44,6 +44,17 @@ public class ForecastDownloadException : IOException
     }
 }
 
+/// <summary>
+/// Describes a single GRIB part in the download manifest: one (forecast hour × longitude window) pair.
+/// </summary>
+internal sealed record GribPartDescriptor(
+    int ForecastHour,
+    int RegionIndex,
+    NomadsLongitudeWindow LongitudeWindow,
+    GeographicBounds AlignedBounds,
+    string PartKey,
+    Uri RequestUri);
+
 public sealed class NoaaGfsForecastProvider : IForecastProvider
 {
     private static readonly ImmutableArray<int> AvailableForecastHours = BuildAvailableHours();
@@ -121,41 +132,77 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
 
         _logger.LogInformation("NOAA GFS cache miss for {CacheKey}", cacheKey);
 
-        var requestCount = checked(steps.Length * regions.Length);
-        var completed = 0;
+        // Build deterministic download manifest: forecast_hour ascending, then region index ascending.
+        var manifest = BuildPartManifest(runTime, steps, regions, downloadBounds);
+        var partsDirectory = Path.Combine(_cache.RootDirectory, "noaa-gfs-parts");
+        Directory.CreateDirectory(partsDirectory);
+
+        var totalParts = manifest.Length;
+        var httpRequestsMade = 0;
+
+        // Acquire each part; reuse from disk if already complete.
+        for (var index = 0; index < totalParts; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var part = manifest[index];
+            var partFile = Path.Combine(partsDirectory, part.PartKey + ".grib2");
+
+            if (File.Exists(partFile))
+            {
+                _logger.LogInformation(
+                    "Resuming cached part {PartIndex}/{Total} f{ForecastHour:000} region {RegionIndex}",
+                    index + 1, totalParts, part.ForecastHour, part.RegionIndex);
+                Report(
+                    progress,
+                    ForecastProgressStage.Downloading,
+                    (index + 1) / (double)totalParts,
+                    $"Resumed cached f{part.ForecastHour:000} (part {index + 1}/{totalParts})");
+                continue;
+            }
+
+            // Apply pacing before each HTTP request except the very first.
+            if (httpRequestsMade > 0 && _options.MinimumRequestInterval > TimeSpan.Zero)
+            {
+                await Task.Delay(_options.MinimumRequestInterval, cancellationToken).ConfigureAwait(false);
+            }
+
+            Report(
+                progress,
+                ForecastProgressStage.Downloading,
+                index / (double)totalParts,
+                $"Downloading GFS f{part.ForecastHour:000} (part {index + 1}/{totalParts})");
+
+            await DownloadPartAsync(part, partFile, cancellationToken).ConfigureAwait(false);
+            httpRequestsMade++;
+
+            Report(
+                progress,
+                ForecastProgressStage.Downloading,
+                (index + 1) / (double)totalParts,
+                $"Downloaded {index + 1}/{totalParts} GFS parts ({httpRequestsMade} HTTP requests)");
+        }
+
+        // Concatenate all parts in manifest order into the final cached artifact.
+        Report(progress, ForecastProgressStage.Decoding, 1, "Assembling GRIB2 artifact from parts");
         var stored = await _cache.StoreAsync(
                 cacheKey,
                 now,
                 now + _options.CacheFreshness,
                 async (output, token) =>
                 {
-                    foreach (var forecastHour in steps)
+                    foreach (var part in manifest)
                     {
-                        foreach (var region in regions)
-                        {
-                            token.ThrowIfCancellationRequested();
-                            if (completed > 0 && _options.MinimumRequestInterval > TimeSpan.Zero)
-                            {
-                                await Task.Delay(_options.MinimumRequestInterval, token).ConfigureAwait(false);
-                            }
-
-                            var uri = BuildNomadsUri(runTime, forecastHour, downloadBounds, region);
-                            Report(
-                                progress,
-                                ForecastProgressStage.Downloading,
-                                completed / (double)requestCount,
-                                $"Downloading GFS f{forecastHour:000}");
-                            await DownloadGribWithRetryAsync(uri, output, token).ConfigureAwait(false);
-                            completed++;
-                            Report(
-                                progress,
-                                ForecastProgressStage.Downloading,
-                                completed / (double)requestCount,
-                                $"Downloaded {completed} of {requestCount} GFS subsets");
-                        }
+                        token.ThrowIfCancellationRequested();
+                        var partFile = Path.Combine(partsDirectory, part.PartKey + ".grib2");
+                        await using var partStream = new FileStream(
+                            partFile,
+                            FileMode.Open,
+                            FileAccess.Read,
+                            FileShare.Read,
+                            128 * 1024,
+                            FileOptions.Asynchronous | FileOptions.SequentialScan);
+                        await partStream.CopyToAsync(output, token).ConfigureAwait(false);
                     }
-
-                    Report(progress, ForecastProgressStage.Decoding, 1, "Validated concatenated GRIB2 artifact");
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -303,6 +350,64 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         return originalWidth >= 360 - gridSize || alignedWidth >= 360
             ? new GeographicBounds(south, north, -180, 180)
             : new GeographicBounds(south, north, west, east);
+    }
+
+    /// <summary>
+    /// Builds the ordered download manifest: all (forecast hour, region) pairs in
+    /// ascending forecast-hour / ascending region-index order.
+    /// </summary>
+    internal ImmutableArray<GribPartDescriptor> BuildPartManifest(
+        DateTimeOffset runTime,
+        ImmutableArray<int> steps,
+        ImmutableArray<NomadsLongitudeWindow> regions,
+        GeographicBounds downloadBounds)
+    {
+        var builder = ImmutableArray.CreateBuilder<GribPartDescriptor>(steps.Length * regions.Length);
+        foreach (var forecastHour in steps)
+        {
+            for (var regionIndex = 0; regionIndex < regions.Length; regionIndex++)
+            {
+                var region = regions[regionIndex];
+                var partKey = CreatePartKey(downloadBounds, runTime, forecastHour, regionIndex);
+                var uri = BuildNomadsUri(runTime, forecastHour, downloadBounds, region);
+                builder.Add(new GribPartDescriptor(forecastHour, regionIndex, region, downloadBounds, partKey, uri));
+            }
+        }
+
+        return builder.MoveToImmutable();
+    }
+
+    private async ValueTask DownloadPartAsync(
+        GribPartDescriptor part,
+        string partFile,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation(
+            "Downloading GFS part f{ForecastHour:000} region {RegionIndex} → {PartFile}",
+            part.ForecastHour, part.RegionIndex, partFile);
+
+        var tempFile = partFile + ".partial";
+        try
+        {
+            await using (var tempStream = new FileStream(
+                tempFile,
+                FileMode.Create,
+                FileAccess.ReadWrite,
+                FileShare.None,
+                128 * 1024,
+                FileOptions.Asynchronous | FileOptions.WriteThrough))
+            {
+                await DownloadGribWithRetryAsync(part.RequestUri, tempStream, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            File.Move(tempFile, partFile, overwrite: true);
+        }
+        catch
+        {
+            DeleteIfPresent(tempFile);
+            throw;
+        }
     }
 
     private async ValueTask DownloadGribWithRetryAsync(
@@ -555,6 +660,21 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             Format(bounds.East),
             string.Join(",", steps));
 
+    private static string CreatePartKey(
+        GeographicBounds bounds,
+        DateTimeOffset runTime,
+        int forecastHour,
+        int regionIndex) =>
+        AtomicFileCache.CreateKey(
+            "noaa-gfs-part",
+            runTime.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+            Format(bounds.South),
+            Format(bounds.North),
+            Format(bounds.West),
+            Format(bounds.East),
+            forecastHour.ToString(CultureInfo.InvariantCulture),
+            regionIndex.ToString(CultureInfo.InvariantCulture));
+
     private static ImmutableArray<int> BuildAvailableHours()
     {
         var builder = ImmutableArray.CreateBuilder<int>();
@@ -589,6 +709,17 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         double fraction,
         string message) =>
         progress?.Report(new ForecastProgress(Provider, Model, stage, fraction, message));
+
+    private static void DeleteIfPresent(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (DirectoryNotFoundException)
+        {
+        }
+    }
 
     private static void ValidateOptions(NoaaGfsOptions options)
     {

@@ -8,18 +8,33 @@ public sealed record RoutingWorkflowRequest
         RouteRequest route,
         IEnumerable<ForecastModel> models,
         GeographicBounds? forecastBounds = null)
+        : this(
+            route,
+            models.Select(ForecastSelection.OfficialDownload),
+            forecastBounds)
+    {
+    }
+
+    public RoutingWorkflowRequest(
+        RouteRequest route,
+        IEnumerable<ForecastSelection> selections,
+        GeographicBounds? forecastBounds = null)
     {
         ArgumentNullException.ThrowIfNull(route);
-        ArgumentNullException.ThrowIfNull(models);
-        var immutableModels = models.Distinct().ToImmutableArray();
-        if (immutableModels.Length is < 1 or > 2)
+        ArgumentNullException.ThrowIfNull(selections);
+        var immutableSelections = selections.ToImmutableArray();
+        if (immutableSelections.Length is < 1 or > 2 ||
+            immutableSelections.Select(selection => selection.Model).Distinct().Count() !=
+            immutableSelections.Length)
         {
-            throw new ArgumentException("Select one or two distinct forecast models.", nameof(models));
+            throw new ArgumentException(
+                "Select one or two distinct forecast models.",
+                nameof(selections));
         }
 
-        foreach (var model in immutableModels)
+        foreach (var selection in immutableSelections)
         {
-            _ = model.Provider();
+            _ = selection.Model.Provider();
         }
 
         if (route.Origin.IsSameLocation(route.Destination))
@@ -33,7 +48,8 @@ public sealed record RoutingWorkflowRequest
         }
 
         Route = route;
-        Models = immutableModels;
+        Selections = immutableSelections;
+        Models = immutableSelections.Select(selection => selection.Model).ToImmutableArray();
         ForecastBounds = forecastBounds ?? GeographicBounds.FromCoordinates(
             new[] { route.Origin, route.Destination });
     }
@@ -41,6 +57,8 @@ public sealed record RoutingWorkflowRequest
     public RouteRequest Route { get; }
 
     public ImmutableArray<ForecastModel> Models { get; }
+
+    public ImmutableArray<ForecastSelection> Selections { get; }
 
     public GeographicBounds ForecastBounds { get; }
 }
@@ -205,8 +223,8 @@ public sealed class RoutingWorkflow
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var tasks = request.Models
-            .Select(model => RunModelAsync(request, model, progress, cancellationToken))
+        var tasks = request.Selections
+            .Select(selection => RunModelAsync(request, selection, progress, cancellationToken))
             .ToArray();
 
         var outcomes = await Task.WhenAll(tasks).WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -216,12 +234,14 @@ public sealed class RoutingWorkflow
 
     private async Task<ModelRouteOutcome> RunModelAsync(
         RoutingWorkflowRequest request,
-        ForecastModel model,
+        ForecastSelection selection,
         IProgress<RoutingProgress>? progress,
         CancellationToken cancellationToken)
     {
+        var model = selection.Model;
         var providerId = model.Provider();
-        if (!_providers.TryGetValue(model, out var provider))
+        if (selection.Kind == ForecastSelectionKind.OfficialDownload &&
+            !_providers.TryGetValue(model, out _))
         {
             var missing = ModelRouteOutcome.Failed(
                 model,
@@ -252,9 +272,11 @@ public sealed class RoutingWorkflow
                     value.Fraction * 0.5,
                     value.Message));
 
-            acquisition = await provider
-                .AcquireAsync(forecastRequest, forecastProgress, cancellationToken)
-                .ConfigureAwait(false);
+            acquisition = selection.Kind == ForecastSelectionKind.LocalFile
+                ? AcquireLocal(selection, forecastRequest, forecastProgress, cancellationToken)
+                : await _providers[model]
+                    .AcquireAsync(forecastRequest, forecastProgress, cancellationToken)
+                    .ConfigureAwait(false);
 
             cancellationToken.ThrowIfCancellationRequested();
             if (acquisition.Request != forecastRequest)
@@ -307,6 +329,41 @@ public sealed class RoutingWorkflow
                 exception.Message,
                 acquisition);
         }
+    }
+
+    private static ForecastAcquisition AcquireLocal(
+        ForecastSelection selection,
+        ForecastRequest request,
+        IProgress<ForecastProgress> progress,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var local = selection.LocalForecast ??
+            throw new InvalidOperationException("Local forecast metadata is missing.");
+        if (request.From < local.ValidFrom || request.Through > local.ValidThrough)
+        {
+            throw new InvalidOperationException(
+                $"The selected GRIB is valid from {local.ValidFrom:u} through {local.ValidThrough:u}, " +
+                "which does not cover the requested route window.");
+        }
+
+        if (!local.Bounds.Contains(request.Bounds))
+        {
+            throw new InvalidOperationException(
+                "The selected GRIB does not cover the buffered route region.");
+        }
+
+        progress.Report(new ForecastProgress(
+            request.Provider,
+            request.Model,
+            ForecastProgressStage.Completed,
+            1,
+            "Using selected local GRIB"));
+        return new ForecastAcquisition(
+            request,
+            new ForecastRun(request.Provider, request.Model, local.InitializedAt),
+            local.Artifact,
+            ForecastAcquisitionSource.LocalFile);
     }
 
     private static void Report(
