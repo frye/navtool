@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Microsoft.Extensions.Logging;
 using Navtool.Core;
 using Navtool.Infrastructure;
 
@@ -21,6 +22,11 @@ public sealed class DeferredNativeRouteEngine : IRouteEngine, IWeatherSampler
 
     public DeferredNativeRouteEngine()
         : this(() => new NativeRouteEngine(new NativeRouterBridge()))
+    {
+    }
+
+    public DeferredNativeRouteEngine(ILogger<NativeRouteEngine> logger)
+        : this(() => new NativeRouteEngine(new NativeRouterBridge(), logger))
     {
     }
 

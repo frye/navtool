@@ -6,6 +6,8 @@ using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Win32.SafeHandles;
 using Navtool.Core;
 
@@ -572,10 +574,14 @@ public sealed class NativeRouterBridge
 public sealed class NativeRouteEngine : IRouteEngine
 {
     private readonly NativeRouterBridge _bridge;
+    private readonly ILogger<NativeRouteEngine> _logger;
 
-    public NativeRouteEngine(NativeRouterBridge? bridge = null)
+    public NativeRouteEngine(
+        NativeRouterBridge? bridge = null,
+        ILogger<NativeRouteEngine>? logger = null)
     {
         _bridge = bridge ?? new NativeRouterBridge();
+        _logger = logger ?? NullLogger<NativeRouteEngine>.Instance;
     }
 
     public ValueTask<RouteResult> CalculateAsync(
@@ -589,43 +595,69 @@ public sealed class NativeRouteEngine : IRouteEngine
         cancellationToken.ThrowIfCancellationRequested();
         progress?.Report(new RouteCalculationProgress(0, "Loading forecast"));
 
-        using var loaded = _bridge.LoadForecast(
-            forecast.Artifact.Path,
-            forecast.Request.Bounds,
-            cancellationToken);
-        cancellationToken.ThrowIfCancellationRequested();
-        progress?.Report(new RouteCalculationProgress(0.2, "Optimizing route"));
-        var result = progress is null
-            ? _bridge.CalculateRoute(
-                loaded,
-                request,
+        try
+        {
+            var loadBounds = GetLoadBounds(forecast);
+            _logger.LogInformation(
+                "Loading native forecast artifact {ArtifactPath} with effective bounds {Bounds}",
+                forecast.Artifact.Path,
+                loadBounds);
+            using var loaded = _bridge.LoadForecast(
+                forecast.Artifact.Path,
+                loadBounds,
+                cancellationToken: cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            progress?.Report(new RouteCalculationProgress(0.2, "Optimizing route"));
+            var result = progress is null
+                ? _bridge.CalculateRoute(
+                    loaded,
+                    request,
+                    forecast.Request.Model,
+                    cancellationToken)
+                : _bridge.CalculateRoute(
+                    loaded,
+                    request,
+                    forecast.Request.Model,
+                    snapshot =>
+                    {
+                        var requestedDuration =
+                            request.LatestArrivalTime - request.DepartureTime;
+                        var elapsed =
+                            snapshot.FrontierTime - request.DepartureTime;
+                        var fraction = requestedDuration <= TimeSpan.Zero
+                            ? 0
+                            : Math.Clamp(
+                                elapsed.TotalSeconds /
+                                requestedDuration.TotalSeconds,
+                                0,
+                                1);
+                        progress.Report(new RouteCalculationProgress(
+                            0.2 + (fraction * 0.79),
+                            $"Step {snapshot.Diagnostics.TimeSteps:N0} · " +
+                            $"{snapshot.Diagnostics.RetainedCandidates:N0} retained",
+                            snapshot));
+                    },
+                    cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            progress?.Report(new RouteCalculationProgress(1, "Route complete"));
+            _logger.LogInformation(
+                "Completed route {RouteId} using {Model} with {PointCount} points",
+                request.RouteId,
                 forecast.Request.Model,
-                cancellationToken)
-            : _bridge.CalculateRoute(
-                loaded,
-                request,
-                forecast.Request.Model,
-                snapshot =>
-                {
-                    var requestedDuration =
-                        request.LatestArrivalTime - request.DepartureTime;
-                    var elapsed = snapshot.FrontierTime - request.DepartureTime;
-                    var fraction = requestedDuration <= TimeSpan.Zero
-                        ? 0
-                        : Math.Clamp(
-                            elapsed.TotalSeconds / requestedDuration.TotalSeconds,
-                            0,
-                            1);
-                    progress.Report(new RouteCalculationProgress(
-                        0.2 + (fraction * 0.79),
-                        $"Step {snapshot.Diagnostics.TimeSteps:N0} · " +
-                        $"{snapshot.Diagnostics.RetainedCandidates:N0} retained",
-                        snapshot));
-                },
-                cancellationToken);
-        cancellationToken.ThrowIfCancellationRequested();
-        progress?.Report(new RouteCalculationProgress(1, "Route complete"));
-        return ValueTask.FromResult(result);
+                result.Points.Length);
+            return ValueTask.FromResult(result);
+        }
+        catch (Exception exception) when (
+            exception is not OperationCanceledException ||
+            !cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogError(
+                exception,
+                "Native route calculation failed for route {RouteId} and artifact {ArtifactPath}",
+                request.RouteId,
+                forecast.Artifact.Path);
+            throw;
+        }
     }
 
     public ValueTask<ImmutableArray<ViewportWindSample>> SampleViewportAsync(
@@ -638,20 +670,39 @@ public sealed class NativeRouteEngine : IRouteEngine
     {
         ArgumentNullException.ThrowIfNull(forecast);
         cancellationToken.ThrowIfCancellationRequested();
-        using var loaded = _bridge.LoadForecast(
-            forecast.Artifact.Path,
-            forecast.Request.Bounds,
-            cancellationToken);
-        var samples = _bridge.SampleViewport(
-            loaded,
-            bounds,
-            latitudeCount,
-            longitudeCount,
-            validAt,
-            cancellationToken);
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(samples);
+        try
+        {
+            using var loaded = _bridge.LoadForecast(
+                forecast.Artifact.Path,
+                GetLoadBounds(forecast),
+                cancellationToken: cancellationToken);
+            var samples = _bridge.SampleViewport(
+                loaded,
+                bounds,
+                latitudeCount,
+                longitudeCount,
+                validAt,
+                cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(samples);
+        }
+        catch (Exception exception) when (
+            exception is not OperationCanceledException ||
+            !cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogError(
+                exception,
+                "Native weather sampling failed for artifact {ArtifactPath} at {ValidAt}",
+                forecast.Artifact.Path,
+                validAt);
+            throw;
+        }
     }
+
+    private static GeographicBounds GetLoadBounds(ForecastAcquisition forecast) =>
+        forecast.Request.Model == ForecastModel.NoaaGfs
+            ? NoaaGfsForecastProvider.AlignBoundsToGrid(forecast.Request.Bounds)
+            : forecast.Request.Bounds;
 }
 
 internal static class NativeRouteJsonParser
