@@ -153,6 +153,19 @@ public sealed class RoutingWorkflowTests
     }
 
     [Fact]
+    public void Model_overload_rejects_null_and_preserves_duplicate_tolerance()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            new RoutingWorkflowRequest(CreateRouteRequest(), (IEnumerable<ForecastModel>)null!));
+
+        var request = new RoutingWorkflowRequest(
+            CreateRouteRequest(),
+            new[] { ForecastModel.NoaaGfs, ForecastModel.NoaaGfs });
+
+        Assert.Equal([ForecastModel.NoaaGfs], request.Models.ToArray());
+    }
+
+    [Fact]
     public async Task Local_forecast_routes_without_a_registered_or_remote_provider()
     {
         var route = CreateRouteRequest();

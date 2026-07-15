@@ -16,6 +16,7 @@
 #include <limits>
 #include <new>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -732,8 +733,8 @@ navtool_router_status_v1 navtool_router_inspect_grib_v1(
         std::optional<double> north_lat;
         std::optional<double> raw_west_lon;
         std::optional<double> raw_east_lon;
-        bool has_u = false;
-        bool has_v = false;
+        std::set<int64_t> u_valid_times;
+        std::set<int64_t> v_valid_times;
         std::size_t grib_count = 0U;
         int decode_status = CODES_SUCCESS;
 
@@ -762,12 +763,6 @@ navtool_router_status_v1 navtool_router_inspect_grib_v1(
             if (!component) {
                 continue;
             }
-            if (*component == GribWindComponent::east) {
-                has_u = true;
-            } else {
-                has_v = true;
-            }
-
             // Model centre — must be consistent across all wind messages.
             const auto centre =
                 optional_long_grib_key(handle.get(), "centre");
@@ -840,6 +835,11 @@ navtool_router_status_v1 navtool_router_inspect_grib_v1(
             }
             first_valid = std::min(first_valid, *this_valid);
             last_valid = std::max(last_valid, *this_valid);
+            if (*component == GribWindComponent::east) {
+                u_valid_times.insert(*this_valid);
+            } else {
+                v_valid_times.insert(*this_valid);
+            }
 
             // Grid bounds — collect union across all wind messages.
             double first_lat = 0.0;
@@ -894,13 +894,20 @@ navtool_router_status_v1 navtool_router_inspect_grib_v1(
                 NAVTOOL_ROUTER_STATUS_FORECAST_DECODE_V1,
                 "'" + display_path + "' contains no decodable GRIB messages");
         }
-        if (!has_u || !has_v) {
+        if (u_valid_times.empty() || v_valid_times.empty()) {
             return fail(
                 NAVTOOL_ROUTER_STATUS_INCOMPLETE_FORECAST_V1,
                 "'" + display_path +
                     "' does not contain both 10 m U and V wind components; "
                     "a complete wind forecast requires paired eastward (U) "
                     "and northward (V) fields");
+        }
+        if (u_valid_times != v_valid_times) {
+            return fail(
+                NAVTOOL_ROUTER_STATUS_INCOMPLETE_FORECAST_V1,
+                "'" + display_path +
+                    "' does not contain paired 10 m U and V wind components "
+                    "for every forecast validity time");
         }
 
         // Map centre code to supported model identity.

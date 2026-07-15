@@ -306,6 +306,32 @@ public sealed class NoaaGfsForecastProviderTests
     }
 
     [Fact]
+    public async Task Acquire_serializes_concurrent_requests_for_the_same_cache_key()
+    {
+        using var directory = new TestDirectory();
+        var handler = new RecordingHttpHandler(async (_, _, cancellationToken) =>
+        {
+            await Task.Delay(10, cancellationToken);
+            return RecordingHttpHandler.GribResponse();
+        });
+        using var client = new HttpClient(handler);
+        var provider = CreateProvider(directory.Path, client);
+        var request = CreateRequest();
+
+        var first = provider.AcquireAsync(request, null, CancellationToken.None).AsTask();
+        var second = provider.AcquireAsync(request, null, CancellationToken.None).AsTask();
+        var acquisitions = await Task.WhenAll(first, second);
+
+        Assert.Equal(3, handler.RequestCount);
+        Assert.Contains(acquisitions, item => item.Source == ForecastAcquisitionSource.Remote);
+        Assert.Contains(acquisitions, item => item.Source == ForecastAcquisitionSource.Cache);
+        Assert.Empty(
+            Directory.EnumerateFiles(
+                Path.Combine(directory.Path, "noaa-gfs-parts"),
+                "*.partial"));
+    }
+
+    [Fact]
     public async Task Acquire_assembles_final_artifact_in_deterministic_forecast_hour_and_region_order()
     {
         using var directory = new TestDirectory();
@@ -332,6 +358,10 @@ public sealed class NoaaGfsForecastProviderTests
             .GetBytes("GRIB00017777GRIB00027777GRIB00037777GRIB00047777");
         var actual = await File.ReadAllBytesAsync(acquisition.Artifact.Path);
         Assert.Equal(expected, actual);
+        Assert.Empty(
+            Directory.EnumerateFiles(
+                Path.Combine(directory.Path, "noaa-gfs-parts"),
+                "*.grib2"));
     }
 
     [Fact]
@@ -397,8 +427,46 @@ public sealed class NoaaGfsForecastProviderTests
             p.Stage == ForecastProgressStage.Downloading &&
             p.Message != null &&
             p.Message.Contains("Resumed", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(progress, p =>
+            p.Message != null &&
+            p.Message.Contains("new this run", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(progress, p =>
+            p.Message != null &&
+            p.Message.Contains("HTTP requests", StringComparison.OrdinalIgnoreCase));
         // Final stage is Completed.
         Assert.Equal(ForecastProgressStage.Completed, progress[^1].Stage);
+    }
+
+    [Fact]
+    public async Task Acquire_prunes_abandoned_parts_to_cache_bounds()
+    {
+        using var directory = new TestDirectory();
+        var partsDirectory = Path.Combine(directory.Path, "noaa-gfs-parts");
+        Directory.CreateDirectory(partsDirectory);
+        for (var index = 0; index < 8; index++)
+        {
+            await File.WriteAllBytesAsync(
+                Path.Combine(partsDirectory, $"stale-{index}.grib2"),
+                "old"u8.ToArray());
+        }
+
+        var handler = new RecordingHttpHandler((_, count, _) =>
+            count == 1
+                ? Task.FromResult(RecordingHttpHandler.GribResponse())
+                : Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
+        using var client = new HttpClient(handler);
+        var provider = CreateProvider(
+            directory.Path,
+            client,
+            cacheOptions: new AtomicFileCacheOptions(
+                directory.Path,
+                maximumBytes: 1_024,
+                maximumEntries: 2));
+
+        await Assert.ThrowsAsync<ForecastDownloadException>(async () =>
+            await provider.AcquireAsync(CreateRequest(), null, CancellationToken.None));
+
+        Assert.True(Directory.EnumerateFiles(partsDirectory, "*.grib2").Count() <= 3);
     }
 
     [Fact]
@@ -424,10 +492,11 @@ public sealed class NoaaGfsForecastProviderTests
     private static NoaaGfsForecastProvider CreateProvider(
         string path,
         HttpClient client,
-        NoaaGfsOptions? options = null) =>
+        NoaaGfsOptions? options = null,
+        AtomicFileCacheOptions? cacheOptions = null) =>
         new(
             client,
-            new AtomicFileCache(new AtomicFileCacheOptions(path)),
+            new AtomicFileCache(cacheOptions ?? new AtomicFileCacheOptions(path)),
             new FixedTimeProvider(Now),
             options ?? TestOptions());
 

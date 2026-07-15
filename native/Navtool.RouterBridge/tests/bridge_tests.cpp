@@ -1,9 +1,14 @@
 #include "navtool_router_bridge.h"
 
+#include <eccodes.h>
+
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <fstream>
+#include <filesystem>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -56,6 +61,62 @@ void capture_progress(
     capture->previous_time = progress->isochrone_utc_epoch_seconds;
     capture->previous_time_steps = progress->diagnostics.time_steps;
     ++capture->count;
+}
+
+std::filesystem::path create_grib_with_missing_v_step() {
+    const auto output_path =
+        std::filesystem::temp_directory_path() /
+        ("navtool-incomplete-" +
+         std::to_string(
+             std::chrono::steady_clock::now().time_since_epoch().count()) +
+         ".grib");
+    std::FILE* input = std::fopen(NAVTOOL_ROUTER_SAMPLE_GRIB, "rb");
+    if (input == nullptr) {
+        throw std::runtime_error("could not open sample GRIB for incomplete fixture");
+    }
+
+    std::ofstream output{output_path, std::ios::binary};
+    bool skipped_v = false;
+    int error = CODES_SUCCESS;
+    while (codes_handle* handle =
+               codes_handle_new_from_file(nullptr, input, PRODUCT_GRIB, &error)) {
+        char short_name[32]{};
+        size_t short_name_length = sizeof(short_name);
+        if (codes_get_string(
+                handle,
+                "shortName",
+                short_name,
+                &short_name_length) != CODES_SUCCESS) {
+            codes_handle_delete(handle);
+            std::fclose(input);
+            throw std::runtime_error("could not read sample GRIB shortName");
+        }
+
+        if (!skipped_v && std::string{short_name} == "10v") {
+            skipped_v = true;
+            codes_handle_delete(handle);
+            continue;
+        }
+
+        const void* message = nullptr;
+        size_t message_size = 0U;
+        if (codes_get_message(handle, &message, &message_size) != CODES_SUCCESS) {
+            codes_handle_delete(handle);
+            std::fclose(input);
+            throw std::runtime_error("could not copy sample GRIB message");
+        }
+        output.write(
+            static_cast<const char*>(message),
+            static_cast<std::streamsize>(message_size));
+        codes_handle_delete(handle);
+    }
+    std::fclose(input);
+    output.close();
+    if (error != CODES_SUCCESS || !skipped_v) {
+        std::filesystem::remove(output_path);
+        throw std::runtime_error("could not create incomplete GRIB fixture");
+    }
+    return output_path;
 }
 
 }  // namespace
@@ -355,6 +416,16 @@ int main() {
                 desc.east_longitude_degrees >= -180.0 &&
                 desc.east_longitude_degrees <= 180.0,
             "longitude bounds are out of range");
+
+        const auto incomplete_grib = create_grib_with_missing_v_step();
+        navtool_router_grib_descriptor_v1 incomplete_desc{};
+        require(
+            navtool_router_inspect_grib_v1(
+                incomplete_grib.string().c_str(),
+                &incomplete_desc) ==
+                NAVTOOL_ROUTER_STATUS_INCOMPLETE_FORECAST_V1,
+            "GRIB with an unpaired wind step was accepted");
+        std::filesystem::remove(incomplete_grib);
 
         std::cout << "Navtool router bridge tests passed\n";
         return EXIT_SUCCESS;

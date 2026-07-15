@@ -10,7 +10,7 @@ public sealed record RoutingWorkflowRequest
         GeographicBounds? forecastBounds = null)
         : this(
             route,
-            models.Select(ForecastSelection.OfficialDownload),
+            CreateDownloadSelections(models),
             forecastBounds)
     {
     }
@@ -61,6 +61,15 @@ public sealed record RoutingWorkflowRequest
     public ImmutableArray<ForecastSelection> Selections { get; }
 
     public GeographicBounds ForecastBounds { get; }
+
+    private static IEnumerable<ForecastSelection> CreateDownloadSelections(
+        IEnumerable<ForecastModel> models)
+    {
+        ArgumentNullException.ThrowIfNull(models);
+        return models
+            .Distinct()
+            .Select(ForecastSelection.OfficialDownload);
+    }
 }
 
 public enum RoutingProgressStage

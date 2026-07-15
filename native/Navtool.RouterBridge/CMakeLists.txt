@@ -119,7 +119,7 @@ if(NAVTOOL_ROUTER_BRIDGE_BUILD_TESTS)
             NAVTOOL_ROUTER_SAMPLE_GRIB="${SAILROUTE_SOURCE_DIR}/samples/sample.grib")
     target_link_libraries(
         navtool_router_bridge_tests
-        PRIVATE Navtool::RouterBridge)
+        PRIVATE Navtool::RouterBridge ECCODES::eccodes)
     add_test(
         NAME navtool_router_bridge_tests
         COMMAND navtool_router_bridge_tests)

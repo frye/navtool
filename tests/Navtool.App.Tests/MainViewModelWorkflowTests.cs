@@ -284,6 +284,9 @@ public sealed class MainViewModelWorkflowTests
         Assert.Equal(0, noaa.CallCount);
         Assert.False(viewModel.IsInspectingLocalGrib);
         Assert.Equal("GRIB inspection cancelled.", viewModel.StatusMessage);
+        Assert.Equal(
+            "Inspection cancelled; the previous GRIB remains selected.",
+            viewModel.LocalGribStatus);
     }
 
     [Fact]

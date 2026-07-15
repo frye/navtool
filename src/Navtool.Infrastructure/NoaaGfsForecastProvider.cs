@@ -72,6 +72,7 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
     private readonly TimeProvider _timeProvider;
     private readonly NoaaGfsOptions _options;
     private readonly ILogger<NoaaGfsForecastProvider> _logger;
+    private readonly SemaphoreSlim _acquisitionGate = new(1, 1);
 
     public NoaaGfsForecastProvider(
         HttpClient httpClient,
@@ -120,6 +121,22 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             throw new ArgumentException("The NOAA GFS provider only supplies NoaaGfs requests.", nameof(request));
         }
 
+        await _acquisitionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await AcquireCoreAsync(request, progress, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _acquisitionGate.Release();
+        }
+    }
+
+    private async ValueTask<ForecastAcquisition> AcquireCoreAsync(
+        ForecastRequest request,
+        IProgress<ForecastProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         Report(progress, ForecastProgressStage.Queued, 0, "Selecting NOAA GFS run");
         var now = _timeProvider.GetUtcNow();
@@ -160,9 +177,10 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         var manifest = BuildPartManifest(runTime, steps, regions, downloadBounds);
         var partsDirectory = Path.Combine(_cache.RootDirectory, "noaa-gfs-parts");
         Directory.CreateDirectory(partsDirectory);
+        PrunePartCache(partsDirectory, manifest);
 
         var totalParts = manifest.Length;
-        var httpRequestsMade = 0;
+        var downloadedParts = 0;
 
         // Acquire each part; reuse from disk if already complete.
         for (var index = 0; index < totalParts; index++)
@@ -185,7 +203,7 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             }
 
             // Apply pacing before each HTTP request except the very first.
-            if (httpRequestsMade > 0 && _options.MinimumRequestInterval > TimeSpan.Zero)
+            if (downloadedParts > 0 && _options.MinimumRequestInterval > TimeSpan.Zero)
             {
                 await Task.Delay(_options.MinimumRequestInterval, cancellationToken).ConfigureAwait(false);
             }
@@ -197,13 +215,14 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
                 $"Downloading GFS f{part.ForecastHour:000} (part {index + 1}/{totalParts})");
 
             await DownloadPartAsync(part, partFile, cancellationToken).ConfigureAwait(false);
-            httpRequestsMade++;
+            downloadedParts++;
+            PrunePartCache(partsDirectory, manifest);
 
             Report(
                 progress,
                 ForecastProgressStage.Downloading,
                 (index + 1) / (double)totalParts,
-                $"Downloaded {index + 1}/{totalParts} GFS parts ({httpRequestsMade} HTTP requests)");
+                $"Downloaded {index + 1}/{totalParts} GFS parts ({downloadedParts} new this run)");
         }
 
         // Concatenate all parts in manifest order into the final cached artifact.
@@ -237,6 +256,13 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             "Stored NOAA GFS artifact {CacheKey} with {LengthBytes} bytes",
             cacheKey,
             stored.LengthBytes);
+        foreach (var part in manifest)
+        {
+            TryDeletePart(
+                Path.Combine(partsDirectory, part.PartKey + ".grib2"),
+                "assembled NOAA part");
+        }
+
         return CreateAcquisition(request, runTime, stored, ForecastAcquisitionSource.Remote);
     }
 
@@ -410,12 +436,12 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             "Downloading GFS part f{ForecastHour:000} region {RegionIndex} → {PartFile}",
             part.ForecastHour, part.RegionIndex, partFile);
 
-        var tempFile = partFile + ".partial";
+        var tempFile = $"{partFile}.{Guid.NewGuid():N}.partial";
         try
         {
             await using (var tempStream = new FileStream(
                 tempFile,
-                FileMode.Create,
+                FileMode.CreateNew,
                 FileAccess.ReadWrite,
                 FileShare.None,
                 128 * 1024,
@@ -425,11 +451,18 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
                     .ConfigureAwait(false);
             }
 
-            File.Move(tempFile, partFile, overwrite: true);
+            try
+            {
+                File.Move(tempFile, partFile);
+            }
+            catch (IOException) when (File.Exists(partFile))
+            {
+                TryDeletePart(tempFile, "redundant NOAA temporary part");
+            }
         }
         catch
         {
-            DeleteIfPresent(tempFile);
+            TryDeletePart(tempFile, "failed NOAA temporary part");
             throw;
         }
     }
@@ -734,14 +767,69 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         string message) =>
         progress?.Report(new ForecastProgress(Provider, Model, stage, fraction, message));
 
-    private static void DeleteIfPresent(string path)
+    private void PrunePartCache(
+        string partsDirectory,
+        ImmutableArray<GribPartDescriptor> protectedManifest)
+    {
+        var comparer = OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+        var protectedPaths = protectedManifest
+            .Select(part => Path.Combine(partsDirectory, part.PartKey + ".grib2"))
+            .ToHashSet(comparer);
+        var files = Directory
+            .EnumerateFiles(partsDirectory, "*.grib2", SearchOption.TopDirectoryOnly)
+            .Select(path => new FileInfo(path))
+            .ToList();
+        var maximumEntries = Math.Max(_cache.MaximumEntries, protectedManifest.Length);
+        var bytes = files.Sum(file => file.Length);
+        var count = files.Count;
+
+        foreach (var file in files
+                     .Where(file => !protectedPaths.Contains(file.FullName))
+                     .OrderBy(file => file.LastWriteTimeUtc)
+                     .ThenBy(file => file.Name, StringComparer.Ordinal))
+        {
+            if (count <= maximumEntries && bytes <= _cache.MaximumBytes)
+            {
+                break;
+            }
+
+            var length = file.Length;
+            if (TryDeletePart(file.FullName, "stale NOAA part"))
+            {
+                count--;
+                bytes -= length;
+            }
+        }
+
+        if (count > maximumEntries || bytes > _cache.MaximumBytes)
+        {
+            throw new IOException(
+                "The resumable NOAA parts for the current request exceed the configured cache bounds.");
+        }
+    }
+
+    private bool TryDeletePart(string path, string purpose)
     {
         try
         {
             File.Delete(path);
+            return true;
         }
         catch (DirectoryNotFoundException)
         {
+            return true;
+        }
+        catch (IOException exception)
+        {
+            _logger.LogWarning(exception, "Could not delete {Purpose} {Path}", purpose, path);
+            return false;
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            _logger.LogWarning(exception, "Could not delete {Purpose} {Path}", purpose, path);
+            return false;
         }
     }
 

@@ -522,6 +522,12 @@ public partial class MainViewModel : ViewModelBase
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
+            if (cancellation == Volatile.Read(ref _inspectionCancellation))
+            {
+                LocalGribStatus = LocalForecast is null
+                    ? "GRIB inspection cancelled."
+                    : "Inspection cancelled; the previous GRIB remains selected.";
+            }
         }
         catch (Exception exception)
         {
