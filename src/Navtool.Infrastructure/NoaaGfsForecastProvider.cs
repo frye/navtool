@@ -72,8 +72,13 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
     private readonly TimeProvider _timeProvider;
     private readonly NoaaGfsOptions _options;
     private readonly ILogger<NoaaGfsForecastProvider> _logger;
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> _acquisitionGates =
+
+    // Ref-counted keyed gates: a gate exists only while one or more acquisitions target
+    // its cache key. The last acquisition to release the key removes and disposes the
+    // entry, so this dictionary cannot grow unbounded over a long-lived singleton session.
+    private readonly Dictionary<string, AcquisitionGate> _acquisitionGates =
         new(StringComparer.Ordinal);
+    private readonly object _acquisitionGatesLock = new();
 
     public NoaaGfsForecastProvider(
         HttpClient httpClient,
@@ -95,6 +100,19 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
     public ForecastProvider Provider => ForecastProvider.Noaa;
 
     public ForecastModel Model => ForecastModel.NoaaGfs;
+
+    // Number of live acquisition gates. Exposed for tests to assert gates are released
+    // (and not leaked) once acquisitions complete.
+    internal int ActiveAcquisitionGateCount
+    {
+        get
+        {
+            lock (_acquisitionGatesLock)
+            {
+                return _acquisitionGates.Count;
+            }
+        }
+    }
 
     public NoaaGfsDownloadEstimate Estimate(ForecastRequest request)
     {
@@ -128,16 +146,61 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         // core so the gate and the download/store always agree on the same key, even if
         // the clock advances across a run-publish boundary while queued behind the gate.
         var plan = CreateAcquisitionPlan(request);
-        var gate = _acquisitionGates.GetOrAdd(plan.CacheKey, static _ => new SemaphoreSlim(1, 1));
+        var gate = RentGate(plan.CacheKey);
 
-        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await gate.Semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            ReturnGate(plan.CacheKey, gate);
+            throw;
+        }
+
         try
         {
             return await AcquireCoreAsync(request, plan, progress, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            gate.Release();
+            gate.Semaphore.Release();
+            ReturnGate(plan.CacheKey, gate);
+        }
+    }
+
+    // A single-permit gate plus the count of acquisitions currently referencing its key.
+    private sealed class AcquisitionGate
+    {
+        public SemaphoreSlim Semaphore { get; } = new(1, 1);
+
+        public int RefCount { get; set; }
+    }
+
+    private AcquisitionGate RentGate(string cacheKey)
+    {
+        lock (_acquisitionGatesLock)
+        {
+            if (!_acquisitionGates.TryGetValue(cacheKey, out var gate))
+            {
+                gate = new AcquisitionGate();
+                _acquisitionGates[cacheKey] = gate;
+            }
+
+            gate.RefCount++;
+            return gate;
+        }
+    }
+
+    private void ReturnGate(string cacheKey, AcquisitionGate gate)
+    {
+        lock (_acquisitionGatesLock)
+        {
+            if (--gate.RefCount == 0)
+            {
+                _acquisitionGates.Remove(cacheKey);
+                gate.Semaphore.Dispose();
+            }
         }
     }
 

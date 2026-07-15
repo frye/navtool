@@ -306,6 +306,24 @@ public sealed class NoaaGfsForecastProviderTests
     }
 
     [Fact]
+    public async Task Acquire_releases_gate_after_completion_so_gates_do_not_leak()
+    {
+        using var directory = new TestDirectory();
+        var handler = new RecordingHttpHandler((_, _, _) =>
+            Task.FromResult(RecordingHttpHandler.GribResponse()));
+        using var client = new HttpClient(handler);
+        var provider = CreateProvider(directory.Path, client);
+
+        await provider.AcquireAsync(CreateRequest(), null, CancellationToken.None);
+        await provider.AcquireAsync(
+            CreateRequest(new GeographicBounds(10, 15, 20, 30)),
+            null,
+            CancellationToken.None);
+
+        Assert.Equal(0, provider.ActiveAcquisitionGateCount);
+    }
+
+    [Fact]
     public async Task Acquire_captures_the_clock_once_so_gate_and_stored_keys_stay_aligned()
     {
         using var directory = new TestDirectory();

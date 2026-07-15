@@ -26,6 +26,10 @@ public interface ILocalGribInspector
     /// <exception cref="NativeRouterException">
     /// The GRIB file is malformed, incomplete, model-ambiguous, or from an unsupported model.
     /// </exception>
+    /// <exception cref="NativeRouteFormatException">
+    /// The native inspection returned an unrecognized model identifier, or geographic
+    /// bounds or timestamps that fail domain validation.
+    /// </exception>
     ValueTask<LocalForecastDescriptor> InspectAsync(
         string absolutePath,
         CancellationToken cancellationToken = default);
