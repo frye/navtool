@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Net;
@@ -80,17 +79,6 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
     private readonly Dictionary<string, AcquisitionGate> _acquisitionGates =
         new(StringComparer.Ordinal);
     private readonly object _acquisitionGatesLock = new();
-
-    // Absolute paths of ".partial" temp files this provider is actively writing. Prune
-    // uses it to distinguish in-flight partials (from concurrent acquisitions for other
-    // cache keys) from orphans left by an abruptly terminated process, so only true
-    // orphans are swept and disk usage stays bounded.
-    private readonly ConcurrentDictionary<string, byte> _activePartialFiles =
-        new(PathComparer);
-
-    private static StringComparer PathComparer => OperatingSystem.IsWindows()
-        ? StringComparer.OrdinalIgnoreCase
-        : StringComparer.Ordinal;
 
     public NoaaGfsForecastProvider(
         HttpClient httpClient,
@@ -281,7 +269,15 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
 
         // Build deterministic download manifest: forecast_hour ascending, then region index ascending.
         var manifest = BuildPartManifest(runTime, steps, regions, downloadBounds);
-        var partsDirectory = Path.Combine(_cache.RootDirectory, "noaa-gfs-parts");
+        // Isolate this cache key's resumable parts in their own subdirectory. Acquisitions
+        // for a given cache key are serialized by the keyed gate, so each subdirectory has a
+        // single writer at a time; acquisitions for different cache keys use different
+        // subdirectories. Pruning and orphan sweeping therefore only ever touch the current
+        // key's own parts, so a concurrent acquisition for another key can never have its
+        // freshly downloaded parts deleted as "stale," and file enumeration cannot race a
+        // delete from another acquisition. The cache key is a "<category>-<sha256-hex>"
+        // token (see AtomicFileCache.CreateKey), which is always a filesystem-safe segment.
+        var partsDirectory = Path.Combine(_cache.RootDirectory, "noaa-gfs-parts", cacheKey);
         Directory.CreateDirectory(partsDirectory);
         PrunePartCache(partsDirectory, manifest);
 
@@ -368,6 +364,10 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
                 Path.Combine(partsDirectory, part.PartKey + ".grib2"),
                 "assembled NOAA part");
         }
+
+        // The parts subdirectory is now empty on success; remove it so per-key subdirectories
+        // do not accumulate across the many distinct cache keys a long-lived session requests.
+        TryDeleteDirectoryIfEmpty(partsDirectory);
 
         return CreateAcquisition(request, runTime, stored, ForecastAcquisitionSource.Remote);
     }
@@ -544,9 +544,6 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
 
         var tempFile = $"{partFile}.{Guid.NewGuid():N}.partial";
 
-        // Register before creating the file so a concurrent prune (from another cache
-        // key's acquisition) never mistakes this in-flight partial for an orphan.
-        _activePartialFiles.TryAdd(tempFile, 0);
         try
         {
             await using (var tempStream = new FileStream(
@@ -574,10 +571,6 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         {
             TryDeletePart(tempFile, "failed NOAA temporary part");
             throw;
-        }
-        finally
-        {
-            _activePartialFiles.TryRemove(tempFile, out _);
         }
     }
 
@@ -927,10 +920,11 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
     }
 
     // Deletes ".partial" temp files left behind by a prior process that was terminated
-    // mid-download. Partials this provider is actively writing are registered in
-    // _activePartialFiles and skipped, so concurrent acquisitions for other cache keys
-    // are never disrupted. Orphans are always safe to delete: a completed download is
-    // atomically moved to its ".grib2" name, so any lingering ".partial" is incomplete.
+    // mid-download. The parts subdirectory is isolated per cache key and acquisitions for a
+    // given key are serialized, so at every prune point the current acquisition holds no
+    // in-flight partial of its own: any ".partial" here is therefore an orphan from an
+    // earlier interrupted run of the same key. A completed download is atomically moved to
+    // its ".grib2" name, so a lingering ".partial" is always incomplete and safe to delete.
     private void SweepOrphanedPartials(string partsDirectory)
     {
         foreach (var path in Directory.EnumerateFiles(
@@ -938,12 +932,26 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             "*.partial",
             SearchOption.TopDirectoryOnly))
         {
-            if (_activePartialFiles.ContainsKey(path))
-            {
-                continue;
-            }
-
             TryDeletePart(path, "orphaned NOAA temporary part");
+        }
+    }
+
+    private void TryDeleteDirectoryIfEmpty(string directory)
+    {
+        try
+        {
+            if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
+            {
+                Directory.Delete(directory);
+            }
+        }
+        catch (IOException exception)
+        {
+            _logger.LogWarning(exception, "Could not remove empty NOAA parts directory {Path}", directory);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            _logger.LogWarning(exception, "Could not remove empty NOAA parts directory {Path}", directory);
         }
     }
 
