@@ -15,6 +15,12 @@ using Navtool.Infrastructure;
 
 namespace Navtool.App.ViewModels;
 
+public enum ForecastInputMode
+{
+    Download,
+    LocalFile
+}
+
 public partial class MainViewModel : ViewModelBase
 {
     private const double RouteHitTolerancePixels = 10;
@@ -26,6 +32,9 @@ public partial class MainViewModel : ViewModelBase
     private readonly RouteMapLayers _mapLayers;
     private readonly RoutingWorkflow? _workflow;
     private readonly IWeatherSampler? _weatherSampler;
+    private readonly ILocalGribInspector? _localGribInspector;
+    private readonly INativeRoutingPreflight? _nativeRoutingPreflight;
+    private readonly NoaaGfsForecastProvider? _noaaProvider;
     private readonly TimeProvider _timeProvider;
     private readonly TimeZoneInfo _localTimeZone;
     private readonly ILogger<MainViewModel> _logger;
@@ -34,6 +43,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly object _progressGate = new();
     private CancellationTokenSource? _calculationCancellation;
     private CancellationTokenSource? _weatherCancellation;
+    private CancellationTokenSource? _inspectionCancellation;
     private SharedRouteTimeline? _timeline;
     private long _calculationGeneration;
     private long _weatherGeneration;
@@ -44,6 +54,29 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     private TimeSpan? _departureTime = DateTimeOffset.Now.TimeOfDay;
+
+    [ObservableProperty]
+    private int _passageDays = 3;
+
+    [ObservableProperty]
+    private int _passageHours;
+
+    [ObservableProperty]
+    private ForecastInputMode _forecastInputMode;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CalculateCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
+    private bool _isInspectingLocalGrib;
+
+    [ObservableProperty]
+    private LocalForecastDescriptor? _localForecast;
+
+    [ObservableProperty]
+    private string _localGribStatus = "Choose a GRIB file to inspect.";
+
+    [ObservableProperty]
+    private string _forecastAreaSummary = "Set both endpoints to estimate the forecast download.";
 
     [ObservableProperty]
     private bool _useNoaa = true;
@@ -115,6 +148,9 @@ public partial class MainViewModel : ViewModelBase
     public MainViewModel(
         RoutingWorkflow workflow,
         IWeatherSampler weatherSampler,
+        ILocalGribInspector localGribInspector,
+        INativeRoutingPreflight nativeRoutingPreflight,
+        NoaaGfsForecastProvider noaaProvider,
         ILogger<MainViewModel> logger)
         : this(
             workflow,
@@ -122,7 +158,10 @@ public partial class MainViewModel : ViewModelBase
             TimeProvider.System,
             TimeZoneInfo.Local,
             new OsmTileOptions(),
-            logger)
+            logger,
+            localGribInspector,
+            nativeRoutingPreflight,
+            noaaProvider)
     {
     }
 
@@ -132,13 +171,19 @@ public partial class MainViewModel : ViewModelBase
         TimeProvider timeProvider,
         TimeZoneInfo localTimeZone,
         OsmTileOptions tileOptions,
-        ILogger<MainViewModel>? logger = null)
+        ILogger<MainViewModel>? logger = null,
+        ILocalGribInspector? localGribInspector = null,
+        INativeRoutingPreflight? nativeRoutingPreflight = null,
+        NoaaGfsForecastProvider? noaaProvider = null)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(localTimeZone);
         ArgumentNullException.ThrowIfNull(tileOptions);
         _workflow = workflow;
         _weatherSampler = weatherSampler;
+        _localGribInspector = localGribInspector;
+        _nativeRoutingPreflight = nativeRoutingPreflight;
+        _noaaProvider = noaaProvider;
         _timeProvider = timeProvider;
         _localTimeZone = localTimeZone;
         _logger = logger ?? NullLogger<MainViewModel>.Instance;
@@ -159,6 +204,7 @@ public partial class MainViewModel : ViewModelBase
         Map.Navigator.CenterOnAndZoomTo(
             MapProjection.ToMapPoint(new Coordinate(35, -55)),
             25_000);
+        UpdateForecastAreaSummary();
     }
 
     public event EventHandler<RouteMapSelection?>? RouteSelectionChanged;
@@ -176,6 +222,17 @@ public partial class MainViewModel : ViewModelBase
     public string StartDisplay => FormatCoordinate(Start, "Not set");
 
     public string DestinationDisplay => FormatCoordinate(Destination, "Not set");
+
+    public bool IsDownloadForecast => ForecastInputMode == ForecastInputMode.Download;
+
+    public bool IsLocalForecast => ForecastInputMode == ForecastInputMode.LocalFile;
+
+    public string LocalGribDisplay => LocalForecast is null
+        ? "No file selected"
+        : $"{Path.GetFileName(LocalForecast.Artifact.Path)} · {ModelName(LocalForecast.Model)}\n" +
+          $"Run {LocalForecast.InitializedAt:yyyy-MM-dd HH:mm} UTC · " +
+          $"valid through {LocalForecast.ValidThrough:yyyy-MM-dd HH:mm} UTC\n" +
+          FormatBounds(LocalForecast.Bounds);
 
     public string MapInstruction => InteractionMode switch
     {
@@ -320,9 +377,32 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        if (ForecastInputMode == ForecastInputMode.LocalFile && LocalForecast is not null)
+        {
+            var inspectionGeneration = Volatile.Read(ref _calculationGeneration);
+            await SelectLocalGribAsync(LocalForecast.Artifact.Path);
+            if (LocalForecast is null ||
+                inspectionGeneration != Volatile.Read(ref _calculationGeneration))
+            {
+                return;
+            }
+        }
+
         if (!TryCreateWorkflowRequest(out var request, out var validationError))
         {
             ErrorMessage = validationError;
+            return;
+        }
+
+        try
+        {
+            _nativeRoutingPreflight?.EnsureAvailable();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Native routing preflight failed");
+            ErrorMessage = $"Routing engine unavailable: {exception.Message}";
+            StatusMessage = "No forecast was downloaded.";
             return;
         }
 
@@ -341,7 +421,7 @@ public partial class MainViewModel : ViewModelBase
         foreach (var model in request!.Models)
         {
             _modelProgress[model] = 0;
-            SetModelStatus(model, model == ForecastModel.EcmwfIfs
+            SetModelStatus(model, IsExperimentalDownload(request, model)
                 ? "Experimental · queued"
                 : "Queued");
         }
@@ -360,7 +440,7 @@ public partial class MainViewModel : ViewModelBase
             }
             SetModelStatus(
                 value.Model,
-                $"{(value.Model == ForecastModel.EcmwfIfs ? "Experimental · " : string.Empty)}" +
+                $"{(IsExperimentalDownload(request, value.Model) ? "Experimental · " : string.Empty)}" +
                 $"{ProgressStageName(value.Stage)} {value.Fraction:P0}" +
                 $"{(string.IsNullOrWhiteSpace(value.Message) ? string.Empty : $" · {value.Message}")}");
             if (value.Snapshot is not null)
@@ -409,6 +489,68 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    public async Task SelectLocalGribAsync(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ErrorMessage = null;
+        if (_localGribInspector is null)
+        {
+            ErrorMessage = "Local GRIB inspection is unavailable.";
+            return;
+        }
+
+        var cancellation = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _inspectionCancellation, cancellation);
+        previous?.Cancel();
+        previous?.Dispose();
+        IsInspectingLocalGrib = true;
+        LocalGribStatus = "Inspecting selected GRIB...";
+        try
+        {
+            var inspected = await _localGribInspector.InspectAsync(path, cancellation.Token);
+            if (cancellation != Volatile.Read(ref _inspectionCancellation))
+            {
+                return;
+            }
+
+            LocalForecast = inspected;
+            ForecastInputMode = ForecastInputMode.LocalFile;
+            UseNoaa = inspected.Model == ForecastModel.NoaaGfs;
+            UseEcmwf = inspected.Model == ForecastModel.EcmwfIfs;
+            LocalGribStatus = "GRIB is compatible and ready.";
+            StatusMessage = $"{ModelName(inspected.Model)} local forecast selected.";
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            if (cancellation == Volatile.Read(ref _inspectionCancellation))
+            {
+                LocalGribStatus = LocalForecast is null
+                    ? "GRIB inspection cancelled."
+                    : "Inspection cancelled; the previous GRIB remains selected.";
+            }
+        }
+        catch (Exception exception)
+        {
+            if (cancellation == Volatile.Read(ref _inspectionCancellation))
+            {
+                LocalForecast = null;
+                LocalGribStatus = "Selected file is not usable.";
+                ErrorMessage = $"GRIB file rejected: {exception.Message}";
+            }
+        }
+        finally
+        {
+            if (cancellation == Interlocked.CompareExchange(
+                    ref _inspectionCancellation,
+                    null,
+                    cancellation))
+            {
+                IsInspectingLocalGrib = false;
+                cancellation.Dispose();
+            }
+        }
+    }
+
     public void RequestWeatherRefreshFromViewport()
     {
         if (!TryGetVisibleBounds(out var bounds))
@@ -452,22 +594,35 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanCalculate))]
     private Task Calculate() => CalculateRoutesAsync();
 
-    private bool CanCalculate() => !IsCalculating;
+    private bool CanCalculate() =>
+        !IsCalculating &&
+        !IsInspectingLocalGrib &&
+        (ForecastInputMode == ForecastInputMode.Download || LocalForecast is not null);
+
+    [RelayCommand]
+    private void SelectDownloadSource() => ForecastInputMode = ForecastInputMode.Download;
+
+    [RelayCommand]
+    private void SelectLocalFileSource() => ForecastInputMode = ForecastInputMode.LocalFile;
 
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
+        var wasCalculating = IsCalculating;
         Interlocked.Increment(ref _calculationGeneration);
         var cancellation = Interlocked.Exchange(ref _calculationCancellation, null);
         cancellation?.Cancel();
         cancellation?.Dispose();
+        Volatile.Read(ref _inspectionCancellation)?.Cancel();
         CancelWeather();
         _mapLayers.ClearCalculationOverlays();
         IsCalculating = false;
-        StatusMessage = "Calculation cancelled.";
+        StatusMessage = wasCalculating
+            ? "Calculation cancelled."
+            : "GRIB inspection cancelled.";
     }
 
-    private bool CanCancel() => IsCalculating;
+    private bool CanCancel() => IsCalculating || IsInspectingLocalGrib;
 
     [RelayCommand]
     private void FocusSelectedRoutePoint()
@@ -565,6 +720,31 @@ public partial class MainViewModel : ViewModelBase
     partial void OnHasEcmwfWeatherChanged(bool value) =>
         ActivateEcmwfWeatherCommand.NotifyCanExecuteChanged();
 
+    partial void OnDepartureDateChanged(DateTimeOffset? value) => UpdateForecastAreaSummary();
+
+    partial void OnDepartureTimeChanged(TimeSpan? value) => UpdateForecastAreaSummary();
+
+    partial void OnPassageDaysChanged(int value) => UpdateForecastAreaSummary();
+
+    partial void OnPassageHoursChanged(int value) => UpdateForecastAreaSummary();
+
+    partial void OnUseNoaaChanged(bool value) => UpdateForecastAreaSummary();
+
+    partial void OnForecastInputModeChanged(ForecastInputMode value)
+    {
+        OnPropertyChanged(nameof(IsDownloadForecast));
+        OnPropertyChanged(nameof(IsLocalForecast));
+        CalculateCommand.NotifyCanExecuteChanged();
+        UpdateForecastAreaSummary();
+    }
+
+    partial void OnLocalForecastChanged(LocalForecastDescriptor? value)
+    {
+        OnPropertyChanged(nameof(LocalGribDisplay));
+        CalculateCommand.NotifyCanExecuteChanged();
+        UpdateForecastAreaSummary();
+    }
+
     partial void OnSelectedRoutePointChanged(RouteMapSelection? value)
     {
         _mapLayers.SetSelectedPoint(value);
@@ -590,18 +770,31 @@ public partial class MainViewModel : ViewModelBase
             return false;
         }
 
-        var models = new List<ForecastModel>();
-        if (UseNoaa)
+        var selections = new List<ForecastSelection>();
+        if (ForecastInputMode == ForecastInputMode.LocalFile)
         {
-            models.Add(ForecastModel.NoaaGfs);
+            if (LocalForecast is null)
+            {
+                error = "Choose a compatible GRIB file before calculating.";
+                return false;
+            }
+
+            selections.Add(ForecastSelection.LocalFile(LocalForecast));
+        }
+        else
+        {
+            if (UseNoaa)
+            {
+                selections.Add(ForecastSelection.OfficialDownload(ForecastModel.NoaaGfs));
+            }
+
+            if (UseEcmwf)
+            {
+                selections.Add(ForecastSelection.OfficialDownload(ForecastModel.EcmwfIfs));
+            }
         }
 
-        if (UseEcmwf)
-        {
-            models.Add(ForecastModel.EcmwfIfs);
-        }
-
-        if (models.Count == 0)
+        if (selections.Count == 0)
         {
             error = "Select at least one forecast model.";
             return false;
@@ -617,12 +810,17 @@ public partial class MainViewModel : ViewModelBase
             return false;
         }
 
+        if (!TryGetPassageDuration(out var passageDuration, out error))
+        {
+            return false;
+        }
+
         var route = new RouteRequest(
             $"route-{Guid.NewGuid():N}",
             Start.Value,
             Destination.Value,
             departureUtc,
-            departureUtc + MaximumRouteWindow);
+            departureUtc + passageDuration);
         var validation = new RouteRequestValidator().Validate(
             route,
             _timeProvider.GetUtcNow(),
@@ -638,7 +836,7 @@ public partial class MainViewModel : ViewModelBase
 
         request = new RoutingWorkflowRequest(
             route,
-            models,
+            selections,
             ForecastCorridor.Create(route.Origin, route.Destination));
         error = null;
         return true;
@@ -657,18 +855,33 @@ public partial class MainViewModel : ViewModelBase
 
             if (outcome.Status == ModelRouteStatus.Succeeded)
             {
-                SetModelStatus(
-                    outcome.Model,
-                    $"{(outcome.Model == ForecastModel.EcmwfIfs ? "Experimental · " : string.Empty)}" +
-                    $"complete · arrival {outcome.Route!.ArrivalTime:MMM d HH:mm} UTC");
+                var route = outcome.Route!;
+                var status =
+                    $"{(IsExperimentalDownload(result.Request, outcome.Model) ? "Experimental · " : string.Empty)}" +
+                    $"complete · arrival {route.ArrivalTime:MMM d HH:mm} UTC";
+                if (route.ExceedsRequestedArrival)
+                {
+                    status +=
+                        $" · estimated arrival is {FormatOverDuration(route.ArrivalTime - route.Request.LatestArrivalTime)} " +
+                        "beyond the expected passage duration";
+                }
+
+                SetModelStatus(outcome.Model, status);
             }
             else
             {
                 _mapLayers.ClearCalculationOverlay(outcome.Model);
-                var experimental = outcome.Model == ForecastModel.EcmwfIfs
+                var experimental = IsExperimentalDownload(result.Request, outcome.Model)
                     ? "Experimental ECMWF"
                     : ModelName(outcome.Model);
-                var message = $"{experimental} failed during {outcome.Failure!.Stage}: {outcome.Failure.Message}";
+                var failedStage = outcome.Failure!.Stage switch
+                {
+                    ModelRouteFailureStage.ForecastAcquisition => "forecast acquisition",
+                    ModelRouteFailureStage.RouteCalculation => "route calculation",
+                    ModelRouteFailureStage.ResultValidation => "route result validation",
+                    _ => "provider setup"
+                };
+                var message = $"{experimental} failed during {failedStage}: {outcome.Failure.Message}";
                 failures.Add(message);
                 _logger.LogWarning(
                     "Forecast model {Model} failed during {FailureStage}: {FailureMessage}",
@@ -937,7 +1150,97 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(StartDisplay));
         OnPropertyChanged(nameof(DestinationDisplay));
         OnPropertyChanged(nameof(MapInstruction));
+        UpdateForecastAreaSummary();
     }
+
+    private bool TryGetPassageDuration(out TimeSpan duration, out string? error)
+    {
+        duration = default;
+        if (PassageDays < 0 || PassageHours is < 0 or > 23)
+        {
+            error = "Passage duration requires non-negative days and hours from 0 through 23.";
+            return false;
+        }
+
+        duration = TimeSpan.FromDays(PassageDays) + TimeSpan.FromHours(PassageHours);
+        if (duration <= TimeSpan.Zero)
+        {
+            error = "Passage duration must be greater than zero.";
+            return false;
+        }
+
+        if (duration > MaximumRouteWindow)
+        {
+            error = "Passage duration cannot exceed 10 days.";
+            return false;
+        }
+
+        error = null;
+        return true;
+    }
+
+    private void UpdateForecastAreaSummary()
+    {
+        if (Start is null || Destination is null)
+        {
+            ForecastAreaSummary = "Set both endpoints to estimate the forecast download.";
+            return;
+        }
+
+        var corridor = ForecastCorridor.Calculate(Start.Value, Destination.Value);
+        var bounds = corridor.Bounds;
+        var area = $"Buffered area {FormatBounds(bounds)} · {corridor.BufferNauticalMiles:0} NM buffer";
+        if (ForecastInputMode == ForecastInputMode.LocalFile)
+        {
+            ForecastAreaSummary = LocalForecast is null
+                ? $"{area}. Choose a local GRIB to check coverage."
+                : $"{area}. The selected GRIB will be checked against this area.";
+            return;
+        }
+
+        if (!UseNoaa ||
+            _noaaProvider is null ||
+            !TryGetPassageDuration(out var duration, out _) ||
+            !LocalDepartureConverter.TryConvertToUtc(
+                DepartureDate,
+                DepartureTime,
+                _localTimeZone,
+                out var departure,
+                out _))
+        {
+            ForecastAreaSummary = area;
+            return;
+        }
+
+        try
+        {
+            var estimate = _noaaProvider.Estimate(new ForecastRequest(
+                ForecastModel.NoaaGfs,
+                bounds,
+                departure,
+                departure + duration));
+            ForecastAreaSummary =
+                $"{area} · {estimate.ForecastStepCount} times, " +
+                $"{estimate.PartCount} forecast part{(estimate.PartCount == 1 ? string.Empty : "s")} " +
+                "(cached parts are reused)";
+        }
+        catch (Exception exception)
+        {
+            ForecastAreaSummary = $"{area} · estimate unavailable: {exception.Message}";
+        }
+    }
+
+    private static string FormatBounds(GeographicBounds bounds) =>
+        $"{bounds.South:0.##}° to {bounds.North:0.##}° latitude, " +
+        $"{bounds.West:0.##}° to {bounds.East:0.##}° longitude";
+
+    private static bool IsExperimentalDownload(
+        RoutingWorkflowRequest request,
+        ForecastModel model) =>
+        model == ForecastModel.EcmwfIfs &&
+        request.Selections.Any(selection =>
+            selection.Model == model &&
+            selection.Kind == ForecastSelectionKind.OfficialDownload);
 
     private static string ProgressStageName(RoutingProgressStage stage) => stage switch
     {
@@ -969,4 +1272,21 @@ public partial class MainViewModel : ViewModelBase
         ForecastModel.EcmwfIfs => "ECMWF IFS (experimental)",
         _ => model.ToString()
     };
+
+    private static string FormatOverDuration(TimeSpan overrun)
+    {
+        if (overrun < TimeSpan.Zero)
+        {
+            overrun = TimeSpan.Zero;
+        }
+
+        var hours = (int)overrun.TotalHours;
+        var minutes = overrun.Minutes;
+        if (hours > 0)
+        {
+            return $"{hours}h {minutes}m";
+        }
+
+        return minutes > 0 ? $"{minutes}m" : $"{overrun.Seconds}s";
+    }
 }

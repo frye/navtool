@@ -171,6 +171,60 @@ navtool_router_sample_grid_v1(
 NAVTOOL_ROUTER_BRIDGE_API void
 navtool_router_bridge_free_v1(void* bridge_owned_memory);
 
+/*
+ * Lightweight preflight check: returns NAVTOOL_ROUTER_BRIDGE_ABI_VERSION.
+ * Calling this function verifies that the library is loaded and the versioned
+ * v1 ABI symbol is present, without requiring a GRIB file.
+ */
+NAVTOOL_ROUTER_BRIDGE_API uint32_t
+navtool_router_bridge_preflight_v1(void);
+
+/* ---- GRIB inspection ---- */
+
+enum {
+    NAVTOOL_ROUTER_MODEL_UNKNOWN_V1 = 0,
+    NAVTOOL_ROUTER_MODEL_NOAA_GFS_V1 = 1,
+    NAVTOOL_ROUTER_MODEL_ECMWF_IFS_V1 = 2
+};
+
+/*
+ * Metadata returned by navtool_router_inspect_grib_v1.
+ *
+ * model_id is one of NAVTOOL_ROUTER_MODEL_*_V1.
+ * All epoch fields are seconds since the Unix epoch (UTC).
+ * Longitude fields are in the canonical [-180, 180] range; east may be less
+ * than west when the described area crosses the antimeridian.
+ */
+typedef struct navtool_router_grib_descriptor_v1 {
+    int64_t  init_utc_epoch_seconds;
+    int64_t  first_valid_utc_epoch_seconds;
+    int64_t  last_valid_utc_epoch_seconds;
+    double   south_latitude_degrees;
+    double   west_longitude_degrees;
+    double   north_latitude_degrees;
+    double   east_longitude_degrees;
+    int32_t  model_id;
+    uint8_t  reserved[4];
+} navtool_router_grib_descriptor_v1;
+
+/*
+ * Inspects a GRIB file using ecCodes without loading a full WeatherDataset.
+ * Reads model identity, initialization time, valid-time range, and geographic
+ * bounds from 10 m U/V wind messages. Validates that:
+ *   - at least one U and one V message exist at 10 m height
+ *   - all wind messages share a single model centre (not model-ambiguous)
+ *   - all messages originate from a single model run (consistent init time)
+ *   - the centre is a supported model (NCEP/GFS or ECMWF/IFS)
+ *
+ * Returns NAVTOOL_ROUTER_STATUS_OK_V1 and populates *out_descriptor on success.
+ * Returns an appropriate error status and sets the thread-local error on failure.
+ * The file is not copied; this call is read-only and does not retain any handle.
+ */
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_inspect_grib_v1(
+    const char* grib_path_utf8,
+    navtool_router_grib_descriptor_v1* out_descriptor);
+
 #ifdef __cplusplus
 }
 #endif

@@ -16,7 +16,7 @@ public interface IWeatherSampler
         CancellationToken cancellationToken = default);
 }
 
-public sealed class DeferredNativeRouteEngine : IRouteEngine, IWeatherSampler
+public sealed class DeferredNativeRouteEngine : IRouteEngine, IWeatherSampler, INativeRoutingPreflight
 {
     private readonly Lazy<NativeRouteEngine> _engine;
 
@@ -35,7 +35,29 @@ public sealed class DeferredNativeRouteEngine : IRouteEngine, IWeatherSampler
         ArgumentNullException.ThrowIfNull(factory);
         _engine = new Lazy<NativeRouteEngine>(
             factory,
-            LazyThreadSafetyMode.ExecutionAndPublication);
+            LazyThreadSafetyMode.PublicationOnly);
+    }
+
+    /// <summary>
+    /// Performs a lightweight preflight check to verify that the native router
+    /// bridge library is present and exposes the expected ABI version. Call this
+    /// before initiating any HTTP forecast acquisition to surface problems early
+    /// with actionable error messages.
+    /// </summary>
+    /// <exception cref="NativeBridgeUnavailableException">
+    /// The native library could not be found, does not export the versioned ABI,
+    /// or is for an incompatible platform.
+    /// </exception>
+    /// <exception cref="NotSupportedException">
+    /// The library ABI version does not match the required version.
+    /// </exception>
+    public void EnsureAvailable()
+    {
+        // Materializing the engine constructs NativeRouterBridge, which calls
+        // navtool_router_bridge_abi_version_v1() and validates the version.
+        // No GRIB file is loaded. PublicationOnly does not cache factory
+        // exceptions, so a corrected bridge installation can be retried.
+        _ = _engine.Value;
     }
 
     public ValueTask<RouteResult> CalculateAsync(

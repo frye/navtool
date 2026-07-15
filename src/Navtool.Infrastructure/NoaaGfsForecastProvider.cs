@@ -31,6 +31,15 @@ public sealed record NoaaGfsOptions
     public TimeSpan MinimumRequestInterval { get; init; } = TimeSpan.FromMilliseconds(250);
 }
 
+public sealed record NoaaGfsDownloadEstimate(
+    DateTimeOffset RunTime,
+    GeographicBounds Bounds,
+    int ForecastStepCount,
+    int RegionCount)
+{
+    public int PartCount => checked(ForecastStepCount * RegionCount);
+}
+
 public class ForecastDownloadException : IOException
 {
     public ForecastDownloadException(string message)
@@ -44,6 +53,17 @@ public class ForecastDownloadException : IOException
     }
 }
 
+/// <summary>
+/// Describes a single GRIB part in the download manifest: one (forecast hour × longitude window) pair.
+/// </summary>
+internal sealed record GribPartDescriptor(
+    int ForecastHour,
+    int RegionIndex,
+    NomadsLongitudeWindow LongitudeWindow,
+    GeographicBounds AlignedBounds,
+    string PartKey,
+    Uri RequestUri);
+
 public sealed class NoaaGfsForecastProvider : IForecastProvider
 {
     private static readonly ImmutableArray<int> AvailableForecastHours = BuildAvailableHours();
@@ -52,6 +72,13 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
     private readonly TimeProvider _timeProvider;
     private readonly NoaaGfsOptions _options;
     private readonly ILogger<NoaaGfsForecastProvider> _logger;
+
+    // Ref-counted keyed gates: a gate exists only while one or more acquisitions target
+    // its cache key. The last acquisition to release the key removes and disposes the
+    // entry, so this dictionary cannot grow unbounded over a long-lived singleton session.
+    private readonly Dictionary<string, AcquisitionGate> _acquisitionGates =
+        new(StringComparer.Ordinal);
+    private readonly object _acquisitionGatesLock = new();
 
     public NoaaGfsForecastProvider(
         HttpClient httpClient,
@@ -74,6 +101,34 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
 
     public ForecastModel Model => ForecastModel.NoaaGfs;
 
+    // Number of live acquisition gates. Exposed for tests to assert gates are released
+    // (and not leaked) once acquisitions complete.
+    internal int ActiveAcquisitionGateCount
+    {
+        get
+        {
+            lock (_acquisitionGatesLock)
+            {
+                return _acquisitionGates.Count;
+            }
+        }
+    }
+
+    public NoaaGfsDownloadEstimate Estimate(ForecastRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Model != Model)
+        {
+            throw new ArgumentException("The NOAA GFS provider only estimates NoaaGfs requests.", nameof(request));
+        }
+
+        var runTime = SelectRun(request, _timeProvider.GetUtcNow());
+        var steps = GetRequiredForecastHours(runTime, request.From, request.Through);
+        var bounds = AlignBoundsToGrid(request.Bounds);
+        var regions = GetNomadsLongitudeWindows(bounds);
+        return new NoaaGfsDownloadEstimate(runTime, bounds, steps.Length, regions.Length);
+    }
+
     public async ValueTask<ForecastAcquisition> AcquireAsync(
         ForecastRequest request,
         IProgress<ForecastProgress>? progress,
@@ -85,14 +140,105 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             throw new ArgumentException("The NOAA GFS provider only supplies NoaaGfs requests.", nameof(request));
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-        Report(progress, ForecastProgressStage.Queued, 0, "Selecting NOAA GFS run");
+        // Serialize only acquisitions that target the same cached artifact (run, bounds,
+        // steps); unrelated requests use distinct gates and run concurrently. The plan
+        // (including the definitive cache key) is computed ONCE here and threaded into the
+        // core so the gate and the download/store always agree on the same key, even if
+        // the clock advances across a run-publish boundary while queued behind the gate.
+        var plan = CreateAcquisitionPlan(request);
+        var gate = RentGate(plan.CacheKey);
+
+        try
+        {
+            await gate.Semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            ReturnGate(plan.CacheKey, gate);
+            throw;
+        }
+
+        try
+        {
+            return await AcquireCoreAsync(request, plan, progress, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            gate.Semaphore.Release();
+            ReturnGate(plan.CacheKey, gate);
+        }
+    }
+
+    // A single-permit gate plus the count of acquisitions currently referencing its key.
+    private sealed class AcquisitionGate
+    {
+        public SemaphoreSlim Semaphore { get; } = new(1, 1);
+
+        public int RefCount { get; set; }
+    }
+
+    private AcquisitionGate RentGate(string cacheKey)
+    {
+        lock (_acquisitionGatesLock)
+        {
+            if (!_acquisitionGates.TryGetValue(cacheKey, out var gate))
+            {
+                gate = new AcquisitionGate();
+                _acquisitionGates[cacheKey] = gate;
+            }
+
+            gate.RefCount++;
+            return gate;
+        }
+    }
+
+    private void ReturnGate(string cacheKey, AcquisitionGate gate)
+    {
+        lock (_acquisitionGatesLock)
+        {
+            if (--gate.RefCount == 0)
+            {
+                _acquisitionGates.Remove(cacheKey);
+                gate.Semaphore.Dispose();
+            }
+        }
+    }
+
+    // Resolves the definitive run selection, step set, grid-aligned bounds, and cache key
+    // for a request against a single captured "now". Computing this once (rather than
+    // recomputing inside the gated core) is what keeps the acquisition gate key and the
+    // stored artifact key identical.
+    private AcquisitionPlan CreateAcquisitionPlan(ForecastRequest request)
+    {
         var now = _timeProvider.GetUtcNow();
         var runTime = SelectRun(request, now);
         var steps = GetRequiredForecastHours(runTime, request.From, request.Through);
         var downloadBounds = AlignBoundsToGrid(request.Bounds);
-        var regions = GetNomadsLongitudeWindows(downloadBounds);
         var cacheKey = CreateCacheKey(downloadBounds, runTime, steps);
+        return new AcquisitionPlan(now, runTime, steps, downloadBounds, cacheKey);
+    }
+
+    private readonly record struct AcquisitionPlan(
+        DateTimeOffset Now,
+        DateTimeOffset RunTime,
+        ImmutableArray<int> Steps,
+        GeographicBounds DownloadBounds,
+        string CacheKey);
+
+    private async ValueTask<ForecastAcquisition> AcquireCoreAsync(
+        ForecastRequest request,
+        AcquisitionPlan plan,
+        IProgress<ForecastProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Report(progress, ForecastProgressStage.Queued, 0, "Selecting NOAA GFS run");
+        var now = plan.Now;
+        var runTime = plan.RunTime;
+        var steps = plan.Steps;
+        var downloadBounds = plan.DownloadBounds;
+        var regions = GetNomadsLongitudeWindows(downloadBounds);
+        var cacheKey = plan.CacheKey;
         _logger.LogInformation(
             "Selected NOAA GFS run {RunTime} with {StepCount} steps, {RegionCount} regions, download bounds " +
             "south={South}, north={North}, west={West}, east={East}, and cache key {CacheKey}",
@@ -121,41 +267,94 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
 
         _logger.LogInformation("NOAA GFS cache miss for {CacheKey}", cacheKey);
 
-        var requestCount = checked(steps.Length * regions.Length);
-        var completed = 0;
+        // Build deterministic download manifest: forecast_hour ascending, then region index ascending.
+        var manifest = BuildPartManifest(runTime, steps, regions, downloadBounds);
+        // Isolate this cache key's resumable parts in their own subdirectory. Acquisitions
+        // for a given cache key are serialized by the keyed gate, so each subdirectory has a
+        // single writer at a time; acquisitions for different cache keys use different
+        // subdirectories. Pruning and orphan sweeping therefore only ever touch the current
+        // key's own parts, so a concurrent acquisition for another key can never have its
+        // freshly downloaded parts deleted as "stale," and file enumeration cannot race a
+        // delete from another acquisition. The cache key is a "<category>-<sha256-hex>"
+        // token (see AtomicFileCache.CreateKey), which is always a filesystem-safe segment.
+        var partsDirectory = Path.Combine(_cache.RootDirectory, "noaa-gfs-parts", cacheKey);
+        Directory.CreateDirectory(partsDirectory);
+        PrunePartCache(partsDirectory, manifest);
+
+        var totalParts = manifest.Length;
+        var downloadedParts = 0;
+
+        // Acquire each part; reuse from disk if already complete.
+        for (var index = 0; index < totalParts; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var part = manifest[index];
+            var partFile = Path.Combine(partsDirectory, part.PartKey + ".grib2");
+
+            if (File.Exists(partFile))
+            {
+                _logger.LogInformation(
+                    "Resuming cached part {PartIndex}/{Total} f{ForecastHour:000} region {RegionIndex}",
+                    index + 1, totalParts, part.ForecastHour, part.RegionIndex);
+                Report(
+                    progress,
+                    ForecastProgressStage.Downloading,
+                    (index + 1) / (double)totalParts,
+                    $"Resumed cached f{part.ForecastHour:000} (part {index + 1}/{totalParts})");
+                continue;
+            }
+
+            // Apply pacing before each HTTP request except the very first.
+            if (downloadedParts > 0 && _options.MinimumRequestInterval > TimeSpan.Zero)
+            {
+                await Task.Delay(_options.MinimumRequestInterval, cancellationToken).ConfigureAwait(false);
+            }
+
+            Report(
+                progress,
+                ForecastProgressStage.Downloading,
+                index / (double)totalParts,
+                $"Downloading GFS f{part.ForecastHour:000} (part {index + 1}/{totalParts})");
+
+            await DownloadPartAsync(part, partFile, cancellationToken).ConfigureAwait(false);
+            downloadedParts++;
+            PrunePartCache(partsDirectory, manifest);
+
+            Report(
+                progress,
+                ForecastProgressStage.Downloading,
+                (index + 1) / (double)totalParts,
+                $"Downloaded {index + 1}/{totalParts} GFS parts ({downloadedParts} new this run)");
+        }
+
+        // Concatenate all parts in manifest order into the final cached artifact.
+        Report(progress, ForecastProgressStage.Decoding, 1, "Assembling GRIB2 artifact from parts");
+        // Stamp cache freshness from the store time, not the plan's captured "now". The
+        // part-download loop above can run for minutes, so recording the artifact as created
+        // at plan start would shorten its effective freshness window and skew eviction, which
+        // ranks entries by ExpiresAt relative to the passed "now". Run selection, steps,
+        // bounds, and the cache key still come from the plan so the keyed acquisition gate and
+        // the stored artifact key stay aligned across run-publish boundaries.
+        var cacheNow = _timeProvider.GetUtcNow();
         var stored = await _cache.StoreAsync(
                 cacheKey,
-                now,
-                now + _options.CacheFreshness,
+                cacheNow,
+                cacheNow + _options.CacheFreshness,
                 async (output, token) =>
                 {
-                    foreach (var forecastHour in steps)
+                    foreach (var part in manifest)
                     {
-                        foreach (var region in regions)
-                        {
-                            token.ThrowIfCancellationRequested();
-                            if (completed > 0 && _options.MinimumRequestInterval > TimeSpan.Zero)
-                            {
-                                await Task.Delay(_options.MinimumRequestInterval, token).ConfigureAwait(false);
-                            }
-
-                            var uri = BuildNomadsUri(runTime, forecastHour, downloadBounds, region);
-                            Report(
-                                progress,
-                                ForecastProgressStage.Downloading,
-                                completed / (double)requestCount,
-                                $"Downloading GFS f{forecastHour:000}");
-                            await DownloadGribWithRetryAsync(uri, output, token).ConfigureAwait(false);
-                            completed++;
-                            Report(
-                                progress,
-                                ForecastProgressStage.Downloading,
-                                completed / (double)requestCount,
-                                $"Downloaded {completed} of {requestCount} GFS subsets");
-                        }
+                        token.ThrowIfCancellationRequested();
+                        var partFile = Path.Combine(partsDirectory, part.PartKey + ".grib2");
+                        await using var partStream = new FileStream(
+                            partFile,
+                            FileMode.Open,
+                            FileAccess.Read,
+                            FileShare.Read,
+                            128 * 1024,
+                            FileOptions.Asynchronous | FileOptions.SequentialScan);
+                        await partStream.CopyToAsync(output, token).ConfigureAwait(false);
                     }
-
-                    Report(progress, ForecastProgressStage.Decoding, 1, "Validated concatenated GRIB2 artifact");
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -166,6 +365,17 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             "Stored NOAA GFS artifact {CacheKey} with {LengthBytes} bytes",
             cacheKey,
             stored.LengthBytes);
+        foreach (var part in manifest)
+        {
+            TryDeletePart(
+                Path.Combine(partsDirectory, part.PartKey + ".grib2"),
+                "assembled NOAA part");
+        }
+
+        // The parts subdirectory is now empty on success; remove it so per-key subdirectories
+        // do not accumulate across the many distinct cache keys a long-lived session requests.
+        TryDeleteDirectoryIfEmpty(partsDirectory);
+
         return CreateAcquisition(request, runTime, stored, ForecastAcquisitionSource.Remote);
     }
 
@@ -303,6 +513,72 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         return originalWidth >= 360 - gridSize || alignedWidth >= 360
             ? new GeographicBounds(south, north, -180, 180)
             : new GeographicBounds(south, north, west, east);
+    }
+
+    /// <summary>
+    /// Builds the ordered download manifest: all (forecast hour, region) pairs in
+    /// ascending forecast-hour / ascending region-index order.
+    /// </summary>
+    internal ImmutableArray<GribPartDescriptor> BuildPartManifest(
+        DateTimeOffset runTime,
+        ImmutableArray<int> steps,
+        ImmutableArray<NomadsLongitudeWindow> regions,
+        GeographicBounds downloadBounds)
+    {
+        var builder = ImmutableArray.CreateBuilder<GribPartDescriptor>(steps.Length * regions.Length);
+        foreach (var forecastHour in steps)
+        {
+            for (var regionIndex = 0; regionIndex < regions.Length; regionIndex++)
+            {
+                var region = regions[regionIndex];
+                var partKey = CreatePartKey(downloadBounds, runTime, forecastHour, regionIndex);
+                var uri = BuildNomadsUri(runTime, forecastHour, downloadBounds, region);
+                builder.Add(new GribPartDescriptor(forecastHour, regionIndex, region, downloadBounds, partKey, uri));
+            }
+        }
+
+        return builder.MoveToImmutable();
+    }
+
+    private async ValueTask DownloadPartAsync(
+        GribPartDescriptor part,
+        string partFile,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation(
+            "Downloading GFS part f{ForecastHour:000} region {RegionIndex} → {PartFile}",
+            part.ForecastHour, part.RegionIndex, partFile);
+
+        var tempFile = $"{partFile}.{Guid.NewGuid():N}.partial";
+
+        try
+        {
+            await using (var tempStream = new FileStream(
+                tempFile,
+                FileMode.CreateNew,
+                FileAccess.ReadWrite,
+                FileShare.None,
+                128 * 1024,
+                FileOptions.Asynchronous | FileOptions.WriteThrough))
+            {
+                await DownloadGribWithRetryAsync(part.RequestUri, tempStream, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            try
+            {
+                File.Move(tempFile, partFile);
+            }
+            catch (IOException) when (File.Exists(partFile))
+            {
+                TryDeletePart(tempFile, "redundant NOAA temporary part");
+            }
+        }
+        catch
+        {
+            TryDeletePart(tempFile, "failed NOAA temporary part");
+            throw;
+        }
     }
 
     private async ValueTask DownloadGribWithRetryAsync(
@@ -555,6 +831,21 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             Format(bounds.East),
             string.Join(",", steps));
 
+    private static string CreatePartKey(
+        GeographicBounds bounds,
+        DateTimeOffset runTime,
+        int forecastHour,
+        int regionIndex) =>
+        AtomicFileCache.CreateKey(
+            "noaa-gfs-part",
+            runTime.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+            Format(bounds.South),
+            Format(bounds.North),
+            Format(bounds.West),
+            Format(bounds.East),
+            forecastHour.ToString(CultureInfo.InvariantCulture),
+            regionIndex.ToString(CultureInfo.InvariantCulture));
+
     private static ImmutableArray<int> BuildAvailableHours()
     {
         var builder = ImmutableArray.CreateBuilder<int>();
@@ -589,6 +880,110 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         double fraction,
         string message) =>
         progress?.Report(new ForecastProgress(Provider, Model, stage, fraction, message));
+
+    private void PrunePartCache(
+        string partsDirectory,
+        ImmutableArray<GribPartDescriptor> protectedManifest)
+    {
+        SweepOrphanedPartials(partsDirectory);
+
+        var comparer = OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+        var protectedPaths = protectedManifest
+            .Select(part => Path.Combine(partsDirectory, part.PartKey + ".grib2"))
+            .ToHashSet(comparer);
+        var files = Directory
+            .EnumerateFiles(partsDirectory, "*.grib2", SearchOption.TopDirectoryOnly)
+            .Select(path => new FileInfo(path))
+            .ToList();
+        var maximumEntries = Math.Max(_cache.MaximumEntries, protectedManifest.Length);
+        var bytes = files.Sum(file => file.Length);
+        var count = files.Count;
+
+        foreach (var file in files
+                     .Where(file => !protectedPaths.Contains(file.FullName))
+                     .OrderBy(file => file.LastWriteTimeUtc)
+                     .ThenBy(file => file.Name, StringComparer.Ordinal))
+        {
+            if (count <= maximumEntries && bytes <= _cache.MaximumBytes)
+            {
+                break;
+            }
+
+            var length = file.Length;
+            if (TryDeletePart(file.FullName, "stale NOAA part"))
+            {
+                count--;
+                bytes -= length;
+            }
+        }
+
+        if (count > maximumEntries || bytes > _cache.MaximumBytes)
+        {
+            throw new IOException(
+                "The resumable NOAA parts for the current request exceed the configured cache bounds.");
+        }
+    }
+
+    // Deletes ".partial" temp files left behind by a prior process that was terminated
+    // mid-download. The parts subdirectory is isolated per cache key and acquisitions for a
+    // given key are serialized, so at every prune point the current acquisition holds no
+    // in-flight partial of its own: any ".partial" here is therefore an orphan from an
+    // earlier interrupted run of the same key. A completed download is atomically moved to
+    // its ".grib2" name, so a lingering ".partial" is always incomplete and safe to delete.
+    private void SweepOrphanedPartials(string partsDirectory)
+    {
+        foreach (var path in Directory.EnumerateFiles(
+            partsDirectory,
+            "*.partial",
+            SearchOption.TopDirectoryOnly))
+        {
+            TryDeletePart(path, "orphaned NOAA temporary part");
+        }
+    }
+
+    private void TryDeleteDirectoryIfEmpty(string directory)
+    {
+        try
+        {
+            if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
+            {
+                Directory.Delete(directory);
+            }
+        }
+        catch (IOException exception)
+        {
+            _logger.LogWarning(exception, "Could not remove empty NOAA parts directory {Path}", directory);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            _logger.LogWarning(exception, "Could not remove empty NOAA parts directory {Path}", directory);
+        }
+    }
+
+    private bool TryDeletePart(string path, string purpose)
+    {
+        try
+        {
+            File.Delete(path);
+            return true;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return true;
+        }
+        catch (IOException exception)
+        {
+            _logger.LogWarning(exception, "Could not delete {Purpose} {Path}", purpose, path);
+            return false;
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            _logger.LogWarning(exception, "Could not delete {Purpose} {Path}", purpose, path);
+            return false;
+        }
+    }
 
     private static void ValidateOptions(NoaaGfsOptions options)
     {

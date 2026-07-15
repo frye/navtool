@@ -44,41 +44,6 @@ public static class LocalDepartureConverter
     }
 }
 
-public static class ForecastCorridor
-{
-    public static GeographicBounds Create(
-        Coordinate origin,
-        Coordinate destination,
-        double paddingDegrees = 5)
-    {
-        if (!double.IsFinite(paddingDegrees) || paddingDegrees <= 0 || paddingDegrees >= 90)
-        {
-            throw new ArgumentOutOfRangeException(nameof(paddingDegrees));
-        }
-
-        var bounds = GeographicBounds.FromCoordinates(new[] { origin, destination });
-        var south = Math.Max(-90, bounds.South - paddingDegrees);
-        var north = Math.Min(90, bounds.North + paddingDegrees);
-        var eastUnwrapped = bounds.CrossesAntimeridian ? bounds.East + 360 : bounds.East;
-        if (eastUnwrapped - bounds.West + (paddingDegrees * 2) >= 360)
-        {
-            return new GeographicBounds(south, north, -180, 180);
-        }
-
-        return new GeographicBounds(
-            south,
-            north,
-            NormalizeLongitude(bounds.West - paddingDegrees),
-            NormalizeLongitude(eastUnwrapped + paddingDegrees));
-    }
-
-    private static double NormalizeLongitude(double longitude)
-    {
-        var normalized = ((longitude + 180) % 360 + 360) % 360 - 180;
-        return normalized == -180 && longitude > 0 ? 180 : normalized;
-    }
-}
-
 public static class WeatherGridSizing
 {
     public static (int LatitudeCount, int LongitudeCount) FromViewport(

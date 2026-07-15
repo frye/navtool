@@ -41,6 +41,30 @@ public sealed class MapRenderingTests
         }
     }
 
+    [AvaloniaFact]
+    public void MainWindowExposesDurationAndExistingGribControls()
+    {
+        var window = new MainWindow
+        {
+            DataContext = CreateViewModel(tilesEnabled: false)
+        };
+
+        try
+        {
+            window.Show();
+
+            Assert.NotNull(window.FindControl<NumericUpDown>("PassageDaysInput"));
+            Assert.NotNull(window.FindControl<NumericUpDown>("PassageHoursInput"));
+            Assert.NotNull(window.FindControl<RadioButton>("DownloadForecastSource"));
+            Assert.NotNull(window.FindControl<RadioButton>("LocalForecastSource"));
+            Assert.NotNull(window.FindControl<Button>("ChooseGribFileButton"));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [Fact]
     public void MapCompositionPlacesOpenStreetMapBelowRouteOverlays()
     {

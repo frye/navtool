@@ -17,7 +17,14 @@ public enum ForecastModel
 public enum ForecastAcquisitionSource
 {
     Remote,
-    Cache
+    Cache,
+    LocalFile
+}
+
+public enum ForecastSelectionKind
+{
+    OfficialDownload,
+    LocalFile
 }
 
 public enum ForecastProgressStage
@@ -263,6 +270,86 @@ public sealed record LocalGribArtifact
     public long? LengthBytes { get; }
 
     public DateTimeOffset? LastModifiedAt { get; }
+}
+
+public sealed record LocalForecastDescriptor
+{
+    public LocalForecastDescriptor(
+        ForecastModel model,
+        LocalGribArtifact artifact,
+        DateTimeOffset initializedAt,
+        DateTimeOffset validFrom,
+        DateTimeOffset validThrough,
+        GeographicBounds bounds)
+    {
+        ArgumentNullException.ThrowIfNull(artifact);
+        var utcInitializedAt = initializedAt.ToUniversalTime();
+        var utcValidFrom = validFrom.ToUniversalTime();
+        var utcValidThrough = validThrough.ToUniversalTime();
+        if (utcValidThrough < utcValidFrom)
+        {
+            throw new ArgumentException("Forecast validity cannot end before it begins.", nameof(validThrough));
+        }
+
+        _ = model.Provider();
+        Model = model;
+        Artifact = artifact;
+        InitializedAt = utcInitializedAt;
+        ValidFrom = utcValidFrom;
+        ValidThrough = utcValidThrough;
+        Bounds = bounds;
+    }
+
+    public ForecastModel Model { get; }
+
+    public LocalGribArtifact Artifact { get; }
+
+    public DateTimeOffset InitializedAt { get; }
+
+    public DateTimeOffset ValidFrom { get; }
+
+    public DateTimeOffset ValidThrough { get; }
+
+    public GeographicBounds Bounds { get; }
+}
+
+public sealed record ForecastSelection
+{
+    private ForecastSelection(
+        ForecastModel model,
+        ForecastSelectionKind kind,
+        LocalForecastDescriptor? localForecast)
+    {
+        _ = model.Provider();
+        if ((kind == ForecastSelectionKind.LocalFile) != (localForecast is not null))
+        {
+            throw new ArgumentException("Local forecast metadata is required only for local file selections.");
+        }
+
+        if (localForecast is not null && localForecast.Model != model)
+        {
+            throw new ArgumentException("The local forecast model does not match the selection.", nameof(localForecast));
+        }
+
+        Model = model;
+        Kind = kind;
+        LocalForecast = localForecast;
+    }
+
+    public ForecastModel Model { get; }
+
+    public ForecastSelectionKind Kind { get; }
+
+    public LocalForecastDescriptor? LocalForecast { get; }
+
+    public static ForecastSelection OfficialDownload(ForecastModel model) =>
+        new(model, ForecastSelectionKind.OfficialDownload, null);
+
+    public static ForecastSelection LocalFile(LocalForecastDescriptor forecast)
+    {
+        ArgumentNullException.ThrowIfNull(forecast);
+        return new ForecastSelection(forecast.Model, ForecastSelectionKind.LocalFile, forecast);
+    }
 }
 
 public sealed record ForecastAcquisition

@@ -42,6 +42,9 @@ public static class AppComposition
             provider.GetRequiredService<DeferredNativeRouteEngine>());
         services.AddSingleton<IWeatherSampler>(provider =>
             provider.GetRequiredService<DeferredNativeRouteEngine>());
+        services.AddSingleton<INativeRoutingPreflight>(provider =>
+            provider.GetRequiredService<DeferredNativeRouteEngine>());
+        services.AddSingleton<ILocalGribInspector, DeferredLocalGribInspector>();
         services.AddSingleton(provider => new RoutingWorkflow(
             new IForecastProvider[]
             {

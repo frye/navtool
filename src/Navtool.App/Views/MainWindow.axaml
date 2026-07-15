@@ -159,6 +159,33 @@
                                                 SelectedTime="{Binding DepartureTime}"
                                                 ClockIdentifier="24HourClock" />
                                 </Grid>
+                                <TextBlock Text="Expected passage duration"
+                                           FontWeight="SemiBold"
+                                           Margin="0,4,0,0" />
+                                <Grid ColumnDefinitions="*,*"
+                                      ColumnSpacing="8">
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Text="Days"
+                                                   Classes="muted" />
+                                        <NumericUpDown x:Name="PassageDaysInput"
+                                                       Minimum="0"
+                                                       Maximum="10"
+                                                       Increment="1"
+                                                       FormatString="0"
+                                                       Value="{Binding PassageDays}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1"
+                                                Spacing="3">
+                                        <TextBlock Text="Hours"
+                                                   Classes="muted" />
+                                        <NumericUpDown x:Name="PassageHoursInput"
+                                                       Minimum="0"
+                                                       Maximum="23"
+                                                       Increment="1"
+                                                       FormatString="0"
+                                                       Value="{Binding PassageHours}" />
+                                    </StackPanel>
+                                </Grid>
                                 <Border Background="#EEF4F6"
                                         CornerRadius="5"
                                         Padding="9,6">
@@ -177,43 +204,79 @@
                         <Border Classes="card">
                             <StackPanel Spacing="9">
                                 <TextBlock Classes="section-title"
-                                           Text="3  FORECAST MODELS" />
-                                <CheckBox IsChecked="{Binding UseNoaa}">
-                                    <StackPanel>
-                                        <TextBlock Text="NOAA GFS"
-                                                   FontWeight="SemiBold" />
-                                        <TextBlock Text="Global Forecast System"
-                                                   Classes="muted" />
-                                    </StackPanel>
-                                </CheckBox>
-                                <TextBlock Text="{Binding NoaaStatus}"
+                                           Text="3  FORECAST SOURCE" />
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="14">
+                                    <RadioButton x:Name="DownloadForecastSource"
+                                                 GroupName="ForecastSource"
+                                                 Content="Download forecast"
+                                                 IsChecked="{Binding IsDownloadForecast, Mode=OneWay}"
+                                                 Command="{Binding SelectDownloadSourceCommand}" />
+                                    <RadioButton x:Name="LocalForecastSource"
+                                                 GroupName="ForecastSource"
+                                                 Content="Existing GRIB file"
+                                                 IsChecked="{Binding IsLocalForecast, Mode=OneWay}"
+                                                 Command="{Binding SelectLocalFileSourceCommand}" />
+                                </StackPanel>
+                                <StackPanel IsVisible="{Binding IsDownloadForecast}"
+                                            Spacing="7">
+                                    <CheckBox IsChecked="{Binding UseNoaa}">
+                                        <StackPanel>
+                                            <TextBlock Text="NOAA GFS"
+                                                       FontWeight="SemiBold" />
+                                            <TextBlock Text="Global Forecast System"
+                                                       Classes="muted" />
+                                        </StackPanel>
+                                    </CheckBox>
+                                    <TextBlock Text="{Binding NoaaStatus}"
                                            Classes="muted"
                                            Margin="24,0,0,2"
                                            TextWrapping="Wrap" />
-                                <CheckBox IsChecked="{Binding UseEcmwf}">
-                                    <Grid ColumnDefinitions="*,Auto">
-                                        <StackPanel>
-                                            <TextBlock Text="ECMWF IFS"
-                                                       FontWeight="SemiBold" />
-                                            <TextBlock Text="European model"
-                                                       Classes="muted" />
-                                        </StackPanel>
-                                        <Border Grid.Column="1"
-                                                Background="#FFF1D6"
-                                                CornerRadius="10"
-                                                Padding="7,3"
-                                                VerticalAlignment="Center">
-                                            <TextBlock Text="EXPERIMENTAL"
-                                                       Foreground="#8A5A00"
-                                                       FontSize="9"
-                                                       FontWeight="Bold" />
-                                        </Border>
-                                    </Grid>
-                                </CheckBox>
-                                <TextBlock Text="{Binding EcmwfStatus}"
+                                    <CheckBox IsChecked="{Binding UseEcmwf}">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <StackPanel>
+                                                <TextBlock Text="ECMWF IFS"
+                                                           FontWeight="SemiBold" />
+                                                <TextBlock Text="European model"
+                                                           Classes="muted" />
+                                            </StackPanel>
+                                            <Border Grid.Column="1"
+                                                    Background="#FFF1D6"
+                                                    CornerRadius="10"
+                                                    Padding="7,3"
+                                                    VerticalAlignment="Center">
+                                                <TextBlock Text="EXPERIMENTAL"
+                                                           Foreground="#8A5A00"
+                                                           FontSize="9"
+                                                           FontWeight="Bold" />
+                                            </Border>
+                                        </Grid>
+                                    </CheckBox>
+                                    <TextBlock Text="{Binding EcmwfStatus}"
                                            Classes="muted"
                                            Margin="24,0,0,0"
                                            TextWrapping="Wrap" />
+                                </StackPanel>
+                                <StackPanel IsVisible="{Binding IsLocalForecast}"
+                                            Spacing="7">
+                                    <Button x:Name="ChooseGribFileButton"
+                                            Click="OnChooseGribFileClicked"
+                                            IsEnabled="{Binding !IsInspectingLocalGrib}"
+                                            Content="Choose GRIB file..." />
+                                    <TextBlock Text="{Binding LocalGribDisplay}"
+                                           FontWeight="SemiBold"
+                                           TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding LocalGribStatus}"
+                                           Classes="muted"
+                                           TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Border Background="#EEF4F6"
+                                        CornerRadius="5"
+                                        Padding="9,7">
+                                    <TextBlock Text="{Binding ForecastAreaSummary}"
+                                           Classes="muted"
+                                           TextWrapping="Wrap" />
+                                </Border>
                             </StackPanel>
                         </Border>
 
@@ -224,7 +287,6 @@
                                     Content="Calculate routes" />
                             <Button Grid.Column="1"
                                     Command="{Binding CancelCommand}"
-                                    IsEnabled="{Binding IsCalculating}"
                                     Content="Cancel"
                                     MinWidth="76" />
                         </Grid>

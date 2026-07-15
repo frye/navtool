@@ -131,4 +131,122 @@ public sealed class NativeBridgeContractTests
         Assert.Throws<ArgumentException>(() =>
             new RouteCalculationSnapshot(time, new[] { point.Location }, new[] { point }, diagnostics));
     }
+
+    [Fact]
+    public void Route_result_accepts_arrival_after_the_requested_passage_target()
+    {
+        var departure = new DateTimeOffset(2026, 7, 15, 0, 0, 0, TimeSpan.Zero);
+        var request = new RouteRequest(
+            "route-over",
+            new Coordinate(40, -60),
+            new Coordinate(45, -55),
+            departure,
+            departure.AddHours(6));
+        var points = new[]
+        {
+            new RoutePoint(request.Origin, departure, 45, 6, 15, 200, 0),
+            // Achieved arrival lands two hours past the requested target.
+            new RoutePoint(request.Destination, departure.AddHours(8), 45, 6, 15, 200, 40)
+        };
+
+        var result = new RouteResult(request, ForecastModel.NoaaGfs, points, new RouteDiagnostics(1, 2, 1, 2));
+
+        Assert.Equal(departure.AddHours(8), result.ArrivalTime);
+        Assert.True(result.ExceedsRequestedArrival);
+    }
+
+    [Fact]
+    public void Route_result_reports_arrival_within_the_requested_passage_target()
+    {
+        var departure = new DateTimeOffset(2026, 7, 15, 0, 0, 0, TimeSpan.Zero);
+        var request = new RouteRequest(
+            "route-under",
+            new Coordinate(40, -60),
+            new Coordinate(45, -55),
+            departure,
+            departure.AddHours(10));
+        var points = new[]
+        {
+            new RoutePoint(request.Origin, departure, 45, 6, 15, 200, 0),
+            new RoutePoint(request.Destination, departure.AddHours(10), 45, 6, 15, 200, 40)
+        };
+
+        var result = new RouteResult(request, ForecastModel.NoaaGfs, points, new RouteDiagnostics(1, 2, 1, 2));
+
+        Assert.False(result.ExceedsRequestedArrival);
+    }
+
+    [Fact]
+    public void Route_result_still_rejects_empty_and_disordered_points()
+    {
+        var departure = new DateTimeOffset(2026, 7, 15, 0, 0, 0, TimeSpan.Zero);
+        var request = new RouteRequest(
+            "route-bad",
+            new Coordinate(40, -60),
+            new Coordinate(45, -55),
+            departure,
+            departure.AddHours(10));
+        var diagnostics = new RouteDiagnostics(1, 2, 1, 2);
+
+        Assert.Throws<ArgumentException>(() =>
+            new RouteResult(request, ForecastModel.NoaaGfs, Array.Empty<RoutePoint>(), diagnostics));
+        // Timestamp descending.
+        Assert.Throws<ArgumentException>(() => new RouteResult(
+            request,
+            ForecastModel.NoaaGfs,
+            new[]
+            {
+                new RoutePoint(request.Origin, departure.AddHours(2), 45, 6, 15, 200, 0),
+                new RoutePoint(request.Destination, departure.AddHours(1), 45, 6, 15, 200, 10)
+            },
+            diagnostics));
+        // Cumulative distance descending.
+        Assert.Throws<ArgumentException>(() => new RouteResult(
+            request,
+            ForecastModel.NoaaGfs,
+            new[]
+            {
+                new RoutePoint(request.Origin, departure, 45, 6, 15, 200, 20),
+                new RoutePoint(request.Destination, departure.AddHours(1), 45, 6, 15, 200, 10)
+            },
+            diagnostics));
+    }
+
+    [Fact]
+    public void Route_request_normalizes_departure_to_whole_seconds()
+    {
+        var departure = new DateTimeOffset(2026, 7, 15, 0, 0, 0, 456, TimeSpan.Zero);
+        var request = new RouteRequest(
+            "route-precision",
+            new Coordinate(40, -60),
+            new Coordinate(45, -55),
+            departure,
+            departure.AddHours(10));
+
+        var normalizedDeparture = new DateTimeOffset(2026, 7, 15, 0, 0, 0, TimeSpan.Zero);
+        Assert.Equal(normalizedDeparture, request.DepartureTime);
+
+        // A first point at the normalized departure second is accepted.
+        var accepted = new RouteResult(
+            request,
+            ForecastModel.NoaaGfs,
+            new[]
+            {
+                new RoutePoint(request.Origin, normalizedDeparture, 45, 6, 15, 200, 0),
+                new RoutePoint(request.Destination, normalizedDeparture.AddHours(5), 45, 6, 15, 200, 20)
+            },
+            new RouteDiagnostics(1, 2, 1, 2));
+        Assert.Equal(normalizedDeparture, accepted.Points[0].Timestamp);
+
+        // A first point strictly before departure is still rejected.
+        Assert.Throws<ArgumentException>(() => new RouteResult(
+            request,
+            ForecastModel.NoaaGfs,
+            new[]
+            {
+                new RoutePoint(request.Origin, normalizedDeparture.AddSeconds(-1), 45, 6, 15, 200, 0),
+                new RoutePoint(request.Destination, normalizedDeparture.AddHours(5), 45, 6, 15, 200, 20)
+            },
+            new RouteDiagnostics(1, 2, 1, 2)));
+    }
 }

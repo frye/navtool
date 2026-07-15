@@ -57,6 +57,10 @@ public sealed class AtomicFileCache
 
     public string RootDirectory => _options.RootDirectory;
 
+    public long MaximumBytes => _options.MaximumBytes;
+
+    public int MaximumEntries => _options.MaximumEntries;
+
     public static string CreateKey(string category, params string[] components)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(category);

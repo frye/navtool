@@ -12,6 +12,10 @@ if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
     $BuildDirectory = Join-Path $Root "native\Navtool.RouterBridge\build"
 }
 
+if (-not (Test-Path (Join-Path $RouterSource "CMakeLists.txt"))) {
+    throw "router-lib was not found at '$RouterSource'. Set SAILROUTE_SOURCE_DIR to your router-lib checkout and try again."
+}
+
 cmake -S (Join-Path $Root "native\Navtool.RouterBridge") -B $BuildDirectory `
     -DCMAKE_BUILD_TYPE=Release `
     -DSAILROUTE_SOURCE_DIR="$RouterSource" `
