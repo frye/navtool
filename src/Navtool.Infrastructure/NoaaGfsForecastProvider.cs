@@ -329,10 +329,17 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
 
         // Concatenate all parts in manifest order into the final cached artifact.
         Report(progress, ForecastProgressStage.Decoding, 1, "Assembling GRIB2 artifact from parts");
+        // Stamp cache freshness from the store time, not the plan's captured "now". The
+        // part-download loop above can run for minutes, so recording the artifact as created
+        // at plan start would shorten its effective freshness window and skew eviction, which
+        // ranks entries by ExpiresAt relative to the passed "now". Run selection, steps,
+        // bounds, and the cache key still come from the plan so the keyed acquisition gate and
+        // the stored artifact key stay aligned across run-publish boundaries.
+        var cacheNow = _timeProvider.GetUtcNow();
         var stored = await _cache.StoreAsync(
                 cacheKey,
-                now,
-                now + _options.CacheFreshness,
+                cacheNow,
+                cacheNow + _options.CacheFreshness,
                 async (output, token) =>
                 {
                     foreach (var part in manifest)

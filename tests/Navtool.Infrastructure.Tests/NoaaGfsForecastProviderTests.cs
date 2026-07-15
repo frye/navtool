@@ -357,7 +357,7 @@ public sealed class NoaaGfsForecastProviderTests
     }
 
     [Fact]
-    public async Task Acquire_captures_the_clock_once_so_gate_and_stored_keys_stay_aligned()
+    public async Task Acquire_reads_the_run_selection_clock_once_so_gate_and_stored_keys_stay_aligned()
     {
         using var directory = new TestDirectory();
         var handler = new RecordingHttpHandler(async (_, _, cancellationToken) =>
@@ -367,9 +367,12 @@ public sealed class NoaaGfsForecastProviderTests
         });
         using var client = new HttpClient(handler);
 
-        // Advance the clock by a full 6h GFS run cadence on every read: if AcquireAsync
-        // read "now" more than once, the gate key (computed up front) and the run selected
-        // inside the gated core would land in different run windows and diverge.
+        // Advance the clock by a full 6h GFS run cadence on every read. Run selection, the
+        // steps, the aligned bounds, and the cache key are all fixed up front from a single
+        // read; if AcquireAsync read "now" again to reselect the run inside the gated core,
+        // the gate key and the stored artifact key would land in different run windows and
+        // diverge. Exactly two reads are expected: read #1 fixes the run and cache key, and
+        // read #2 stamps cache freshness from the actual store time after the download loop.
         var timeProvider = new CountingTimeProvider(Now, TimeSpan.FromHours(6));
         var provider = new NoaaGfsForecastProvider(
             client,
@@ -379,7 +382,7 @@ public sealed class NoaaGfsForecastProviderTests
 
         var acquisition = await provider.AcquireAsync(CreateRequest(), null, CancellationToken.None);
 
-        Assert.Equal(1, timeProvider.Reads);
+        Assert.Equal(2, timeProvider.Reads);
         Assert.Equal(ForecastAcquisitionSource.Remote, acquisition.Source);
         Assert.Empty(
             Directory.EnumerateFiles(
