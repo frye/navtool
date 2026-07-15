@@ -31,7 +31,32 @@ public sealed class RoutingWorkflowTests
 
         var engine = new StubRouteEngine((request, acquisition, progress, _) =>
         {
-            progress?.Report(new RouteCalculationProgress(1));
+            var frontierTime = request.DepartureTime.AddHours(1);
+            var snapshot = new RouteCalculationSnapshot(
+                frontierTime,
+                new[]
+                {
+                    request.Origin,
+                    new Coordinate(
+                        request.Origin.Latitude + 0.25,
+                        request.Origin.Longitude + 0.25)
+                },
+                new[]
+                {
+                    new RoutePoint(request.Origin, request.DepartureTime, 90, 6, 15, 180, 0),
+                    new RoutePoint(
+                        new Coordinate(
+                            request.Origin.Latitude + 0.25,
+                            request.Origin.Longitude + 0.25),
+                        frontierTime,
+                        90,
+                        6,
+                        15,
+                        180,
+                        10)
+                },
+                new RouteDiagnostics(10, 20, 5, 1));
+            progress?.Report(new RouteCalculationProgress(0.5, "frontier", snapshot));
             if (acquisition.Request.Model == ForecastModel.EcmwfIfs)
             {
                 throw new InvalidOperationException("ECMWF route calculation failed.");
@@ -64,6 +89,11 @@ public sealed class RoutingWorkflowTests
         Assert.Equal(ModelRouteFailureStage.RouteCalculation, ecmwf.Failure!.Stage);
         Assert.Contains("ECMWF", ecmwf.Failure!.Message);
         Assert.Single(result.SuccessfulRoutes);
+        Assert.Contains(reports, report =>
+            report.Model == ForecastModel.NoaaGfs &&
+            report.Stage == RoutingProgressStage.CalculatingRoute &&
+            report.Snapshot is { Diagnostics.TimeSteps: 1 } &&
+            report.Snapshot.Frontier.Length == 2);
         Assert.Contains(reports, report =>
             report.Model == ForecastModel.NoaaGfs &&
             report.Stage == RoutingProgressStage.Completed &&

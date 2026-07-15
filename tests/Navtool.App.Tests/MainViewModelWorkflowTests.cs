@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Mapsui.Layers;
 using Navtool.App.Models;
 using Navtool.App.Services;
 using Navtool.App.ViewModels;
@@ -68,6 +69,81 @@ public sealed class MainViewModelWorkflowTests
         Assert.Contains("complete", viewModel.NoaaStatus, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Experimental ECMWF failed", viewModel.ErrorMessage);
         Assert.Contains("indexed ranges are unavailable", viewModel.EcmwfStatus);
+    }
+
+    [Fact]
+    public async Task StreamingOverlaysRetainSuccessfulModelAndClearFailedModel()
+    {
+        var providers = new[]
+        {
+            new DelegateForecastProvider(
+                ForecastModel.NoaaGfs,
+                (request, _) => ValueTask.FromResult(CreateAcquisition(request))),
+            new DelegateForecastProvider(
+                ForecastModel.EcmwfIfs,
+                (request, _) => ValueTask.FromResult(CreateAcquisition(request)))
+        };
+        var engine = new StreamingRouteEngine((request, forecast, progress, _) =>
+        {
+            progress?.Report(new RouteCalculationProgress(
+                0.5,
+                "frontier",
+                CreateSnapshot(request)));
+            return forecast.Request.Model == ForecastModel.EcmwfIfs
+                ? ValueTask.FromException<RouteResult>(
+                    new InvalidOperationException("ECMWF search failed"))
+                : ValueTask.FromResult(
+                    CreateRoute(request, forecast.Request.Model));
+        });
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(providers, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        viewModel.UseEcmwf = true;
+
+        await viewModel.CalculateRoutesAsync();
+        await Task.Delay(20);
+
+        Assert.Single(GetLayer(viewModel, "NOAA GFS isochrones").Features);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS provisional route").Features);
+        Assert.Empty(GetLayer(viewModel, "ECMWF IFS isochrones").Features);
+        Assert.Empty(GetLayer(viewModel, "ECMWF IFS provisional route").Features);
+        Assert.Equal(1, viewModel.SuccessfulRouteCount);
+    }
+
+    [Fact]
+    public async Task CancellingCalculationClearsStreamingOverlays()
+    {
+        var provider = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var reported = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var engine = new StreamingRouteEngine(async (request, _, progress, cancellationToken) =>
+        {
+            progress?.Report(new RouteCalculationProgress(
+                0.5,
+                "frontier",
+                CreateSnapshot(request)));
+            reported.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new InvalidOperationException("Unreachable.");
+        });
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { provider }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+
+        var calculation = viewModel.CalculateRoutesAsync();
+        await reported.Task;
+        await Task.Delay(20);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS isochrones").Features);
+
+        viewModel.CancelCommand.Execute(null);
+        await calculation;
+
+        Assert.Empty(GetLayer(viewModel, "NOAA GFS isochrones").Features);
+        Assert.Empty(GetLayer(viewModel, "NOAA GFS provisional route").Features);
     }
 
     [Fact]
@@ -383,6 +459,23 @@ public sealed class MainViewModelWorkflowTests
         }
     }
 
+    private sealed class StreamingRouteEngine(
+        Func<
+            RouteRequest,
+            ForecastAcquisition,
+            IProgress<RouteCalculationProgress>?,
+            CancellationToken,
+            ValueTask<RouteResult>> calculate)
+        : IRouteEngine
+    {
+        public ValueTask<RouteResult> CalculateAsync(
+            RouteRequest request,
+            ForecastAcquisition forecast,
+            IProgress<RouteCalculationProgress>? progress,
+            CancellationToken cancellationToken) =>
+            calculate(request, forecast, progress, cancellationToken);
+    }
+
     private sealed class DelegateWeatherSampler(
         Func<
             ForecastAcquisition,
@@ -408,5 +501,32 @@ public sealed class MainViewModelWorkflowTests
                 longitudeCount,
                 validAt,
                 cancellationToken);
+    }
+
+    private static MemoryLayer GetLayer(MainViewModel viewModel, string name) =>
+        Assert.IsType<MemoryLayer>(
+            viewModel.Map.Layers.Single(layer => layer.Name == name));
+
+    private static RouteCalculationSnapshot CreateSnapshot(RouteRequest request)
+    {
+        var frontierTime = request.DepartureTime.AddHours(1);
+        var frontierPoint = new Coordinate(
+            request.Origin.Latitude + 0.25,
+            request.Origin.Longitude + 0.25);
+        return new RouteCalculationSnapshot(
+            frontierTime,
+            new[]
+            {
+                frontierPoint,
+                new Coordinate(
+                    request.Origin.Latitude - 0.25,
+                    request.Origin.Longitude + 0.1)
+            },
+            new[]
+            {
+                new RoutePoint(request.Origin, request.DepartureTime, 90, 6, 15, 180, 0),
+                new RoutePoint(frontierPoint, frontierTime, 90, 6, 15, 180, 10)
+            },
+            new RouteDiagnostics(10, 20, 5, 1));
     }
 }

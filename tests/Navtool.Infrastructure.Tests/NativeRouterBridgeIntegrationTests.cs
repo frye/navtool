@@ -8,14 +8,15 @@ public sealed class NativeRouterBridgeIntegrationTests
     [Fact]
     public void Native_contract_loads_metadata_samples_and_route_when_artifacts_are_available()
     {
+        var configuredSample = Environment.GetEnvironmentVariable(
+            "NAVTOOL_ROUTER_SAMPLE_GRIB");
         var repository = FindAncestor(AppContext.BaseDirectory, "Navtool.sln");
-        if (repository is null)
-        {
-            return;
-        }
-
-        var sample = Path.GetFullPath(
-            Path.Combine(repository, "..", "router-lib", "samples", "sample.grib"));
+        var sample = !string.IsNullOrWhiteSpace(configuredSample)
+            ? Path.GetFullPath(configuredSample)
+            : repository is null
+                ? string.Empty
+                : Path.GetFullPath(
+                    Path.Combine(repository, "..", "router-lib", "samples", "sample.grib"));
         if (!File.Exists(sample))
         {
             return;
@@ -52,12 +53,23 @@ public sealed class NativeRouterBridgeIntegrationTests
             new Coordinate(48.25, -123.35),
             forecast.Metadata.FirstValidAt,
             forecast.Metadata.FirstValidAt.AddHours(10));
+        var snapshots = new List<RouteCalculationSnapshot>();
         var route = bridge.CalculateRoute(
             forecast,
             request,
-            ForecastModel.NoaaGfs);
+            ForecastModel.NoaaGfs,
+            snapshots.Add);
         Assert.NotEmpty(route.Points);
         Assert.True(route.Diagnostics.GeneratedCandidates > 0);
+        Assert.NotEmpty(snapshots);
+        Assert.Equal(
+            snapshots.Select(snapshot => snapshot.FrontierTime).Order(),
+            snapshots.Select(snapshot => snapshot.FrontierTime));
+        Assert.Equal(
+            Enumerable.Range(1, snapshots.Count),
+            snapshots.Select(snapshot => snapshot.Diagnostics.TimeSteps));
+        Assert.All(snapshots, snapshot =>
+            Assert.Equal(snapshot.FrontierTime, snapshot.ProvisionalRoute[^1].Timestamp));
         Assert.All(route.Points, point =>
         {
             Assert.True(point.HeadingDegrees is >= 0 and < 360);

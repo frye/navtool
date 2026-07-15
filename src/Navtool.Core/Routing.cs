@@ -257,6 +257,65 @@ public sealed record RouteDiagnostics
     public TimeSpan? CalculationDuration { get; }
 }
 
+public sealed record RouteCalculationSnapshot
+{
+    public RouteCalculationSnapshot(
+        DateTimeOffset frontierTime,
+        IEnumerable<Coordinate> frontier,
+        IEnumerable<RoutePoint> provisionalRoute,
+        RouteDiagnostics diagnostics)
+    {
+        ArgumentNullException.ThrowIfNull(frontier);
+        ArgumentNullException.ThrowIfNull(provisionalRoute);
+        ArgumentNullException.ThrowIfNull(diagnostics);
+
+        var immutableFrontier = frontier.ToImmutableArray();
+        var immutableRoute = provisionalRoute.ToImmutableArray();
+        if (immutableFrontier.IsEmpty)
+        {
+            throw new ArgumentException("A routing frontier must contain at least one point.", nameof(frontier));
+        }
+
+        if (immutableRoute.IsEmpty)
+        {
+            throw new ArgumentException("A provisional route must contain at least one point.", nameof(provisionalRoute));
+        }
+
+        var utcFrontierTime = frontierTime.ToUniversalTime();
+        if (immutableRoute[^1].Timestamp != utcFrontierTime)
+        {
+            throw new ArgumentException(
+                "The provisional route must end at the frontier time.",
+                nameof(provisionalRoute));
+        }
+
+        for (var index = 1; index < immutableRoute.Length; index++)
+        {
+            if (immutableRoute[index].Timestamp < immutableRoute[index - 1].Timestamp ||
+                immutableRoute[index].CumulativeDistanceNauticalMiles <
+                immutableRoute[index - 1].CumulativeDistanceNauticalMiles)
+            {
+                throw new ArgumentException(
+                    "Provisional route points must be ordered by time and distance.",
+                    nameof(provisionalRoute));
+            }
+        }
+
+        FrontierTime = utcFrontierTime;
+        Frontier = immutableFrontier;
+        ProvisionalRoute = immutableRoute;
+        Diagnostics = diagnostics;
+    }
+
+    public DateTimeOffset FrontierTime { get; }
+
+    public ImmutableArray<Coordinate> Frontier { get; }
+
+    public ImmutableArray<RoutePoint> ProvisionalRoute { get; }
+
+    public RouteDiagnostics Diagnostics { get; }
+}
+
 public sealed record RouteResult
 {
     public RouteResult(
@@ -314,7 +373,10 @@ public sealed record RouteResult
 
 public sealed record RouteCalculationProgress
 {
-    public RouteCalculationProgress(double fraction, string? message = null)
+    public RouteCalculationProgress(
+        double fraction,
+        string? message = null,
+        RouteCalculationSnapshot? snapshot = null)
     {
         if (!double.IsFinite(fraction) || fraction is < 0 or > 1)
         {
@@ -323,11 +385,14 @@ public sealed record RouteCalculationProgress
 
         Fraction = fraction;
         Message = message;
+        Snapshot = snapshot;
     }
 
     public double Fraction { get; }
 
     public string? Message { get; }
+
+    public RouteCalculationSnapshot? Snapshot { get; }
 }
 
 public interface IRouteEngine

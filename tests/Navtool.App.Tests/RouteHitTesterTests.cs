@@ -60,6 +60,37 @@ public sealed class RouteHitTesterTests
         Assert.Null(hit);
     }
 
+    [Fact]
+    public void RouteLevelProjectionDoesNotCreateFalseDatelineSegment()
+    {
+        var route = CreateRoute(ForecastModel.NoaaGfs, 0);
+
+        var miss = RouteHitTester.FindNearest(
+            new[] { route },
+            _ => new[]
+            {
+                new ScreenPoint(179, 0),
+                new ScreenPoint(181, 0)
+            },
+            new ScreenPoint(0, 0),
+            routeTolerancePixels: 10,
+            pointTolerancePixels: 10);
+        var hit = RouteHitTester.FindNearest(
+            new[] { route },
+            _ => new[]
+            {
+                new ScreenPoint(179, 0),
+                new ScreenPoint(181, 0)
+            },
+            new ScreenPoint(180, 5),
+            routeTolerancePixels: 10,
+            pointTolerancePixels: 4);
+
+        Assert.Null(miss);
+        Assert.NotNull(hit);
+        Assert.Equal(RouteHitKind.Route, hit.HitKind);
+    }
+
     private static ScreenPoint Project(Coordinate coordinate) =>
         new(coordinate.Longitude, coordinate.Latitude);
 

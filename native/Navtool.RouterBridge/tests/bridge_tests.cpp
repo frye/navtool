@@ -25,6 +25,39 @@ void require_ok(navtool_router_status_v1 status, const char* operation) {
     }
 }
 
+struct ProgressCapture {
+    size_t count{};
+    int64_t previous_time{};
+    uint64_t previous_time_steps{};
+    bool valid{true};
+};
+
+void capture_progress(
+    const navtool_router_progress_v1* progress,
+    void* user_data) {
+    auto* capture = static_cast<ProgressCapture*>(user_data);
+    if (capture == nullptr || progress == nullptr) {
+        return;
+    }
+    capture->valid =
+        capture->valid &&
+        progress->isochrone_points != nullptr &&
+        progress->isochrone_point_count > 0U &&
+        progress->provisional_route_points != nullptr &&
+        progress->provisional_route_point_count > 0U &&
+        (capture->count == 0U ||
+         progress->isochrone_utc_epoch_seconds > capture->previous_time) &&
+        progress->diagnostics.time_steps ==
+            capture->previous_time_steps + 1U &&
+        progress->provisional_route_points[
+            progress->provisional_route_point_count - 1U]
+                .utc_epoch_seconds ==
+            progress->isochrone_utc_epoch_seconds;
+    capture->previous_time = progress->isochrone_utc_epoch_seconds;
+    capture->previous_time_steps = progress->diagnostics.time_steps;
+    ++capture->count;
+}
+
 }  // namespace
 
 int main() {
@@ -127,6 +160,30 @@ int main() {
         require(
             std::string{route_json}.find("\"points\"") != std::string::npos,
             "route JSON does not contain points");
+        navtool_router_bridge_free_v1(route_json);
+
+        route_json = nullptr;
+        route_json_length = 0U;
+        ProgressCapture progress_capture;
+        require_ok(
+            navtool_router_calculate_route_streaming_v1(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                capture_progress,
+                &progress_capture,
+                &route_json,
+                &route_json_length),
+            "calculate streaming route");
+        require(progress_capture.count > 0U, "streaming route reported no progress");
+        require(progress_capture.valid, "streaming route progress was invalid");
+        require(route_json != nullptr, "streaming route JSON was not allocated");
+        require(
+            route_json_length == std::strlen(route_json),
+            "streaming route JSON length mismatch");
         navtool_router_bridge_free_v1(route_json);
 
         route_json = nullptr;

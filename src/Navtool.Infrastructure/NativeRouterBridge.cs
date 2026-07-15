@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -17,6 +18,8 @@ public sealed record NativeRouterBridgeOptions
     public int MaximumTextBytes { get; init; } = 64 * 1024 * 1024;
 
     public int MaximumGridSamples { get; init; } = 1_000_000;
+
+    public int MaximumProgressPoints { get; init; } = 1_000_000;
 }
 
 public enum NativeRouterStatus
@@ -134,6 +137,11 @@ public sealed class NativeRouterBridge
             throw new ArgumentOutOfRangeException(nameof(options), "Maximum grid samples must be positive.");
         }
 
+        if (_options.MaximumProgressPoints <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "Maximum progress points must be positive.");
+        }
+
         uint actualVersion;
         try
         {
@@ -215,7 +223,31 @@ public sealed class NativeRouterBridge
         NativeForecast forecast,
         RouteRequest request,
         ForecastModel model,
+        CancellationToken cancellationToken = default) =>
+        CalculateRouteCore(forecast, request, model, null, cancellationToken);
+
+    public RouteResult CalculateRoute(
+        NativeForecast forecast,
+        RouteRequest request,
+        ForecastModel model,
+        Action<RouteCalculationSnapshot> onProgress,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(onProgress);
+        return CalculateRouteCore(
+            forecast,
+            request,
+            model,
+            onProgress,
+            cancellationToken);
+    }
+
+    private RouteResult CalculateRouteCore(
+        NativeForecast forecast,
+        RouteRequest request,
+        ForecastModel model,
+        Action<RouteCalculationSnapshot>? onProgress,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(forecast);
         ArgumentNullException.ThrowIfNull(request);
@@ -225,23 +257,155 @@ public sealed class NativeRouterBridge
         cancellationToken.ThrowIfCancellationRequested();
         var departure = request.DepartureTime.ToUnixTimeSeconds();
         var stopwatch = Stopwatch.StartNew();
-        var status = NativeMethods.CalculateRoute(
-            forecast.Handle,
-            request.Origin.Latitude,
-            request.Origin.Longitude,
-            request.Destination.Latitude,
-            request.Destination.Longitude,
-            ref departure,
-            out var routePointer,
-            out var routeLength);
+        ExceptionDispatchInfo? callbackFailure = null;
+        NativeMethods.RoutingProgressCallback? callback = null;
+        NativeRouterStatus status;
+        IntPtr routePointer;
+        nuint routeLength;
+        if (onProgress is null)
+        {
+            status = NativeMethods.CalculateRoute(
+                forecast.Handle,
+                request.Origin.Latitude,
+                request.Origin.Longitude,
+                request.Destination.Latitude,
+                request.Destination.Longitude,
+                ref departure,
+                out routePointer,
+                out routeLength);
+        }
+        else
+        {
+            callback = (progressPointer, _) =>
+            {
+                if (callbackFailure is not null)
+                {
+                    return;
+                }
+
+                try
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    onProgress(CopyProgress(progressPointer));
+                }
+                catch (Exception exception)
+                {
+                    callbackFailure = ExceptionDispatchInfo.Capture(exception);
+                }
+            };
+            try
+            {
+                status = NativeMethods.CalculateRouteStreaming(
+                    forecast.Handle,
+                    request.Origin.Latitude,
+                    request.Origin.Longitude,
+                    request.Destination.Latitude,
+                    request.Destination.Longitude,
+                    ref departure,
+                    callback,
+                    IntPtr.Zero,
+                    out routePointer,
+                    out routeLength);
+            }
+            catch (EntryPointNotFoundException)
+            {
+                status = NativeMethods.CalculateRoute(
+                    forecast.Handle,
+                    request.Origin.Latitude,
+                    request.Origin.Longitude,
+                    request.Destination.Latitude,
+                    request.Destination.Longitude,
+                    ref departure,
+                    out routePointer,
+                    out routeLength);
+            }
+
+            GC.KeepAlive(callback);
+        }
+
         stopwatch.Stop();
         using var routeBuffer = new NativeAllocatedBufferSafeHandle(routePointer);
+        callbackFailure?.Throw();
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfFailed(status, "Calculating route");
 
         var json = CopyUtf8(routePointer, routeLength, _options.MaximumTextBytes, "route JSON");
         cancellationToken.ThrowIfCancellationRequested();
         return NativeRouteJsonParser.Parse(json, request, model, stopwatch.Elapsed);
+    }
+
+    private RouteCalculationSnapshot CopyProgress(IntPtr progressPointer)
+    {
+        if (progressPointer == IntPtr.Zero)
+        {
+            throw new NativeRouteFormatException("The native progress callback returned a null snapshot.");
+        }
+
+        var progress = Marshal.PtrToStructure<NativeRoutingProgress>(progressPointer);
+        var frontier = CopyArray<NativeCoordinate>(
+                progress.IsochronePoints,
+                progress.IsochronePointCount,
+                "isochrone points")
+            .Select(point => new Coordinate(point.LatitudeDegrees, point.LongitudeDegrees));
+        var provisionalRoute = CopyArray<NativeRoutePoint>(
+                progress.ProvisionalRoutePoints,
+                progress.ProvisionalRoutePointCount,
+                "provisional route points")
+            .Select(point => new RoutePoint(
+                new Coordinate(
+                    point.Position.LatitudeDegrees,
+                    point.Position.LongitudeDegrees),
+                DateTimeOffset.FromUnixTimeSeconds(point.UtcEpochSeconds),
+                point.HeadingDegrees,
+                point.BoatSpeedKnots,
+                point.TrueWindSpeedKnots,
+                point.TrueWindDirectionDegrees,
+                point.CumulativeDistanceNauticalMiles));
+        var diagnostics = new RouteDiagnostics(
+            checked((long)progress.Diagnostics.ExpandedNodes),
+            checked((long)progress.Diagnostics.GeneratedCandidates),
+            checked((long)progress.Diagnostics.RetainedCandidates),
+            checked((int)progress.Diagnostics.TimeSteps));
+        return new RouteCalculationSnapshot(
+            DateTimeOffset.FromUnixTimeSeconds(progress.IsochroneUtcEpochSeconds),
+            frontier,
+            provisionalRoute,
+            diagnostics);
+    }
+
+    private ImmutableArray<T> CopyArray<T>(
+        IntPtr pointer,
+        ulong count,
+        string description)
+        where T : struct
+    {
+        if (count == 0)
+        {
+            throw new NativeRouteFormatException($"Native progress {description} must not be empty.");
+        }
+
+        if (count > (ulong)_options.MaximumProgressPoints || count > int.MaxValue)
+        {
+            throw new NativeRouteFormatException(
+                $"Native progress {description} exceeded the configured limit.");
+        }
+
+        if (pointer == IntPtr.Zero)
+        {
+            throw new NativeRouteFormatException(
+                $"Native progress {description} had a null pointer.");
+        }
+
+        var length = checked((int)count);
+        var itemSize = Marshal.SizeOf<T>();
+        var builder = ImmutableArray.CreateBuilder<T>(length);
+        for (var index = 0; index < length; index++)
+        {
+            builder.Add(Marshal.PtrToStructure<T>(
+                IntPtr.Add(pointer, checked(index * itemSize))));
+        }
+
+        return builder.MoveToImmutable();
     }
 
     public ImmutableArray<ViewportWindSample> SampleViewport(
@@ -431,11 +595,34 @@ public sealed class NativeRouteEngine : IRouteEngine
             cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         progress?.Report(new RouteCalculationProgress(0.2, "Optimizing route"));
-        var result = _bridge.CalculateRoute(
-            loaded,
-            request,
-            forecast.Request.Model,
-            cancellationToken);
+        var result = progress is null
+            ? _bridge.CalculateRoute(
+                loaded,
+                request,
+                forecast.Request.Model,
+                cancellationToken)
+            : _bridge.CalculateRoute(
+                loaded,
+                request,
+                forecast.Request.Model,
+                snapshot =>
+                {
+                    var requestedDuration =
+                        request.LatestArrivalTime - request.DepartureTime;
+                    var elapsed = snapshot.FrontierTime - request.DepartureTime;
+                    var fraction = requestedDuration <= TimeSpan.Zero
+                        ? 0
+                        : Math.Clamp(
+                            elapsed.TotalSeconds / requestedDuration.TotalSeconds,
+                            0,
+                            1);
+                    progress.Report(new RouteCalculationProgress(
+                        0.2 + (fraction * 0.79),
+                        $"Step {snapshot.Diagnostics.TimeSteps:N0} · " +
+                        $"{snapshot.Diagnostics.RetainedCandidates:N0} retained",
+                        snapshot));
+                },
+                cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         progress?.Report(new RouteCalculationProgress(1, "Route complete"));
         return ValueTask.FromResult(result);
@@ -648,6 +835,45 @@ internal struct NativeWindSample
     public byte Valid;
 }
 
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeCoordinate
+{
+    public double LatitudeDegrees;
+    public double LongitudeDegrees;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeRoutePoint
+{
+    public NativeCoordinate Position;
+    public long UtcEpochSeconds;
+    public double HeadingDegrees;
+    public double BoatSpeedKnots;
+    public double TrueWindSpeedKnots;
+    public double TrueWindDirectionDegrees;
+    public double CumulativeDistanceNauticalMiles;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeRoutingDiagnostics
+{
+    public ulong ExpandedNodes;
+    public ulong GeneratedCandidates;
+    public ulong RetainedCandidates;
+    public ulong TimeSteps;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeRoutingProgress
+{
+    public long IsochroneUtcEpochSeconds;
+    public IntPtr IsochronePoints;
+    public ulong IsochronePointCount;
+    public IntPtr ProvisionalRoutePoints;
+    public ulong ProvisionalRoutePointCount;
+    public NativeRoutingDiagnostics Diagnostics;
+}
+
 internal static class NativeMethods
 {
     private const string LibraryName = "navtool_router_bridge";
@@ -696,6 +922,24 @@ internal static class NativeMethods
         double destinationLatitude,
         double destinationLongitude,
         ref long departureEpochSeconds,
+        out IntPtr routeJson,
+        out nuint routeJsonLength);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void RoutingProgressCallback(
+        IntPtr progress,
+        IntPtr userData);
+
+    [DllImport(LibraryName, EntryPoint = "navtool_router_calculate_route_streaming_v1", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern NativeRouterStatus CalculateRouteStreaming(
+        NativeForecastSafeHandle forecast,
+        double startLatitude,
+        double startLongitude,
+        double destinationLatitude,
+        double destinationLongitude,
+        ref long departureEpochSeconds,
+        RoutingProgressCallback onProgress,
+        IntPtr progressUserData,
         out IntPtr routeJson,
         out nuint routeJsonLength);
 

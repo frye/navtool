@@ -56,6 +56,45 @@ typedef struct navtool_router_wind_sample_v1 {
     uint8_t reserved[7];
 } navtool_router_wind_sample_v1;
 
+typedef struct navtool_router_coordinate_v1 {
+    double latitude_degrees;
+    double longitude_degrees;
+} navtool_router_coordinate_v1;
+
+typedef struct navtool_router_route_point_v1 {
+    navtool_router_coordinate_v1 position;
+    int64_t utc_epoch_seconds;
+    double heading_degrees;
+    double boat_speed_knots;
+    double true_wind_speed_knots;
+    double true_wind_direction_degrees;
+    double cumulative_distance_nautical_miles;
+} navtool_router_route_point_v1;
+
+typedef struct navtool_router_diagnostics_v1 {
+    uint64_t expanded_nodes;
+    uint64_t generated_candidates;
+    uint64_t retained_candidates;
+    uint64_t time_steps;
+} navtool_router_diagnostics_v1;
+
+typedef struct navtool_router_progress_v1 {
+    int64_t isochrone_utc_epoch_seconds;
+    const navtool_router_coordinate_v1* isochrone_points;
+    uint64_t isochrone_point_count;
+    const navtool_router_route_point_v1* provisional_route_points;
+    uint64_t provisional_route_point_count;
+    navtool_router_diagnostics_v1 diagnostics;
+} navtool_router_progress_v1;
+
+/*
+ * Progress views and their arrays are valid only for the duration of the
+ * callback. The callback is synchronous and must return promptly.
+ */
+typedef void (*navtool_router_progress_callback_v1)(
+    const navtool_router_progress_v1* progress,
+    void* user_data);
+
 NAVTOOL_ROUTER_BRIDGE_API uint32_t
 navtool_router_bridge_abi_version_v1(void);
 
@@ -95,6 +134,19 @@ navtool_router_calculate_route_v1(
     double destination_latitude_degrees,
     double destination_longitude_degrees,
     const int64_t* departure_utc_epoch_seconds,
+    char** out_route_json_utf8,
+    size_t* out_route_json_length);
+
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_calculate_route_streaming_v1(
+    const navtool_router_forecast_v1* forecast,
+    double start_latitude_degrees,
+    double start_longitude_degrees,
+    double destination_latitude_degrees,
+    double destination_longitude_degrees,
+    const int64_t* departure_utc_epoch_seconds,
+    navtool_router_progress_callback_v1 on_progress,
+    void* progress_user_data,
     char** out_route_json_utf8,
     size_t* out_route_json_length);
 
