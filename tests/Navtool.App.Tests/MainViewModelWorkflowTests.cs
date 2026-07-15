@@ -72,6 +72,30 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task ArrivalBeyondRequestedDurationSucceedsWithOverDurationNote()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        // Arrival lands 80h out; the default 3-day (72h) passage target is exceeded.
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model, stepHours: 40)));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Equal(1, viewModel.SuccessfulRouteCount);
+        Assert.Contains("complete", viewModel.NoaaStatus, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "beyond the expected passage duration",
+            viewModel.NoaaStatus,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task PassageDurationControlsForecastWindow()
     {
         var noaa = new DelegateForecastProvider(

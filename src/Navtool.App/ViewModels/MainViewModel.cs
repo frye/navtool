@@ -855,10 +855,18 @@ public partial class MainViewModel : ViewModelBase
 
             if (outcome.Status == ModelRouteStatus.Succeeded)
             {
-                SetModelStatus(
-                    outcome.Model,
+                var route = outcome.Route!;
+                var status =
                     $"{(IsExperimentalDownload(result.Request, outcome.Model) ? "Experimental · " : string.Empty)}" +
-                    $"complete · arrival {outcome.Route!.ArrivalTime:MMM d HH:mm} UTC");
+                    $"complete · arrival {route.ArrivalTime:MMM d HH:mm} UTC";
+                if (route.ExceedsRequestedArrival)
+                {
+                    status +=
+                        $" · estimated arrival is {FormatOverDuration(route.ArrivalTime - route.Request.LatestArrivalTime)} " +
+                        "beyond the expected passage duration";
+                }
+
+                SetModelStatus(outcome.Model, status);
             }
             else
             {
@@ -1264,4 +1272,16 @@ public partial class MainViewModel : ViewModelBase
         ForecastModel.EcmwfIfs => "ECMWF IFS (experimental)",
         _ => model.ToString()
     };
+
+    private static string FormatOverDuration(TimeSpan overrun)
+    {
+        if (overrun < TimeSpan.Zero)
+        {
+            overrun = TimeSpan.Zero;
+        }
+
+        var hours = (int)overrun.TotalHours;
+        var minutes = overrun.Minutes;
+        return hours > 0 ? $"{hours}h {minutes}m" : $"{minutes}m";
+    }
 }

@@ -15,8 +15,18 @@ public sealed record RouteRequest
         RouteId = routeId;
         Origin = origin;
         Destination = destination;
-        DepartureTime = departureTime.ToUniversalTime();
+        // Normalize departure to whole seconds so the managed request and the native
+        // epoch-second departure agree exactly at the RouteResult boundary check.
+        DepartureTime = NormalizeToWholeSeconds(departureTime);
         LatestArrivalTime = latestArrivalTime.ToUniversalTime();
+    }
+
+    private static DateTimeOffset NormalizeToWholeSeconds(DateTimeOffset value)
+    {
+        var utc = value.ToUniversalTime();
+        return new DateTimeOffset(
+            utc.Ticks - (utc.Ticks % TimeSpan.TicksPerSecond),
+            TimeSpan.Zero);
     }
 
     public string RouteId { get; }
@@ -334,10 +344,14 @@ public sealed record RouteResult
             throw new ArgumentException("A route must contain at least one point.", nameof(points));
         }
 
-        if (immutablePoints[0].Timestamp < request.DepartureTime ||
-            immutablePoints[^1].Timestamp > request.LatestArrivalTime)
+        // LatestArrivalTime is a planning TARGET (it sizes the forecast window), not a
+        // hard ceiling on the achieved arrival. Keep only the genuine lower bound: a
+        // route may not begin before departure. See ExceedsRequestedArrival below.
+        if (immutablePoints[0].Timestamp < request.DepartureTime)
         {
-            throw new ArgumentException("Route points must fall within the requested time window.", nameof(points));
+            throw new ArgumentException(
+                "Route points must not begin before the requested departure time.",
+                nameof(points));
         }
 
         for (var index = 1; index < immutablePoints.Length; index++)
@@ -369,6 +383,13 @@ public sealed record RouteResult
     public RouteDiagnostics Diagnostics { get; }
 
     public DateTimeOffset ArrivalTime => Points[^1].Timestamp;
+
+    /// <summary>
+    /// True when the computed arrival lands after the requested passage duration
+    /// target. Informational only: the router is never asked to honor the target,
+    /// so exceeding it is expected and must not be treated as a failure.
+    /// </summary>
+    public bool ExceedsRequestedArrival => ArrivalTime > Request.LatestArrivalTime;
 }
 
 public sealed record RouteCalculationProgress

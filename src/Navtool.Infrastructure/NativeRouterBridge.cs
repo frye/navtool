@@ -412,7 +412,44 @@ public sealed class NativeRouterBridge
 
         var json = CopyUtf8(routePointer, routeLength, _options.MaximumTextBytes, "route JSON");
         cancellationToken.ThrowIfCancellationRequested();
-        return NativeRouteJsonParser.Parse(json, request, model, stopwatch.Elapsed);
+        var result = NativeRouteJsonParser.Parse(json, request, model, stopwatch.Elapsed);
+        EnsureWithinForecastHorizon(result, forecast.Metadata);
+        return result;
+    }
+
+    // Mandatory postcondition: a route must never rely on weather past the loaded
+    // forecast's real validity. RouteResult (Core) is deliberately ignorant of forecast
+    // coverage, so this guard lives in the engine where the loaded forecast's authoritative
+    // FirstValidAt/LastValidAt are available. A one-second tolerance absorbs epoch-second
+    // rounding between the native route timestamps and the forecast metadata.
+    internal static void EnsureWithinForecastHorizon(
+        RouteResult result,
+        NativeForecastMetadata metadata)
+    {
+        var tolerance = TimeSpan.FromSeconds(1);
+        if (result.ArrivalTime <= metadata.LastValidAt + tolerance)
+        {
+            return;
+        }
+
+        var overrun = result.ArrivalTime - metadata.LastValidAt;
+        throw new NativeRouteFormatException(
+            "The fastest route reaches the destination after the available weather horizon " +
+            $"by {FormatDuration(overrun)}. The forecast covers through " +
+            $"{metadata.LastValidAt:u}, but the computed arrival is {result.ArrivalTime:u}. " +
+            "Request a longer passage duration forecast or a nearer destination.");
+    }
+
+    private static string FormatDuration(TimeSpan duration)
+    {
+        if (duration < TimeSpan.Zero)
+        {
+            duration = TimeSpan.Zero;
+        }
+
+        var hours = (int)duration.TotalHours;
+        var minutes = duration.Minutes;
+        return hours > 0 ? $"{hours}h {minutes}m" : $"{minutes}m";
     }
 
     private RouteCalculationSnapshot CopyProgress(IntPtr progressPointer)
@@ -792,6 +829,12 @@ internal static class NativeRouteJsonParser
         ForecastModel model,
         TimeSpan calculationDuration)
     {
+        RouteDiagnostics diagnostics;
+        var raw = ImmutableArray.CreateBuilder<RawRoutePoint>();
+
+        // Format boundary: JSON shape, kinds, and finiteness only. Domain object
+        // construction is deliberately kept OUT of this try so real routing/domain
+        // problems are never rebranded as a generic "v1 contract" JSON error.
         try
         {
             using var document = JsonDocument.Parse(
@@ -800,7 +843,7 @@ internal static class NativeRouteJsonParser
             var root = document.RootElement;
             RequireKind(root, JsonValueKind.Object, "root");
             var diagnosticsElement = Required(root, "diagnostics", JsonValueKind.Object);
-            var diagnostics = new RouteDiagnostics(
+            diagnostics = new RouteDiagnostics(
                 RequiredInt64(diagnosticsElement, "expandedNodes"),
                 RequiredInt64(diagnosticsElement, "generatedCandidates"),
                 RequiredInt64(diagnosticsElement, "retainedCandidates"),
@@ -808,15 +851,13 @@ internal static class NativeRouteJsonParser
                 calculationDuration);
 
             var pointsElement = Required(root, "points", JsonValueKind.Array);
-            var points = ImmutableArray.CreateBuilder<RoutePoint>();
             foreach (var element in pointsElement.EnumerateArray())
             {
                 RequireKind(element, JsonValueKind.Object, "point");
                 var position = Required(element, "position", JsonValueKind.Object);
-                points.Add(new RoutePoint(
-                    new Coordinate(
-                        RequiredDouble(position, "latitude"),
-                        RequiredDouble(position, "longitude")),
+                raw.Add(new RawRoutePoint(
+                    RequiredDouble(position, "latitude"),
+                    RequiredDouble(position, "longitude"),
                     RequiredTimestamp(element, "time"),
                     RequiredDouble(element, "headingDegrees"),
                     RequiredDouble(element, "boatSpeedKnots"),
@@ -824,8 +865,6 @@ internal static class NativeRouteJsonParser
                     RequiredDouble(element, "trueWindDirectionDegrees"),
                     RequiredDouble(element, "cumulativeDistanceNauticalMiles")));
             }
-
-            return new RouteResult(request, model, points, diagnostics);
         }
         catch (NativeRouteFormatException)
         {
@@ -833,13 +872,62 @@ internal static class NativeRouteJsonParser
         }
         catch (Exception exception) when (
             exception is JsonException or
-            ArgumentException or
             InvalidOperationException or
             OverflowException)
         {
             throw new NativeRouteFormatException("The native route JSON did not match the v1 contract.", exception);
         }
+
+        // Native OUTPUT semantics: the JSON is well-formed, but the values must still
+        // describe a real route. Domain constructors throw ArgumentException on
+        // out-of-range coordinates/headings/speeds; classify those as native-contract
+        // defects with descriptive messages, distinct from the JSON-format error above.
+        var points = ImmutableArray.CreateBuilder<RoutePoint>(raw.Count);
+        try
+        {
+            foreach (var point in raw)
+            {
+                points.Add(new RoutePoint(
+                    new Coordinate(point.Latitude, point.Longitude),
+                    point.Time,
+                    point.HeadingDegrees,
+                    point.BoatSpeedKnots,
+                    point.TrueWindSpeedKnots,
+                    point.TrueWindDirectionDegrees,
+                    point.CumulativeDistanceNauticalMiles));
+            }
+        }
+        catch (ArgumentException exception)
+        {
+            throw new NativeRouteFormatException(
+                $"The native router returned an invalid route point: {exception.Message}",
+                exception);
+        }
+
+        // Request-relative policy (RouteResult) is built OUTSIDE the format boundary.
+        // Structural defects in the native output (empty, time- or distance-descending)
+        // surface as a descriptive native-contract error, not the generic JSON message.
+        try
+        {
+            return new RouteResult(request, model, points.ToImmutable(), diagnostics);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new NativeRouteFormatException(
+                $"The native router returned a structurally invalid route: {exception.Message}",
+                exception);
+        }
     }
+
+    private readonly record struct RawRoutePoint(
+        double Latitude,
+        double Longitude,
+        DateTimeOffset Time,
+        double HeadingDegrees,
+        double BoatSpeedKnots,
+        double TrueWindSpeedKnots,
+        double TrueWindDirectionDegrees,
+        double CumulativeDistanceNauticalMiles);
 
     private static JsonElement Required(JsonElement parent, string name, JsonValueKind kind)
     {
