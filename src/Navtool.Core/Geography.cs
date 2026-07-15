@@ -82,11 +82,44 @@ public readonly record struct GeographicBounds
             : coordinate.Longitude >= West && coordinate.Longitude <= East;
     }
 
-    public bool Contains(GeographicBounds other) =>
-        Contains(new Coordinate(other.South, other.West)) &&
-        Contains(new Coordinate(other.South, other.East)) &&
-        Contains(new Coordinate(other.North, other.West)) &&
-        Contains(new Coordinate(other.North, other.East));
+    public bool Contains(GeographicBounds other)
+    {
+        // Latitude is a simple interval; the inner band must sit within the outer band.
+        if (other.South < South || other.North > North)
+        {
+            return false;
+        }
+
+        return ContainsLongitudeSpan(other);
+    }
+
+    // Corner sampling is insufficient for longitude: when the inner span crosses the
+    // antimeridian its corners lie away from 180 and can all fall inside an outer span
+    // that nonetheless excludes the band the inner span sweeps through 180. Treat each
+    // span as an eastward arc and require the inner arc to fit entirely within the outer.
+    private bool ContainsLongitudeSpan(GeographicBounds other)
+    {
+        const double epsilon = 1e-9;
+
+        var outerLength = CrossesAntimeridian ? East - West + 360 : East - West;
+        var innerLength = other.CrossesAntimeridian ? other.East - other.West + 360 : other.East - other.West;
+
+        // A full-globe outer span contains any longitude span.
+        if (outerLength >= 360 - epsilon)
+        {
+            return true;
+        }
+
+        // Offset of the inner western edge measured eastward from the outer western edge (0..360).
+        var offset = (other.West - West) % 360;
+        if (offset < 0)
+        {
+            offset += 360;
+        }
+
+        // The inner arc fits when it begins within the outer arc and ends before it closes.
+        return offset + innerLength <= outerLength + epsilon;
+    }
 
     public static GeographicBounds FromCoordinates(IEnumerable<Coordinate> coordinates)
     {

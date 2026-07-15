@@ -47,6 +47,45 @@ public sealed class GeographyAndValidationTests
     }
 
     [Fact]
+    public void Bounds_containment_handles_simple_and_edge_longitude_spans()
+    {
+        var outer = new GeographicBounds(-40, 40, -100, 100);
+
+        Assert.True(outer.Contains(new GeographicBounds(-40, 40, -100, 100)));
+        Assert.True(outer.Contains(new GeographicBounds(-10, 10, -50, 50)));
+        // Latitude outside the band is rejected.
+        Assert.False(outer.Contains(new GeographicBounds(-50, 10, -50, 50)));
+        // Longitude spilling past the western edge is rejected.
+        Assert.False(outer.Contains(new GeographicBounds(-10, 10, -150, 50)));
+    }
+
+    [Fact]
+    public void Bounds_containment_rejects_inner_span_crossing_excluded_antimeridian_band()
+    {
+        // Outer excludes the 20-degree band around +/-180. The inner span crosses the
+        // antimeridian, so all four of its corners fall inside the outer span even though
+        // the arc it sweeps through 180 lies outside. Corner sampling would wrongly accept it.
+        var outer = new GeographicBounds(-40, 40, -170, 170);
+        var innerCrossing = new GeographicBounds(-10, 10, 160, -160);
+
+        Assert.True(innerCrossing.CrossesAntimeridian);
+        Assert.False(outer.Contains(innerCrossing));
+    }
+
+    [Fact]
+    public void Bounds_containment_accepts_inner_span_within_crossing_outer()
+    {
+        var outer = new GeographicBounds(-40, 40, 170, -170);
+        var inner = new GeographicBounds(-10, 10, 175, -175);
+
+        Assert.True(outer.CrossesAntimeridian);
+        Assert.True(outer.Contains(inner));
+        // A wider inner span that overruns the crossing outer arc is rejected.
+        Assert.False(outer.Contains(new GeographicBounds(-10, 10, 160, -160)));
+    }
+
+
+    [Fact]
     public void Validator_reports_endpoint_and_departure_problems_together()
     {
         var now = new DateTimeOffset(2026, 7, 14, 18, 0, 0, TimeSpan.Zero);

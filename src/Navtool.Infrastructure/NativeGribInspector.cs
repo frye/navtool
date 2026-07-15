@@ -57,7 +57,11 @@ public sealed class NativeLocalGribInspector : ILocalGribInspector
                 nameof(absolutePath));
         }
 
-        var descriptor = _bridge.InspectGrib(absolutePath, cancellationToken);
+        // Normalize once so the value handed to the native bridge (which normalizes
+        // internally) matches the path recorded on the returned artifact.
+        var normalizedPath = Path.GetFullPath(absolutePath);
+
+        var descriptor = _bridge.InspectGrib(normalizedPath, cancellationToken);
 
         var model = descriptor.ModelId switch
         {
@@ -65,14 +69,14 @@ public sealed class NativeLocalGribInspector : ILocalGribInspector
             NativeGribModelId.EcmwfIfs => ForecastModel.EcmwfIfs,
             _ => throw new NativeRouteFormatException(
                 $"Unrecognized GRIB model identifier {(int)descriptor.ModelId} " +
-                $"returned from '{absolutePath}'; " +
+                $"returned from '{normalizedPath}'; " +
                 $"only NOAA GFS and ECMWF IFS are supported.")
         };
 
-        var fileInfo = new FileInfo(absolutePath);
+        var fileInfo = new FileInfo(normalizedPath);
         var artifact = fileInfo.Exists
-            ? new LocalGribArtifact(absolutePath, fileInfo.Length, fileInfo.LastWriteTimeUtc)
-            : new LocalGribArtifact(absolutePath);
+            ? new LocalGribArtifact(normalizedPath, fileInfo.Length, fileInfo.LastWriteTimeUtc)
+            : new LocalGribArtifact(normalizedPath);
 
         try
         {
@@ -91,7 +95,7 @@ public sealed class NativeLocalGribInspector : ILocalGribInspector
         catch (ArgumentException exception) when (exception is not ArgumentNullException)
         {
             throw new NativeRouteFormatException(
-                $"The GRIB file at '{absolutePath}' returned invalid geographic bounds " +
+                $"The GRIB file at '{normalizedPath}' returned invalid geographic bounds " +
                 $"or timestamps: {exception.Message}",
                 exception);
         }

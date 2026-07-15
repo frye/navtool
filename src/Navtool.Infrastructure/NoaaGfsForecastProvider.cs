@@ -72,7 +72,8 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
     private readonly TimeProvider _timeProvider;
     private readonly NoaaGfsOptions _options;
     private readonly ILogger<NoaaGfsForecastProvider> _logger;
-    private readonly SemaphoreSlim _acquisitionGate = new(1, 1);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> _acquisitionGates =
+        new(StringComparer.Ordinal);
 
     public NoaaGfsForecastProvider(
         HttpClient httpClient,
@@ -121,14 +122,23 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             throw new ArgumentException("The NOAA GFS provider only supplies NoaaGfs requests.", nameof(request));
         }
 
-        await _acquisitionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        // Serialize only acquisitions that target the same cached artifact (run, bounds,
+        // steps); unrelated requests use distinct gates and run concurrently.
+        var now = _timeProvider.GetUtcNow();
+        var gateRunTime = SelectRun(request, now);
+        var gateSteps = GetRequiredForecastHours(gateRunTime, request.From, request.Through);
+        var gateBounds = AlignBoundsToGrid(request.Bounds);
+        var gateKey = CreateCacheKey(gateBounds, gateRunTime, gateSteps);
+        var gate = _acquisitionGates.GetOrAdd(gateKey, static _ => new SemaphoreSlim(1, 1));
+
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             return await AcquireCoreAsync(request, progress, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            _acquisitionGate.Release();
+            gate.Release();
         }
     }
 
