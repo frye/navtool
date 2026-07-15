@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Net;
@@ -79,6 +80,17 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
     private readonly Dictionary<string, AcquisitionGate> _acquisitionGates =
         new(StringComparer.Ordinal);
     private readonly object _acquisitionGatesLock = new();
+
+    // Absolute paths of ".partial" temp files this provider is actively writing. Prune
+    // uses it to distinguish in-flight partials (from concurrent acquisitions for other
+    // cache keys) from orphans left by an abruptly terminated process, so only true
+    // orphans are swept and disk usage stays bounded.
+    private readonly ConcurrentDictionary<string, byte> _activePartialFiles =
+        new(PathComparer);
+
+    private static StringComparer PathComparer => OperatingSystem.IsWindows()
+        ? StringComparer.OrdinalIgnoreCase
+        : StringComparer.Ordinal;
 
     public NoaaGfsForecastProvider(
         HttpClient httpClient,
@@ -531,6 +543,10 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             part.ForecastHour, part.RegionIndex, partFile);
 
         var tempFile = $"{partFile}.{Guid.NewGuid():N}.partial";
+
+        // Register before creating the file so a concurrent prune (from another cache
+        // key's acquisition) never mistakes this in-flight partial for an orphan.
+        _activePartialFiles.TryAdd(tempFile, 0);
         try
         {
             await using (var tempStream = new FileStream(
@@ -558,6 +574,10 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         {
             TryDeletePart(tempFile, "failed NOAA temporary part");
             throw;
+        }
+        finally
+        {
+            _activePartialFiles.TryRemove(tempFile, out _);
         }
     }
 
@@ -865,6 +885,8 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         string partsDirectory,
         ImmutableArray<GribPartDescriptor> protectedManifest)
     {
+        SweepOrphanedPartials(partsDirectory);
+
         var comparer = OperatingSystem.IsWindows()
             ? StringComparer.OrdinalIgnoreCase
             : StringComparer.Ordinal;
@@ -901,6 +923,27 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         {
             throw new IOException(
                 "The resumable NOAA parts for the current request exceed the configured cache bounds.");
+        }
+    }
+
+    // Deletes ".partial" temp files left behind by a prior process that was terminated
+    // mid-download. Partials this provider is actively writing are registered in
+    // _activePartialFiles and skipped, so concurrent acquisitions for other cache keys
+    // are never disrupted. Orphans are always safe to delete: a completed download is
+    // atomically moved to its ".grib2" name, so any lingering ".partial" is incomplete.
+    private void SweepOrphanedPartials(string partsDirectory)
+    {
+        foreach (var path in Directory.EnumerateFiles(
+            partsDirectory,
+            "*.partial",
+            SearchOption.TopDirectoryOnly))
+        {
+            if (_activePartialFiles.ContainsKey(path))
+            {
+                continue;
+            }
+
+            TryDeletePart(path, "orphaned NOAA temporary part");
         }
     }
 

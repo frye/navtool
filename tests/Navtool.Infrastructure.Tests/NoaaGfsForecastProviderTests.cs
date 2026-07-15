@@ -306,6 +306,26 @@ public sealed class NoaaGfsForecastProviderTests
     }
 
     [Fact]
+    public async Task Acquire_sweeps_orphaned_partial_files_from_a_prior_process()
+    {
+        using var directory = new TestDirectory();
+        var partsDirectory = Path.Combine(directory.Path, "noaa-gfs-parts");
+        Directory.CreateDirectory(partsDirectory);
+        var orphan = Path.Combine(partsDirectory, "f000-r0.grib2.deadbeefcafe.partial");
+        await File.WriteAllTextAsync(orphan, "incomplete download from a killed process");
+
+        var handler = new RecordingHttpHandler((_, _, _) =>
+            Task.FromResult(RecordingHttpHandler.GribResponse()));
+        using var client = new HttpClient(handler);
+        var provider = CreateProvider(directory.Path, client);
+
+        await provider.AcquireAsync(CreateRequest(), null, CancellationToken.None);
+
+        Assert.False(File.Exists(orphan));
+        Assert.Empty(Directory.EnumerateFiles(partsDirectory, "*.partial"));
+    }
+
+    [Fact]
     public async Task Acquire_releases_gate_after_completion_so_gates_do_not_leak()
     {
         using var directory = new TestDirectory();
