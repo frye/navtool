@@ -426,12 +426,11 @@ public sealed class RouteMapLayers
             new NtsCoordinate(center.X - halfWidth, center.Y - halfHeight)
         }));
         var feature = new GeometryFeature(polygon);
-        var knots = sample.Weather!.WindSpeedMetersPerSecond * 1.9438444924406;
         feature.Styles.Add(new VectorStyle
         {
-            Fill = new Brush(MapsuiColor.FromString(WindColorScale.GetHex(knots))),
-            Outline = new Pen(MapsuiColor.White, 0.5),
-            Opacity = 0.38f
+            Fill = new Brush(MapsuiColor.Transparent),
+            Outline = null,
+            Opacity = 0f
         });
         return feature;
     }
@@ -457,10 +456,11 @@ public sealed class RouteMapLayers
             ToLineString(shaft.End, headTwo)
         });
         var feature = new GeometryFeature(geometry);
+        var knots = weather.WindSpeedMetersPerSecond * 1.9438444924406;
         feature.Styles.Add(new VectorStyle
         {
-            Line = new Pen(MapsuiColor.FromString("#173440"), 1.4),
-            Opacity = 0.82f
+            Line = new Pen(MapsuiColor.FromString(WindColorScale.GetHex(knots)), 1.8),
+            Opacity = 0.95f
         });
         return feature;
     }
