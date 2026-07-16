@@ -388,11 +388,12 @@
                                                Grid.Column="1"
                                                Text="ECMWF IFS"
                                                FontSize="11" />
-                                    <Border Grid.Row="2"
+                                    <Border x:Name="IsochroneLegendSwatch"
+                                            Grid.Row="2"
                                             Width="20"
                                             Height="2"
-                                            Opacity="0.28"
-                                            Background="#355866"
+                                            Opacity="0.85"
+                                            Background="#D32F2F"
                                             CornerRadius="1"
                                             VerticalAlignment="Center" />
                                     <TextBlock Grid.Row="2"

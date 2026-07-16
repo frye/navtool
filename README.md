@@ -92,10 +92,10 @@ updates are posted through the application's progress pipeline to the Avalonia
 UI context.
 
 Each model uses its normal route color. Completed isochrone frontiers accumulate
-as thin low-opacity lines, while the model's provisional route is replaced by
-the latest snapshot. Successful search overlays remain visible with the final
-route. Failed model overlays and all cancelled-calculation overlays are cleared.
-Frontiers, routes, and map-fit bounds are unwrapped safely at the antimeridian.
+as thin red lines, while the model's provisional route is replaced by the latest
+snapshot. Successful search overlays remain visible with the final route. Failed
+model overlays and all cancelled-calculation overlays are cleared. Frontiers,
+routes, and map-fit bounds are unwrapped safely at the antimeridian.
 
 The final route result remains authoritative and may differ from the last
 provisional route. Router-lib progress is notification-only: cancelling in
