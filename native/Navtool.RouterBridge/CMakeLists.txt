@@ -3,35 +3,58 @@ cmake_minimum_required(VERSION 3.20)
 project(NavtoolRouterBridge VERSION 1.0.0 LANGUAGES C CXX)
 
 option(NAVTOOL_ROUTER_BRIDGE_BUILD_TESTS "Build native bridge tests" ON)
-
-set(
-    _navtool_router_default_source
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../router-lib")
-if(
-    NOT EXISTS "${_navtool_router_default_source}/CMakeLists.txt"
-    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../../router-lib/CMakeLists.txt")
-    set(
-        _navtool_router_default_source
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../../router-lib")
-endif()
 set(
     SAILROUTE_SOURCE_DIR
-    "${_navtool_router_default_source}"
+    ""
     CACHE PATH
-    "Path to the router-lib source tree")
+    "Optional path to a router-lib source tree override")
+set(
+    NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY
+    "https://github.com/frye/router-lib.git"
+    CACHE STRING
+    "router-lib release repository used when SAILROUTE_SOURCE_DIR is unset")
+set(
+    NAVTOOL_ROUTER_LIB_RELEASE_TAG
+    "v0.1"
+    CACHE STRING
+    "router-lib release tag used when SAILROUTE_SOURCE_DIR is unset")
+set(_navtool_router_effective_source_dir "")
 
 if(NOT TARGET sailroute::sailroute)
-    if(NOT EXISTS "${SAILROUTE_SOURCE_DIR}/CMakeLists.txt")
-        message(
-            FATAL_ERROR
-            "router-lib not found. Set SAILROUTE_SOURCE_DIR to its source directory.")
+    if(DEFINED SAILROUTE_SOURCE_DIR AND NOT "${SAILROUTE_SOURCE_DIR}" STREQUAL "")
+        if(NOT EXISTS "${SAILROUTE_SOURCE_DIR}/CMakeLists.txt")
+            message(
+                FATAL_ERROR
+                "router-lib not found. Set SAILROUTE_SOURCE_DIR to its source directory.")
+        endif()
+        set(_navtool_router_effective_source_dir "${SAILROUTE_SOURCE_DIR}")
+        set(SAILROUTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        set(SAILROUTE_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+        add_subdirectory(
+            "${SAILROUTE_SOURCE_DIR}"
+            "${CMAKE_CURRENT_BINARY_DIR}/router-lib"
+            EXCLUDE_FROM_ALL)
+    else()
+        include(FetchContent)
+        set(SAILROUTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        set(SAILROUTE_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(
+            sailroute
+            GIT_REPOSITORY "${NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY}"
+            GIT_TAG "${NAVTOOL_ROUTER_LIB_RELEASE_TAG}"
+            GIT_SHALLOW ON)
+        FetchContent_MakeAvailable(sailroute)
+        if(NOT TARGET sailroute::sailroute)
+            message(
+                FATAL_ERROR
+                "Failed to load router-lib from ${NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY} at ${NAVTOOL_ROUTER_LIB_RELEASE_TAG}.")
+        endif()
+        if(DEFINED sailroute_SOURCE_DIR)
+            set(_navtool_router_effective_source_dir "${sailroute_SOURCE_DIR}")
+        endif()
     endif()
-    set(SAILROUTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(SAILROUTE_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
-    add_subdirectory(
-        "${SAILROUTE_SOURCE_DIR}"
-        "${CMAKE_CURRENT_BINARY_DIR}/router-lib"
-        EXCLUDE_FROM_ALL)
+elseif(DEFINED SAILROUTE_SOURCE_DIR AND NOT "${SAILROUTE_SOURCE_DIR}" STREQUAL "")
+    set(_navtool_router_effective_source_dir "${SAILROUTE_SOURCE_DIR}")
 endif()
 
 if(TARGET sailroute)
@@ -66,7 +89,7 @@ add_library(Navtool::RouterBridge ALIAS NavtoolRouterBridge)
 file(
     GLOB_RECURSE
     _navtool_router_public_headers
-    "${SAILROUTE_SOURCE_DIR}/include/*.hpp")
+    "${_navtool_router_effective_source_dir}/include/*.hpp")
 set(_navtool_router_has_progress_callback OFF)
 foreach(_navtool_router_header IN LISTS _navtool_router_public_headers)
     file(READ "${_navtool_router_header}" _navtool_router_header_contents)
@@ -116,7 +139,7 @@ if(NAVTOOL_ROUTER_BRIDGE_BUILD_TESTS)
         navtool_router_bridge_tests
         PRIVATE
             NAVTOOL_ROUTER_HAS_PROGRESS_CALLBACK=$<BOOL:${_navtool_router_has_progress_callback}>
-            NAVTOOL_ROUTER_SAMPLE_GRIB="${SAILROUTE_SOURCE_DIR}/samples/sample.grib")
+            NAVTOOL_ROUTER_SAMPLE_GRIB="${_navtool_router_effective_source_dir}/samples/sample.grib")
     target_link_libraries(
         navtool_router_bridge_tests
         PRIVATE Navtool::RouterBridge ECCODES::eccodes)

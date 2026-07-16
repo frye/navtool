@@ -29,13 +29,6 @@ It targets macOS, Windows, and Linux.
 - CMake 3.20 or newer
 - A C++20 compiler
 - ECMWF ecCodes development libraries
-- `router-lib` beside this directory, by default:
-
-  ```text
-  Demo/
-  ├── Navtool/
-  └── router-lib/
-  ```
 
 On macOS:
 
@@ -73,8 +66,21 @@ dotnet test Navtool.sln
 
 The application discovers the development bridge automatically. For a custom
 location, set `NAVTOOL_ROUTER_BRIDGE_PATH` to the shared library or its
-directory. If `router-lib` is not beside this checkout, set
-`SAILROUTE_SOURCE_DIR` before using either native script.
+directory. Native builds fetch and compile `router-lib` from release `v0.1` by
+default. Set `SAILROUTE_SOURCE_DIR` to a local `router-lib` checkout when
+testing non-released changes.
+
+To build against a different released `router-lib` version, configure CMake
+with a release tag override before building:
+
+```sh
+cmake -S native/Navtool.RouterBridge -B native/Navtool.RouterBridge/build \
+  -DNAVTOOL_ROUTER_LIB_RELEASE_TAG=v0.2
+cmake --build native/Navtool.RouterBridge/build --config Release --parallel
+```
+
+`NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY` can also be overridden if you need to
+fetch releases from a different fork.
 
 ## Streaming route visualization
 
@@ -128,7 +134,9 @@ also be installed or packaged according to the target platform.
 | Variable | Purpose |
 | --- | --- |
 | `NAVTOOL_ROUTER_BRIDGE_PATH` | Native bridge file or directory |
-| `SAILROUTE_SOURCE_DIR` | `router-lib` checkout used by native build/run scripts |
+| `SAILROUTE_SOURCE_DIR` | Optional `router-lib` checkout override for native build/run scripts |
+| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Released `router-lib` tag used when `SAILROUTE_SOURCE_DIR` is unset (default `v0.1`) |
+| `NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY` | Released `router-lib` Git repository used when `SAILROUTE_SOURCE_DIR` is unset |
 | `NAVTOOL_NATIVE_BUILD_DIR` | Optional native bridge build directory |
 | `NAVTOOL_APP_DATA_ROOT` | Application data root |
 | `NAVTOOL_CACHE_ROOT` | Forecast cache directory |
