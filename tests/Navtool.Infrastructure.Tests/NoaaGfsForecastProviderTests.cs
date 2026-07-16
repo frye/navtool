@@ -160,8 +160,8 @@ public sealed class NoaaGfsForecastProviderTests
         using var directory = new TestDirectory();
         var handler = new RecordingHttpHandler((request, count, _) =>
         {
-            // Valid redirects are followed by HttpClient automatically; this simulated 3xx
-            // verifies retry behavior when a transient 3xx reaches the provider.
+            // This test intentionally returns a 3xx from the injected handler to confirm
+            // provider-level transient retry handling when a 3xx reaches provider code.
             if (count == 1)
             {
                 var redirect = new HttpResponseMessage(HttpStatusCode.Redirect);

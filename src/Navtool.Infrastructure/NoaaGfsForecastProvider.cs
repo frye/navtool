@@ -665,8 +665,8 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             .ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            // HttpClient follows valid redirects by default; a 3xx that reaches this provider
-            // is treated as a transient response that was not followed.
+            // Redirect behavior depends on the configured HttpClient handler chain.
+            // Any 3xx response that reaches this provider is treated as transient.
             var location = response.Headers.Location is null
                 ? string.Empty
                 : $" Redirect location: '{response.Headers.Location}'.";
