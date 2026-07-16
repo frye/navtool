@@ -139,22 +139,14 @@ public sealed class MapRenderingTests
     {
         var map = new Map();
         var layers = new RouteMapLayers(map);
+        var firstFrontier = CreateDatelineFrontier(0);
         var first = CreateSnapshot(
             new DateTimeOffset(2026, 7, 15, 1, 0, 0, TimeSpan.Zero),
-            new[]
-            {
-                new Coordinate(10, 179),
-                new Coordinate(11, -179),
-                new Coordinate(9, -178)
-            });
+            firstFrontier);
+        var secondFrontier = CreateDatelineFrontier(-0.5);
         var second = CreateSnapshot(
             first.FrontierTime.AddHours(1),
-            new[]
-            {
-                new Coordinate(10, 178),
-                new Coordinate(12, -179),
-                new Coordinate(8, -177)
-            });
+            secondFrontier);
 
         layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, first);
         layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, second);
@@ -199,6 +191,7 @@ public sealed class MapRenderingTests
             .ToArray();
 
         Assert.Equal(2, isochroneLayers.Length);
+        Assert.Equal(1.0, RouteMapLayers.IsochroneLineWidth);
         Assert.All(isochroneLayers, layer =>
         {
             var style = Assert.IsType<VectorStyle>(layer.Style);
@@ -208,6 +201,54 @@ public sealed class MapRenderingTests
             Assert.Equal(RouteMapLayers.IsochroneOpacity, style.Opacity);
             Assert.Equal(PenStrokeCap.Round, style.Line.PenStrokeCap);
         });
+    }
+
+    [Fact]
+    public void IsochronesRenderOpenDestinationFacingHalfFront()
+    {
+        var map = new Map();
+        var layers = new RouteMapLayers(map);
+        var east = new Coordinate(0, 2);
+        var frontier = new[]
+        {
+            new Coordinate(1, -1),
+            new Coordinate(-1, 1),
+            new Coordinate(0, -2),
+            new Coordinate(2, 0),
+            east,
+            new Coordinate(-2, 0),
+            new Coordinate(1, 1),
+            new Coordinate(-1, -1)
+        };
+        var expectedArc = new[]
+        {
+            new Coordinate(-2, 0),
+            new Coordinate(-1, 1),
+            east,
+            new Coordinate(1, 1),
+            new Coordinate(2, 0)
+        };
+        var snapshot = CreateSnapshot(
+            new DateTimeOffset(2026, 7, 15, 1, 0, 0, TimeSpan.Zero),
+            frontier,
+            east);
+
+        layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, snapshot);
+
+        var isochrones = Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS isochrones"));
+        var feature = Assert.IsType<GeometryFeature>(Assert.Single(isochrones.Features));
+        var line = Assert.IsType<LineString>(feature.Geometry);
+        var expectedPoints = MapProjection.ToContinuousMapPoints(expectedArc);
+
+        Assert.Equal(expectedPoints.Count, line.Coordinates.Length);
+        for (var index = 0; index < expectedPoints.Count; index++)
+        {
+            Assert.Equal(expectedPoints[index].X, line.Coordinates[index].X, 6);
+            Assert.Equal(expectedPoints[index].Y, line.Coordinates[index].Y, 6);
+        }
+
+        Assert.NotEqual(line.Coordinates[0], line.Coordinates[^1]);
     }
 
     [Fact]
@@ -242,17 +283,41 @@ public sealed class MapRenderingTests
 
     private static RouteCalculationSnapshot CreateSnapshot(
         DateTimeOffset frontierTime,
-        IEnumerable<Coordinate> frontier)
+        IEnumerable<Coordinate> frontier,
+        Coordinate? optimalPoint = null)
     {
+        var frontierPoints = frontier.ToArray();
         var start = new Coordinate(10, 170);
         return new RouteCalculationSnapshot(
             frontierTime,
-            frontier,
+            frontierPoints,
             new[]
             {
                 new RoutePoint(start, frontierTime.AddHours(-1), 90, 6, 15, 180, 0),
-                new RoutePoint(frontier.First(), frontierTime, 90, 6, 15, 180, 10)
+                new RoutePoint(
+                    optimalPoint ?? frontierPoints[0],
+                    frontierTime,
+                    90,
+                    6,
+                    15,
+                    180,
+                    10)
             },
             new RouteDiagnostics(10, 20, 5, (int)(frontierTime.Hour + 1)));
     }
+
+    private static Coordinate[] CreateDatelineFrontier(double longitudeOffset) =>
+    [
+        new Coordinate(10, NormalizeLongitude(-179 + longitudeOffset)),
+        new Coordinate(11, NormalizeLongitude(-179.3 + longitudeOffset)),
+        new Coordinate(11.5, NormalizeLongitude(180 + longitudeOffset)),
+        new Coordinate(11, NormalizeLongitude(179.3 + longitudeOffset)),
+        new Coordinate(10, NormalizeLongitude(179 + longitudeOffset)),
+        new Coordinate(9, NormalizeLongitude(179.3 + longitudeOffset)),
+        new Coordinate(8.5, NormalizeLongitude(180 + longitudeOffset)),
+        new Coordinate(9, NormalizeLongitude(-179.3 + longitudeOffset))
+    ];
+
+    private static double NormalizeLongitude(double longitude) =>
+        (longitude + 540) % 360 - 180;
 }

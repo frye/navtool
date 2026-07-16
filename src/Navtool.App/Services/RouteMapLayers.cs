@@ -22,8 +22,10 @@ public sealed class RouteMapLayers
     public static readonly MapsuiColor NoaaColor = MapsuiColor.FromString("#0072B2");
     public static readonly MapsuiColor EcmwfColor = MapsuiColor.FromString("#D55E00");
     public static readonly MapsuiColor IsochroneColor = MapsuiColor.FromString("#D32F2F");
-    public const double IsochroneLineWidth = 1.5;
+    public const double IsochroneLineWidth = 1.0;
     public const float IsochroneOpacity = 0.85f;
+    private const double IsochroneHalfArcRadians = Math.PI / 2;
+    private const double AngularToleranceRadians = 1e-10;
 
     private readonly MemoryLayer _noaaRoutes = CreateRouteLayer("NOAA GFS routes", NoaaColor);
     private readonly MemoryLayer _ecmwfRoutes = CreateRouteLayer("ECMWF IFS routes", EcmwfColor);
@@ -310,7 +312,7 @@ public sealed class RouteMapLayers
 
     private static IFeature CreateIsochroneFeature(RouteCalculationSnapshot snapshot)
     {
-        var ordered = OrderFrontier(snapshot.Frontier);
+        var ordered = SelectIsochroneFront(snapshot);
         if (ordered.Length == 1)
         {
             var point = new PointFeature(MapProjection.ToMapPoint(ordered[0]))
@@ -320,7 +322,7 @@ public sealed class RouteMapLayers
             return point;
         }
 
-        var coordinates = MapProjection.ToContinuousMapPoints(ordered.Add(ordered[0]))
+        var coordinates = MapProjection.ToContinuousMapPoints(ordered)
             .Select(point => new NtsCoordinate(point.X, point.Y))
             .ToArray();
         var feature = new GeometryFeature(new LineString(coordinates))
@@ -330,10 +332,10 @@ public sealed class RouteMapLayers
         return feature;
     }
 
-    private static ImmutableArray<CoreCoordinate> OrderFrontier(
-        IEnumerable<CoreCoordinate> points)
+    private static ImmutableArray<CoreCoordinate> SelectIsochroneFront(
+        RouteCalculationSnapshot snapshot)
     {
-        var frontier = points.ToArray();
+        var frontier = snapshot.Frontier;
         var latitudeCenter = frontier.Average(point => point.Latitude);
         var longitudeSine = frontier.Sum(point =>
             Math.Sin(point.Longitude * Math.PI / 180));
@@ -344,22 +346,57 @@ public sealed class RouteMapLayers
                 ? Math.Atan2(longitudeSine, longitudeCosine) * 180 / Math.PI
                 : frontier[0].Longitude;
         var longitudeScale = Math.Cos(latitudeCenter * Math.PI / 180);
+        var optimalAngle = GetFrontierAngle(
+            snapshot.ProvisionalRoute[^1].Location,
+            latitudeCenter,
+            longitudeCenter,
+            longitudeScale);
 
-        return frontier
+        var angledFrontier = frontier
             .Select((point, index) => new
             {
                 Point = point,
                 Index = index,
-                Angle = Math.Atan2(
-                    point.Latitude - latitudeCenter,
-                    NormalizeLongitudeDelta(
-                        point.Longitude,
-                        longitudeCenter) * longitudeScale)
+                Offset = NormalizeAngle(
+                    GetFrontierAngle(
+                        point,
+                        latitudeCenter,
+                        longitudeCenter,
+                        longitudeScale) - optimalAngle)
             })
-            .OrderBy(item => item.Angle)
+            .ToArray();
+        var selected = angledFrontier
+            .Where(item =>
+                Math.Abs(item.Offset) <=
+                IsochroneHalfArcRadians + AngularToleranceRadians)
+            .OrderBy(item => item.Offset)
             .ThenBy(item => item.Index)
             .Select(item => item.Point)
             .ToImmutableArray();
+        return selected.IsEmpty
+            ? [angledFrontier.MinBy(item => Math.Abs(item.Offset))!.Point]
+            : selected;
+    }
+
+    private static double GetFrontierAngle(
+        CoreCoordinate point,
+        double latitudeCenter,
+        double longitudeCenter,
+        double longitudeScale) =>
+        Math.Atan2(
+            point.Latitude - latitudeCenter,
+            NormalizeLongitudeDelta(point.Longitude, longitudeCenter) * longitudeScale);
+
+    private static double NormalizeAngle(double angle)
+    {
+        if (angle < -Math.PI)
+        {
+            return angle + 2 * Math.PI;
+        }
+
+        return angle > Math.PI
+            ? angle - 2 * Math.PI
+            : angle;
     }
 
     private static double NormalizeLongitudeDelta(double longitude, double origin) =>
