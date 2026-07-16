@@ -713,10 +713,36 @@ public sealed class NoaaGfsForecastProviderTests
     private sealed class NonSeekableMemoryStream : MemoryStream
     {
         public override bool CanSeek => false;
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override long Seek(long offset, SeekOrigin loc) =>
+            throw new NotSupportedException();
     }
 
     private sealed class NonWritableMemoryStream : MemoryStream
     {
         public override bool CanWrite => false;
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
+
+        public override void Write(ReadOnlySpan<byte> buffer) =>
+            throw new NotSupportedException();
+
+        public override ValueTask WriteAsync(
+            ReadOnlyMemory<byte> buffer,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromException(new NotSupportedException());
+
+        public override void WriteByte(byte value) =>
+            throw new NotSupportedException();
+
+        public override void SetLength(long value) =>
+            throw new NotSupportedException();
     }
 }

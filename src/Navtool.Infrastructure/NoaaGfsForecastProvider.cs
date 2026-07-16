@@ -801,15 +801,27 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         ArgumentNullException.ThrowIfNull(destination);
 
         const string message = "The NOAA download destination must support rollback (seek, write, and set-length).";
+        long checkpoint;
+        try
+        {
+            checkpoint = destination.Position;
+        }
+        catch (Exception exception) when (
+            exception is NotSupportedException or IOException or ObjectDisposedException)
+        {
+            throw new ArgumentException(message, nameof(destination), exception);
+        }
+
         if (!destination.CanSeek || !destination.CanWrite)
         {
             throw new ArgumentException(message, nameof(destination));
         }
 
-        var checkpoint = destination.Position;
         try
         {
-            destination.SetLength(checkpoint);
+            var length = destination.Length;
+            destination.Position = checkpoint;
+            destination.SetLength(length);
             destination.Position = checkpoint;
         }
         catch (Exception exception) when (
