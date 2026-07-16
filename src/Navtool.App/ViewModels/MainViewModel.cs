@@ -1276,7 +1276,8 @@ public partial class MainViewModel : ViewModelBase
 
     private static string FormatApparentWind(RoutePoint point)
     {
-        var roundedAngle = (int)Math.Round(point.ApparentWindAngleDegrees, MidpointRounding.AwayFromZero);
+        var signedAngle = point.ApparentWindAngleSignedDegrees;
+        var roundedAngle = (int)Math.Round(Math.Abs(signedAngle), MidpointRounding.AwayFromZero);
         if (roundedAngle <= 0)
         {
             return "apparent wind 0° ahead";
@@ -1287,7 +1288,7 @@ public partial class MainViewModel : ViewModelBase
             return "apparent wind 180° astern";
         }
 
-        var side = point.ApparentWindAngleSignedDegrees > 0d ? "starboard" : "port";
+        var side = signedAngle > 0d ? "starboard" : "port";
         return $"apparent wind {roundedAngle:0}° {side}";
     }
 
