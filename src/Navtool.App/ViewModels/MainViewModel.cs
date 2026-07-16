@@ -263,9 +263,9 @@ public partial class MainViewModel : ViewModelBase
                   $"{acquisition.Source} · {acquisition.Artifact.Path}";
             return $"{point.Timestamp:yyyy-MM-dd HH:mm:ss} UTC\n" +
                    $"{point.Location.Latitude:0.0000}°, {point.Location.Longitude:0.0000}° · " +
-                   $"heading {point.HeadingDegrees:0}° · boat {point.BoatSpeedKnots:0.0} kt\n" +
+                   $"heading {point.HeadingDegrees:0}° · boat {point.BoatSpeedKnots:0.0} kt · " +
+                   $"{FormatApparentWind(point)}\n" +
                    $"true wind {point.TrueWindSpeedKnots:0.0} kt @ {point.TrueWindDirectionDegrees:0}° · " +
-                   $"{FormatApparentWind(point)} · " +
                    $"cumulative {point.CumulativeDistanceNauticalMiles:0.0} NM\n" +
                    $"{ModelName(selection.Route.Model)} · arrival {selection.Route.ArrivalTime:yyyy-MM-dd HH:mm} UTC · " +
                    $"distance {selection.Route.Points[^1].CumulativeDistanceNauticalMiles:0.0} NM · {forecast}";
