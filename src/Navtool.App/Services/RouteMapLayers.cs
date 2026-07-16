@@ -21,11 +21,14 @@ public sealed class RouteMapLayers
 {
     public static readonly MapsuiColor NoaaColor = MapsuiColor.FromString("#0072B2");
     public static readonly MapsuiColor EcmwfColor = MapsuiColor.FromString("#D55E00");
+    public static readonly MapsuiColor IsochroneColor = MapsuiColor.FromString("#D32F2F");
+    public const double IsochroneLineWidth = 1.5;
+    public const float IsochroneOpacity = 0.85f;
 
     private readonly MemoryLayer _noaaRoutes = CreateRouteLayer("NOAA GFS routes", NoaaColor);
     private readonly MemoryLayer _ecmwfRoutes = CreateRouteLayer("ECMWF IFS routes", EcmwfColor);
-    private readonly MemoryLayer _noaaIsochrones = CreateIsochroneLayer("NOAA GFS isochrones", NoaaColor);
-    private readonly MemoryLayer _ecmwfIsochrones = CreateIsochroneLayer("ECMWF IFS isochrones", EcmwfColor);
+    private readonly MemoryLayer _noaaIsochrones = CreateIsochroneLayer("NOAA GFS isochrones");
+    private readonly MemoryLayer _ecmwfIsochrones = CreateIsochroneLayer("ECMWF IFS isochrones");
     private readonly MemoryLayer _noaaProvisionalRoute = CreateProvisionalRouteLayer(
         "NOAA GFS provisional route",
         NoaaColor);
@@ -250,16 +253,16 @@ public sealed class RouteMapLayers
             }
         };
 
-    private static MemoryLayer CreateIsochroneLayer(string name, MapsuiColor color) =>
+    private static MemoryLayer CreateIsochroneLayer(string name) =>
         new(name)
         {
             Style = new VectorStyle
             {
-                Line = new Pen(color, 1.5)
+                Line = new Pen(IsochroneColor, IsochroneLineWidth)
                 {
                     PenStrokeCap = PenStrokeCap.Round
                 },
-                Opacity = 0.28f
+                Opacity = IsochroneOpacity
             }
         };
 

@@ -1,8 +1,10 @@
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Media;
 using Mapsui;
 using Mapsui.Layers;
 using Mapsui.Nts;
+using Mapsui.Styles;
 using Mapsui.Tiling.Layers;
 using Mapsui.UI.Avalonia;
 using Navtool.App.Services;
@@ -58,6 +60,30 @@ public sealed class MapRenderingTests
             Assert.NotNull(window.FindControl<RadioButton>("DownloadForecastSource"));
             Assert.NotNull(window.FindControl<RadioButton>("LocalForecastSource"));
             Assert.NotNull(window.FindControl<Button>("ChooseGribFileButton"));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void MainWindowLegendShowsVisibleRedIsochrones()
+    {
+        var window = new MainWindow
+        {
+            DataContext = CreateViewModel(tilesEnabled: false)
+        };
+
+        try
+        {
+            window.Show();
+
+            var swatch = window.FindControl<Border>("IsochroneLegendSwatch");
+            Assert.NotNull(swatch);
+            var brush = Assert.IsType<SolidColorBrush>(swatch.Background);
+            Assert.Equal(Color.Parse("#D32F2F"), brush.Color);
+            Assert.Equal(0.85, swatch.Opacity);
         }
         finally
         {
@@ -159,6 +185,29 @@ public sealed class MapRenderingTests
 
         Assert.Equal(0, layers.GetIsochroneCount(ForecastModel.NoaaGfs));
         Assert.False(layers.HasProvisionalRoute(ForecastModel.NoaaGfs));
+    }
+
+    [Fact]
+    public void IsochroneLayersUseSharedVisibleRedStyle()
+    {
+        var map = new Map();
+        _ = new RouteMapLayers(map);
+
+        var isochroneLayers = map.Layers
+            .Where(layer => layer.Name?.EndsWith(" isochrones", StringComparison.Ordinal) is true)
+            .Cast<MemoryLayer>()
+            .ToArray();
+
+        Assert.Equal(2, isochroneLayers.Length);
+        Assert.All(isochroneLayers, layer =>
+        {
+            var style = Assert.IsType<VectorStyle>(layer.Style);
+            Assert.NotNull(style.Line);
+            Assert.Equal(RouteMapLayers.IsochroneColor, style.Line.Color);
+            Assert.Equal(RouteMapLayers.IsochroneLineWidth, style.Line.Width);
+            Assert.Equal(RouteMapLayers.IsochroneOpacity, style.Opacity);
+            Assert.Equal(PenStrokeCap.Round, style.Line.PenStrokeCap);
+        });
     }
 
     [Fact]
