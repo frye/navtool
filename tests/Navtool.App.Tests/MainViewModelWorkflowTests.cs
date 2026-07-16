@@ -96,6 +96,24 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task SelectedRouteDetailsIncludeApparentWindAngle()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Contains("apparent wind 31° starboard", viewModel.SelectedRouteDetails);
+    }
+
+    [Fact]
     public async Task PassageDurationControlsForecastWindow()
     {
         var noaa = new DelegateForecastProvider(

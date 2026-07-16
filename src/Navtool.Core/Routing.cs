@@ -196,6 +196,53 @@ public sealed record RoutePoint
 
     public double CumulativeDistanceNauticalMiles { get; }
 
+    public double ApparentWindAngleSignedDegrees
+    {
+        get
+        {
+            var (trueWindEast, trueWindNorth) = ToVectorToward(
+                TrueWindSpeedKnots,
+                NormalizeDirection(TrueWindDirectionDegrees + 180d));
+            var (boatEast, boatNorth) = ToVectorToward(BoatSpeedKnots, HeadingDegrees);
+            var apparentEast = trueWindEast - boatEast;
+            var apparentNorth = trueWindNorth - boatNorth;
+            if (Math.Abs(apparentEast) < 1e-9 && Math.Abs(apparentNorth) < 1e-9)
+            {
+                return 0d;
+            }
+
+            var apparentFromDirection = NormalizeDirection(
+                Math.Atan2(-apparentEast, -apparentNorth) * (180d / Math.PI));
+            return NormalizeSignedAngle(apparentFromDirection - HeadingDegrees);
+        }
+    }
+
+    public double ApparentWindAngleDegrees => Math.Abs(ApparentWindAngleSignedDegrees);
+
+    private static (double East, double North) ToVectorToward(double speed, double directionDegrees)
+    {
+        var radians = directionDegrees * (Math.PI / 180d);
+        return (speed * Math.Sin(radians), speed * Math.Cos(radians));
+    }
+
+    private static double NormalizeDirection(double value)
+    {
+        var normalized = value % 360d;
+        return normalized < 0d ? normalized + 360d : normalized;
+    }
+
+    private static double NormalizeSignedAngle(double value)
+    {
+        var normalized = (value + 180d) % 360d;
+        if (normalized < 0d)
+        {
+            normalized += 360d;
+        }
+
+        normalized -= 180d;
+        return normalized <= -180d ? 180d : normalized;
+    }
+
     private static void ValidateDirection(double value, string parameterName)
     {
         if (!double.IsFinite(value) || value is < 0 or >= 360)
