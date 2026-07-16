@@ -113,11 +113,55 @@ public sealed class NoaaGfsForecastProviderTests
     }
 
     [Fact]
-    public async Task Acquire_retries_temporary_redirect_then_completes()
+    public async Task Download_with_retry_rejects_non_seekable_destination_before_http()
+    {
+        using var directory = new TestDirectory();
+        var handler = new RecordingHttpHandler((_, _, _) =>
+            Task.FromResult(RecordingHttpHandler.GribResponse()));
+        using var client = new HttpClient(handler);
+        var provider = CreateProvider(directory.Path, client);
+        await using var destination = new NonSeekableMemoryStream();
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await provider.DownloadGribWithRetryAsync(
+                new Uri("https://example.test/noaa.grib2"),
+                destination,
+                CancellationToken.None));
+
+        Assert.Equal("destination", exception.ParamName);
+        Assert.Contains("rollback", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Download_with_retry_rejects_non_writable_destination_before_http()
+    {
+        using var directory = new TestDirectory();
+        var handler = new RecordingHttpHandler((_, _, _) =>
+            Task.FromResult(RecordingHttpHandler.GribResponse()));
+        using var client = new HttpClient(handler);
+        var provider = CreateProvider(directory.Path, client);
+        await using var destination = new NonWritableMemoryStream();
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await provider.DownloadGribWithRetryAsync(
+                new Uri("https://example.test/noaa.grib2"),
+                destination,
+                CancellationToken.None));
+
+        Assert.Equal("destination", exception.ParamName);
+        Assert.Contains("rollback", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Acquire_retries_transient_3xx_response_then_completes()
     {
         using var directory = new TestDirectory();
         var handler = new RecordingHttpHandler((request, count, _) =>
         {
+            // Valid redirects are followed by HttpClient automatically; this simulated 3xx
+            // verifies retry behavior when a transient 3xx reaches the provider.
             if (count == 1)
             {
                 var redirect = new HttpResponseMessage(HttpStatusCode.Redirect);
@@ -664,5 +708,15 @@ public sealed class NoaaGfsForecastProviderTests
     private sealed class SynchronousProgress<T>(Action<T> action) : IProgress<T>
     {
         public void Report(T value) => action(value);
+    }
+
+    private sealed class NonSeekableMemoryStream : MemoryStream
+    {
+        public override bool CanSeek => false;
+    }
+
+    private sealed class NonWritableMemoryStream : MemoryStream
+    {
+        public override bool CanWrite => false;
     }
 }
