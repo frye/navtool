@@ -11,6 +11,7 @@ using Navtool.App.Services;
 using Navtool.App.ViewModels;
 using Navtool.Core;
 using Navtool.App.Views;
+using AvaloniaColor = Avalonia.Media.Color;
 using LineString = NetTopologySuite.Geometries.LineString;
 using MultiLineString = NetTopologySuite.Geometries.MultiLineString;
 
@@ -82,7 +83,7 @@ public sealed class MapRenderingTests
             var swatch = window.FindControl<Border>("IsochroneLegendSwatch");
             Assert.NotNull(swatch);
             var brush = Assert.IsType<SolidColorBrush>(swatch.Background);
-            Assert.Equal(Avalonia.Media.Color.Parse("#D32F2F"), brush.Color);
+            Assert.Equal(AvaloniaColor.Parse("#D32F2F"), brush.Color);
             Assert.Equal(0.85, swatch.Opacity);
         }
         finally
