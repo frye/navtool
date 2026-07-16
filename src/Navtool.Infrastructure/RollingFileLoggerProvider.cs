@@ -105,7 +105,6 @@ public sealed class RollingFileLoggerProvider : ILoggerProvider
                 }
 
                 _writer!.WriteLine(line);
-                _writer.Flush();
             }
             catch (IOException ioException)
             {

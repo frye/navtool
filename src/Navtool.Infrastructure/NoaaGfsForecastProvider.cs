@@ -581,15 +581,12 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         }
     }
 
-    private async ValueTask DownloadGribWithRetryAsync(
+    internal async ValueTask DownloadGribWithRetryAsync(
         Uri uri,
         Stream destination,
         CancellationToken cancellationToken)
     {
-        if (!destination.CanSeek)
-        {
-            throw new ArgumentException("The NOAA download destination must support rollback.", nameof(destination));
-        }
+        EnsureRollbackDestination(destination);
 
         var checkpoint = destination.Position;
         Exception? lastFailure = null;
@@ -668,6 +665,8 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             .ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
+            // Redirect behavior depends on the configured HttpClient handler chain.
+            // Any 3xx response that reaches this provider is treated as transient.
             var location = response.Headers.Location is null
                 ? string.Empty
                 : $" Redirect location: '{response.Headers.Location}'.";
@@ -796,6 +795,41 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         statusCode is HttpStatusCode.RequestTimeout or
             HttpStatusCode.TooManyRequests ||
         (int)statusCode is 425 or >= 300 and <= 399 or >= 500 and <= 599;
+
+    private static void EnsureRollbackDestination(Stream destination)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+
+        const string message = "The NOAA download destination must support rollback (seek, write, and set-length).";
+        long checkpoint;
+        try
+        {
+            checkpoint = destination.Position;
+        }
+        catch (Exception exception) when (
+            exception is NotSupportedException or IOException or ObjectDisposedException)
+        {
+            throw new ArgumentException(message, nameof(destination), exception);
+        }
+
+        if (!destination.CanSeek || !destination.CanWrite)
+        {
+            throw new ArgumentException(message, nameof(destination));
+        }
+
+        try
+        {
+            var length = destination.Length;
+            destination.Position = checkpoint;
+            destination.SetLength(length);
+            destination.Position = checkpoint;
+        }
+        catch (Exception exception) when (
+            exception is NotSupportedException or IOException or ObjectDisposedException)
+        {
+            throw new ArgumentException(message, nameof(destination), exception);
+        }
+    }
 
     private static void RollBack(Stream destination, long checkpoint)
     {
