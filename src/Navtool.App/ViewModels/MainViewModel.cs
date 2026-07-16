@@ -265,6 +265,7 @@ public partial class MainViewModel : ViewModelBase
                    $"{point.Location.Latitude:0.0000}°, {point.Location.Longitude:0.0000}° · " +
                    $"heading {point.HeadingDegrees:0}° · boat {point.BoatSpeedKnots:0.0} kt\n" +
                    $"true wind {point.TrueWindSpeedKnots:0.0} kt @ {point.TrueWindDirectionDegrees:0}° · " +
+                   $"{FormatApparentWind(point)} · " +
                    $"cumulative {point.CumulativeDistanceNauticalMiles:0.0} NM\n" +
                    $"{ModelName(selection.Route.Model)} · arrival {selection.Route.ArrivalTime:yyyy-MM-dd HH:mm} UTC · " +
                    $"distance {selection.Route.Points[^1].CumulativeDistanceNauticalMiles:0.0} NM · {forecast}";
@@ -1272,6 +1273,23 @@ public partial class MainViewModel : ViewModelBase
         ForecastModel.EcmwfIfs => "ECMWF IFS (experimental)",
         _ => model.ToString()
     };
+
+    private static string FormatApparentWind(RoutePoint point)
+    {
+        var roundedAngle = (int)Math.Round(point.ApparentWindAngleDegrees, MidpointRounding.AwayFromZero);
+        if (roundedAngle <= 0)
+        {
+            return "apparent wind 0° ahead";
+        }
+
+        if (roundedAngle >= 180)
+        {
+            return "apparent wind 180° astern";
+        }
+
+        var side = point.ApparentWindAngleSignedDegrees > 0d ? "starboard" : "port";
+        return $"apparent wind {roundedAngle:0}° {side}";
+    }
 
     private static string FormatOverDuration(TimeSpan overrun)
     {

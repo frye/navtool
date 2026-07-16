@@ -60,6 +60,32 @@ public sealed class NativeBridgeContractTests
         Assert.Equal(81.2, point.CumulativeDistanceNauticalMiles);
     }
 
+    [Theory]
+    [InlineData(90, 6, 15, 180, 68.19859051364824)]
+    [InlineData(90, 6, 15, 0, -68.19859051364818)]
+    [InlineData(90, 6, 0, 0, 0)]
+    [InlineData(90, 6, 15, 270, 180)]
+    [InlineData(350, 5, 20, 20, 24.133261210456055)]
+    public void Route_point_derives_apparent_wind_angle(
+        double headingDegrees,
+        double boatSpeedKnots,
+        double trueWindSpeedKnots,
+        double trueWindDirectionDegrees,
+        double expectedSignedAngle)
+    {
+        var point = new RoutePoint(
+            new Coordinate(42, -60),
+            new DateTimeOffset(2026, 7, 15, 3, 0, 0, TimeSpan.Zero),
+            headingDegrees,
+            boatSpeedKnots,
+            trueWindSpeedKnots,
+            trueWindDirectionDegrees,
+            81.2);
+
+        Assert.Equal(expectedSignedAngle, point.ApparentWindAngleSignedDegrees, 6);
+        Assert.Equal(Math.Abs(expectedSignedAngle), point.ApparentWindAngleDegrees, 6);
+    }
+
     [Fact]
     public void Route_point_rejects_invalid_native_detail_values()
     {
