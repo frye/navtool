@@ -82,7 +82,7 @@ public sealed class MapRenderingTests
 
             var swatch = window.FindControl<Border>("IsochroneLegendSwatch");
             Assert.NotNull(swatch);
-            var brush = Assert.IsType<SolidColorBrush>(swatch.Background);
+            var brush = Assert.IsAssignableFrom<ISolidColorBrush>(swatch.Background);
             Assert.Equal(AvaloniaColor.Parse("#D32F2F"), brush.Color);
             Assert.Equal(0.85, swatch.Opacity);
         }
