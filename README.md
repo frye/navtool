@@ -24,6 +24,8 @@ It targets macOS, Windows, and Linux.
 - Click near a route to select and focus its nearest point.
 - Display time-varying wind-speed colors and directional arrows for the active
   model.
+- Switch at runtime among Light, Dark, and the midnight-blue and brass
+  **Kind of Blue** theme. Navtool remembers the selected theme across launches.
 
 ## Prerequisites
 
@@ -144,6 +146,9 @@ also be installed or packaged according to the target platform.
 | `NAVTOOL_CACHE_ROOT` | Forecast cache directory |
 | `NAVTOOL_LAND_DATA_ENDPOINT` | Optional OSM-derived GeoJSON land service; Navtool appends `south`, `west`, `north`, and `east` query parameters |
 | `NAVTOOL_ECMWF_EXPERIMENTAL` | `1` or `true` enables the experimental ECMWF path; acquisition still reports unsupported |
+
+The selected display theme is stored in `preferences/theme.txt` beneath
+`NAVTOOL_APP_DATA_ROOT` (or Navtool's default local application-data directory).
 
 NOAA data is downloaded from the operational NOMADS GFS filter. Navtool derives
 an antimeridian-safe buffered passage area, requests every available forecast

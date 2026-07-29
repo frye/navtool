@@ -13,7 +13,7 @@
         Height="800"
         MinWidth="1040"
         MinHeight="680"
-        Background="#F3F6F8"
+        Background="{DynamicResource WindowBackgroundColor}"
         Icon="/Assets/avalonia-logo.ico"
         Title="Navtool · Weather Routing">
 
@@ -21,50 +21,20 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
-    <Window.Styles>
-        <Style Selector="TextBlock.section-title">
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="#52616B" />
-        </Style>
-        <Style Selector="TextBlock.muted">
-            <Setter Property="Foreground" Value="#667681" />
-            <Setter Property="FontSize" Value="12" />
-        </Style>
-        <Style Selector="Border.card">
-            <Setter Property="Background" Value="White" />
-            <Setter Property="BorderBrush" Value="#DCE4E8" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="14" />
-        </Style>
-        <Style Selector="Button.primary">
-            <Setter Property="Background" Value="#155B75" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="MinHeight" Value="38" />
-        </Style>
-        <Style Selector="Button.map-tool">
-            <Setter Property="MinHeight" Value="38" />
-            <Setter Property="HorizontalContentAlignment" Value="Left" />
-            <Setter Property="Padding" Value="12,8" />
-        </Style>
-    </Window.Styles>
-
     <Grid RowDefinitions="58,*">
         <Border Grid.Row="0"
-                Background="#102E3A"
+                Background="{DynamicResource HeaderBackgroundColor}"
                 Padding="20,0">
             <Grid ColumnDefinitions="Auto,*,Auto">
                 <StackPanel VerticalAlignment="Center"
                             Spacing="1">
                     <TextBlock Text="NAVTOOL"
-                               Foreground="White"
+                               Foreground="{DynamicResource HeaderTextColor}"
                                FontSize="18"
                                FontWeight="Bold"
                                LetterSpacing="1.5" />
                     <TextBlock Text="OFFSHORE WEATHER ROUTING"
-                               Foreground="#9FC4D2"
+                               Foreground="{DynamicResource HeaderMutedTextColor}"
                                FontSize="9"
                                LetterSpacing="0.8" />
                 </StackPanel>
@@ -72,19 +42,30 @@
                             Orientation="Horizontal"
                             Spacing="8"
                             VerticalAlignment="Center">
-                    <Border Background="#6B2B20"
+                    <StackPanel Orientation="Horizontal"
+                               Spacing="6"
+                               VerticalAlignment="Center">
+                        <TextBlock Text="THEME"
+                                  Foreground="{DynamicResource HeaderMutedTextColor}"
+                                  FontSize="10"
+                                  FontWeight="SemiBold"
+                                  VerticalAlignment="Center" />
+                        <ComboBox x:Name="ThemeSelector"
+                                 Classes="theme-picker" />
+                    </StackPanel>
+                    <Border Background="{DynamicResource DangerBackgroundColor}"
                             CornerRadius="12"
                             Padding="10,5">
                         <TextBlock Text="NOT NAVIGATION CERTIFIED"
-                                   Foreground="#FFE7DE"
+                                  Foreground="{DynamicResource DangerSoftColor}"
                                    FontSize="10"
                                    FontWeight="Bold" />
                     </Border>
-                    <Border Background="#173E4D"
+                    <Border Background="{DynamicResource HeaderBadgeBackgroundColor}"
                             CornerRadius="12"
                             Padding="10,5">
                         <TextBlock Text="Route planning workspace"
-                                   Foreground="#CBE0E8"
+                                   Foreground="{DynamicResource HeaderBadgeTextColor}"
                                    FontSize="11" />
                     </Border>
                 </StackPanel>
@@ -94,8 +75,8 @@
         <Grid Grid.Row="1"
               ColumnDefinitions="350,*">
             <Border Grid.Column="0"
-                    Background="#F8FAFB"
-                    BorderBrush="#D9E2E6"
+                    Background="{DynamicResource SidebarBackgroundColor}"
+                    BorderBrush="{DynamicResource BorderColor}"
                     BorderThickness="0,0,1,0">
                 <ScrollViewer>
                     <StackPanel Margin="16"
@@ -104,7 +85,7 @@
                             <TextBlock Text="Plan a passage"
                                        FontSize="22"
                                        FontWeight="SemiBold"
-                                       Foreground="#173440" />
+                                       Foreground="{DynamicResource TextPrimaryColor}" />
                             <TextBlock Classes="muted"
                                        Text="Choose endpoints, departure, and forecast models." />
                         </StackPanel>
@@ -113,13 +94,15 @@
                             <StackPanel Spacing="10">
                                 <TextBlock Classes="section-title"
                                            Text="1  ROUTE ENDPOINTS" />
-                                <Button Classes="map-tool"
-                                        Command="{Binding SetStartCommand}">
+                                <ToggleButton x:Name="SetStartButton"
+                                              Classes="map-tool"
+                                              IsChecked="{Binding IsSettingStart, Mode=OneWay}"
+                                              Command="{Binding SetStartCommand}">
                                     <Grid ColumnDefinitions="14,10,*">
                                         <Ellipse Width="12"
                                                  Height="12"
                                                  Fill="#009E73"
-                                                 Stroke="White"
+                                                 Stroke="{DynamicResource MarkerOutlineColor}"
                                                  StrokeThickness="2" />
                                         <StackPanel Grid.Column="2">
                                             <TextBlock Text="Set start"
@@ -128,14 +111,16 @@
                                                        Classes="muted" />
                                         </StackPanel>
                                     </Grid>
-                                </Button>
-                                <Button Classes="map-tool"
-                                        Command="{Binding SetDestinationCommand}">
+                                </ToggleButton>
+                                <ToggleButton x:Name="SetDestinationButton"
+                                              Classes="map-tool"
+                                              IsChecked="{Binding IsSettingDestination, Mode=OneWay}"
+                                              Command="{Binding SetDestinationCommand}">
                                     <Grid ColumnDefinitions="14,10,*">
                                         <Ellipse Width="12"
                                                  Height="12"
                                                  Fill="#CC3311"
-                                                 Stroke="White"
+                                                 Stroke="{DynamicResource MarkerOutlineColor}"
                                                  StrokeThickness="2" />
                                         <StackPanel Grid.Column="2">
                                             <TextBlock Text="Set destination"
@@ -144,7 +129,7 @@
                                                        Classes="muted" />
                                         </StackPanel>
                                     </Grid>
-                                </Button>
+                                </ToggleButton>
                             </StackPanel>
                         </Border>
 
@@ -186,8 +171,7 @@
                                                        Value="{Binding PassageHours}" />
                                     </StackPanel>
                                 </Grid>
-                                <Border Background="#EEF4F6"
-                                        CornerRadius="5"
+                                <Border Classes="subtle"
                                         Padding="9,6">
                                     <Grid ColumnDefinitions="*,Auto">
                                         <TextBlock Text="Local time zone"
@@ -195,7 +179,7 @@
                                         <TextBlock Grid.Column="1"
                                                    Text="{Binding UtcOffsetDisplay}"
                                                    FontWeight="SemiBold"
-                                                   Foreground="#214C5D" />
+                                                   Foreground="{DynamicResource TextSecondaryColor}" />
                                     </Grid>
                                 </Border>
                             </StackPanel>
@@ -241,12 +225,12 @@
                                                            Classes="muted" />
                                             </StackPanel>
                                             <Border Grid.Column="1"
-                                                    Background="#FFF1D6"
+                                                    Background="{DynamicResource ExperimentalBackgroundColor}"
                                                     CornerRadius="10"
                                                     Padding="7,3"
                                                     VerticalAlignment="Center">
                                                 <TextBlock Text="EXPERIMENTAL"
-                                                           Foreground="#8A5A00"
+                                                           Foreground="{DynamicResource ExperimentalTextColor}"
                                                            FontSize="9"
                                                            FontWeight="Bold" />
                                             </Border>
@@ -270,9 +254,7 @@
                                            Classes="muted"
                                            TextWrapping="Wrap" />
                                 </StackPanel>
-                                <Border Background="#EEF4F6"
-                                        CornerRadius="5"
-                                        Padding="9,7">
+                                <Border Classes="subtle">
                                     <TextBlock Text="{Binding ForecastAreaSummary}"
                                            Classes="muted"
                                            TextWrapping="Wrap" />
@@ -282,10 +264,12 @@
 
                         <Grid ColumnDefinitions="*,Auto"
                               ColumnSpacing="8">
-                            <Button Classes="primary"
+                            <Button x:Name="CalculateRoutesButton"
+                                    Classes="primary"
                                     Command="{Binding CalculateCommand}"
                                     Content="Calculate routes" />
-                            <Button Grid.Column="1"
+                            <Button x:Name="CancelButton"
+                                    Grid.Column="1"
                                     Command="{Binding CancelCommand}"
                                     Content="Cancel"
                                     MinWidth="76" />
@@ -309,24 +293,22 @@
                                            Classes="muted" />
                                 <TextBlock Text="{Binding ErrorMessage}"
                                            TextWrapping="Wrap"
-                                           Foreground="#B42318"
-                                           FontSize="12"
-                                           FontWeight="SemiBold" />
+                                           Classes="error" />
                                 <TextBlock Text="{Binding LandAvoidanceWarning}"
                                            TextWrapping="Wrap"
-                                           Foreground="#8A5A00"
+                                           Foreground="{DynamicResource WarningTextColor}"
                                            FontSize="12"
                                            FontWeight="SemiBold" />
                             </StackPanel>
                         </Border>
-                        <Border Background="#FFF4E5"
-                                BorderBrush="#F0C36D"
+                        <Border Background="{DynamicResource WarningBackgroundColor}"
+                                BorderBrush="{DynamicResource WarningBorderColor}"
                                 BorderThickness="1"
                                 CornerRadius="7"
                                 Padding="10,8">
                             <TextBlock Text="Planning aid only. Verify all weather and routing information independently; not certified for navigation."
                                        TextWrapping="Wrap"
-                                       Foreground="#704800"
+                                       Foreground="{DynamicResource WarningTextColor}"
                                        FontSize="11"
                                        FontWeight="SemiBold" />
                         </Border>
@@ -338,7 +320,7 @@
                   RowDefinitions="*,176">
                 <Border Grid.Row="0"
                         Margin="14,14,14,8"
-                        BorderBrush="#C7D4DA"
+                        BorderBrush="{DynamicResource StrongBorderColor}"
                         BorderThickness="1"
                         CornerRadius="9"
                         ClipToBounds="True">
@@ -350,13 +332,11 @@
                         <Border HorizontalAlignment="Center"
                                 VerticalAlignment="Top"
                                 Margin="16"
-                                Background="#EFFFFFFF"
-                                BorderBrush="#D7E0E4"
-                                BorderThickness="1"
+                                Classes="map-overlay"
                                 CornerRadius="16"
                                 Padding="14,7">
                             <TextBlock Text="{Binding MapInstruction}"
-                                       Foreground="#29444F"
+                                       Foreground="{DynamicResource TextPrimaryColor}"
                                        FontSize="12"
                                        FontWeight="SemiBold" />
                         </Border>
@@ -364,9 +344,7 @@
                         <Border HorizontalAlignment="Left"
                                 VerticalAlignment="Bottom"
                                 Margin="14"
-                                Background="#F4FFFFFF"
-                                BorderBrush="#D4DEE2"
-                                BorderThickness="1"
+                                Classes="map-overlay"
                                 CornerRadius="7"
                                 Padding="11,9">
                             <StackPanel Spacing="6">
@@ -423,9 +401,7 @@
                         <Border HorizontalAlignment="Right"
                                 VerticalAlignment="Top"
                                 Margin="14"
-                                Background="#F4FFFFFF"
-                                BorderBrush="#D4DEE2"
-                                BorderThickness="1"
+                                Classes="map-overlay"
                                 CornerRadius="7"
                                 Padding="11,9">
                             <StackPanel Spacing="6">
@@ -455,13 +431,12 @@
                                 </StackPanel>
                                 <TextBlock Text="0   5   10   15   25   35+ knots"
                                            FontSize="10"
-                                           Foreground="#435660" />
+                                           Foreground="{DynamicResource TextSecondaryColor}" />
                                 <TextBlock Text="{Binding WeatherLayerError}"
                                            TextWrapping="Wrap"
                                            MaxWidth="280"
-                                           Foreground="#B42318"
-                                           FontSize="11"
-                                           FontWeight="SemiBold" />
+                                           Classes="error"
+                                           FontSize="11" />
                             </StackPanel>
                         </Border>
 
@@ -477,7 +452,7 @@
                             <TextBlock Text="{Binding SelectedRouteTitle}"
                                        FontSize="15"
                                        FontWeight="SemiBold"
-                                       Foreground="#173440" />
+                                       Foreground="{DynamicResource TextPrimaryColor}" />
                             <TextBlock Text="{Binding SelectedRouteDetails}"
                                        Classes="muted"
                                        TextWrapping="Wrap" />
