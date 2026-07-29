@@ -301,7 +301,6 @@ public partial class MainViewModel : ViewModelBase
         _interaction.HandleMapClick(start);
         _interaction.Activate(MapInteractionMode.SetDestination);
         _interaction.HandleMapClick(destination);
-        _mapLayers.SetEndpoints(start, destination);
         NotifyInteractionChanged();
     }
 
@@ -322,7 +321,6 @@ public partial class MainViewModel : ViewModelBase
         var coordinate = MapProjection.ToCoordinate(worldPosition);
         if (_interaction.HandleMapClick(coordinate))
         {
-            _mapLayers.SetEndpoints(Start, Destination);
             NotifyInteractionChanged();
             StatusMessage = Start is not null && Destination is not null
                 ? "Endpoints ready. Choose forecast models and calculate."
@@ -754,7 +752,6 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnSelectedRoutePointChanged(RouteMapSelection? value)
     {
-        _mapLayers.SetSelectedPoint(value);
         if (value is not null)
         {
             StatusMessage = $"{ModelName(value.Route.Model)} route selected at " +
@@ -954,7 +951,6 @@ public partial class MainViewModel : ViewModelBase
             HasTimeline = false;
             SelectedTimelineUtc = null;
             SelectedRoutePoint = null;
-            _mapLayers.SetTimelinePoints(Array.Empty<RoutePointSelection>(), null);
             return;
         }
 
@@ -1005,7 +1001,6 @@ public partial class MainViewModel : ViewModelBase
             candidate.Point,
             RouteHitKind.RoutePoint,
             0);
-        _mapLayers.SetTimelinePoints(nearest.Values, model);
         RequestWeatherRefreshFromViewport();
     }
 

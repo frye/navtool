@@ -111,10 +111,7 @@ public sealed class MapRenderingTests
                 "NOAA GFS provisional route",
                 "ECMWF IFS provisional route",
                 "NOAA GFS routes",
-                "ECMWF IFS routes",
-                "Route endpoints",
-                "Timeline route points",
-                "Selected route point"
+                "ECMWF IFS routes"
             ],
             layers.Skip(1).Select(layer => layer.Name));
     }
@@ -239,6 +236,47 @@ public sealed class MapRenderingTests
         }
 
         Assert.NotEqual(line.Coordinates[0], line.Coordinates[^1]);
+    }
+
+    [Fact]
+    public void RoutingLayersSkipSingletonsAndExposeNoPointMarkerLayers()
+    {
+        var map = new Map();
+        var layers = new RouteMapLayers(map);
+        var timestamp = new DateTimeOffset(2026, 7, 15, 1, 0, 0, TimeSpan.Zero);
+        var location = new Coordinate(10, 170);
+        var point = new RoutePoint(location, timestamp, 90, 6, 15, 180, 0);
+        var diagnostics = new RouteDiagnostics(1, 2, 1, 1);
+        var snapshot = new RouteCalculationSnapshot(
+            timestamp,
+            new[] { new RouteCalculationContour(new[] { location }, closed: false) },
+            new[] { point },
+            diagnostics);
+        var request = new RouteRequest(
+            "singleton",
+            location,
+            new Coordinate(11, 171),
+            timestamp,
+            timestamp.AddHours(1));
+        var route = new RouteResult(
+            request,
+            ForecastModel.NoaaGfs,
+            new[] { point },
+            diagnostics,
+            RouteCompletion.ForecastExhausted);
+
+        layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, snapshot);
+        layers.SetRoutes(new[] { route });
+
+        Assert.Empty(Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS isochrones")).Features);
+        Assert.Empty(Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS provisional route")).Features);
+        Assert.Empty(Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS routes")).Features);
+        Assert.DoesNotContain(map.Layers, layer => layer.Name == "Route endpoints");
+        Assert.DoesNotContain(map.Layers, layer => layer.Name == "Timeline route points");
+        Assert.DoesNotContain(map.Layers, layer => layer.Name == "Selected route point");
     }
 
     [Fact]

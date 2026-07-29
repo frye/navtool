@@ -41,9 +41,6 @@ public sealed class RouteMapLayers
     };
     private readonly MemoryLayer _windCells = new("Wind speed") { Style = null };
     private readonly MemoryLayer _windArrows = new("Wind direction") { Style = null };
-    private readonly MemoryLayer _endpoints = new("Route endpoints");
-    private readonly MemoryLayer _timelinePoints = new("Timeline route points");
-    private readonly MemoryLayer _selection = new("Selected route point");
 
     public RouteMapLayers(Map map)
     {
@@ -57,9 +54,6 @@ public sealed class RouteMapLayers
         map.Layers.Add(_ecmwfProvisionalRoute);
         map.Layers.Add(_noaaRoutes);
         map.Layers.Add(_ecmwfRoutes);
-        map.Layers.Add(_endpoints);
-        map.Layers.Add(_timelinePoints);
-        map.Layers.Add(_selection);
     }
 
     public Map Map { get; }
@@ -118,8 +112,10 @@ public sealed class RouteMapLayers
         isochroneLayer.FeaturesWereModified();
 
         var provisionalLayer = GetProvisionalRouteLayer(model);
-        provisionalLayer.Features =
-            new[] { CreateRouteFeature(snapshot.ProvisionalRoute, snapshot) };
+        var provisionalRoute = CreateRouteFeature(snapshot.ProvisionalRoute, snapshot);
+        provisionalLayer.Features = provisionalRoute is null
+            ? Array.Empty<IFeature>()
+            : new[] { provisionalRoute };
         provisionalLayer.FeaturesWereModified();
         Map.Refresh(ChangeType.Discrete);
     }
@@ -133,74 +129,6 @@ public sealed class RouteMapLayers
 
     public void ClearCalculationOverlay(ForecastModel model) =>
         ClearCalculationOverlay(model, refresh: true);
-
-    public void SetEndpoints(CoreCoordinate? start, CoreCoordinate? destination)
-    {
-        var features = new List<IFeature>();
-        if (start is not null)
-        {
-            features.AddRange(CreateWorldCopyMarkers(
-                start.Value,
-                MapsuiColor.FromString("#009E73"),
-                MapsuiColor.White));
-        }
-
-        if (destination is not null)
-        {
-            features.AddRange(CreateWorldCopyMarkers(
-                destination.Value,
-                MapsuiColor.FromString("#CC3311"),
-                MapsuiColor.White));
-        }
-
-        _endpoints.Features = features;
-        _endpoints.FeaturesWereModified();
-        Map.Refresh(ChangeType.Discrete);
-    }
-
-    public void SetSelectedPoint(RouteMapSelection? selection)
-    {
-        _selection.Features = selection is null
-            ? Array.Empty<IFeature>()
-            : new[]
-            {
-                CreateMarker(
-                    GetRouteMapPoint(
-                        selection.Route,
-                        selection.PointIndex),
-                    MapsuiColor.FromString("#F0E442"),
-                    MapsuiColor.Black,
-                    22)
-            };
-        _selection.FeaturesWereModified();
-        Map.Refresh(ChangeType.Discrete);
-    }
-
-    public void SetTimelinePoints(
-        IEnumerable<RoutePointSelection> selections,
-        ForecastModel? activeModel)
-    {
-        ArgumentNullException.ThrowIfNull(selections);
-        _timelinePoints.Features = selections
-            .Select(selection =>
-            {
-                var route = Routes.First(item =>
-                    item.Request.RouteId == selection.Route.RouteId &&
-                    item.Model == selection.Route.Model);
-                var pointIndex = route.Points.IndexOf(selection.Point);
-                var color = selection.Route.Model == ForecastModel.NoaaGfs
-                    ? NoaaColor
-                    : EcmwfColor;
-                return CreateMarker(
-                    GetRouteMapPoint(route, Math.Max(0, pointIndex)),
-                    color,
-                    MapsuiColor.White,
-                    selection.Route.Model == activeModel ? 18 : 13);
-            })
-            .ToArray();
-        _timelinePoints.FeaturesWereModified();
-        Map.Refresh(ChangeType.Discrete);
-    }
 
     public void SetWeather(
         IEnumerable<ViewportWindSample> samples,
@@ -279,30 +207,29 @@ public sealed class RouteMapLayers
         };
 
     private static IEnumerable<IFeature> CreateRouteFeatures(IEnumerable<RouteResult> routes) =>
-        routes.Select(CreateRouteFeature).ToArray();
+        routes
+            .Select(CreateRouteFeature)
+            .OfType<IFeature>()
+            .ToArray();
 
-    private static IFeature CreateRouteFeature(RouteResult route) =>
+    private static IFeature? CreateRouteFeature(RouteResult route) =>
         CreateRouteFeature(route.Points, route);
 
-    private static IFeature CreateRouteFeature(
+    private static IFeature? CreateRouteFeature(
         IEnumerable<RoutePoint> points,
         object data)
     {
         var routePoints = points.ToArray();
-        IFeature feature;
-        if (routePoints.Length == 1)
+        if (routePoints.Length < 2)
         {
-            feature = new PointFeature(MapProjection.ToMapPoint(routePoints[0].Location));
-        }
-        else
-        {
-            var coordinates = MapProjection.ToContinuousMapPoints(
-                    routePoints.Select(point => point.Location))
-                .Select(point => new NtsCoordinate(point.X, point.Y))
-                .ToArray();
-            feature = new GeometryFeature(new LineString(coordinates));
+            return null;
         }
 
+        var coordinates = MapProjection.ToContinuousMapPoints(
+                routePoints.Select(point => point.Location))
+            .Select(point => new NtsCoordinate(point.X, point.Y))
+            .ToArray();
+        var feature = new GeometryFeature(new LineString(coordinates));
         feature.Data = data;
         return feature;
     }
@@ -314,11 +241,6 @@ public sealed class RouteMapLayers
         {
             if (contour.Points.Length == 1)
             {
-                yield return new PointFeature(
-                    MapProjection.ToMapPoint(contour.Points[0]))
-                {
-                    Data = snapshot
-                };
                 continue;
             }
 
@@ -491,54 +413,4 @@ public sealed class RouteMapLayers
         return normalized < 0 ? normalized + 360 : normalized;
     }
 
-    private static PointFeature CreateMarker(
-        CoreCoordinate coordinate,
-        MapsuiColor fill,
-        MapsuiColor outline,
-        double size = 18) =>
-        CreateMarker(MapProjection.ToMapPoint(coordinate), fill, outline, size);
-
-    private static PointFeature CreateMarker(
-        MPoint point,
-        MapsuiColor fill,
-        MapsuiColor outline,
-        double size = 18)
-    {
-        var feature = new PointFeature(point);
-        feature.Styles.Add(new SymbolStyle
-        {
-            SymbolType = SymbolType.Ellipse,
-            SymbolScale = size / SymbolStyle.DefaultWidth,
-            Fill = new Brush(fill),
-            Outline = new Pen(outline, 3)
-        });
-        return feature;
-    }
-
-    private static IEnumerable<PointFeature> CreateWorldCopyMarkers(
-        CoreCoordinate coordinate,
-        MapsuiColor fill,
-        MapsuiColor outline)
-    {
-        var point = MapProjection.ToMapPoint(coordinate);
-        return new[]
-        {
-            CreateMarker(
-                new MPoint(point.X - MapProjection.WebMercatorWorldWidth, point.Y),
-                fill,
-                outline),
-            CreateMarker(point, fill, outline),
-            CreateMarker(
-                new MPoint(point.X + MapProjection.WebMercatorWorldWidth, point.Y),
-                fill,
-                outline)
-        };
-    }
-
-    private static MPoint GetRouteMapPoint(RouteResult route, int pointIndex)
-    {
-        var points = MapProjection.ToContinuousMapPoints(
-            route.Points.Select(point => point.Location));
-        return points[Math.Clamp(pointIndex, 0, points.Count - 1)];
-    }
 }
