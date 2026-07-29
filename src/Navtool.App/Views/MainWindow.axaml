@@ -291,6 +291,11 @@
                                 <TextBlock Text="{Binding StatusMessage}"
                                            TextWrapping="Wrap"
                                            Classes="muted" />
+                                <TextBlock Text="{Binding WarningMessage}"
+                                           TextWrapping="Wrap"
+                                           Foreground="#D97706"
+                                           FontSize="12"
+                                           FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding ErrorMessage}"
                                            TextWrapping="Wrap"
                                            Classes="error" />

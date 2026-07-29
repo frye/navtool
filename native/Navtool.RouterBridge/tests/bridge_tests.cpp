@@ -37,6 +37,20 @@ struct ProgressCapture {
     bool valid{true};
 };
 
+struct ContourProgressCapture {
+    size_t count{};
+    int64_t previous_time{};
+    uint64_t previous_time_steps{};
+    bool valid{true};
+};
+
+struct FrontProgressCapture {
+    size_t count{};
+    int64_t previous_time{};
+    uint64_t previous_time_steps{};
+    bool valid{true};
+};
+
 void capture_progress(
     const navtool_router_progress_v1* progress,
     void* user_data) {
@@ -48,6 +62,103 @@ void capture_progress(
         capture->valid &&
         progress->isochrone_points != nullptr &&
         progress->isochrone_point_count > 0U &&
+        progress->provisional_route_points != nullptr &&
+        progress->provisional_route_point_count > 0U &&
+        (capture->count == 0U ||
+         progress->isochrone_utc_epoch_seconds > capture->previous_time) &&
+        progress->diagnostics.time_steps ==
+            capture->previous_time_steps + 1U &&
+        progress->provisional_route_points[
+            progress->provisional_route_point_count - 1U]
+                .utc_epoch_seconds ==
+            progress->isochrone_utc_epoch_seconds;
+    capture->previous_time = progress->isochrone_utc_epoch_seconds;
+    capture->previous_time_steps = progress->diagnostics.time_steps;
+    ++capture->count;
+}
+
+void capture_contour_progress(
+    const navtool_router_progress_v2* progress,
+    void* user_data) {
+    auto* capture = static_cast<ContourProgressCapture*>(user_data);
+    if (capture == nullptr || progress == nullptr) {
+        return;
+    }
+    bool segments_valid = progress->contour_segments != nullptr &&
+                          progress->contour_segment_count > 0U;
+    for (uint64_t index = 0U;
+         segments_valid && index < progress->contour_segment_count;
+         ++index) {
+        const auto& segment = progress->contour_segments[index];
+        segments_valid =
+            segment.point_count > 0U &&
+            segment.closed <= 1U &&
+            segment.point_offset <= progress->contour_point_count &&
+            segment.point_count <=
+                progress->contour_point_count - segment.point_offset;
+    }
+    capture->valid =
+        capture->valid &&
+        progress->contour_points != nullptr &&
+        progress->contour_point_count > 0U &&
+        segments_valid &&
+        progress->provisional_route_points != nullptr &&
+        progress->provisional_route_point_count > 0U &&
+        (capture->count == 0U ||
+         progress->isochrone_utc_epoch_seconds > capture->previous_time) &&
+        progress->diagnostics.time_steps ==
+            capture->previous_time_steps + 1U &&
+        progress->provisional_route_points[
+            progress->provisional_route_point_count - 1U]
+                .utc_epoch_seconds ==
+            progress->isochrone_utc_epoch_seconds;
+    capture->previous_time = progress->isochrone_utc_epoch_seconds;
+    capture->previous_time_steps = progress->diagnostics.time_steps;
+    ++capture->count;
+}
+
+void capture_front_progress(
+    const navtool_router_progress_v3* progress,
+    void* user_data) {
+    auto* capture = static_cast<FrontProgressCapture*>(user_data);
+    if (capture == nullptr || progress == nullptr) {
+        return;
+    }
+    bool segments_valid = progress->front_segments != nullptr &&
+                          progress->front_segment_count > 0U;
+    for (uint64_t index = 0U;
+         segments_valid && index < progress->front_segment_count;
+         ++index) {
+        const auto& segment = progress->front_segments[index];
+        segments_valid =
+            segment.point_count > 0U &&
+            segment.point_offset <= progress->front_point_count &&
+            segment.point_count <=
+                progress->front_point_count - segment.point_offset;
+    }
+    bool route_ends_on_front = false;
+    if (progress->front_points != nullptr &&
+        progress->provisional_route_points != nullptr &&
+        progress->provisional_route_point_count > 0U) {
+        const auto& route_end = progress->provisional_route_points[
+            progress->provisional_route_point_count - 1U].position;
+        for (uint64_t index = 0U;
+             index < progress->front_point_count;
+             ++index) {
+            route_ends_on_front =
+                route_ends_on_front ||
+                (progress->front_points[index].latitude_degrees ==
+                     route_end.latitude_degrees &&
+                 progress->front_points[index].longitude_degrees ==
+                     route_end.longitude_degrees);
+        }
+    }
+    capture->valid =
+        capture->valid &&
+        progress->front_points != nullptr &&
+        progress->front_point_count > 0U &&
+        segments_valid &&
+        route_ends_on_front &&
         progress->provisional_route_points != nullptr &&
         progress->provisional_route_point_count > 0U &&
         (capture->count == 0U ||
@@ -115,6 +226,55 @@ std::filesystem::path create_grib_with_missing_v_step() {
     if (error != CODES_SUCCESS || !skipped_v) {
         std::filesystem::remove(output_path);
         throw std::runtime_error("could not create incomplete GRIB fixture");
+    }
+    return output_path;
+}
+
+std::filesystem::path create_grib_through_step(long maximum_step) {
+    const auto output_path =
+        std::filesystem::temp_directory_path() /
+        ("navtool-short-" +
+         std::to_string(
+             std::chrono::steady_clock::now().time_since_epoch().count()) +
+         ".grib");
+    std::FILE* input = std::fopen(NAVTOOL_ROUTER_SAMPLE_GRIB, "rb");
+    if (input == nullptr) {
+        throw std::runtime_error("could not open sample GRIB for short fixture");
+    }
+
+    std::ofstream output{output_path, std::ios::binary};
+    bool copied_message = false;
+    int error = CODES_SUCCESS;
+    while (codes_handle* handle =
+               codes_handle_new_from_file(nullptr, input, PRODUCT_GRIB, &error)) {
+        long step = 0;
+        if (codes_get_long(handle, "step", &step) != CODES_SUCCESS) {
+            codes_handle_delete(handle);
+            std::fclose(input);
+            throw std::runtime_error("could not read sample GRIB step");
+        }
+
+        if (step <= maximum_step) {
+            const void* message = nullptr;
+            size_t message_size = 0U;
+            if (codes_get_message(handle, &message, &message_size) !=
+                CODES_SUCCESS) {
+                codes_handle_delete(handle);
+                std::fclose(input);
+                throw std::runtime_error("could not copy short GRIB message");
+            }
+            output.write(
+                static_cast<const char*>(message),
+                static_cast<std::streamsize>(message_size));
+            copied_message = true;
+        }
+        codes_handle_delete(handle);
+    }
+    std::fclose(input);
+    output.close();
+    if (error != CODES_SUCCESS || !copied_message) {
+        std::filesystem::remove(output_path);
+        throw std::runtime_error("could not create short GRIB fixture");
     }
     return output_path;
 }
@@ -254,6 +414,66 @@ int main() {
 
         route_json = nullptr;
         route_json_length = 0U;
+        ContourProgressCapture contour_progress_capture;
+        require_ok(
+            navtool_router_calculate_route_streaming_v2(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                capture_contour_progress,
+                &contour_progress_capture,
+                &route_json,
+                &route_json_length),
+            "calculate contour streaming route");
+        require(
+            contour_progress_capture.count > 0U,
+            "contour streaming route reported no progress");
+        require(
+            contour_progress_capture.valid,
+            "contour streaming route progress was invalid");
+        require(
+            route_json != nullptr,
+            "contour streaming route JSON was not allocated");
+        require(
+            route_json_length == std::strlen(route_json),
+            "contour streaming route JSON length mismatch");
+        navtool_router_bridge_free_v1(route_json);
+
+        route_json = nullptr;
+        route_json_length = 0U;
+        FrontProgressCapture front_progress_capture;
+        require_ok(
+            navtool_router_calculate_route_streaming_v3(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                capture_front_progress,
+                &front_progress_capture,
+                &route_json,
+                &route_json_length),
+            "calculate front streaming route");
+        require(
+            front_progress_capture.count > 0U,
+            "front streaming route reported no progress");
+        require(
+            front_progress_capture.valid,
+            "front streaming route progress was invalid");
+        require(
+            route_json != nullptr,
+            "front streaming route JSON was not allocated");
+        require(
+            route_json_length == std::strlen(route_json),
+            "front streaming route JSON length mismatch");
+        navtool_router_bridge_free_v1(route_json);
+
+        route_json = nullptr;
+        route_json_length = 0U;
         require(
             navtool_router_calculate_route_v1(
                 forecast,
@@ -294,6 +514,62 @@ int main() {
         require_ok(
             navtool_router_forecast_destroy_v1(&forecast),
             "destroy forecast twice");
+
+        const auto short_grib = create_grib_through_step(9L);
+        try {
+            require_ok(
+                navtool_router_forecast_load_v1(
+                    short_grib.string().c_str(),
+                    &forecast),
+                "load short forecast");
+            require_ok(
+                navtool_router_forecast_get_metadata_v1(
+                    forecast,
+                    &metadata,
+                    &source,
+                    &source_length),
+                "read short forecast metadata");
+            navtool_router_bridge_free_v1(source);
+
+            departure = metadata.first_valid_utc_epoch_seconds;
+            route_json = nullptr;
+            route_json_length = 0U;
+            FrontProgressCapture exhausted_progress;
+            const auto exhausted_status =
+                navtool_router_calculate_route_streaming_v3(
+                    forecast,
+                    48.05,
+                    -123.70,
+                    48.45,
+                    -123.30,
+                    &departure,
+                    capture_front_progress,
+                    &exhausted_progress,
+                    &route_json,
+                    &route_json_length);
+            require(
+                exhausted_status ==
+                    NAVTOOL_ROUTER_STATUS_FORECAST_EXHAUSTED_V2,
+                "short forecast did not report forecast exhaustion");
+            require(
+                exhausted_progress.count > 0U && exhausted_progress.valid,
+                "forecast exhaustion did not preserve valid front progress");
+            require(
+                route_json == nullptr && route_json_length == 0U,
+                "forecast exhaustion unexpectedly returned final route JSON");
+            require(
+                std::string{navtool_router_last_error_v1()}.starts_with(
+                    "forecast coverage ended before the destination was reached"),
+                "forecast exhaustion did not retain its specific native error");
+            require_ok(
+                navtool_router_forecast_destroy_v1(&forecast),
+                "destroy short forecast");
+            std::filesystem::remove(short_grib);
+        } catch (...) {
+            navtool_router_forecast_destroy_v1(&forecast);
+            std::filesystem::remove(short_grib);
+            throw;
+        }
 
         require_ok(
             navtool_router_forecast_load_bounded_v1(

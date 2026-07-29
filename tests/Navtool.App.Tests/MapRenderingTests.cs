@@ -111,10 +111,7 @@ public sealed class MapRenderingTests
                 "NOAA GFS provisional route",
                 "ECMWF IFS provisional route",
                 "NOAA GFS routes",
-                "ECMWF IFS routes",
-                "Route endpoints",
-                "Timeline route points",
-                "Selected route point"
+                "ECMWF IFS routes"
             ],
             layers.Skip(1).Select(layer => layer.Name));
     }
@@ -205,22 +202,11 @@ public sealed class MapRenderingTests
     }
 
     [Fact]
-    public void IsochronesRenderOpenDestinationFacingHalfFront()
+    public void IsochronesRenderRouterProvidedDestinationFrontOrder()
     {
         var map = new Map();
         var layers = new RouteMapLayers(map);
         var east = new Coordinate(0, 2);
-        var frontier = new[]
-        {
-            new Coordinate(1, -1),
-            new Coordinate(-1, 1),
-            new Coordinate(0, -2),
-            new Coordinate(2, 0),
-            east,
-            new Coordinate(-2, 0),
-            new Coordinate(1, 1),
-            new Coordinate(-1, -1)
-        };
         var expectedArc = new[]
         {
             new Coordinate(-2, 0),
@@ -231,7 +217,7 @@ public sealed class MapRenderingTests
         };
         var snapshot = CreateSnapshot(
             new DateTimeOffset(2026, 7, 15, 1, 0, 0, TimeSpan.Zero),
-            frontier,
+            expectedArc,
             east);
 
         layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, snapshot);
@@ -250,6 +236,96 @@ public sealed class MapRenderingTests
         }
 
         Assert.NotEqual(line.Coordinates[0], line.Coordinates[^1]);
+    }
+
+    [Fact]
+    public void AntimeridianSplitFrontRendersAsSeparateOpenLines()
+    {
+        var map = new Map();
+        var layers = new RouteMapLayers(map);
+        var timestamp = new DateTimeOffset(2026, 7, 15, 1, 0, 0, TimeSpan.Zero);
+        var west = new[]
+        {
+            new Coordinate(9, 179),
+            new Coordinate(10, 179.8)
+        };
+        var east = new[]
+        {
+            new Coordinate(10, -179.8),
+            new Coordinate(11, -179)
+        };
+        var snapshot = new RouteCalculationSnapshot(
+            timestamp,
+            new[]
+            {
+                new RouteCalculationFrontSegment(west),
+                new RouteCalculationFrontSegment(east)
+            },
+            new[]
+            {
+                new RoutePoint(new Coordinate(8, 178), timestamp.AddHours(-1), 90, 6, 15, 180, 0),
+                new RoutePoint(east[0], timestamp, 90, 6, 15, 180, 10)
+            },
+            new RouteDiagnostics(10, 20, 5, 1));
+
+        layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, snapshot);
+
+        var isochrones = Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS isochrones"));
+        var lines = isochrones.Features
+            .Cast<GeometryFeature>()
+            .Select(feature => Assert.IsType<LineString>(feature.Geometry))
+            .ToArray();
+        Assert.Equal(2, lines.Length);
+        Assert.All(lines, line => Assert.NotEqual(line.Coordinates[0], line.Coordinates[^1]));
+        var centers = lines
+            .Select(line => line.Coordinates.Average(coordinate => coordinate.X))
+            .ToArray();
+        Assert.True(Math.Abs(centers[1] - centers[0]) < 500_000);
+        var routeEndX = MapProjection.ToContinuousMapPoints(
+            snapshot.ProvisionalRoute.Select(point => point.Location))[^1].X;
+        Assert.All(centers, center => Assert.True(Math.Abs(center - routeEndX) < 500_000));
+    }
+
+    [Fact]
+    public void RoutingLayersSkipSingletonsAndExposeNoPointMarkerLayers()
+    {
+        var map = new Map();
+        var layers = new RouteMapLayers(map);
+        var timestamp = new DateTimeOffset(2026, 7, 15, 1, 0, 0, TimeSpan.Zero);
+        var location = new Coordinate(10, 170);
+        var point = new RoutePoint(location, timestamp, 90, 6, 15, 180, 0);
+        var diagnostics = new RouteDiagnostics(1, 2, 1, 1);
+        var snapshot = new RouteCalculationSnapshot(
+            timestamp,
+            new[] { new RouteCalculationFrontSegment(new[] { location }) },
+            new[] { point },
+            diagnostics);
+        var request = new RouteRequest(
+            "singleton",
+            location,
+            new Coordinate(11, 171),
+            timestamp,
+            timestamp.AddHours(1));
+        var route = new RouteResult(
+            request,
+            ForecastModel.NoaaGfs,
+            new[] { point },
+            diagnostics,
+            RouteCompletion.ForecastExhausted);
+
+        layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, snapshot);
+        layers.SetRoutes(new[] { route });
+
+        Assert.Empty(Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS isochrones")).Features);
+        Assert.Empty(Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS provisional route")).Features);
+        Assert.Empty(Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS routes")).Features);
+        Assert.DoesNotContain(map.Layers, layer => layer.Name == "Route endpoints");
+        Assert.DoesNotContain(map.Layers, layer => layer.Name == "Timeline route points");
+        Assert.DoesNotContain(map.Layers, layer => layer.Name == "Selected route point");
     }
 
     [Fact]
@@ -291,7 +367,10 @@ public sealed class MapRenderingTests
         var start = new Coordinate(10, 170);
         return new RouteCalculationSnapshot(
             frontierTime,
-            frontierPoints,
+            new[]
+            {
+                new RouteCalculationFrontSegment(frontierPoints)
+            },
             new[]
             {
                 new RoutePoint(start, frontierTime.AddHours(-1), 90, 6, 15, 180, 0),

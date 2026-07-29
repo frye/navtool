@@ -70,12 +70,13 @@ dotnet test Navtool.sln
 
 The application discovers the development bridge automatically. For a custom
 location, set `NAVTOOL_ROUTER_BRIDGE_PATH` to the shared library or its
-directory. Native builds fetch and compile `router-lib` from release `v0.1.1` by
-default. Set `SAILROUTE_SOURCE_DIR` to a local `router-lib` checkout when
-testing non-released changes.
+directory. Native builds fetch and compile the immutable `router-lib` revision
+`f406bcd311b0316a5e433ed17fbab6296f110144` by default. Set
+`SAILROUTE_SOURCE_DIR` to a local `router-lib` checkout when testing other
+revisions.
 
-To build against a different released `router-lib` version, configure CMake
-with a release tag override before building:
+To build against a different immutable `router-lib` revision or release,
+configure CMake with an override before building:
 
 ```sh
 cmake -S native/Navtool.RouterBridge -B native/Navtool.RouterBridge/build \
@@ -88,30 +89,35 @@ fetch releases from a different fork.
 
 ## Streaming route visualization
 
-Navtool uses router-lib's `RoutingProgressCallback` contract. After each
-completed search step with a retained frontier, the native bridge synchronously
-copies the callback-scoped isochrone, provisional route, and cumulative
+Navtool uses router-lib's `Router::optimize_view` progress contract. After each
+completed search step, the native bridge synchronously copies the
+callback-scoped destination-facing isochrone front, provisional route, and cumulative
 diagnostics into immutable managed data. The callback returns promptly; Mapsui
 updates are posted through the application's progress pipeline to the Avalonia
 UI context.
 
-Each model uses its normal route color. Completed isochrone frontiers accumulate
-as thin red lines, while the model's provisional route is replaced by the latest
-snapshot. Successful search overlays remain visible with the final route. Failed
-model overlays and all cancelled-calculation overlays are cleared. Frontiers,
-routes, and map-fit bounds are unwrapped safely at the antimeridian.
+Each model uses its normal route color. At every routing time step, one logical
+open isochrone front shows the destination-facing leading boundary of positions
+the vessel can reach through different viable heading sequences. Front points
+are ordered port-to-starboard, exclude internal search clusters, and are split
+into separate line segments only where required at the antimeridian. Fronts
+accumulate as thin red lines, while the model's provisional route is replaced by
+the latest snapshot. Successful and forecast-limited search overlays remain
+visible with the final route. Failed model overlays and all cancelled-calculation
+overlays are cleared. Fronts, routes, and map-fit bounds are unwrapped safely at
+the antimeridian.
 
-The final route result remains authoritative and may differ from the last
-provisional route. Router-lib progress is notification-only: cancelling in
-Navtool prevents stale updates and results from being accepted, but it does not
-interrupt an optimization already executing inside the native library.
+When forecast coverage ends before the destination is reached, Navtool promotes
+the final provisional route to a selectable forecast-limited estimate, retains
+all accumulated fronts, and displays an amber warning. Complete final routes
+remain authoritative and may differ from the last provisional route.
 
-The additive C ABI entry point
-`navtool_router_calculate_route_streaming_v1` preserves the existing v1
-final-route function. Progress array pointers are valid only for the duration
-of the synchronous callback and must be copied by consumers. Navtool falls back
-to final-only route calculation when it loads an older ABI-v1 bridge that does
-not export the streaming entry point.
+The ABI-v3 entry point `navtool_router_calculate_route_streaming_v3` preserves
+the existing final-route and v1/v2 streaming functions while adding open
+destination-front segments. Progress array pointers are valid only for the
+duration of the synchronous callback and must be copied by consumers. Navtool
+rejects stale bridges so missing destination-front support cannot silently
+restore alpha-shape contours.
 
 ## Publish
 
@@ -139,8 +145,8 @@ also be installed or packaged according to the target platform.
 | --- | --- |
 | `NAVTOOL_ROUTER_BRIDGE_PATH` | Native bridge file or directory |
 | `SAILROUTE_SOURCE_DIR` | Optional `router-lib` checkout override for native build/run scripts |
-| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Released `router-lib` tag used when `SAILROUTE_SOURCE_DIR` is unset (default `v0.1.1`) |
-| `NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY` | Released `router-lib` Git repository used when `SAILROUTE_SOURCE_DIR` is unset |
+| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default `f406bcd311b0316a5e433ed17fbab6296f110144`) |
+| `NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY` | `router-lib` Git repository used when `SAILROUTE_SOURCE_DIR` is unset |
 | `NAVTOOL_NATIVE_BUILD_DIR` | Optional native bridge build directory |
 | `NAVTOOL_APP_DATA_ROOT` | Application data root |
 | `NAVTOOL_CACHE_ROOT` | Forecast cache directory |
@@ -187,13 +193,12 @@ must be suitable for production use and return OSM-derived data under the Open
 Database License; public Overpass endpoints are not used as a default.
 
 Land avoidance also requires a router-lib segment-constraint capability.
-Navtool keeps the bridge ABI at v1 and treats missing capability exports as a
-legacy bridge. Builds against router-lib v0.1.1 remain supported, but routes
-cannot be calculated through the application with that version: preflight
-blocks before forecast download so Navtool cannot display another unchecked
-land-crossing route. The low-level ABI-v1 functions remain available for
-backward-compatible integrations and label their results as unchecked. Active
-segment rejection is blocked on
+Navtool's ABI-v3 bridge preserves the v1/v2 route entry points and exposes
+capabilities additively. The pinned destination-front router-lib revision does
+not provide segment constraints, so application preflight blocks before
+forecast download rather than displaying another unchecked land-crossing
+route. Direct managed bridge results are marked as unchecked for callers that
+use the lower-level integration. Active segment rejection is blocked on
 [`router-lib#11`](https://github.com/frye/router-lib/issues/11); until that API
 is available, route calculations do not claim or apply land avoidance. The
 existing raster basemap is never sampled as land geometry.

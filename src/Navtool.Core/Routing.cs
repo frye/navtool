@@ -314,23 +314,44 @@ public sealed record RouteDiagnostics
     public TimeSpan? CalculationDuration { get; }
 }
 
+public sealed record RouteCalculationFrontSegment
+{
+    public RouteCalculationFrontSegment(IEnumerable<Coordinate> points)
+    {
+        ArgumentNullException.ThrowIfNull(points);
+        var immutablePoints = points.ToImmutableArray();
+        if (immutablePoints.IsEmpty)
+        {
+            throw new ArgumentException(
+                "A routing front segment must contain at least one point.",
+                nameof(points));
+        }
+
+        Points = immutablePoints;
+    }
+
+    public ImmutableArray<Coordinate> Points { get; }
+}
+
 public sealed record RouteCalculationSnapshot
 {
     public RouteCalculationSnapshot(
         DateTimeOffset frontierTime,
-        IEnumerable<Coordinate> frontier,
+        IEnumerable<RouteCalculationFrontSegment> frontSegments,
         IEnumerable<RoutePoint> provisionalRoute,
         RouteDiagnostics diagnostics)
     {
-        ArgumentNullException.ThrowIfNull(frontier);
+        ArgumentNullException.ThrowIfNull(frontSegments);
         ArgumentNullException.ThrowIfNull(provisionalRoute);
         ArgumentNullException.ThrowIfNull(diagnostics);
 
-        var immutableFrontier = frontier.ToImmutableArray();
+        var immutableFrontSegments = frontSegments.ToImmutableArray();
         var immutableRoute = provisionalRoute.ToImmutableArray();
-        if (immutableFrontier.IsEmpty)
+        if (immutableFrontSegments.IsEmpty)
         {
-            throw new ArgumentException("A routing frontier must contain at least one point.", nameof(frontier));
+            throw new ArgumentException(
+                "A routing snapshot must contain at least one isochrone front segment.",
+                nameof(frontSegments));
         }
 
         if (immutableRoute.IsEmpty)
@@ -359,18 +380,24 @@ public sealed record RouteCalculationSnapshot
         }
 
         FrontierTime = utcFrontierTime;
-        Frontier = immutableFrontier;
+        FrontSegments = immutableFrontSegments;
         ProvisionalRoute = immutableRoute;
         Diagnostics = diagnostics;
     }
 
     public DateTimeOffset FrontierTime { get; }
 
-    public ImmutableArray<Coordinate> Frontier { get; }
+    public ImmutableArray<RouteCalculationFrontSegment> FrontSegments { get; }
 
     public ImmutableArray<RoutePoint> ProvisionalRoute { get; }
 
     public RouteDiagnostics Diagnostics { get; }
+}
+
+public enum RouteCompletion
+{
+    DestinationReached,
+    ForecastExhausted
 }
 
 public enum LandAvoidanceStatus
@@ -402,7 +429,23 @@ public sealed record RouteResult
         ForecastModel model,
         IEnumerable<RoutePoint> points,
         RouteDiagnostics diagnostics)
-        : this(request, model, points, diagnostics, null)
+        : this(
+            request,
+            model,
+            points,
+            diagnostics,
+            RouteCompletion.DestinationReached,
+            landAvoidance: null)
+    {
+    }
+
+    public RouteResult(
+        RouteRequest request,
+        ForecastModel model,
+        IEnumerable<RoutePoint> points,
+        RouteDiagnostics diagnostics,
+        RouteCompletion completion)
+        : this(request, model, points, diagnostics, completion, landAvoidance: null)
     {
     }
 
@@ -412,11 +455,33 @@ public sealed record RouteResult
         IEnumerable<RoutePoint> points,
         RouteDiagnostics diagnostics,
         RouteLandAvoidance? landAvoidance)
+        : this(
+            request,
+            model,
+            points,
+            diagnostics,
+            RouteCompletion.DestinationReached,
+            landAvoidance)
+    {
+    }
+
+    public RouteResult(
+        RouteRequest request,
+        ForecastModel model,
+        IEnumerable<RoutePoint> points,
+        RouteDiagnostics diagnostics,
+        RouteCompletion completion,
+        RouteLandAvoidance? landAvoidance)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(points);
         ArgumentNullException.ThrowIfNull(diagnostics);
         _ = model.Provider();
+        if (!Enum.IsDefined(completion))
+        {
+            throw new ArgumentOutOfRangeException(nameof(completion));
+        }
+
         var immutablePoints = points.ToImmutableArray();
         if (immutablePoints.IsEmpty)
         {
@@ -451,6 +516,7 @@ public sealed record RouteResult
         Model = model;
         Points = immutablePoints;
         Diagnostics = diagnostics;
+        Completion = completion;
         LandAvoidance = landAvoidance ?? RouteLandAvoidance.NotEvaluated;
     }
 
@@ -461,6 +527,8 @@ public sealed record RouteResult
     public ImmutableArray<RoutePoint> Points { get; }
 
     public RouteDiagnostics Diagnostics { get; }
+
+    public RouteCompletion Completion { get; }
 
     public RouteLandAvoidance LandAvoidance { get; }
 
@@ -473,10 +541,18 @@ public sealed record RouteResult
     /// </summary>
     public bool ExceedsRequestedArrival => ArrivalTime > Request.LatestArrivalTime;
 
+    public bool IsForecastLimited => Completion == RouteCompletion.ForecastExhausted;
+
     public RouteResult WithLandAvoidance(RouteLandAvoidance landAvoidance)
     {
         ArgumentNullException.ThrowIfNull(landAvoidance);
-        return new RouteResult(Request, Model, Points, Diagnostics, landAvoidance);
+        return new RouteResult(
+            Request,
+            Model,
+            Points,
+            Diagnostics,
+            Completion,
+            landAvoidance);
     }
 }
 

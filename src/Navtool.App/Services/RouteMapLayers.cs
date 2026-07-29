@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using Mapsui;
 using Mapsui.Layers;
 using Mapsui.Nts;
@@ -24,8 +23,6 @@ public sealed class RouteMapLayers
     public static readonly MapsuiColor IsochroneColor = MapsuiColor.FromString("#D32F2F");
     public const double IsochroneLineWidth = 1.0;
     public const float IsochroneOpacity = 0.85f;
-    private const double IsochroneHalfArcRadians = Math.PI / 2;
-    private const double AngularToleranceRadians = 1e-10;
 
     private readonly MemoryLayer _noaaRoutes = CreateRouteLayer("NOAA GFS routes", NoaaColor);
     private readonly MemoryLayer _ecmwfRoutes = CreateRouteLayer("ECMWF IFS routes", EcmwfColor);
@@ -44,9 +41,6 @@ public sealed class RouteMapLayers
     };
     private readonly MemoryLayer _windCells = new("Wind speed") { Style = null };
     private readonly MemoryLayer _windArrows = new("Wind direction") { Style = null };
-    private readonly MemoryLayer _endpoints = new("Route endpoints");
-    private readonly MemoryLayer _timelinePoints = new("Timeline route points");
-    private readonly MemoryLayer _selection = new("Selected route point");
 
     public RouteMapLayers(Map map)
     {
@@ -60,9 +54,6 @@ public sealed class RouteMapLayers
         map.Layers.Add(_ecmwfProvisionalRoute);
         map.Layers.Add(_noaaRoutes);
         map.Layers.Add(_ecmwfRoutes);
-        map.Layers.Add(_endpoints);
-        map.Layers.Add(_timelinePoints);
-        map.Layers.Add(_selection);
     }
 
     public Map Map { get; }
@@ -115,14 +106,16 @@ public sealed class RouteMapLayers
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         var isochrones = GetIsochroneFeatures(model);
-        isochrones.Add(CreateIsochroneFeature(snapshot));
+        isochrones.AddRange(CreateIsochroneFeatures(snapshot));
         var isochroneLayer = GetIsochroneLayer(model);
         isochroneLayer.Features = isochrones.ToArray();
         isochroneLayer.FeaturesWereModified();
 
         var provisionalLayer = GetProvisionalRouteLayer(model);
-        provisionalLayer.Features =
-            new[] { CreateRouteFeature(snapshot.ProvisionalRoute, snapshot) };
+        var provisionalRoute = CreateRouteFeature(snapshot.ProvisionalRoute, snapshot);
+        provisionalLayer.Features = provisionalRoute is null
+            ? Array.Empty<IFeature>()
+            : new[] { provisionalRoute };
         provisionalLayer.FeaturesWereModified();
         Map.Refresh(ChangeType.Discrete);
     }
@@ -136,74 +129,6 @@ public sealed class RouteMapLayers
 
     public void ClearCalculationOverlay(ForecastModel model) =>
         ClearCalculationOverlay(model, refresh: true);
-
-    public void SetEndpoints(CoreCoordinate? start, CoreCoordinate? destination)
-    {
-        var features = new List<IFeature>();
-        if (start is not null)
-        {
-            features.AddRange(CreateWorldCopyMarkers(
-                start.Value,
-                MapsuiColor.FromString("#009E73"),
-                MapsuiColor.White));
-        }
-
-        if (destination is not null)
-        {
-            features.AddRange(CreateWorldCopyMarkers(
-                destination.Value,
-                MapsuiColor.FromString("#CC3311"),
-                MapsuiColor.White));
-        }
-
-        _endpoints.Features = features;
-        _endpoints.FeaturesWereModified();
-        Map.Refresh(ChangeType.Discrete);
-    }
-
-    public void SetSelectedPoint(RouteMapSelection? selection)
-    {
-        _selection.Features = selection is null
-            ? Array.Empty<IFeature>()
-            : new[]
-            {
-                CreateMarker(
-                    GetRouteMapPoint(
-                        selection.Route,
-                        selection.PointIndex),
-                    MapsuiColor.FromString("#F0E442"),
-                    MapsuiColor.Black,
-                    22)
-            };
-        _selection.FeaturesWereModified();
-        Map.Refresh(ChangeType.Discrete);
-    }
-
-    public void SetTimelinePoints(
-        IEnumerable<RoutePointSelection> selections,
-        ForecastModel? activeModel)
-    {
-        ArgumentNullException.ThrowIfNull(selections);
-        _timelinePoints.Features = selections
-            .Select(selection =>
-            {
-                var route = Routes.First(item =>
-                    item.Request.RouteId == selection.Route.RouteId &&
-                    item.Model == selection.Route.Model);
-                var pointIndex = route.Points.IndexOf(selection.Point);
-                var color = selection.Route.Model == ForecastModel.NoaaGfs
-                    ? NoaaColor
-                    : EcmwfColor;
-                return CreateMarker(
-                    GetRouteMapPoint(route, Math.Max(0, pointIndex)),
-                    color,
-                    MapsuiColor.White,
-                    selection.Route.Model == activeModel ? 18 : 13);
-            })
-            .ToArray();
-        _timelinePoints.FeaturesWereModified();
-        Map.Refresh(ChangeType.Discrete);
-    }
 
     public void SetWeather(
         IEnumerable<ViewportWindSample> samples,
@@ -282,125 +207,56 @@ public sealed class RouteMapLayers
         };
 
     private static IEnumerable<IFeature> CreateRouteFeatures(IEnumerable<RouteResult> routes) =>
-        routes.Select(CreateRouteFeature).ToArray();
+        routes
+            .Select(CreateRouteFeature)
+            .OfType<IFeature>()
+            .ToArray();
 
-    private static IFeature CreateRouteFeature(RouteResult route) =>
+    private static IFeature? CreateRouteFeature(RouteResult route) =>
         CreateRouteFeature(route.Points, route);
 
-    private static IFeature CreateRouteFeature(
+    private static IFeature? CreateRouteFeature(
         IEnumerable<RoutePoint> points,
         object data)
     {
         var routePoints = points.ToArray();
-        IFeature feature;
-        if (routePoints.Length == 1)
+        if (routePoints.Length < 2)
         {
-            feature = new PointFeature(MapProjection.ToMapPoint(routePoints[0].Location));
-        }
-        else
-        {
-            var coordinates = MapProjection.ToContinuousMapPoints(
-                    routePoints.Select(point => point.Location))
-                .Select(point => new NtsCoordinate(point.X, point.Y))
-                .ToArray();
-            feature = new GeometryFeature(new LineString(coordinates));
+            return null;
         }
 
+        var coordinates = MapProjection.ToContinuousMapPoints(
+                routePoints.Select(point => point.Location))
+            .Select(point => new NtsCoordinate(point.X, point.Y))
+            .ToArray();
+        var feature = new GeometryFeature(new LineString(coordinates));
         feature.Data = data;
         return feature;
     }
 
-    private static IFeature CreateIsochroneFeature(RouteCalculationSnapshot snapshot)
+    private static IEnumerable<IFeature> CreateIsochroneFeatures(
+        RouteCalculationSnapshot snapshot)
     {
-        var ordered = SelectIsochroneFront(snapshot);
-        if (ordered.Length == 1)
+        var referenceX = MapProjection.ToContinuousMapPoints(
+            snapshot.ProvisionalRoute.Select(point => point.Location))[^1].X;
+        foreach (var segment in snapshot.FrontSegments)
         {
-            var point = new PointFeature(MapProjection.ToMapPoint(ordered[0]))
+            if (segment.Points.Length == 1)
+            {
+                continue;
+            }
+
+            var coordinates = MapProjection.ToContinuousMapPointsNear(
+                    segment.Points,
+                    referenceX)
+                .Select(point => new NtsCoordinate(point.X, point.Y))
+                .ToArray();
+            yield return new GeometryFeature(new LineString(coordinates))
             {
                 Data = snapshot
             };
-            return point;
         }
-
-        var coordinates = MapProjection.ToContinuousMapPoints(ordered)
-            .Select(point => new NtsCoordinate(point.X, point.Y))
-            .ToArray();
-        var feature = new GeometryFeature(new LineString(coordinates))
-        {
-            Data = snapshot
-        };
-        return feature;
     }
-
-    private static ImmutableArray<CoreCoordinate> SelectIsochroneFront(
-        RouteCalculationSnapshot snapshot)
-    {
-        var frontier = snapshot.Frontier;
-        var latitudeCenter = frontier.Average(point => point.Latitude);
-        var longitudeSine = frontier.Sum(point =>
-            Math.Sin(point.Longitude * Math.PI / 180));
-        var longitudeCosine = frontier.Sum(point =>
-            Math.Cos(point.Longitude * Math.PI / 180));
-        var longitudeCenter =
-            Math.Abs(longitudeSine) > 1e-12 || Math.Abs(longitudeCosine) > 1e-12
-                ? Math.Atan2(longitudeSine, longitudeCosine) * 180 / Math.PI
-                : frontier[0].Longitude;
-        var longitudeScale = Math.Cos(latitudeCenter * Math.PI / 180);
-        var optimalAngle = GetFrontierAngle(
-            snapshot.ProvisionalRoute[^1].Location,
-            latitudeCenter,
-            longitudeCenter,
-            longitudeScale);
-
-        var angledFrontier = frontier
-            .Select((point, index) => new
-            {
-                Point = point,
-                Index = index,
-                Offset = NormalizeAngle(
-                    GetFrontierAngle(
-                        point,
-                        latitudeCenter,
-                        longitudeCenter,
-                        longitudeScale) - optimalAngle)
-            })
-            .ToArray();
-        var selected = angledFrontier
-            .Where(item =>
-                Math.Abs(item.Offset) <=
-                IsochroneHalfArcRadians + AngularToleranceRadians)
-            .OrderBy(item => item.Offset)
-            .ThenBy(item => item.Index)
-            .Select(item => item.Point)
-            .ToImmutableArray();
-        return selected.IsEmpty
-            ? [angledFrontier.MinBy(item => Math.Abs(item.Offset))!.Point]
-            : selected;
-    }
-
-    private static double GetFrontierAngle(
-        CoreCoordinate point,
-        double latitudeCenter,
-        double longitudeCenter,
-        double longitudeScale) =>
-        Math.Atan2(
-            point.Latitude - latitudeCenter,
-            NormalizeLongitudeDelta(point.Longitude, longitudeCenter) * longitudeScale);
-
-    private static double NormalizeAngle(double angle)
-    {
-        if (angle < -Math.PI)
-        {
-            return angle + 2 * Math.PI;
-        }
-
-        return angle > Math.PI
-            ? angle - 2 * Math.PI
-            : angle;
-    }
-
-    private static double NormalizeLongitudeDelta(double longitude, double origin) =>
-        (longitude - origin + 540) % 360 - 180;
 
     private List<IFeature> GetIsochroneFeatures(ForecastModel model) =>
         _isochroneFeatures.TryGetValue(model, out var features)
@@ -558,54 +414,4 @@ public sealed class RouteMapLayers
         return normalized < 0 ? normalized + 360 : normalized;
     }
 
-    private static PointFeature CreateMarker(
-        CoreCoordinate coordinate,
-        MapsuiColor fill,
-        MapsuiColor outline,
-        double size = 18) =>
-        CreateMarker(MapProjection.ToMapPoint(coordinate), fill, outline, size);
-
-    private static PointFeature CreateMarker(
-        MPoint point,
-        MapsuiColor fill,
-        MapsuiColor outline,
-        double size = 18)
-    {
-        var feature = new PointFeature(point);
-        feature.Styles.Add(new SymbolStyle
-        {
-            SymbolType = SymbolType.Ellipse,
-            SymbolScale = size / SymbolStyle.DefaultWidth,
-            Fill = new Brush(fill),
-            Outline = new Pen(outline, 3)
-        });
-        return feature;
-    }
-
-    private static IEnumerable<PointFeature> CreateWorldCopyMarkers(
-        CoreCoordinate coordinate,
-        MapsuiColor fill,
-        MapsuiColor outline)
-    {
-        var point = MapProjection.ToMapPoint(coordinate);
-        return new[]
-        {
-            CreateMarker(
-                new MPoint(point.X - MapProjection.WebMercatorWorldWidth, point.Y),
-                fill,
-                outline),
-            CreateMarker(point, fill, outline),
-            CreateMarker(
-                new MPoint(point.X + MapProjection.WebMercatorWorldWidth, point.Y),
-                fill,
-                outline)
-        };
-    }
-
-    private static MPoint GetRouteMapPoint(RouteResult route, int pointIndex)
-    {
-        var points = MapProjection.ToContinuousMapPoints(
-            route.Points.Select(point => point.Location));
-        return points[Math.Clamp(pointIndex, 0, points.Count - 1)];
-    }
 }

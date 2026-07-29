@@ -99,6 +99,9 @@ public partial class MainViewModel : ViewModelBase
     private string? _errorMessage;
 
     [ObservableProperty]
+    private string? _warningMessage;
+
+    [ObservableProperty]
     private string? _landAvoidanceWarning;
 
     [ObservableProperty]
@@ -274,7 +277,9 @@ public partial class MainViewModel : ViewModelBase
                    $"{FormatApparentWind(point)}\n" +
                    $"true wind {point.TrueWindSpeedKnots:0.0} kt @ {point.TrueWindDirectionDegrees:0}° · " +
                    $"cumulative {point.CumulativeDistanceNauticalMiles:0.0} NM\n" +
-                   $"{ModelName(selection.Route.Model)} · arrival {selection.Route.ArrivalTime:yyyy-MM-dd HH:mm} UTC · " +
+                   $"{ModelName(selection.Route.Model)} · " +
+                   $"{(selection.Route.IsForecastLimited ? "forecast-limited endpoint" : "arrival")} " +
+                   $"{selection.Route.ArrivalTime:yyyy-MM-dd HH:mm} UTC · " +
                    $"distance {selection.Route.Points[^1].CumulativeDistanceNauticalMiles:0.0} NM · {forecast}";
         }
     }
@@ -303,7 +308,6 @@ public partial class MainViewModel : ViewModelBase
         _interaction.HandleMapClick(start);
         _interaction.Activate(MapInteractionMode.SetDestination);
         _interaction.HandleMapClick(destination);
-        _mapLayers.SetEndpoints(start, destination);
         NotifyInteractionChanged();
     }
 
@@ -325,7 +329,6 @@ public partial class MainViewModel : ViewModelBase
         var coordinate = MapProjection.ToCoordinate(worldPosition);
         if (_interaction.HandleMapClick(coordinate))
         {
-            _mapLayers.SetEndpoints(Start, Destination);
             NotifyInteractionChanged();
             StatusMessage = Start is not null && Destination is not null
                 ? "Endpoints ready. Choose forecast models and calculate."
@@ -379,6 +382,7 @@ public partial class MainViewModel : ViewModelBase
     public async Task CalculateRoutesAsync()
     {
         ErrorMessage = null;
+        WarningMessage = null;
         WeatherLayerError = null;
         if (_workflow is null)
         {
@@ -762,7 +766,6 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnSelectedRoutePointChanged(RouteMapSelection? value)
     {
-        _mapLayers.SetSelectedPoint(value);
         if (value is not null)
         {
             StatusMessage = $"{ModelName(value.Route.Model)} route selected at " +
@@ -861,6 +864,7 @@ public partial class MainViewModel : ViewModelBase
     {
         _acquisitions.Clear();
         var failures = new List<string>();
+        var warnings = new List<string>();
         foreach (var outcome in result.Outcomes)
         {
             if (outcome.Acquisition is not null)
@@ -868,17 +872,32 @@ public partial class MainViewModel : ViewModelBase
                 _acquisitions[outcome.Model] = outcome.Acquisition;
             }
 
-            if (outcome.Status == ModelRouteStatus.Succeeded)
+            if (outcome.Route is not null)
             {
-                var route = outcome.Route!;
-                var status =
-                    $"{(IsExperimentalDownload(result.Request, outcome.Model) ? "Experimental · " : string.Empty)}" +
-                    $"complete · arrival {route.ArrivalTime:MMM d HH:mm} UTC";
-                if (route.ExceedsRequestedArrival)
+                var route = outcome.Route;
+                string status;
+                if (route.IsForecastLimited)
                 {
-                    status +=
-                        $" · estimated arrival is {FormatOverDuration(route.ArrivalTime - route.Request.LatestArrivalTime)} " +
-                        "beyond the expected passage duration";
+                    status =
+                        $"{(IsExperimentalDownload(result.Request, outcome.Model) ? "Experimental · " : string.Empty)}" +
+                        $"forecast ended · best estimate through {route.ArrivalTime:MMM d HH:mm} UTC";
+                    warnings.Add(
+                        $"{ModelName(outcome.Model)} route calculation ended because there is no more " +
+                        $"available forecast after {route.ArrivalTime:yyyy-MM-dd HH:mm} UTC. " +
+                        "The displayed route to the latest forecast point is the best estimate for now; " +
+                        "the destination was not reached.");
+                }
+                else
+                {
+                    status =
+                        $"{(IsExperimentalDownload(result.Request, outcome.Model) ? "Experimental · " : string.Empty)}" +
+                        $"complete · arrival {route.ArrivalTime:MMM d HH:mm} UTC";
+                    if (route.ExceedsRequestedArrival)
+                    {
+                        status +=
+                            $" · estimated arrival is {FormatOverDuration(route.ArrivalTime - route.Request.LatestArrivalTime)} " +
+                            "beyond the expected passage duration";
+                    }
                 }
 
                 if (route.LandAvoidance.HasWarning)
@@ -931,12 +950,17 @@ public partial class MainViewModel : ViewModelBase
         BuildTimeline(routes);
         ProgressFraction = 1;
         ErrorMessage = failures.Count == 0 ? null : string.Join(Environment.NewLine, failures);
+        WarningMessage = warnings.Count == 0 ? null : string.Join(Environment.NewLine, warnings);
+        var forecastLimitedCount = routes.Count(route => route.IsForecastLimited);
         UpdateLandAvoidanceWarning(routes);
-        StatusMessage = routes.Length switch
+        StatusMessage = (routes.Length, forecastLimitedCount, failures.Count) switch
         {
-            0 => "No model produced a route.",
-            1 when failures.Count > 0 => "One route is available; another selected model failed.",
-            1 => "Route calculation complete.",
+            (0, _, _) => "No model produced a route.",
+            (1, 1, _) => "A route estimate is available through the latest forecast point.",
+            (1, 0, > 0) => "One route is available; another selected model failed.",
+            (1, 0, _) => "Route calculation complete.",
+            (_, > 0, > 0) => "Route estimates are available; forecast coverage or another model limited the result.",
+            (_, > 0, _) => "Routes are available; at least one ends at its latest forecast point.",
             _ => "Both model routes are available."
         };
         OnPropertyChanged(nameof(SelectedRouteDetails));
@@ -963,7 +987,6 @@ public partial class MainViewModel : ViewModelBase
             HasTimeline = false;
             SelectedTimelineUtc = null;
             SelectedRoutePoint = null;
-            _mapLayers.SetTimelinePoints(Array.Empty<RoutePointSelection>(), null);
             return;
         }
 
@@ -1014,7 +1037,6 @@ public partial class MainViewModel : ViewModelBase
             candidate.Point,
             RouteHitKind.RoutePoint,
             0);
-        _mapLayers.SetTimelinePoints(nearest.Values, model);
         RequestWeatherRefreshFromViewport();
     }
 

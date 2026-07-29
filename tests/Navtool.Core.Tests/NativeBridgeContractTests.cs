@@ -125,8 +125,12 @@ public sealed class NativeBridgeContractTests
             time,
             new[]
             {
-                new Coordinate(42, -60),
-                new Coordinate(43, -59)
+                new RouteCalculationFrontSegment(
+                    new[]
+                    {
+                        new Coordinate(42, -60),
+                        new Coordinate(43, -59)
+                    })
             },
             new[]
             {
@@ -136,11 +140,12 @@ public sealed class NativeBridgeContractTests
             diagnostics);
 
         Assert.Equal(time, snapshot.FrontierTime);
-        Assert.Equal(2, snapshot.Frontier.Length);
+        Assert.Single(snapshot.FrontSegments);
+        Assert.Equal(2, snapshot.FrontSegments[0].Points.Length);
         Assert.Equal(2, snapshot.ProvisionalRoute.Length);
         Assert.Same(diagnostics, snapshot.Diagnostics);
         Assert.Throws<NotSupportedException>(() =>
-            ((IList<Coordinate>)snapshot.Frontier).Add(new Coordinate(44, -58)));
+            ((IList<Coordinate>)snapshot.FrontSegments[0].Points).Add(new Coordinate(44, -58)));
     }
 
     [Fact]
@@ -151,11 +156,19 @@ public sealed class NativeBridgeContractTests
         var diagnostics = new RouteDiagnostics(1, 2, 1, 1);
 
         Assert.Throws<ArgumentException>(() =>
-            new RouteCalculationSnapshot(time, Array.Empty<Coordinate>(), new[] { point }, diagnostics));
+            new RouteCalculationSnapshot(time, Array.Empty<RouteCalculationFrontSegment>(), new[] { point }, diagnostics));
         Assert.Throws<ArgumentException>(() =>
-            new RouteCalculationSnapshot(time, new[] { point.Location }, Array.Empty<RoutePoint>(), diagnostics));
+            new RouteCalculationSnapshot(
+                time,
+                new[] { new RouteCalculationFrontSegment(new[] { point.Location }) },
+                Array.Empty<RoutePoint>(),
+                diagnostics));
         Assert.Throws<ArgumentException>(() =>
-            new RouteCalculationSnapshot(time, new[] { point.Location }, new[] { point }, diagnostics));
+            new RouteCalculationSnapshot(
+                time,
+                new[] { new RouteCalculationFrontSegment(new[] { point.Location }) },
+                new[] { point },
+                diagnostics));
     }
 
     [Fact]
@@ -229,6 +242,35 @@ public sealed class NativeBridgeContractTests
         Assert.Same(warning, result.LandAvoidance);
         Assert.True(result.LandAvoidance.HasWarning);
         Assert.False(result.LandAvoidance.IsApplied);
+    }
+
+    [Fact]
+    public void Adding_land_avoidance_preserves_forecast_limited_completion()
+    {
+        var departure = new DateTimeOffset(2026, 7, 15, 0, 0, 0, TimeSpan.Zero);
+        var request = new RouteRequest(
+            "route-partial-land-status",
+            new Coordinate(40, -60),
+            new Coordinate(45, -55),
+            departure,
+            departure.AddHours(10));
+        var result = new RouteResult(
+            request,
+            ForecastModel.NoaaGfs,
+            new[]
+            {
+                new RoutePoint(request.Origin, departure, 45, 6, 15, 200, 0),
+                new RoutePoint(new Coordinate(42, -58), departure.AddHours(8), 45, 6, 15, 200, 20)
+            },
+            new RouteDiagnostics(1, 2, 1, 2),
+            RouteCompletion.ForecastExhausted);
+
+        var updated = result.WithLandAvoidance(new RouteLandAvoidance(
+            LandAvoidanceStatus.RouterUnsupported,
+            "Land avoidance was not applied."));
+
+        Assert.True(updated.IsForecastLimited);
+        Assert.Equal(LandAvoidanceStatus.RouterUnsupported, updated.LandAvoidance.Status);
     }
 
     [Fact]

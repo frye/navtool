@@ -15,7 +15,7 @@ namespace Navtool.Infrastructure;
 
 public sealed record NativeRouterBridgeOptions
 {
-    public const uint SupportedAbiVersion = 1;
+    public const uint SupportedAbiVersion = 3;
 
     public int MaximumTextBytes { get; init; } = 64 * 1024 * 1024;
 
@@ -36,7 +36,8 @@ public enum NativeRouterStatus
     OutsideForecast = 7,
     NoRoute = 8,
     OutputError = 9,
-    InternalError = 10
+    InternalError = 10,
+    ForecastExhausted = 11
 }
 
 [Flags]
@@ -346,104 +347,100 @@ public sealed class NativeRouterBridge
         var departure = request.DepartureTime.ToUnixTimeSeconds();
         var stopwatch = Stopwatch.StartNew();
         ExceptionDispatchInfo? callbackFailure = null;
-        NativeMethods.RoutingProgressCallback? callback = null;
+        NativeMethods.RoutingProgressCallback callback;
+        RouteCalculationSnapshot? lastSnapshot = null;
         NativeRouterStatus status;
         IntPtr routePointer;
         nuint routeLength;
-        if (onProgress is null)
+        callback = (progressPointer, _) =>
         {
-            status = NativeMethods.CalculateRoute(
+            if (callbackFailure is not null)
+            {
+                return;
+            }
+
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                lastSnapshot = CopyProgress(progressPointer);
+                if (onProgress is not null)
+                {
+                    onProgress(lastSnapshot);
+                }
+            }
+            catch (Exception exception)
+            {
+                callbackFailure = ExceptionDispatchInfo.Capture(exception);
+            }
+        };
+        try
+        {
+            status = NativeMethods.CalculateRouteStreaming(
                 forecast.Handle,
                 request.Origin.Latitude,
                 request.Origin.Longitude,
                 request.Destination.Latitude,
                 request.Destination.Longitude,
                 ref departure,
+                callback,
+                IntPtr.Zero,
                 out routePointer,
                 out routeLength);
+            Volatile.Write(ref _streamingProgressAvailability, 1);
         }
-        else
+        catch (EntryPointNotFoundException exception)
         {
-            callback = (progressPointer, _) =>
-            {
-                if (callbackFailure is not null)
-                {
-                    return;
-                }
-
-                try
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    onProgress(CopyProgress(progressPointer));
-                }
-                catch (Exception exception)
-                {
-                    callbackFailure = ExceptionDispatchInfo.Capture(exception);
-                }
-            };
-            if (Volatile.Read(ref _streamingProgressAvailability) < 0)
-            {
-                status = NativeMethods.CalculateRoute(
-                    forecast.Handle,
-                    request.Origin.Latitude,
-                    request.Origin.Longitude,
-                    request.Destination.Latitude,
-                    request.Destination.Longitude,
-                    ref departure,
-                    out routePointer,
-                    out routeLength);
-            }
-            else
-            {
-                try
-                {
-                    status = NativeMethods.CalculateRouteStreaming(
-                        forecast.Handle,
-                        request.Origin.Latitude,
-                        request.Origin.Longitude,
-                        request.Destination.Latitude,
-                        request.Destination.Longitude,
-                        ref departure,
-                        callback,
-                        IntPtr.Zero,
-                        out routePointer,
-                        out routeLength);
-                    Volatile.Write(ref _streamingProgressAvailability, 1);
-                }
-                catch (EntryPointNotFoundException)
-                {
-                    Volatile.Write(ref _streamingProgressAvailability, -1);
-                    status = NativeMethods.CalculateRoute(
-                        forecast.Handle,
-                        request.Origin.Latitude,
-                        request.Origin.Longitude,
-                        request.Destination.Latitude,
-                        request.Destination.Longitude,
-                        ref departure,
-                        out routePointer,
-                        out routeLength);
-                }
-            }
-
-            GC.KeepAlive(callback);
+            Volatile.Write(ref _streamingProgressAvailability, -1);
+            throw new NativeBridgeUnavailableException(
+                "The Navtool router bridge ABI reports isochrone-front streaming support but does not export it.",
+                exception);
         }
 
+        GC.KeepAlive(callback);
         stopwatch.Stop();
         using var routeBuffer = new NativeAllocatedBufferSafeHandle(routePointer);
         callbackFailure?.Throw();
         cancellationToken.ThrowIfCancellationRequested();
-        ThrowIfFailed(status, "Calculating route");
+        if (status != NativeRouterStatus.Ok)
+        {
+            var nativeMessage = NativeMethods.GetLastError();
+            if (status == NativeRouterStatus.ForecastExhausted &&
+                lastSnapshot is not null)
+            {
+                var partial = new RouteResult(
+                    request,
+                    model,
+                    lastSnapshot.ProvisionalRoute,
+                    new RouteDiagnostics(
+                        lastSnapshot.Diagnostics.ExpandedNodes,
+                        lastSnapshot.Diagnostics.GeneratedCandidates,
+                        lastSnapshot.Diagnostics.RetainedCandidates,
+                        lastSnapshot.Diagnostics.TimeSteps,
+                        stopwatch.Elapsed),
+                    RouteCompletion.ForecastExhausted);
+                EnsureWithinForecastHorizon(partial, forecast.Metadata);
+                return ApplyLandAvoidanceCapability(partial);
+            }
+
+            throw new NativeRouterException(
+                status,
+                "Calculating route",
+                nativeMessage);
+        }
 
         var json = CopyUtf8(routePointer, routeLength, _options.MaximumTextBytes, "route JSON");
         cancellationToken.ThrowIfCancellationRequested();
         var result = NativeRouteJsonParser.Parse(json, request, model, stopwatch.Elapsed);
         EnsureWithinForecastHorizon(result, forecast.Metadata);
-        return LandConstraintAvailable
+        return ApplyLandAvoidanceCapability(result);
+    }
+
+    private RouteResult ApplyLandAvoidanceCapability(RouteResult result) =>
+        LandConstraintAvailable
             ? result
             : result.WithLandAvoidance(new RouteLandAvoidance(
                 LandAvoidanceStatus.RouterUnsupported,
                 "Land avoidance was not applied because the routing engine does not support pre-retention segment constraints."));
-    }
 
     // Mandatory postcondition: a route must never rely on weather past the loaded
     // forecast's real validity. RouteResult (Core) is deliberately ignorant of forecast
@@ -493,11 +490,42 @@ public sealed class NativeRouterBridge
         }
 
         var progress = Marshal.PtrToStructure<NativeRoutingProgress>(progressPointer);
-        var frontier = CopyArray<NativeCoordinate>(
-                progress.IsochronePoints,
-                progress.IsochronePointCount,
-                "isochrone points")
-            .Select(point => new Coordinate(point.LatitudeDegrees, point.LongitudeDegrees));
+        var frontPoints = CopyArray<NativeCoordinate>(
+            progress.FrontPoints,
+            progress.FrontPointCount,
+            "front points");
+        var nativeSegments = CopyArray<NativeFrontSegment>(
+            progress.FrontSegments,
+            progress.FrontSegmentCount,
+            "front segments");
+        var frontSegments = ImmutableArray.CreateBuilder<RouteCalculationFrontSegment>(
+            nativeSegments.Length);
+        foreach (var segment in nativeSegments)
+        {
+            if (segment.PointCount == 0 ||
+                segment.PointOffset > (ulong)frontPoints.Length ||
+                segment.PointCount >
+                (ulong)frontPoints.Length - segment.PointOffset)
+            {
+                throw new NativeRouteFormatException(
+                    "Native progress contained an invalid isochrone front segment.");
+            }
+
+            var segmentPoints = ImmutableArray.CreateBuilder<Coordinate>(
+                checked((int)segment.PointCount));
+            var end = checked(segment.PointOffset + segment.PointCount);
+            for (var index = segment.PointOffset; index < end; index++)
+            {
+                var point = frontPoints[checked((int)index)];
+                segmentPoints.Add(new Coordinate(
+                    point.LatitudeDegrees,
+                    point.LongitudeDegrees));
+            }
+
+            frontSegments.Add(new RouteCalculationFrontSegment(
+                segmentPoints.MoveToImmutable()));
+        }
+
         var provisionalRoute = CopyArray<NativeRoutePoint>(
                 progress.ProvisionalRoutePoints,
                 progress.ProvisionalRoutePointCount,
@@ -519,7 +547,7 @@ public sealed class NativeRouterBridge
             checked((int)progress.Diagnostics.TimeSteps));
         return new RouteCalculationSnapshot(
             DateTimeOffset.FromUnixTimeSeconds(progress.IsochroneUtcEpochSeconds),
-            frontier,
+            frontSegments.MoveToImmutable(),
             provisionalRoute,
             diagnostics);
     }
@@ -1140,11 +1168,20 @@ internal struct NativeRoutingDiagnostics
 internal struct NativeRoutingProgress
 {
     public long IsochroneUtcEpochSeconds;
-    public IntPtr IsochronePoints;
-    public ulong IsochronePointCount;
+    public IntPtr FrontPoints;
+    public ulong FrontPointCount;
+    public IntPtr FrontSegments;
+    public ulong FrontSegmentCount;
     public IntPtr ProvisionalRoutePoints;
     public ulong ProvisionalRoutePointCount;
     public NativeRoutingDiagnostics Diagnostics;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeFrontSegment
+{
+    public ulong PointOffset;
+    public ulong PointCount;
 }
 
 internal static class NativeMethods
@@ -1206,7 +1243,7 @@ internal static class NativeMethods
         IntPtr progress,
         IntPtr userData);
 
-    [DllImport(LibraryName, EntryPoint = "navtool_router_calculate_route_streaming_v1", CallingConvention = CallingConvention.Cdecl)]
+    [DllImport(LibraryName, EntryPoint = "navtool_router_calculate_route_streaming_v3", CallingConvention = CallingConvention.Cdecl)]
     internal static extern NativeRouterStatus CalculateRouteStreaming(
         NativeForecastSafeHandle forecast,
         double startLatitude,
