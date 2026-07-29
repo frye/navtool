@@ -227,6 +227,10 @@ public partial class MainViewModel : ViewModelBase
 
     public bool IsLocalForecast => ForecastInputMode == ForecastInputMode.LocalFile;
 
+    public bool IsSettingStart => InteractionMode == MapInteractionMode.SetStart;
+
+    public bool IsSettingDestination => InteractionMode == MapInteractionMode.SetDestination;
+
     public string LocalGribDisplay => LocalForecast is null
         ? "No file selected"
         : $"{Path.GetFileName(LocalForecast.Artifact.Path)} · {ModelName(LocalForecast.Model)}\n" +
@@ -1151,6 +1155,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(StartDisplay));
         OnPropertyChanged(nameof(DestinationDisplay));
         OnPropertyChanged(nameof(MapInstruction));
+        OnPropertyChanged(nameof(IsSettingStart));
+        OnPropertyChanged(nameof(IsSettingDestination));
         UpdateForecastAreaSummary();
     }
 

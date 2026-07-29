@@ -29,6 +29,9 @@ acquisition, live routing feedback, map clarity, and route inspection.
 
 ### Added
 
+- Added persistent Light, Dark, and **Kind of Blue** display themes with a
+  compact runtime selector and distinct active, hover, pressed, focus, and
+  disabled control states.
 - Added a required passage duration, defaulting to three days with a ten-day
   planning limit, so forecast acquisition matches the intended voyage.
   ([#7](https://github.com/frye/navtool/pull/7))
