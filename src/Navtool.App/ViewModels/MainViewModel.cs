@@ -102,6 +102,9 @@ public partial class MainViewModel : ViewModelBase
     private string? _warningMessage;
 
     [ObservableProperty]
+    private string? _landAvoidanceWarning;
+
+    [ObservableProperty]
     private string? _weatherLayerError;
 
     [ObservableProperty]
@@ -230,6 +233,10 @@ public partial class MainViewModel : ViewModelBase
 
     public bool IsLocalForecast => ForecastInputMode == ForecastInputMode.LocalFile;
 
+    public bool IsSettingStart => InteractionMode == MapInteractionMode.SetStart;
+
+    public bool IsSettingDestination => InteractionMode == MapInteractionMode.SetDestination;
+
     public string LocalGribDisplay => LocalForecast is null
         ? "No file selected"
         : $"{Path.GetFileName(LocalForecast.Artifact.Path)} · {ModelName(LocalForecast.Model)}\n" +
@@ -311,6 +318,7 @@ public partial class MainViewModel : ViewModelBase
         _mapLayers.FitRoutes();
         OnPropertyChanged(nameof(SuccessfulRouteCount));
         BuildTimeline(successful);
+        UpdateLandAvoidanceWarning(successful);
         StatusMessage = successful.Length == 0
             ? "No routes are currently displayed."
             : $"{successful.Length} route{(successful.Length == 1 ? string.Empty : "s")} displayed.";
@@ -402,6 +410,12 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             _nativeRoutingPreflight?.EnsureAvailable();
+            if (_nativeRoutingPreflight is { LandAvoidanceAvailable: false })
+            {
+                throw new NotSupportedException(
+                    "Active land avoidance is unavailable with the installed router-lib. " +
+                    "Route calculation is blocked to prevent unchecked land crossings.");
+            }
         }
         catch (Exception exception)
         {
@@ -886,6 +900,15 @@ public partial class MainViewModel : ViewModelBase
                     }
                 }
 
+                if (route.LandAvoidance.HasWarning)
+                {
+                    status += " · land avoidance not applied";
+                }
+                else if (route.LandAvoidance.IsApplied)
+                {
+                    status += " · land avoidance applied";
+                }
+
                 SetModelStatus(outcome.Model, status);
             }
             else
@@ -929,6 +952,7 @@ public partial class MainViewModel : ViewModelBase
         ErrorMessage = failures.Count == 0 ? null : string.Join(Environment.NewLine, failures);
         WarningMessage = warnings.Count == 0 ? null : string.Join(Environment.NewLine, warnings);
         var forecastLimitedCount = routes.Count(route => route.IsForecastLimited);
+        UpdateLandAvoidanceWarning(routes);
         StatusMessage = (routes.Length, forecastLimitedCount, failures.Count) switch
         {
             (0, _, _) => "No model produced a route.",
@@ -941,6 +965,18 @@ public partial class MainViewModel : ViewModelBase
         };
         OnPropertyChanged(nameof(SelectedRouteDetails));
         RequestWeatherRefreshFromViewport();
+    }
+
+    private void UpdateLandAvoidanceWarning(IEnumerable<RouteResult> routes)
+    {
+        var warnings = routes
+            .Select(route => route.LandAvoidance.Warning)
+            .Where(warning => !string.IsNullOrWhiteSpace(warning))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        LandAvoidanceWarning = warnings.Length == 0
+            ? null
+            : string.Join(Environment.NewLine, warnings);
     }
 
     private void BuildTimeline(IReadOnlyCollection<RouteResult> routes)
@@ -1173,6 +1209,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(StartDisplay));
         OnPropertyChanged(nameof(DestinationDisplay));
         OnPropertyChanged(nameof(MapInstruction));
+        OnPropertyChanged(nameof(IsSettingStart));
+        OnPropertyChanged(nameof(IsSettingDestination));
         UpdateForecastAreaSummary();
     }
 

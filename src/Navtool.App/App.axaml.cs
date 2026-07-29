@@ -22,7 +22,9 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             _services = AppComposition.CreateServices();
-            desktop.MainWindow = new MainWindow
+            var themeService = _services.GetRequiredService<AppThemeService>();
+            themeService.Initialize(this);
+            desktop.MainWindow = new MainWindow(themeService)
             {
                 DataContext = _services.GetRequiredService<MainViewModel>(),
             };

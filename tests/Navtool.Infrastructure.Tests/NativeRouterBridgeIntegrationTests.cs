@@ -34,6 +34,7 @@ public sealed class NativeRouterBridgeIntegrationTests
 
         using var forecast = bridge.LoadForecast(sample);
         Assert.Equal(3u, bridge.AbiVersion);
+        Assert.False(bridge.LandConstraintAvailable);
         Assert.True(forecast.Metadata.LatitudeCount > 0);
         Assert.True(forecast.Metadata.FirstValidAt < forecast.Metadata.LastValidAt);
 
@@ -61,6 +62,8 @@ public sealed class NativeRouterBridgeIntegrationTests
             snapshots.Add);
         Assert.NotEmpty(route.Points);
         Assert.True(route.Diagnostics.GeneratedCandidates > 0);
+        Assert.Equal(LandAvoidanceStatus.RouterUnsupported, route.LandAvoidance.Status);
+        Assert.True(route.LandAvoidance.HasWarning);
         Assert.NotNull(bridge.StreamingProgressAvailable);
         if (bridge.StreamingProgressAvailable is true)
         {
@@ -115,6 +118,9 @@ public sealed class NativeRouterBridgeIntegrationTests
         Assert.Equal(limitedRoute.ArrivalTime, limitedRouteWithoutProgress.ArrivalTime);
         Assert.Equal(limitedRoute.Points[^1].Location, limitedRouteWithoutProgress.Points[^1].Location);
         Assert.True(limitedRoute.IsForecastLimited);
+        Assert.Equal(
+            LandAvoidanceStatus.RouterUnsupported,
+            limitedRoute.LandAvoidance.Status);
         Assert.NotEmpty(limitedSnapshots);
         Assert.Equal(limitedSnapshots[^1].ProvisionalRoute, limitedRoute.Points);
         Assert.Equal(limitedSnapshots[^1].FrontierTime, limitedRoute.ArrivalTime);

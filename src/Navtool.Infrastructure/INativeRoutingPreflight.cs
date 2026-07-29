@@ -7,6 +7,13 @@ namespace Navtool.Infrastructure;
 public interface INativeRoutingPreflight
 {
     /// <summary>
+    /// True only when the complete managed/native path can reject route segments
+    /// before router-lib retains them. Existing test and third-party preflight
+    /// implementations default to true for source compatibility.
+    /// </summary>
+    bool LandAvoidanceAvailable => true;
+
+    /// <summary>
     /// Verifies that the native router bridge library is present, exports the
     /// required ABI version, and is compatible with the current platform.
     /// Call this once at startup or before initiating HTTP forecast acquisition

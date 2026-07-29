@@ -400,14 +400,78 @@ public enum RouteCompletion
     ForecastExhausted
 }
 
+public enum LandAvoidanceStatus
+{
+    NotEvaluated,
+    Applied,
+    RouterUnsupported,
+    DataUnconfigured,
+    DataUnavailable
+}
+
+public sealed record RouteLandAvoidance(
+    LandAvoidanceStatus Status,
+    string? Warning = null,
+    string? Attribution = null)
+{
+    public bool IsApplied => Status == LandAvoidanceStatus.Applied;
+
+    public bool HasWarning => !string.IsNullOrWhiteSpace(Warning);
+
+    public static RouteLandAvoidance NotEvaluated { get; } =
+        new(LandAvoidanceStatus.NotEvaluated);
+}
+
 public sealed record RouteResult
 {
     public RouteResult(
         RouteRequest request,
         ForecastModel model,
         IEnumerable<RoutePoint> points,
+        RouteDiagnostics diagnostics)
+        : this(
+            request,
+            model,
+            points,
+            diagnostics,
+            RouteCompletion.DestinationReached,
+            landAvoidance: null)
+    {
+    }
+
+    public RouteResult(
+        RouteRequest request,
+        ForecastModel model,
+        IEnumerable<RoutePoint> points,
         RouteDiagnostics diagnostics,
-        RouteCompletion completion = RouteCompletion.DestinationReached)
+        RouteCompletion completion)
+        : this(request, model, points, diagnostics, completion, landAvoidance: null)
+    {
+    }
+
+    public RouteResult(
+        RouteRequest request,
+        ForecastModel model,
+        IEnumerable<RoutePoint> points,
+        RouteDiagnostics diagnostics,
+        RouteLandAvoidance? landAvoidance)
+        : this(
+            request,
+            model,
+            points,
+            diagnostics,
+            RouteCompletion.DestinationReached,
+            landAvoidance)
+    {
+    }
+
+    public RouteResult(
+        RouteRequest request,
+        ForecastModel model,
+        IEnumerable<RoutePoint> points,
+        RouteDiagnostics diagnostics,
+        RouteCompletion completion,
+        RouteLandAvoidance? landAvoidance)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(points);
@@ -453,6 +517,7 @@ public sealed record RouteResult
         Points = immutablePoints;
         Diagnostics = diagnostics;
         Completion = completion;
+        LandAvoidance = landAvoidance ?? RouteLandAvoidance.NotEvaluated;
     }
 
     public RouteRequest Request { get; }
@@ -465,6 +530,8 @@ public sealed record RouteResult
 
     public RouteCompletion Completion { get; }
 
+    public RouteLandAvoidance LandAvoidance { get; }
+
     public DateTimeOffset ArrivalTime => Points[^1].Timestamp;
 
     /// <summary>
@@ -475,6 +542,18 @@ public sealed record RouteResult
     public bool ExceedsRequestedArrival => ArrivalTime > Request.LatestArrivalTime;
 
     public bool IsForecastLimited => Completion == RouteCompletion.ForecastExhausted;
+
+    public RouteResult WithLandAvoidance(RouteLandAvoidance landAvoidance)
+    {
+        ArgumentNullException.ThrowIfNull(landAvoidance);
+        return new RouteResult(
+            Request,
+            Model,
+            Points,
+            Diagnostics,
+            Completion,
+            landAvoidance);
+    }
 }
 
 public sealed record RouteCalculationProgress
