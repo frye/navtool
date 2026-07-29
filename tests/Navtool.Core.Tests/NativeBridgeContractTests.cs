@@ -203,6 +203,35 @@ public sealed class NativeBridgeContractTests
     }
 
     [Fact]
+    public void Route_result_preserves_land_avoidance_status()
+    {
+        var departure = new DateTimeOffset(2026, 7, 15, 0, 0, 0, TimeSpan.Zero);
+        var request = new RouteRequest(
+            "route-land-status",
+            new Coordinate(40, -60),
+            new Coordinate(45, -55),
+            departure,
+            departure.AddHours(10));
+        var warning = new RouteLandAvoidance(
+            LandAvoidanceStatus.RouterUnsupported,
+            "Land avoidance was not applied.");
+        var result = new RouteResult(
+            request,
+            ForecastModel.NoaaGfs,
+            new[]
+            {
+                new RoutePoint(request.Origin, departure, 45, 6, 15, 200, 0),
+                new RoutePoint(request.Destination, departure.AddHours(8), 45, 6, 15, 200, 40)
+            },
+            new RouteDiagnostics(1, 2, 1, 2),
+            warning);
+
+        Assert.Same(warning, result.LandAvoidance);
+        Assert.True(result.LandAvoidance.HasWarning);
+        Assert.False(result.LandAvoidance.IsApplied);
+    }
+
+    [Fact]
     public void Route_result_still_rejects_empty_and_disordered_points()
     {
         var departure = new DateTimeOffset(2026, 7, 15, 0, 0, 0, TimeSpan.Zero);

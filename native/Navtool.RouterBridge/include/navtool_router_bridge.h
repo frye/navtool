@@ -22,6 +22,10 @@ extern "C" {
 
 #define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 1u
 
+enum {
+    NAVTOOL_ROUTER_CAPABILITY_LAND_SEGMENT_CONSTRAINT_V1 = 1ull << 0
+};
+
 typedef int32_t navtool_router_status_v1;
 
 enum {
@@ -97,6 +101,13 @@ typedef void (*navtool_router_progress_callback_v1)(
 
 NAVTOOL_ROUTER_BRIDGE_API uint32_t
 navtool_router_bridge_abi_version_v1(void);
+
+/*
+ * Additive ABI-v1 feature bits. Older ABI-v1 bridges may not export this
+ * function; consumers must treat a missing export as zero capabilities.
+ */
+NAVTOOL_ROUTER_BRIDGE_API uint64_t
+navtool_router_bridge_capabilities_v1(void);
 
 NAVTOOL_ROUTER_BRIDGE_API const char*
 navtool_router_last_error_v1(void);

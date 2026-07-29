@@ -312,6 +312,11 @@
                                            Foreground="#B42318"
                                            FontSize="12"
                                            FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding LandAvoidanceWarning}"
+                                           TextWrapping="Wrap"
+                                           Foreground="#8A5A00"
+                                           FontSize="12"
+                                           FontWeight="SemiBold" />
                             </StackPanel>
                         </Border>
                         <Border Background="#FFF4E5"

@@ -516,6 +516,12 @@ uint32_t navtool_router_bridge_abi_version_v1(void) {
     return NAVTOOL_ROUTER_BRIDGE_ABI_VERSION;
 }
 
+uint64_t navtool_router_bridge_capabilities_v1(void) {
+    // router-lib v0.1.1 has no pre-retention segment constraint. Keep the
+    // additive capability surface in place without claiming unsupported safety.
+    return 0U;
+}
+
 const char* navtool_router_last_error_v1(void) {
     return last_error.c_str();
 }
