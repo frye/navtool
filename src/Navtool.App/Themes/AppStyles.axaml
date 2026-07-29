@@ -1,0 +1,98 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Style Selector="Window">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="TextBlock.section-title">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryColor}" />
+    </Style>
+    <Style Selector="TextBlock.muted">
+        <Setter Property="Foreground" Value="{DynamicResource TextMutedColor}" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="TextBlock.error">
+        <Setter Property="Foreground" Value="{DynamicResource DangerTextColor}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Border.card">
+        <Setter Property="Background" Value="{DynamicResource SurfaceColor}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderColor}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="14" />
+    </Style>
+    <Style Selector="Border.subtle">
+        <Setter Property="Background" Value="{DynamicResource SurfaceMutedColor}" />
+        <Setter Property="CornerRadius" Value="5" />
+        <Setter Property="Padding" Value="9,7" />
+    </Style>
+    <Style Selector="Border.map-overlay">
+        <Setter Property="Background" Value="{DynamicResource OverlayBackgroundColor}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource OverlayBorderColor}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Button.primary">
+        <Setter Property="Background" Value="{DynamicResource AccentColor}" />
+        <Setter Property="Foreground" Value="{DynamicResource AccentTextColor}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="MinHeight" Value="38" />
+    </Style>
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource AccentHoverColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource AccentTextColor}" />
+    </Style>
+    <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource AccentPressedColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource AccentTextColor}" />
+    </Style>
+    <Style Selector="Button.primary:disabled /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource DisabledBackgroundColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource DisabledTextColor}" />
+    </Style>
+    <Style Selector="Button:focus-visible /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="BorderBrush" Value="{DynamicResource FocusColor}" />
+        <Setter Property="BorderThickness" Value="2" />
+    </Style>
+    <Style Selector="ToggleButton.map-tool">
+        <Setter Property="MinHeight" Value="38" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="ToggleButton.map-tool:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource ControlHoverColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="ToggleButton.map-tool:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource ControlPressedColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="ToggleButton.map-tool:checked /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource ActiveToolBackgroundColor}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ActiveToolBorderColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource ActiveToolTextColor}" />
+    </Style>
+    <Style Selector="ToggleButton.map-tool:checked TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource ActiveToolTextColor}" />
+    </Style>
+    <Style Selector="ToggleButton.map-tool:disabled /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource DisabledBackgroundColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource DisabledTextColor}" />
+    </Style>
+    <Style Selector="ToggleButton.map-tool:focus-visible /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="BorderBrush" Value="{DynamicResource FocusColor}" />
+        <Setter Property="BorderThickness" Value="2" />
+    </Style>
+    <Style Selector="ComboBox.theme-picker">
+        <Setter Property="MinWidth" Value="128" />
+        <Setter Property="Foreground" Value="{DynamicResource HeaderTextColor}" />
+        <Setter Property="Background" Value="{DynamicResource HeaderBadgeBackgroundColor}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderColor}" />
+    </Style>
+    <Style Selector="ComboBox.theme-picker:pointerover /template/ Border#Background">
+        <Setter Property="Background" Value="{DynamicResource SurfaceRaisedColor}" />
+    </Style>
+</Styles>

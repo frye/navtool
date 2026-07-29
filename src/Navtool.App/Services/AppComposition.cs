@@ -22,6 +22,9 @@ public static class AppComposition
             builder.AddProvider(new RollingFileLoggerProvider(
                 new RollingFileLoggerOptions(Path.Combine(ResolveAppDataRoot(), "logs"))));
         });
+        services.AddSingleton(provider => new AppThemeService(
+            ResolveAppDataRoot(),
+            provider.GetRequiredService<ILogger<AppThemeService>>()));
         services.AddHttpClient(ForecastHttpClientName, client =>
         {
             client.DefaultRequestHeaders.UserAgent.ParseAdd("Navtool/1.0");
