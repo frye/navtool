@@ -372,6 +372,57 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task ForecastLimitedRouteRetainsOverlaysTimelineAndShowsWarning()
+    {
+        var provider = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new StreamingRouteEngine((request, forecast, progress, _) =>
+        {
+            var snapshot = CreateSnapshot(request);
+            progress?.Report(new RouteCalculationProgress(1, "forecast ended", snapshot));
+            return ValueTask.FromResult(new RouteResult(
+                request,
+                forecast.Request.Model,
+                snapshot.ProvisionalRoute,
+                snapshot.Diagnostics,
+                RouteCompletion.ForecastExhausted));
+        });
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { provider }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+
+        await viewModel.CalculateRoutesAsync();
+        await Task.Delay(20);
+
+        var route = Assert.Single(viewModel.SuccessfulRoutes);
+        Assert.True(route.IsForecastLimited);
+        Assert.True(viewModel.HasTimeline);
+        Assert.Same(route, viewModel.SelectedRoutePoint!.Route);
+        viewModel.SelectRoutePoint(
+            new RouteMapSelection(
+                route,
+                route.Points.Length - 1,
+                route.Points[^1],
+                RouteHitKind.RoutePoint,
+                0),
+            focus: false);
+        Assert.Equal(route.ArrivalTime, viewModel.SelectedTimelineUtc);
+        Assert.Contains(
+            "forecast-limited endpoint",
+            viewModel.SelectedRouteDetails,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("forecast ended", viewModel.NoaaStatus, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("no more available forecast", viewModel.WarningMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("best estimate for now", viewModel.WarningMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(viewModel.ErrorMessage);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS isochrones").Features);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS provisional route").Features);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS routes").Features);
+    }
+
+    [Fact]
     public async Task CancellingCalculationClearsStreamingOverlays()
     {
         var provider = new DelegateForecastProvider(
@@ -814,10 +865,15 @@ public sealed class MainViewModelWorkflowTests
             frontierTime,
             new[]
             {
-                frontierPoint,
-                new Coordinate(
-                    request.Origin.Latitude - 0.25,
-                    request.Origin.Longitude + 0.1)
+                new RouteCalculationContour(
+                    new[]
+                    {
+                        frontierPoint,
+                        new Coordinate(
+                            request.Origin.Latitude - 0.25,
+                            request.Origin.Longitude + 0.1)
+                    },
+                    closed: false)
             },
             new[]
             {

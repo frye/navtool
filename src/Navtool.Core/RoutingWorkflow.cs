@@ -91,6 +91,7 @@ public sealed record RoutingProgress(
 public enum ModelRouteStatus
 {
     Succeeded,
+    ForecastLimited,
     Failed
 }
 
@@ -140,7 +141,14 @@ public sealed record ModelRouteOutcome
         ForecastModel model,
         ForecastAcquisition acquisition,
         RouteResult route) =>
-        new(model, ModelRouteStatus.Succeeded, acquisition, route, null);
+        new(
+            model,
+            route.IsForecastLimited
+                ? ModelRouteStatus.ForecastLimited
+                : ModelRouteStatus.Succeeded,
+            acquisition,
+            route,
+            null);
 
     public static ModelRouteOutcome Failed(
         ForecastModel model,
@@ -349,11 +357,11 @@ public sealed class RoutingWorkflow
         cancellationToken.ThrowIfCancellationRequested();
         var local = selection.LocalForecast ??
             throw new InvalidOperationException("Local forecast metadata is missing.");
-        if (request.From < local.ValidFrom || request.Through > local.ValidThrough)
+        if (request.From < local.ValidFrom || request.From > local.ValidThrough)
         {
             throw new InvalidOperationException(
                 $"The selected GRIB is valid from {local.ValidFrom:u} through {local.ValidThrough:u}, " +
-                "which does not cover the requested route window.");
+                $"which does not include the requested departure {request.From:u}.");
         }
 
         if (!local.Bounds.Contains(request.Bounds))

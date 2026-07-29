@@ -314,23 +314,56 @@ public sealed record RouteDiagnostics
     public TimeSpan? CalculationDuration { get; }
 }
 
+public sealed record RouteCalculationContour
+{
+    public RouteCalculationContour(
+        IEnumerable<Coordinate> points,
+        bool closed)
+    {
+        ArgumentNullException.ThrowIfNull(points);
+        var immutablePoints = points.ToImmutableArray();
+        if (immutablePoints.IsEmpty)
+        {
+            throw new ArgumentException(
+                "A routing contour must contain at least one point.",
+                nameof(points));
+        }
+
+        if (closed && immutablePoints.Length < 3)
+        {
+            throw new ArgumentException(
+                "A closed routing contour must contain at least three points.",
+                nameof(points));
+        }
+
+        Points = immutablePoints;
+        Closed = closed;
+    }
+
+    public ImmutableArray<Coordinate> Points { get; }
+
+    public bool Closed { get; }
+}
+
 public sealed record RouteCalculationSnapshot
 {
     public RouteCalculationSnapshot(
         DateTimeOffset frontierTime,
-        IEnumerable<Coordinate> frontier,
+        IEnumerable<RouteCalculationContour> contours,
         IEnumerable<RoutePoint> provisionalRoute,
         RouteDiagnostics diagnostics)
     {
-        ArgumentNullException.ThrowIfNull(frontier);
+        ArgumentNullException.ThrowIfNull(contours);
         ArgumentNullException.ThrowIfNull(provisionalRoute);
         ArgumentNullException.ThrowIfNull(diagnostics);
 
-        var immutableFrontier = frontier.ToImmutableArray();
+        var immutableContours = contours.ToImmutableArray();
         var immutableRoute = provisionalRoute.ToImmutableArray();
-        if (immutableFrontier.IsEmpty)
+        if (immutableContours.IsEmpty)
         {
-            throw new ArgumentException("A routing frontier must contain at least one point.", nameof(frontier));
+            throw new ArgumentException(
+                "A routing snapshot must contain at least one display contour.",
+                nameof(contours));
         }
 
         if (immutableRoute.IsEmpty)
@@ -359,18 +392,24 @@ public sealed record RouteCalculationSnapshot
         }
 
         FrontierTime = utcFrontierTime;
-        Frontier = immutableFrontier;
+        Contours = immutableContours;
         ProvisionalRoute = immutableRoute;
         Diagnostics = diagnostics;
     }
 
     public DateTimeOffset FrontierTime { get; }
 
-    public ImmutableArray<Coordinate> Frontier { get; }
+    public ImmutableArray<RouteCalculationContour> Contours { get; }
 
     public ImmutableArray<RoutePoint> ProvisionalRoute { get; }
 
     public RouteDiagnostics Diagnostics { get; }
+}
+
+public enum RouteCompletion
+{
+    DestinationReached,
+    ForecastExhausted
 }
 
 public sealed record RouteResult
@@ -379,12 +418,18 @@ public sealed record RouteResult
         RouteRequest request,
         ForecastModel model,
         IEnumerable<RoutePoint> points,
-        RouteDiagnostics diagnostics)
+        RouteDiagnostics diagnostics,
+        RouteCompletion completion = RouteCompletion.DestinationReached)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(points);
         ArgumentNullException.ThrowIfNull(diagnostics);
         _ = model.Provider();
+        if (!Enum.IsDefined(completion))
+        {
+            throw new ArgumentOutOfRangeException(nameof(completion));
+        }
+
         var immutablePoints = points.ToImmutableArray();
         if (immutablePoints.IsEmpty)
         {
@@ -419,6 +464,7 @@ public sealed record RouteResult
         Model = model;
         Points = immutablePoints;
         Diagnostics = diagnostics;
+        Completion = completion;
     }
 
     public RouteRequest Request { get; }
@@ -429,6 +475,8 @@ public sealed record RouteResult
 
     public RouteDiagnostics Diagnostics { get; }
 
+    public RouteCompletion Completion { get; }
+
     public DateTimeOffset ArrivalTime => Points[^1].Timestamp;
 
     /// <summary>
@@ -437,6 +485,8 @@ public sealed record RouteResult
     /// so exceeding it is expected and must not be treated as a failure.
     /// </summary>
     public bool ExceedsRequestedArrival => ArrivalTime > Request.LatestArrivalTime;
+
+    public bool IsForecastLimited => Completion == RouteCompletion.ForecastExhausted;
 }
 
 public sealed record RouteCalculationProgress

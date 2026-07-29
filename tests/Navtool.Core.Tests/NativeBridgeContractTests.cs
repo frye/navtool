@@ -125,8 +125,13 @@ public sealed class NativeBridgeContractTests
             time,
             new[]
             {
-                new Coordinate(42, -60),
-                new Coordinate(43, -59)
+                new RouteCalculationContour(
+                    new[]
+                    {
+                        new Coordinate(42, -60),
+                        new Coordinate(43, -59)
+                    },
+                    closed: false)
             },
             new[]
             {
@@ -136,11 +141,12 @@ public sealed class NativeBridgeContractTests
             diagnostics);
 
         Assert.Equal(time, snapshot.FrontierTime);
-        Assert.Equal(2, snapshot.Frontier.Length);
+        Assert.Single(snapshot.Contours);
+        Assert.Equal(2, snapshot.Contours[0].Points.Length);
         Assert.Equal(2, snapshot.ProvisionalRoute.Length);
         Assert.Same(diagnostics, snapshot.Diagnostics);
         Assert.Throws<NotSupportedException>(() =>
-            ((IList<Coordinate>)snapshot.Frontier).Add(new Coordinate(44, -58)));
+            ((IList<Coordinate>)snapshot.Contours[0].Points).Add(new Coordinate(44, -58)));
     }
 
     [Fact]
@@ -151,11 +157,19 @@ public sealed class NativeBridgeContractTests
         var diagnostics = new RouteDiagnostics(1, 2, 1, 1);
 
         Assert.Throws<ArgumentException>(() =>
-            new RouteCalculationSnapshot(time, Array.Empty<Coordinate>(), new[] { point }, diagnostics));
+            new RouteCalculationSnapshot(time, Array.Empty<RouteCalculationContour>(), new[] { point }, diagnostics));
         Assert.Throws<ArgumentException>(() =>
-            new RouteCalculationSnapshot(time, new[] { point.Location }, Array.Empty<RoutePoint>(), diagnostics));
+            new RouteCalculationSnapshot(
+                time,
+                new[] { new RouteCalculationContour(new[] { point.Location }, false) },
+                Array.Empty<RoutePoint>(),
+                diagnostics));
         Assert.Throws<ArgumentException>(() =>
-            new RouteCalculationSnapshot(time, new[] { point.Location }, new[] { point }, diagnostics));
+            new RouteCalculationSnapshot(
+                time,
+                new[] { new RouteCalculationContour(new[] { point.Location }, false) },
+                new[] { point },
+                diagnostics));
     }
 
     [Fact]

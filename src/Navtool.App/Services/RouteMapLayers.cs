@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using Mapsui;
 using Mapsui.Layers;
 using Mapsui.Nts;
@@ -24,8 +23,6 @@ public sealed class RouteMapLayers
     public static readonly MapsuiColor IsochroneColor = MapsuiColor.FromString("#D32F2F");
     public const double IsochroneLineWidth = 1.0;
     public const float IsochroneOpacity = 0.85f;
-    private const double IsochroneHalfArcRadians = Math.PI / 2;
-    private const double AngularToleranceRadians = 1e-10;
 
     private readonly MemoryLayer _noaaRoutes = CreateRouteLayer("NOAA GFS routes", NoaaColor);
     private readonly MemoryLayer _ecmwfRoutes = CreateRouteLayer("ECMWF IFS routes", EcmwfColor);
@@ -115,7 +112,7 @@ public sealed class RouteMapLayers
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         var isochrones = GetIsochroneFeatures(model);
-        isochrones.Add(CreateIsochroneFeature(snapshot));
+        isochrones.AddRange(CreateIsochroneFeatures(snapshot));
         var isochroneLayer = GetIsochroneLayer(model);
         isochroneLayer.Features = isochrones.ToArray();
         isochroneLayer.FeaturesWereModified();
@@ -310,97 +307,33 @@ public sealed class RouteMapLayers
         return feature;
     }
 
-    private static IFeature CreateIsochroneFeature(RouteCalculationSnapshot snapshot)
+    private static IEnumerable<IFeature> CreateIsochroneFeatures(
+        RouteCalculationSnapshot snapshot)
     {
-        var ordered = SelectIsochroneFront(snapshot);
-        if (ordered.Length == 1)
+        foreach (var contour in snapshot.Contours)
         {
-            var point = new PointFeature(MapProjection.ToMapPoint(ordered[0]))
+            if (contour.Points.Length == 1)
+            {
+                yield return new PointFeature(
+                    MapProjection.ToMapPoint(contour.Points[0]))
+                {
+                    Data = snapshot
+                };
+                continue;
+            }
+
+            var points = contour.Closed
+                ? contour.Points.Add(contour.Points[0])
+                : contour.Points;
+            var coordinates = MapProjection.ToContinuousMapPoints(points)
+                .Select(point => new NtsCoordinate(point.X, point.Y))
+                .ToArray();
+            yield return new GeometryFeature(new LineString(coordinates))
             {
                 Data = snapshot
             };
-            return point;
         }
-
-        var coordinates = MapProjection.ToContinuousMapPoints(ordered)
-            .Select(point => new NtsCoordinate(point.X, point.Y))
-            .ToArray();
-        var feature = new GeometryFeature(new LineString(coordinates))
-        {
-            Data = snapshot
-        };
-        return feature;
     }
-
-    private static ImmutableArray<CoreCoordinate> SelectIsochroneFront(
-        RouteCalculationSnapshot snapshot)
-    {
-        var frontier = snapshot.Frontier;
-        var latitudeCenter = frontier.Average(point => point.Latitude);
-        var longitudeSine = frontier.Sum(point =>
-            Math.Sin(point.Longitude * Math.PI / 180));
-        var longitudeCosine = frontier.Sum(point =>
-            Math.Cos(point.Longitude * Math.PI / 180));
-        var longitudeCenter =
-            Math.Abs(longitudeSine) > 1e-12 || Math.Abs(longitudeCosine) > 1e-12
-                ? Math.Atan2(longitudeSine, longitudeCosine) * 180 / Math.PI
-                : frontier[0].Longitude;
-        var longitudeScale = Math.Cos(latitudeCenter * Math.PI / 180);
-        var optimalAngle = GetFrontierAngle(
-            snapshot.ProvisionalRoute[^1].Location,
-            latitudeCenter,
-            longitudeCenter,
-            longitudeScale);
-
-        var angledFrontier = frontier
-            .Select((point, index) => new
-            {
-                Point = point,
-                Index = index,
-                Offset = NormalizeAngle(
-                    GetFrontierAngle(
-                        point,
-                        latitudeCenter,
-                        longitudeCenter,
-                        longitudeScale) - optimalAngle)
-            })
-            .ToArray();
-        var selected = angledFrontier
-            .Where(item =>
-                Math.Abs(item.Offset) <=
-                IsochroneHalfArcRadians + AngularToleranceRadians)
-            .OrderBy(item => item.Offset)
-            .ThenBy(item => item.Index)
-            .Select(item => item.Point)
-            .ToImmutableArray();
-        return selected.IsEmpty
-            ? [angledFrontier.MinBy(item => Math.Abs(item.Offset))!.Point]
-            : selected;
-    }
-
-    private static double GetFrontierAngle(
-        CoreCoordinate point,
-        double latitudeCenter,
-        double longitudeCenter,
-        double longitudeScale) =>
-        Math.Atan2(
-            point.Latitude - latitudeCenter,
-            NormalizeLongitudeDelta(point.Longitude, longitudeCenter) * longitudeScale);
-
-    private static double NormalizeAngle(double angle)
-    {
-        if (angle < -Math.PI)
-        {
-            return angle + 2 * Math.PI;
-        }
-
-        return angle > Math.PI
-            ? angle - 2 * Math.PI
-            : angle;
-    }
-
-    private static double NormalizeLongitudeDelta(double longitude, double origin) =>
-        (longitude - origin + 540) % 360 - 180;
 
     private List<IFeature> GetIsochroneFeatures(ForecastModel model) =>
         _isochroneFeatures.TryGetValue(model, out var features)

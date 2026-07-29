@@ -86,25 +86,12 @@ add_library(NavtoolRouterBridge SHARED
     src/navtool_router_bridge.cpp)
 add_library(Navtool::RouterBridge ALIAS NavtoolRouterBridge)
 
-file(
-    GLOB_RECURSE
-    _navtool_router_public_headers
-    "${_navtool_router_effective_source_dir}/include/*.hpp")
-set(_navtool_router_has_progress_callback OFF)
-foreach(_navtool_router_header IN LISTS _navtool_router_public_headers)
-    file(READ "${_navtool_router_header}" _navtool_router_header_contents)
-    if(_navtool_router_header_contents MATCHES "RoutingProgressCallback")
-        set(_navtool_router_has_progress_callback ON)
-        break()
-    endif()
-endforeach()
-
 target_compile_features(NavtoolRouterBridge PRIVATE cxx_std_20)
 target_compile_definitions(
     NavtoolRouterBridge
     PRIVATE
         NAVTOOL_ROUTER_BRIDGE_BUILDING
-        NAVTOOL_ROUTER_HAS_PROGRESS_CALLBACK=$<BOOL:${_navtool_router_has_progress_callback}>)
+        NAVTOOL_ROUTER_HAS_PROGRESS_CALLBACK=1)
 target_include_directories(
     NavtoolRouterBridge
     PUBLIC
@@ -138,7 +125,7 @@ if(NAVTOOL_ROUTER_BRIDGE_BUILD_TESTS)
     target_compile_definitions(
         navtool_router_bridge_tests
         PRIVATE
-            NAVTOOL_ROUTER_HAS_PROGRESS_CALLBACK=$<BOOL:${_navtool_router_has_progress_callback}>
+            NAVTOOL_ROUTER_HAS_PROGRESS_CALLBACK=1
             NAVTOOL_ROUTER_SAMPLE_GRIB="${_navtool_router_effective_source_dir}/samples/sample.grib")
     target_link_libraries(
         navtool_router_bridge_tests

@@ -45,9 +45,9 @@ acquisition, live routing feedback, map clarity, and route inspection.
 
 ### Improved
 
-- Refined streamed isochrones into thin, destination-facing red arcs centered
-  on the current optimal route endpoint. The open-front design improves
-  visibility without obscuring the basemap.
+- Refined streamed isochrones into thin router-provided display contours,
+  preserving deterministic open/closed topology and multiple components without
+  obscuring the basemap.
   ([#13](https://github.com/frye/navtool/pull/13),
   [#14](https://github.com/frye/navtool/pull/14))
 - Improved NOAA reliability with grid-aligned geographic bounds, request
@@ -63,6 +63,10 @@ acquisition, live routing feedback, map clarity, and route inspection.
 
 ### Fixed
 
+- Restored live isochrones after the router-lib v0.1.1 progress API change.
+  Routes that outlast available weather now remain selectable through the final
+  forecast-supported point, keep their route and isochrone overlays, and show
+  an amber best-estimate warning instead of failing.
 - Fixed the Avalonia map surface being hidden by an opaque background and
   removed duplicate OpenStreetMap attribution.
   ([#2](https://github.com/frye/navtool/pull/2))
@@ -79,9 +83,9 @@ acquisition, live routing feedback, map clarity, and route inspection.
 - Fixed an ambiguous Avalonia color type in map-rendering tests to keep the
   application test suite compiling consistently.
   ([#17](https://github.com/frye/navtool/pull/17))
-- Preserved compatibility with older ABI-v1 native bridges by falling back to
-  final-route-only calculation when streaming callbacks are unavailable.
-  ([#5](https://github.com/frye/navtool/pull/5))
+- Versioned the native bridge as ABI v2 for callback-scoped display contour
+  segments. Stale ABI-v1 bridges now fail preflight instead of silently dropping
+  streaming visualization.
 
 ### Known limitations
 

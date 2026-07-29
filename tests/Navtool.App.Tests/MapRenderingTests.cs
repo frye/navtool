@@ -205,22 +205,11 @@ public sealed class MapRenderingTests
     }
 
     [Fact]
-    public void IsochronesRenderOpenDestinationFacingHalfFront()
+    public void IsochronesRenderRouterProvidedContourTopology()
     {
         var map = new Map();
         var layers = new RouteMapLayers(map);
         var east = new Coordinate(0, 2);
-        var frontier = new[]
-        {
-            new Coordinate(1, -1),
-            new Coordinate(-1, 1),
-            new Coordinate(0, -2),
-            new Coordinate(2, 0),
-            east,
-            new Coordinate(-2, 0),
-            new Coordinate(1, 1),
-            new Coordinate(-1, -1)
-        };
         var expectedArc = new[]
         {
             new Coordinate(-2, 0),
@@ -231,7 +220,7 @@ public sealed class MapRenderingTests
         };
         var snapshot = CreateSnapshot(
             new DateTimeOffset(2026, 7, 15, 1, 0, 0, TimeSpan.Zero),
-            frontier,
+            expectedArc,
             east);
 
         layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, snapshot);
@@ -291,7 +280,10 @@ public sealed class MapRenderingTests
         var start = new Coordinate(10, 170);
         return new RouteCalculationSnapshot(
             frontierTime,
-            frontierPoints,
+            new[]
+            {
+                new RouteCalculationContour(frontierPoints, closed: false)
+            },
             new[]
             {
                 new RoutePoint(start, frontierTime.AddHours(-1), 90, 6, 15, 180, 0),

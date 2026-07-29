@@ -33,7 +33,7 @@ public sealed class NativeRouterBridgeIntegrationTests
         }
 
         using var forecast = bridge.LoadForecast(sample);
-        Assert.Equal(1u, bridge.AbiVersion);
+        Assert.Equal(2u, bridge.AbiVersion);
         Assert.True(forecast.Metadata.LatitudeCount > 0);
         Assert.True(forecast.Metadata.FirstValidAt < forecast.Metadata.LastValidAt);
 
@@ -72,9 +72,13 @@ public sealed class NativeRouterBridgeIntegrationTests
                 Enumerable.Range(1, snapshots.Count),
                 snapshots.Select(snapshot => snapshot.Diagnostics.TimeSteps));
             Assert.All(snapshots, snapshot =>
+            {
+                Assert.NotEmpty(snapshot.Contours);
+                Assert.All(snapshot.Contours, contour => Assert.NotEmpty(contour.Points));
                 Assert.Equal(
                     snapshot.FrontierTime,
-                    snapshot.ProvisionalRoute[^1].Timestamp));
+                    snapshot.ProvisionalRoute[^1].Timestamp);
+            });
         }
         else
         {
@@ -86,6 +90,32 @@ public sealed class NativeRouterBridgeIntegrationTests
             Assert.True(point.HeadingDegrees is >= 0 and < 360);
             Assert.True(point.TrueWindDirectionDegrees is >= 0 and < 360);
         });
+
+        var limitedRequest = new RouteRequest(
+            "native-forecast-limited",
+            new Coordinate(48.05, -123.70),
+            new Coordinate(48.45, -123.30),
+            forecast.Metadata.LastValidAt.AddHours(-1),
+            forecast.Metadata.LastValidAt.AddHours(10));
+        var limitedSnapshots = new List<RouteCalculationSnapshot>();
+        var limitedRouteWithoutProgress = bridge.CalculateRoute(
+            forecast,
+            limitedRequest,
+            ForecastModel.NoaaGfs);
+        var limitedRoute = bridge.CalculateRoute(
+            forecast,
+            limitedRequest,
+            ForecastModel.NoaaGfs,
+            limitedSnapshots.Add);
+
+        Assert.True(limitedRouteWithoutProgress.IsForecastLimited);
+        Assert.Equal(limitedRoute.ArrivalTime, limitedRouteWithoutProgress.ArrivalTime);
+        Assert.Equal(limitedRoute.Points[^1].Location, limitedRouteWithoutProgress.Points[^1].Location);
+        Assert.True(limitedRoute.IsForecastLimited);
+        Assert.NotEmpty(limitedSnapshots);
+        Assert.Equal(limitedSnapshots[^1].ProvisionalRoute, limitedRoute.Points);
+        Assert.Equal(limitedSnapshots[^1].FrontierTime, limitedRoute.ArrivalTime);
+        Assert.True(limitedRoute.ArrivalTime <= forecast.Metadata.LastValidAt);
     }
 
     private static string? FindAncestor(string start, string marker)

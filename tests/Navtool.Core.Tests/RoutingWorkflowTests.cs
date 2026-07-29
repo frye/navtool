@@ -36,10 +36,15 @@ public sealed class RoutingWorkflowTests
                 frontierTime,
                 new[]
                 {
-                    request.Origin,
-                    new Coordinate(
-                        request.Origin.Latitude + 0.25,
-                        request.Origin.Longitude + 0.25)
+                    new RouteCalculationContour(
+                        new[]
+                        {
+                            request.Origin,
+                            new Coordinate(
+                                request.Origin.Latitude + 0.25,
+                                request.Origin.Longitude + 0.25)
+                        },
+                        closed: false)
                 },
                 new[]
                 {
@@ -93,7 +98,7 @@ public sealed class RoutingWorkflowTests
             report.Model == ForecastModel.NoaaGfs &&
             report.Stage == RoutingProgressStage.CalculatingRoute &&
             report.Snapshot is { Diagnostics.TimeSteps: 1 } &&
-            report.Snapshot.Frontier.Length == 2);
+            report.Snapshot.Contours[0].Points.Length == 2);
         Assert.Contains(reports, report =>
             report.Model == ForecastModel.NoaaGfs &&
             report.Stage == RoutingProgressStage.Completed &&
@@ -197,7 +202,7 @@ public sealed class RoutingWorkflowTests
     }
 
     [Fact]
-    public async Task Local_forecast_rejects_incomplete_route_coverage()
+    public async Task Local_forecast_allows_requested_window_to_outlast_forecast()
     {
         var route = CreateRouteRequest();
         var local = new LocalForecastDescriptor(
@@ -206,7 +211,37 @@ public sealed class RoutingWorkflowTests
             route.DepartureTime.AddHours(-6),
             route.DepartureTime,
             route.LatestArrivalTime.AddHours(-1),
-            new GeographicBounds(40, 45, -70, -50));
+            new GeographicBounds(30, 55, -90, -30));
+        var workflow = new RoutingWorkflow(
+            Array.Empty<IForecastProvider>(),
+            new StubRouteEngine((request, acquisition, _, _) =>
+            {
+                Assert.Equal(local.Artifact, acquisition.Artifact);
+                return ValueTask.FromResult(CreateRoute(request, acquisition.Request.Model));
+            }));
+        var request = new RoutingWorkflowRequest(
+            route,
+            new[] { ForecastSelection.LocalFile(local) },
+            new GeographicBounds(35, 50, -75, -45));
+
+        var result = await workflow.ExecuteAsync(request);
+
+        var outcome = Assert.Single(result.Outcomes);
+        Assert.Equal(ModelRouteStatus.Succeeded, outcome.Status);
+        Assert.NotNull(outcome.Route);
+    }
+
+    [Fact]
+    public async Task Local_forecast_still_rejects_departure_outside_coverage()
+    {
+        var route = CreateRouteRequest();
+        var local = new LocalForecastDescriptor(
+            ForecastModel.NoaaGfs,
+            new LocalGribArtifact(Path.GetFullPath("existing.grib2")),
+            route.DepartureTime.AddHours(-12),
+            route.DepartureTime.AddHours(-6),
+            route.DepartureTime.AddHours(-1),
+            new GeographicBounds(30, 55, -90, -30));
         var workflow = new RoutingWorkflow(
             Array.Empty<IForecastProvider>(),
             new StubRouteEngine((_, _, _, _) =>
@@ -221,7 +256,41 @@ public sealed class RoutingWorkflowTests
         var outcome = Assert.Single(result.Outcomes);
         Assert.Equal(ModelRouteStatus.Failed, outcome.Status);
         Assert.Equal(ModelRouteFailureStage.ForecastAcquisition, outcome.Failure!.Stage);
-        Assert.Contains("does not cover the requested route window", outcome.Failure.Message);
+        Assert.Contains("does not include the requested departure", outcome.Failure.Message);
+    }
+
+    [Fact]
+    public async Task Workflow_classifies_forecast_exhaustion_as_a_selectable_result()
+    {
+        var provider = new StubForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var workflow = new RoutingWorkflow(
+            new[] { provider },
+            new StubRouteEngine((request, acquisition, _, _) =>
+            {
+                var endpoint = new Coordinate(42, -60);
+                return ValueTask.FromResult(new RouteResult(
+                    request,
+                    acquisition.Request.Model,
+                    new[]
+                    {
+                        new RoutePoint(request.Origin, request.DepartureTime, 90, 6, 15, 180, 0),
+                        new RoutePoint(endpoint, request.DepartureTime.AddHours(12), 90, 6, 15, 180, 60)
+                    },
+                    new RouteDiagnostics(10, 20, 5, 4),
+                    RouteCompletion.ForecastExhausted));
+            }));
+        var request = new RoutingWorkflowRequest(
+            CreateRouteRequest(),
+            new[] { ForecastModel.NoaaGfs });
+
+        var result = await workflow.ExecuteAsync(request);
+
+        var outcome = Assert.Single(result.Outcomes);
+        Assert.Equal(ModelRouteStatus.ForecastLimited, outcome.Status);
+        Assert.True(outcome.Route!.IsForecastLimited);
+        Assert.Single(result.SuccessfulRoutes);
     }
 
     private static RoutingWorkflowRequest CreateWorkflowRequest() =>

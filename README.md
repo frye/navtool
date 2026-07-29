@@ -84,30 +84,31 @@ fetch releases from a different fork.
 
 ## Streaming route visualization
 
-Navtool uses router-lib's `RoutingProgressCallback` contract. After each
-completed search step with a retained frontier, the native bridge synchronously
-copies the callback-scoped isochrone, provisional route, and cumulative
+Navtool uses router-lib's `Router::optimize_view` progress contract. After each
+completed search step, the native bridge synchronously copies the
+callback-scoped display contour components, provisional route, and cumulative
 diagnostics into immutable managed data. The callback returns promptly; Mapsui
 updates are posted through the application's progress pipeline to the Avalonia
 UI context.
 
-Each model uses its normal route color. Completed isochrone frontiers accumulate
-as thin red lines, while the model's provisional route is replaced by the latest
-snapshot. Successful search overlays remain visible with the final route. Failed
-model overlays and all cancelled-calculation overlays are cleared. Frontiers,
-routes, and map-fit bounds are unwrapped safely at the antimeridian.
+Each model uses its normal route color. Router-provided open or closed isochrone
+contours accumulate as thin red lines, while the model's provisional route is
+replaced by the latest snapshot. Successful and forecast-limited search overlays
+remain visible with the final route. Failed model overlays and all
+cancelled-calculation overlays are cleared. Contours, routes, and map-fit bounds
+are unwrapped safely at the antimeridian.
 
-The final route result remains authoritative and may differ from the last
-provisional route. Router-lib progress is notification-only: cancelling in
-Navtool prevents stale updates and results from being accepted, but it does not
-interrupt an optimization already executing inside the native library.
+When forecast coverage ends before the destination is reached, Navtool promotes
+the final provisional route to a selectable forecast-limited estimate, retains
+all accumulated contours, and displays an amber warning. Complete final routes
+remain authoritative and may differ from the last provisional route.
 
-The additive C ABI entry point
-`navtool_router_calculate_route_streaming_v1` preserves the existing v1
-final-route function. Progress array pointers are valid only for the duration
-of the synchronous callback and must be copied by consumers. Navtool falls back
-to final-only route calculation when it loads an older ABI-v1 bridge that does
-not export the streaming entry point.
+The ABI-v2 entry point `navtool_router_calculate_route_streaming_v2` preserves
+the existing final-route and legacy streaming functions while adding contour
+segment boundaries and closed flags. Progress array pointers are valid only for
+the duration of the synchronous callback and must be copied by consumers.
+Navtool rejects stale ABI-v1 bridges so missing contour support cannot silently
+disable live isochrones.
 
 ## Publish
 

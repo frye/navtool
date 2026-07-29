@@ -20,7 +20,7 @@
 extern "C" {
 #endif
 
-#define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 1u
+#define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 2u
 
 typedef int32_t navtool_router_status_v1;
 
@@ -35,7 +35,8 @@ enum {
     NAVTOOL_ROUTER_STATUS_OUTSIDE_FORECAST_V1 = 7,
     NAVTOOL_ROUTER_STATUS_NO_ROUTE_V1 = 8,
     NAVTOOL_ROUTER_STATUS_OUTPUT_ERROR_V1 = 9,
-    NAVTOOL_ROUTER_STATUS_INTERNAL_ERROR_V1 = 10
+    NAVTOOL_ROUTER_STATUS_INTERNAL_ERROR_V1 = 10,
+    NAVTOOL_ROUTER_STATUS_FORECAST_EXHAUSTED_V2 = 11
 };
 
 typedef struct navtool_router_forecast_v1 navtool_router_forecast_v1;
@@ -95,6 +96,32 @@ typedef void (*navtool_router_progress_callback_v1)(
     const navtool_router_progress_v1* progress,
     void* user_data);
 
+typedef struct navtool_router_contour_segment_v2 {
+    uint64_t point_offset;
+    uint64_t point_count;
+    uint8_t closed;
+    uint8_t reserved[7];
+} navtool_router_contour_segment_v2;
+
+typedef struct navtool_router_progress_v2 {
+    int64_t isochrone_utc_epoch_seconds;
+    const navtool_router_coordinate_v1* contour_points;
+    uint64_t contour_point_count;
+    const navtool_router_contour_segment_v2* contour_segments;
+    uint64_t contour_segment_count;
+    const navtool_router_route_point_v1* provisional_route_points;
+    uint64_t provisional_route_point_count;
+    navtool_router_diagnostics_v1 diagnostics;
+} navtool_router_progress_v2;
+
+/*
+ * Version 2 progress exposes router-lib display contour topology. All views
+ * remain callback-scoped and must be copied before the callback returns.
+ */
+typedef void (*navtool_router_progress_callback_v2)(
+    const navtool_router_progress_v2* progress,
+    void* user_data);
+
 NAVTOOL_ROUTER_BRIDGE_API uint32_t
 navtool_router_bridge_abi_version_v1(void);
 
@@ -146,6 +173,19 @@ navtool_router_calculate_route_streaming_v1(
     double destination_longitude_degrees,
     const int64_t* departure_utc_epoch_seconds,
     navtool_router_progress_callback_v1 on_progress,
+    void* progress_user_data,
+    char** out_route_json_utf8,
+    size_t* out_route_json_length);
+
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_calculate_route_streaming_v2(
+    const navtool_router_forecast_v1* forecast,
+    double start_latitude_degrees,
+    double start_longitude_degrees,
+    double destination_latitude_degrees,
+    double destination_longitude_degrees,
+    const int64_t* departure_utc_epoch_seconds,
+    navtool_router_progress_callback_v2 on_progress,
     void* progress_user_data,
     char** out_route_json_utf8,
     size_t* out_route_json_length);
