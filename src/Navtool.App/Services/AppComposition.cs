@@ -34,14 +34,22 @@ public static class AppComposition
 
         services.AddSingleton(_ => new AtomicFileCache(
             new AtomicFileCacheOptions(ResolveCacheRoot())));
-        services.AddSingleton(provider => new OsmLandDataProvider(
-            provider.GetRequiredService<IHttpClientFactory>().CreateClient(ForecastHttpClientName),
-            new OsmLandDataOptions(
-                ResolveLandDataEndpoint(),
-                Path.Combine(ResolveAppDataRoot(), "land-cache")),
-            logger: provider.GetRequiredService<ILogger<OsmLandDataProvider>>()));
         services.AddSingleton<ILandDataProvider>(provider =>
-            provider.GetRequiredService<OsmLandDataProvider>());
+        {
+            var endpoint = ResolveLandDataEndpoint();
+            if (endpoint is null)
+            {
+                return new NaturalEarthLandDataProvider();
+            }
+
+            return new OsmLandDataProvider(
+                provider.GetRequiredService<IHttpClientFactory>()
+                    .CreateClient(ForecastHttpClientName),
+                new OsmLandDataOptions(
+                    endpoint,
+                    Path.Combine(ResolveAppDataRoot(), "land-cache")),
+                logger: provider.GetRequiredService<ILogger<OsmLandDataProvider>>());
+        });
         services.AddSingleton<NoaaGfsForecastProvider>(provider =>
             new NoaaGfsForecastProvider(
                 provider.GetRequiredService<IHttpClientFactory>().CreateClient(ForecastHttpClientName),

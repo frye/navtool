@@ -3,6 +3,7 @@ set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 build_dir=${NAVTOOL_NATIVE_BUILD_DIR:-"$root/native/Navtool.RouterBridge/build"}
+router_revision=${NAVTOOL_ROUTER_LIB_RELEASE_TAG:-"97487755fae6250023226b3c45affbb1a710ce49"}
 
 if [ -n "${SAILROUTE_SOURCE_DIR:-}" ]; then
   router_source=$SAILROUTE_SOURCE_DIR
@@ -18,6 +19,7 @@ if [ -n "${SAILROUTE_SOURCE_DIR:-}" ]; then
 else
   cmake -S "$root/native/Navtool.RouterBridge" -B "$build_dir" \
     -DCMAKE_BUILD_TYPE=Release \
+    -DNAVTOOL_ROUTER_LIB_RELEASE_TAG="$router_revision" \
     -DNAVTOOL_ROUTER_BRIDGE_BUILD_TESTS=ON
 fi
 cmake --build "$build_dir" --config Release --parallel

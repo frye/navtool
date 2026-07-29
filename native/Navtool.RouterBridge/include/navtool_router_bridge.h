@@ -20,7 +20,7 @@
 extern "C" {
 #endif
 
-#define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 3u
+#define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 4u
 
 enum {
     NAVTOOL_ROUTER_CAPABILITY_LAND_SEGMENT_CONSTRAINT_V1 = 1ull << 0
@@ -151,6 +151,15 @@ typedef void (*navtool_router_progress_callback_v3)(
     const navtool_router_progress_v3* progress,
     void* user_data);
 
+/*
+ * Segment views are valid only for the synchronous callback. Returning nonzero
+ * accepts the candidate segment; returning zero rejects it before retention.
+ */
+typedef uint8_t (*navtool_router_segment_eligibility_callback_v1)(
+    const navtool_router_coordinate_v1* parent,
+    const navtool_router_coordinate_v1* candidate,
+    void* user_data);
+
 NAVTOOL_ROUTER_BRIDGE_API uint32_t
 navtool_router_bridge_abi_version_v1(void);
 
@@ -236,6 +245,25 @@ navtool_router_calculate_route_streaming_v3(
     const int64_t* departure_utc_epoch_seconds,
     navtool_router_progress_callback_v3 on_progress,
     void* progress_user_data,
+    char** out_route_json_utf8,
+    size_t* out_route_json_length);
+
+/*
+ * Adds pre-retention segment eligibility to the v3 destination-front stream.
+ * The eligibility callback is required when this entry point is used.
+ */
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_calculate_route_streaming_v4(
+    const navtool_router_forecast_v1* forecast,
+    double start_latitude_degrees,
+    double start_longitude_degrees,
+    double destination_latitude_degrees,
+    double destination_longitude_degrees,
+    const int64_t* departure_utc_epoch_seconds,
+    navtool_router_progress_callback_v3 on_progress,
+    void* progress_user_data,
+    navtool_router_segment_eligibility_callback_v1 is_segment_eligible,
+    void* segment_eligibility_user_data,
     char** out_route_json_utf8,
     size_t* out_route_json_length);
 
