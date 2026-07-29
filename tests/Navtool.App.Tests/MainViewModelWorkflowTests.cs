@@ -865,15 +865,14 @@ public sealed class MainViewModelWorkflowTests
             frontierTime,
             new[]
             {
-                new RouteCalculationContour(
+                new RouteCalculationFrontSegment(
                     new[]
                     {
                         frontierPoint,
                         new Coordinate(
                             request.Origin.Latitude - 0.25,
                             request.Origin.Longitude + 0.1)
-                    },
-                    closed: false)
+                    })
             },
             new[]
             {

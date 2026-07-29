@@ -125,13 +125,12 @@ public sealed class NativeBridgeContractTests
             time,
             new[]
             {
-                new RouteCalculationContour(
+                new RouteCalculationFrontSegment(
                     new[]
                     {
                         new Coordinate(42, -60),
                         new Coordinate(43, -59)
-                    },
-                    closed: false)
+                    })
             },
             new[]
             {
@@ -141,12 +140,12 @@ public sealed class NativeBridgeContractTests
             diagnostics);
 
         Assert.Equal(time, snapshot.FrontierTime);
-        Assert.Single(snapshot.Contours);
-        Assert.Equal(2, snapshot.Contours[0].Points.Length);
+        Assert.Single(snapshot.FrontSegments);
+        Assert.Equal(2, snapshot.FrontSegments[0].Points.Length);
         Assert.Equal(2, snapshot.ProvisionalRoute.Length);
         Assert.Same(diagnostics, snapshot.Diagnostics);
         Assert.Throws<NotSupportedException>(() =>
-            ((IList<Coordinate>)snapshot.Contours[0].Points).Add(new Coordinate(44, -58)));
+            ((IList<Coordinate>)snapshot.FrontSegments[0].Points).Add(new Coordinate(44, -58)));
     }
 
     [Fact]
@@ -157,17 +156,17 @@ public sealed class NativeBridgeContractTests
         var diagnostics = new RouteDiagnostics(1, 2, 1, 1);
 
         Assert.Throws<ArgumentException>(() =>
-            new RouteCalculationSnapshot(time, Array.Empty<RouteCalculationContour>(), new[] { point }, diagnostics));
+            new RouteCalculationSnapshot(time, Array.Empty<RouteCalculationFrontSegment>(), new[] { point }, diagnostics));
         Assert.Throws<ArgumentException>(() =>
             new RouteCalculationSnapshot(
                 time,
-                new[] { new RouteCalculationContour(new[] { point.Location }, false) },
+                new[] { new RouteCalculationFrontSegment(new[] { point.Location }) },
                 Array.Empty<RoutePoint>(),
                 diagnostics));
         Assert.Throws<ArgumentException>(() =>
             new RouteCalculationSnapshot(
                 time,
-                new[] { new RouteCalculationContour(new[] { point.Location }, false) },
+                new[] { new RouteCalculationFrontSegment(new[] { point.Location }) },
                 new[] { point },
                 diagnostics));
     }

@@ -36,15 +36,14 @@ public sealed class RoutingWorkflowTests
                 frontierTime,
                 new[]
                 {
-                    new RouteCalculationContour(
+                    new RouteCalculationFrontSegment(
                         new[]
                         {
                             request.Origin,
                             new Coordinate(
                                 request.Origin.Latitude + 0.25,
                                 request.Origin.Longitude + 0.25)
-                        },
-                        closed: false)
+                        })
                 },
                 new[]
                 {
@@ -98,7 +97,7 @@ public sealed class RoutingWorkflowTests
             report.Model == ForecastModel.NoaaGfs &&
             report.Stage == RoutingProgressStage.CalculatingRoute &&
             report.Snapshot is { Diagnostics.TimeSteps: 1 } &&
-            report.Snapshot.Contours[0].Points.Length == 2);
+            report.Snapshot.FrontSegments[0].Points.Length == 2);
         Assert.Contains(reports, report =>
             report.Model == ForecastModel.NoaaGfs &&
             report.Stage == RoutingProgressStage.Completed &&

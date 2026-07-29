@@ -202,7 +202,7 @@ public sealed class MapRenderingTests
     }
 
     [Fact]
-    public void IsochronesRenderRouterProvidedContourTopology()
+    public void IsochronesRenderRouterProvidedDestinationFrontOrder()
     {
         var map = new Map();
         var layers = new RouteMapLayers(map);
@@ -239,6 +239,55 @@ public sealed class MapRenderingTests
     }
 
     [Fact]
+    public void AntimeridianSplitFrontRendersAsSeparateOpenLines()
+    {
+        var map = new Map();
+        var layers = new RouteMapLayers(map);
+        var timestamp = new DateTimeOffset(2026, 7, 15, 1, 0, 0, TimeSpan.Zero);
+        var west = new[]
+        {
+            new Coordinate(9, 179),
+            new Coordinate(10, 179.8)
+        };
+        var east = new[]
+        {
+            new Coordinate(10, -179.8),
+            new Coordinate(11, -179)
+        };
+        var snapshot = new RouteCalculationSnapshot(
+            timestamp,
+            new[]
+            {
+                new RouteCalculationFrontSegment(west),
+                new RouteCalculationFrontSegment(east)
+            },
+            new[]
+            {
+                new RoutePoint(new Coordinate(8, 178), timestamp.AddHours(-1), 90, 6, 15, 180, 0),
+                new RoutePoint(east[0], timestamp, 90, 6, 15, 180, 10)
+            },
+            new RouteDiagnostics(10, 20, 5, 1));
+
+        layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, snapshot);
+
+        var isochrones = Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS isochrones"));
+        var lines = isochrones.Features
+            .Cast<GeometryFeature>()
+            .Select(feature => Assert.IsType<LineString>(feature.Geometry))
+            .ToArray();
+        Assert.Equal(2, lines.Length);
+        Assert.All(lines, line => Assert.NotEqual(line.Coordinates[0], line.Coordinates[^1]));
+        var centers = lines
+            .Select(line => line.Coordinates.Average(coordinate => coordinate.X))
+            .ToArray();
+        Assert.True(Math.Abs(centers[1] - centers[0]) < 500_000);
+        var routeEndX = MapProjection.ToContinuousMapPoints(
+            snapshot.ProvisionalRoute.Select(point => point.Location))[^1].X;
+        Assert.All(centers, center => Assert.True(Math.Abs(center - routeEndX) < 500_000));
+    }
+
+    [Fact]
     public void RoutingLayersSkipSingletonsAndExposeNoPointMarkerLayers()
     {
         var map = new Map();
@@ -249,7 +298,7 @@ public sealed class MapRenderingTests
         var diagnostics = new RouteDiagnostics(1, 2, 1, 1);
         var snapshot = new RouteCalculationSnapshot(
             timestamp,
-            new[] { new RouteCalculationContour(new[] { location }, closed: false) },
+            new[] { new RouteCalculationFrontSegment(new[] { location }) },
             new[] { point },
             diagnostics);
         var request = new RouteRequest(
@@ -320,7 +369,7 @@ public sealed class MapRenderingTests
             frontierTime,
             new[]
             {
-                new RouteCalculationContour(frontierPoints, closed: false)
+                new RouteCalculationFrontSegment(frontierPoints)
             },
             new[]
             {

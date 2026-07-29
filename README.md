@@ -66,12 +66,13 @@ dotnet test Navtool.sln
 
 The application discovers the development bridge automatically. For a custom
 location, set `NAVTOOL_ROUTER_BRIDGE_PATH` to the shared library or its
-directory. Native builds fetch and compile `router-lib` from release `v0.1.1` by
-default. Set `SAILROUTE_SOURCE_DIR` to a local `router-lib` checkout when
-testing non-released changes.
+directory. Native builds fetch and compile the immutable `router-lib` revision
+`f406bcd311b0316a5e433ed17fbab6296f110144` by default. Set
+`SAILROUTE_SOURCE_DIR` to a local `router-lib` checkout when testing other
+revisions.
 
-To build against a different released `router-lib` version, configure CMake
-with a release tag override before building:
+To build against a different immutable `router-lib` revision or release,
+configure CMake with an override before building:
 
 ```sh
 cmake -S native/Navtool.RouterBridge -B native/Navtool.RouterBridge/build \
@@ -86,29 +87,33 @@ fetch releases from a different fork.
 
 Navtool uses router-lib's `Router::optimize_view` progress contract. After each
 completed search step, the native bridge synchronously copies the
-callback-scoped display contour components, provisional route, and cumulative
+callback-scoped destination-facing isochrone front, provisional route, and cumulative
 diagnostics into immutable managed data. The callback returns promptly; Mapsui
 updates are posted through the application's progress pipeline to the Avalonia
 UI context.
 
-Each model uses its normal route color. Router-provided open or closed isochrone
-contours accumulate as thin red lines, while the model's provisional route is
-replaced by the latest snapshot. Successful and forecast-limited search overlays
-remain visible with the final route. Failed model overlays and all
-cancelled-calculation overlays are cleared. Contours, routes, and map-fit bounds
-are unwrapped safely at the antimeridian.
+Each model uses its normal route color. At every routing time step, one logical
+open isochrone front shows the destination-facing leading boundary of positions
+the vessel can reach through different viable heading sequences. Front points
+are ordered port-to-starboard, exclude internal search clusters, and are split
+into separate line segments only where required at the antimeridian. Fronts
+accumulate as thin red lines, while the model's provisional route is replaced by
+the latest snapshot. Successful and forecast-limited search overlays remain
+visible with the final route. Failed model overlays and all cancelled-calculation
+overlays are cleared. Fronts, routes, and map-fit bounds are unwrapped safely at
+the antimeridian.
 
 When forecast coverage ends before the destination is reached, Navtool promotes
 the final provisional route to a selectable forecast-limited estimate, retains
-all accumulated contours, and displays an amber warning. Complete final routes
+all accumulated fronts, and displays an amber warning. Complete final routes
 remain authoritative and may differ from the last provisional route.
 
-The ABI-v2 entry point `navtool_router_calculate_route_streaming_v2` preserves
-the existing final-route and legacy streaming functions while adding contour
-segment boundaries and closed flags. Progress array pointers are valid only for
-the duration of the synchronous callback and must be copied by consumers.
-Navtool rejects stale ABI-v1 bridges so missing contour support cannot silently
-disable live isochrones.
+The ABI-v3 entry point `navtool_router_calculate_route_streaming_v3` preserves
+the existing final-route and v1/v2 streaming functions while adding open
+destination-front segments. Progress array pointers are valid only for the
+duration of the synchronous callback and must be copied by consumers. Navtool
+rejects stale bridges so missing destination-front support cannot silently
+restore alpha-shape contours.
 
 ## Publish
 
@@ -136,8 +141,8 @@ also be installed or packaged according to the target platform.
 | --- | --- |
 | `NAVTOOL_ROUTER_BRIDGE_PATH` | Native bridge file or directory |
 | `SAILROUTE_SOURCE_DIR` | Optional `router-lib` checkout override for native build/run scripts |
-| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Released `router-lib` tag used when `SAILROUTE_SOURCE_DIR` is unset (default `v0.1.1`) |
-| `NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY` | Released `router-lib` Git repository used when `SAILROUTE_SOURCE_DIR` is unset |
+| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default `f406bcd311b0316a5e433ed17fbab6296f110144`) |
+| `NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY` | `router-lib` Git repository used when `SAILROUTE_SOURCE_DIR` is unset |
 | `NAVTOOL_NATIVE_BUILD_DIR` | Optional native bridge build directory |
 | `NAVTOOL_APP_DATA_ROOT` | Application data root |
 | `NAVTOOL_CACHE_ROOT` | Forecast cache directory |

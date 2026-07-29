@@ -15,7 +15,7 @@ namespace Navtool.Infrastructure;
 
 public sealed record NativeRouterBridgeOptions
 {
-    public const uint SupportedAbiVersion = 2;
+    public const uint SupportedAbiVersion = 3;
 
     public int MaximumTextBytes { get; init; } = 64 * 1024 * 1024;
 
@@ -368,7 +368,7 @@ public sealed class NativeRouterBridge
         {
             Volatile.Write(ref _streamingProgressAvailability, -1);
             throw new NativeBridgeUnavailableException(
-                "The Navtool router bridge ABI reports contour streaming support but does not export it.",
+                "The Navtool router bridge ABI reports isochrone-front streaming support but does not export it.",
                 exception);
         }
 
@@ -459,26 +459,25 @@ public sealed class NativeRouterBridge
         }
 
         var progress = Marshal.PtrToStructure<NativeRoutingProgress>(progressPointer);
-        var contourPoints = CopyArray<NativeCoordinate>(
-            progress.ContourPoints,
-            progress.ContourPointCount,
-            "contour points");
-        var nativeSegments = CopyArray<NativeContourSegment>(
-            progress.ContourSegments,
-            progress.ContourSegmentCount,
-            "contour segments");
-        var contours = ImmutableArray.CreateBuilder<RouteCalculationContour>(
+        var frontPoints = CopyArray<NativeCoordinate>(
+            progress.FrontPoints,
+            progress.FrontPointCount,
+            "front points");
+        var nativeSegments = CopyArray<NativeFrontSegment>(
+            progress.FrontSegments,
+            progress.FrontSegmentCount,
+            "front segments");
+        var frontSegments = ImmutableArray.CreateBuilder<RouteCalculationFrontSegment>(
             nativeSegments.Length);
         foreach (var segment in nativeSegments)
         {
-            if (segment.Closed > 1 ||
-                segment.PointCount == 0 ||
-                segment.PointOffset > (ulong)contourPoints.Length ||
+            if (segment.PointCount == 0 ||
+                segment.PointOffset > (ulong)frontPoints.Length ||
                 segment.PointCount >
-                (ulong)contourPoints.Length - segment.PointOffset)
+                (ulong)frontPoints.Length - segment.PointOffset)
             {
                 throw new NativeRouteFormatException(
-                    "Native progress contained an invalid contour segment.");
+                    "Native progress contained an invalid isochrone front segment.");
             }
 
             var segmentPoints = ImmutableArray.CreateBuilder<Coordinate>(
@@ -486,15 +485,14 @@ public sealed class NativeRouterBridge
             var end = checked(segment.PointOffset + segment.PointCount);
             for (var index = segment.PointOffset; index < end; index++)
             {
-                var point = contourPoints[checked((int)index)];
+                var point = frontPoints[checked((int)index)];
                 segmentPoints.Add(new Coordinate(
                     point.LatitudeDegrees,
                     point.LongitudeDegrees));
             }
 
-            contours.Add(new RouteCalculationContour(
-                segmentPoints.MoveToImmutable(),
-                segment.Closed != 0));
+            frontSegments.Add(new RouteCalculationFrontSegment(
+                segmentPoints.MoveToImmutable()));
         }
 
         var provisionalRoute = CopyArray<NativeRoutePoint>(
@@ -518,7 +516,7 @@ public sealed class NativeRouterBridge
             checked((int)progress.Diagnostics.TimeSteps));
         return new RouteCalculationSnapshot(
             DateTimeOffset.FromUnixTimeSeconds(progress.IsochroneUtcEpochSeconds),
-            contours.MoveToImmutable(),
+            frontSegments.MoveToImmutable(),
             provisionalRoute,
             diagnostics);
     }
@@ -1131,21 +1129,20 @@ internal struct NativeRoutingDiagnostics
 internal struct NativeRoutingProgress
 {
     public long IsochroneUtcEpochSeconds;
-    public IntPtr ContourPoints;
-    public ulong ContourPointCount;
-    public IntPtr ContourSegments;
-    public ulong ContourSegmentCount;
+    public IntPtr FrontPoints;
+    public ulong FrontPointCount;
+    public IntPtr FrontSegments;
+    public ulong FrontSegmentCount;
     public IntPtr ProvisionalRoutePoints;
     public ulong ProvisionalRoutePointCount;
     public NativeRoutingDiagnostics Diagnostics;
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct NativeContourSegment
+internal struct NativeFrontSegment
 {
     public ulong PointOffset;
     public ulong PointCount;
-    public byte Closed;
 }
 
 internal static class NativeMethods
@@ -1204,7 +1201,7 @@ internal static class NativeMethods
         IntPtr progress,
         IntPtr userData);
 
-    [DllImport(LibraryName, EntryPoint = "navtool_router_calculate_route_streaming_v2", CallingConvention = CallingConvention.Cdecl)]
+    [DllImport(LibraryName, EntryPoint = "navtool_router_calculate_route_streaming_v3", CallingConvention = CallingConvention.Cdecl)]
     internal static extern NativeRouterStatus CalculateRouteStreaming(
         NativeForecastSafeHandle forecast,
         double startLatitude,

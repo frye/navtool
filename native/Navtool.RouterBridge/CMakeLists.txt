@@ -15,9 +15,9 @@ set(
     "router-lib release repository used when SAILROUTE_SOURCE_DIR is unset")
 set(
     NAVTOOL_ROUTER_LIB_RELEASE_TAG
-    "v0.1.1"
+    "f406bcd311b0316a5e433ed17fbab6296f110144"
     CACHE STRING
-    "router-lib release tag used when SAILROUTE_SOURCE_DIR is unset")
+    "Immutable router-lib revision used when SAILROUTE_SOURCE_DIR is unset")
 set(_navtool_router_effective_source_dir "")
 
 if(NOT TARGET sailroute::sailroute)
@@ -42,7 +42,7 @@ if(NOT TARGET sailroute::sailroute)
             sailroute
             GIT_REPOSITORY "${NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY}"
             GIT_TAG "${NAVTOOL_ROUTER_LIB_RELEASE_TAG}"
-            GIT_SHALLOW ON)
+            GIT_SHALLOW OFF)
         FetchContent_MakeAvailable(sailroute)
         if(NOT TARGET sailroute::sailroute)
             message(

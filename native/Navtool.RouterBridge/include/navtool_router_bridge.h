@@ -20,7 +20,7 @@
 extern "C" {
 #endif
 
-#define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 2u
+#define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 3u
 
 typedef int32_t navtool_router_status_v1;
 
@@ -122,6 +122,31 @@ typedef void (*navtool_router_progress_callback_v2)(
     const navtool_router_progress_v2* progress,
     void* user_data);
 
+typedef struct navtool_router_front_segment_v3 {
+    uint64_t point_offset;
+    uint64_t point_count;
+} navtool_router_front_segment_v3;
+
+typedef struct navtool_router_progress_v3 {
+    int64_t isochrone_utc_epoch_seconds;
+    const navtool_router_coordinate_v1* front_points;
+    uint64_t front_point_count;
+    const navtool_router_front_segment_v3* front_segments;
+    uint64_t front_segment_count;
+    const navtool_router_route_point_v1* provisional_route_points;
+    uint64_t provisional_route_point_count;
+    navtool_router_diagnostics_v1 diagnostics;
+} navtool_router_progress_v3;
+
+/*
+ * Version 3 progress exposes one logical destination-facing isochrone front.
+ * Segments are open and split only at map discontinuities such as the
+ * antimeridian. All views remain callback-scoped.
+ */
+typedef void (*navtool_router_progress_callback_v3)(
+    const navtool_router_progress_v3* progress,
+    void* user_data);
+
 NAVTOOL_ROUTER_BRIDGE_API uint32_t
 navtool_router_bridge_abi_version_v1(void);
 
@@ -186,6 +211,19 @@ navtool_router_calculate_route_streaming_v2(
     double destination_longitude_degrees,
     const int64_t* departure_utc_epoch_seconds,
     navtool_router_progress_callback_v2 on_progress,
+    void* progress_user_data,
+    char** out_route_json_utf8,
+    size_t* out_route_json_length);
+
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_calculate_route_streaming_v3(
+    const navtool_router_forecast_v1* forecast,
+    double start_latitude_degrees,
+    double start_longitude_degrees,
+    double destination_latitude_degrees,
+    double destination_longitude_degrees,
+    const int64_t* departure_utc_epoch_seconds,
+    navtool_router_progress_callback_v3 on_progress,
     void* progress_user_data,
     char** out_route_json_utf8,
     size_t* out_route_json_length);

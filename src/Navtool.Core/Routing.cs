@@ -314,56 +314,44 @@ public sealed record RouteDiagnostics
     public TimeSpan? CalculationDuration { get; }
 }
 
-public sealed record RouteCalculationContour
+public sealed record RouteCalculationFrontSegment
 {
-    public RouteCalculationContour(
-        IEnumerable<Coordinate> points,
-        bool closed)
+    public RouteCalculationFrontSegment(IEnumerable<Coordinate> points)
     {
         ArgumentNullException.ThrowIfNull(points);
         var immutablePoints = points.ToImmutableArray();
         if (immutablePoints.IsEmpty)
         {
             throw new ArgumentException(
-                "A routing contour must contain at least one point.",
-                nameof(points));
-        }
-
-        if (closed && immutablePoints.Length < 3)
-        {
-            throw new ArgumentException(
-                "A closed routing contour must contain at least three points.",
+                "A routing front segment must contain at least one point.",
                 nameof(points));
         }
 
         Points = immutablePoints;
-        Closed = closed;
     }
 
     public ImmutableArray<Coordinate> Points { get; }
-
-    public bool Closed { get; }
 }
 
 public sealed record RouteCalculationSnapshot
 {
     public RouteCalculationSnapshot(
         DateTimeOffset frontierTime,
-        IEnumerable<RouteCalculationContour> contours,
+        IEnumerable<RouteCalculationFrontSegment> frontSegments,
         IEnumerable<RoutePoint> provisionalRoute,
         RouteDiagnostics diagnostics)
     {
-        ArgumentNullException.ThrowIfNull(contours);
+        ArgumentNullException.ThrowIfNull(frontSegments);
         ArgumentNullException.ThrowIfNull(provisionalRoute);
         ArgumentNullException.ThrowIfNull(diagnostics);
 
-        var immutableContours = contours.ToImmutableArray();
+        var immutableFrontSegments = frontSegments.ToImmutableArray();
         var immutableRoute = provisionalRoute.ToImmutableArray();
-        if (immutableContours.IsEmpty)
+        if (immutableFrontSegments.IsEmpty)
         {
             throw new ArgumentException(
-                "A routing snapshot must contain at least one display contour.",
-                nameof(contours));
+                "A routing snapshot must contain at least one isochrone front segment.",
+                nameof(frontSegments));
         }
 
         if (immutableRoute.IsEmpty)
@@ -392,14 +380,14 @@ public sealed record RouteCalculationSnapshot
         }
 
         FrontierTime = utcFrontierTime;
-        Contours = immutableContours;
+        FrontSegments = immutableFrontSegments;
         ProvisionalRoute = immutableRoute;
         Diagnostics = diagnostics;
     }
 
     public DateTimeOffset FrontierTime { get; }
 
-    public ImmutableArray<RouteCalculationContour> Contours { get; }
+    public ImmutableArray<RouteCalculationFrontSegment> FrontSegments { get; }
 
     public ImmutableArray<RoutePoint> ProvisionalRoute { get; }
 

@@ -403,6 +403,107 @@ navtool_router_status_v1 calculate_route_with_contours(
         out_route_json_length);
 }
 
+navtool_router_status_v1 calculate_route_with_fronts(
+    const navtool_router_forecast_v1* forecast,
+    double start_latitude_degrees,
+    double start_longitude_degrees,
+    double destination_latitude_degrees,
+    double destination_longitude_degrees,
+    const int64_t* departure_utc_epoch_seconds,
+    navtool_router_progress_callback_v3 on_progress,
+    void* progress_user_data,
+    char** out_route_json_utf8,
+    size_t* out_route_json_length) {
+    if (out_route_json_utf8 != nullptr) {
+        *out_route_json_utf8 = nullptr;
+    }
+    if (out_route_json_length != nullptr) {
+        *out_route_json_length = 0U;
+    }
+    if (forecast == nullptr || out_route_json_utf8 == nullptr ||
+        out_route_json_length == nullptr) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
+            "forecast and route JSON outputs must not be null");
+    }
+    if (!valid_coordinate(start_latitude_degrees, start_longitude_degrees) ||
+        !valid_coordinate(
+            destination_latitude_degrees,
+            destination_longitude_degrees)) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
+            "route coordinates must be finite canonical latitude/longitude values");
+    }
+
+    sailroute::RouteRequest request;
+    request.start = {start_latitude_degrees, start_longitude_degrees};
+    request.destination = {
+        destination_latitude_degrees,
+        destination_longitude_degrees};
+    if (departure_utc_epoch_seconds != nullptr) {
+        request.departure_time = from_epoch(*departure_utc_epoch_seconds);
+    }
+    request.options.progress.payload =
+        sailroute::RoutingProgressPayload::destination_front |
+        sailroute::RoutingProgressPayload::provisional_route;
+
+    sailroute::RoutingProgressViewCallback progress_callback;
+    if (on_progress != nullptr) {
+        progress_callback =
+            [on_progress, progress_user_data](
+                const sailroute::RoutingProgressView& progress) {
+                std::vector<navtool_router_coordinate_v1> front_points;
+                front_points.reserve(progress.destination_front.points.size());
+                for (const sailroute::Coordinate point :
+                     progress.destination_front.points) {
+                    front_points.push_back(copy_coordinate(point));
+                }
+
+                std::vector<navtool_router_front_segment_v3> front_segments;
+                front_segments.reserve(
+                    progress.destination_front.segments.size());
+                for (const sailroute::IsochroneFrontSegment& segment :
+                     progress.destination_front.segments) {
+                    front_segments.push_back({
+                        static_cast<uint64_t>(segment.point_offset),
+                        static_cast<uint64_t>(segment.point_count)});
+                }
+
+                std::vector<navtool_router_route_point_v1> route_points;
+                route_points.reserve(progress.provisional_route.size());
+                for (const sailroute::RoutePoint& point :
+                     progress.provisional_route) {
+                    route_points.push_back(copy_route_point(point));
+                }
+
+                const navtool_router_progress_v3 bridge_progress{
+                    to_epoch(progress.time),
+                    front_points.data(),
+                    static_cast<uint64_t>(front_points.size()),
+                    front_segments.data(),
+                    static_cast<uint64_t>(front_segments.size()),
+                    route_points.data(),
+                    static_cast<uint64_t>(route_points.size()),
+                    copy_diagnostics(progress.diagnostics)};
+                on_progress(&bridge_progress, progress_user_data);
+            };
+    }
+
+    const sailroute::Router router{forecast->weather};
+    auto route = router.optimize_view(request, progress_callback);
+    if (!route) {
+        return map_error(route.error());
+    }
+    auto json = sailroute::route_to_json(route.value());
+    if (!json) {
+        return map_error(json.error());
+    }
+    return copy_utf8(
+        json.value(),
+        out_route_json_utf8,
+        out_route_json_length);
+}
+
 // ---------- GRIB inspection helpers ----------
 
 struct GribFileCloser {
@@ -773,6 +874,32 @@ navtool_router_status_v1 navtool_router_calculate_route_streaming_v2(
     size_t* out_route_json_length) {
     return protect([&] {
         return calculate_route_with_contours(
+            forecast,
+            start_latitude_degrees,
+            start_longitude_degrees,
+            destination_latitude_degrees,
+            destination_longitude_degrees,
+            departure_utc_epoch_seconds,
+            on_progress,
+            progress_user_data,
+            out_route_json_utf8,
+            out_route_json_length);
+    });
+}
+
+navtool_router_status_v1 navtool_router_calculate_route_streaming_v3(
+    const navtool_router_forecast_v1* forecast,
+    double start_latitude_degrees,
+    double start_longitude_degrees,
+    double destination_latitude_degrees,
+    double destination_longitude_degrees,
+    const int64_t* departure_utc_epoch_seconds,
+    navtool_router_progress_callback_v3 on_progress,
+    void* progress_user_data,
+    char** out_route_json_utf8,
+    size_t* out_route_json_length) {
+    return protect([&] {
+        return calculate_route_with_fronts(
             forecast,
             start_latitude_degrees,
             start_longitude_degrees,

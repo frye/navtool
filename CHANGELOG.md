@@ -45,19 +45,22 @@ acquisition, live routing feedback, map clarity, and route inspection.
 
 ### Improved
 
-- Refined streamed isochrones into thin router-provided display contours,
-  preserving deterministic open/closed topology and multiple components without
-  obscuring the basemap.
+- Refined streamed isochrones into one router-provided, destination-facing
+  reachable front per time step. Front points are ordered port-to-starboard,
+  exclude internal search-cloud boundaries, and split only at map
+  discontinuities.
   ([#13](https://github.com/frye/navtool/pull/13),
-  [#14](https://github.com/frye/navtool/pull/14))
+  [#14](https://github.com/frye/navtool/pull/14),
+  [router-lib#12](https://github.com/frye/router-lib/issues/12),
+  [router-lib#14](https://github.com/frye/router-lib/pull/14))
 - Improved NOAA reliability with grid-aligned geographic bounds, request
   pacing, bounded retries, `Retry-After` support, cancellation handling, and
   structured rolling logs. ([#3](https://github.com/frye/navtool/pull/3))
 - Strengthened NOAA retry stream validation so unsupported destinations fail
   before network activity begins.
   ([#11](https://github.com/frye/navtool/pull/11))
-- Updated native builds to use `router-lib` v0.1.1 by default while preserving
-  local-source and release-tag overrides.
+- Updated native builds to use the immutable router-lib destination-front
+  revision by default while preserving local-source and revision overrides.
   ([#12](https://github.com/frye/navtool/pull/12),
   [#18](https://github.com/frye/navtool/pull/18))
 
@@ -83,9 +86,9 @@ acquisition, live routing feedback, map clarity, and route inspection.
 - Fixed an ambiguous Avalonia color type in map-rendering tests to keep the
   application test suite compiling consistently.
   ([#17](https://github.com/frye/navtool/pull/17))
-- Versioned the native bridge as ABI v2 for callback-scoped display contour
-  segments. Stale ABI-v1 bridges now fail preflight instead of silently dropping
-  streaming visualization.
+- Versioned the native bridge as ABI v3 for callback-scoped destination-front
+  segments while preserving the v1/v2 entry points. Stale bridges now fail
+  preflight instead of silently restoring alpha-shape visualization.
 
 ### Known limitations
 

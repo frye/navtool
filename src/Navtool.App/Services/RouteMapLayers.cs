@@ -237,17 +237,18 @@ public sealed class RouteMapLayers
     private static IEnumerable<IFeature> CreateIsochroneFeatures(
         RouteCalculationSnapshot snapshot)
     {
-        foreach (var contour in snapshot.Contours)
+        var referenceX = MapProjection.ToContinuousMapPoints(
+            snapshot.ProvisionalRoute.Select(point => point.Location))[^1].X;
+        foreach (var segment in snapshot.FrontSegments)
         {
-            if (contour.Points.Length == 1)
+            if (segment.Points.Length == 1)
             {
                 continue;
             }
 
-            var points = contour.Closed
-                ? contour.Points.Add(contour.Points[0])
-                : contour.Points;
-            var coordinates = MapProjection.ToContinuousMapPoints(points)
+            var coordinates = MapProjection.ToContinuousMapPointsNear(
+                    segment.Points,
+                    referenceX)
                 .Select(point => new NtsCoordinate(point.X, point.Y))
                 .ToArray();
             yield return new GeometryFeature(new LineString(coordinates))
