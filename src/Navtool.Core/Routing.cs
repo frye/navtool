@@ -373,6 +373,28 @@ public sealed record RouteCalculationSnapshot
     public RouteDiagnostics Diagnostics { get; }
 }
 
+public enum LandAvoidanceStatus
+{
+    NotEvaluated,
+    Applied,
+    RouterUnsupported,
+    DataUnconfigured,
+    DataUnavailable
+}
+
+public sealed record RouteLandAvoidance(
+    LandAvoidanceStatus Status,
+    string? Warning = null,
+    string? Attribution = null)
+{
+    public bool IsApplied => Status == LandAvoidanceStatus.Applied;
+
+    public bool HasWarning => !string.IsNullOrWhiteSpace(Warning);
+
+    public static RouteLandAvoidance NotEvaluated { get; } =
+        new(LandAvoidanceStatus.NotEvaluated);
+}
+
 public sealed record RouteResult
 {
     public RouteResult(
@@ -380,6 +402,16 @@ public sealed record RouteResult
         ForecastModel model,
         IEnumerable<RoutePoint> points,
         RouteDiagnostics diagnostics)
+        : this(request, model, points, diagnostics, null)
+    {
+    }
+
+    public RouteResult(
+        RouteRequest request,
+        ForecastModel model,
+        IEnumerable<RoutePoint> points,
+        RouteDiagnostics diagnostics,
+        RouteLandAvoidance? landAvoidance)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(points);
@@ -419,6 +451,7 @@ public sealed record RouteResult
         Model = model;
         Points = immutablePoints;
         Diagnostics = diagnostics;
+        LandAvoidance = landAvoidance ?? RouteLandAvoidance.NotEvaluated;
     }
 
     public RouteRequest Request { get; }
@@ -429,6 +462,8 @@ public sealed record RouteResult
 
     public RouteDiagnostics Diagnostics { get; }
 
+    public RouteLandAvoidance LandAvoidance { get; }
+
     public DateTimeOffset ArrivalTime => Points[^1].Timestamp;
 
     /// <summary>
@@ -437,6 +472,12 @@ public sealed record RouteResult
     /// so exceeding it is expected and must not be treated as a failure.
     /// </summary>
     public bool ExceedsRequestedArrival => ArrivalTime > Request.LatestArrivalTime;
+
+    public RouteResult WithLandAvoidance(RouteLandAvoidance landAvoidance)
+    {
+        ArgumentNullException.ThrowIfNull(landAvoidance);
+        return new RouteResult(Request, Model, Points, Diagnostics, landAvoidance);
+    }
 }
 
 public sealed record RouteCalculationProgress

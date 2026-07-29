@@ -127,6 +127,9 @@ int main() {
             navtool_router_bridge_abi_version_v1() ==
                 NAVTOOL_ROUTER_BRIDGE_ABI_VERSION,
             "unexpected bridge ABI version");
+        require(
+            navtool_router_bridge_capabilities_v1() == 0U,
+            "v0.1.1 bridge unexpectedly advertises land constraints");
 
         navtool_router_forecast_v1* forecast = nullptr;
         require(

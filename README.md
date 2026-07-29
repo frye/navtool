@@ -13,6 +13,8 @@ It targets macOS, Windows, and Linux.
 - Download geographically subsetted NOAA GFS 0.25-degree 10 m wind fields, or
   choose an existing GRIB through the operating system's native file picker.
 - Calculate routes through the native `router-lib` bridge.
+- Acquire and cache OSM-derived land geometry for capability-gated land
+  avoidance.
 - Watch retained isochrone frontiers and the closest provisional route stream
   onto the map while each model calculates.
 - Compare model routes with distinct map colors. ECMWF is shown as an
@@ -142,6 +144,7 @@ also be installed or packaged according to the target platform.
 | `NAVTOOL_NATIVE_BUILD_DIR` | Optional native bridge build directory |
 | `NAVTOOL_APP_DATA_ROOT` | Application data root |
 | `NAVTOOL_CACHE_ROOT` | Forecast cache directory |
+| `NAVTOOL_LAND_DATA_ENDPOINT` | Optional OSM-derived GeoJSON land service; Navtool appends `south`, `west`, `north`, and `east` query parameters |
 | `NAVTOOL_ECMWF_EXPERIMENTAL` | `1` or `true` enables the experimental ECMWF path; acquisition still reports unsupported |
 
 The selected display theme is stored in `preferences/theme.txt` beneath
@@ -174,12 +177,36 @@ are intended for normal interactive use, not bulk/offline prefetching. A
 production distribution should configure a tile service whose policy and
 capacity match its expected traffic.
 
+## Land data and compatibility
+
+Navtool includes a land-data provider for GeoJSON `Polygon` and `MultiPolygon`
+features covering a buffered route corridor. It splits antimeridian corridors,
+validates bounded responses, caches them under the application data root for
+seven days, and preserves OpenStreetMap attribution. The configured service
+must be suitable for production use and return OSM-derived data under the Open
+Database License; public Overpass endpoints are not used as a default.
+
+Land avoidance also requires a router-lib segment-constraint capability.
+Navtool keeps the bridge ABI at v1 and treats missing capability exports as a
+legacy bridge. Builds against router-lib v0.1.1 remain supported, but routes
+cannot be calculated through the application with that version: preflight
+blocks before forecast download so Navtool cannot display another unchecked
+land-crossing route. The low-level ABI-v1 functions remain available for
+backward-compatible integrations and label their results as unchecked. Active
+segment rejection is blocked on
+[`router-lib#11`](https://github.com/frye/router-lib/issues/11); until that API
+is available, route calculations do not claim or apply land avoidance. The
+existing raster basemap is never sampled as land geometry.
+
 ## Safety and current limitations
 
-**Navtool is planning software, not navigation-certified guidance.** The routing
-engine does not currently model land, shorelines, currents, waves, traffic,
-restricted areas, or safety limits. Routes may cross land. The built-in vessel
-polar is an approximate demonstration model.
+**Navtool is planning software, not navigation-certified guidance.** Land
+avoidance depends on the configured OSM-derived service, cached data freshness,
+and router-lib capability. Any degraded route is explicitly marked as not
+checked for land. Even a land-aware route can omit recent, small, or inaccurately
+mapped hazards and must be verified independently. The routing engine does not
+model currents, waves, traffic, restricted areas, depths, or safety limits. The
+built-in vessel polar is an approximate demonstration model.
 
 ECMWF Open Data remains an explicit experimental option. Official data supports
 field/step selection but not server-side geographic cropping, and indexed

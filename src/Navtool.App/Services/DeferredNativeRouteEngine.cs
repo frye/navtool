@@ -60,6 +60,8 @@ public sealed class DeferredNativeRouteEngine : IRouteEngine, IWeatherSampler, I
         _ = _engine.Value;
     }
 
+    public bool LandAvoidanceAvailable => _engine.Value.LandAvoidanceAvailable;
+
     public ValueTask<RouteResult> CalculateAsync(
         RouteRequest request,
         ForecastAcquisition forecast,

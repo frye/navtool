@@ -12,6 +12,7 @@ public static class AppComposition
     public const string AppDataRootEnvironmentVariable = "NAVTOOL_APP_DATA_ROOT";
     public const string CacheRootEnvironmentVariable = "NAVTOOL_CACHE_ROOT";
     public const string EcmwfOptInEnvironmentVariable = "NAVTOOL_ECMWF_EXPERIMENTAL";
+    public const string LandDataEndpointEnvironmentVariable = "NAVTOOL_LAND_DATA_ENDPOINT";
 
     public static ServiceProvider CreateServices()
     {
@@ -33,6 +34,14 @@ public static class AppComposition
 
         services.AddSingleton(_ => new AtomicFileCache(
             new AtomicFileCacheOptions(ResolveCacheRoot())));
+        services.AddSingleton(provider => new OsmLandDataProvider(
+            provider.GetRequiredService<IHttpClientFactory>().CreateClient(ForecastHttpClientName),
+            new OsmLandDataOptions(
+                ResolveLandDataEndpoint(),
+                Path.Combine(ResolveAppDataRoot(), "land-cache")),
+            logger: provider.GetRequiredService<ILogger<OsmLandDataProvider>>()));
+        services.AddSingleton<ILandDataProvider>(provider =>
+            provider.GetRequiredService<OsmLandDataProvider>());
         services.AddSingleton<NoaaGfsForecastProvider>(provider =>
             new NoaaGfsForecastProvider(
                 provider.GetRequiredService<IHttpClientFactory>().CreateClient(ForecastHttpClientName),
@@ -89,5 +98,13 @@ public static class AppComposition
         var value = Environment.GetEnvironmentVariable(EcmwfOptInEnvironmentVariable);
         return string.Equals(value, "1", StringComparison.Ordinal) ||
                string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static Uri? ResolveLandDataEndpoint()
+    {
+        var value = Environment.GetEnvironmentVariable(LandDataEndpointEnvironmentVariable);
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : new Uri(value, UriKind.Absolute);
     }
 }

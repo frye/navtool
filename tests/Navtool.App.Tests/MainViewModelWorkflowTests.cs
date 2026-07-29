@@ -96,6 +96,58 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task Legacy_router_land_warning_is_prominent_without_failing_the_route()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(
+                request,
+                forecast.Request.Model,
+                landAvoidance: new RouteLandAvoidance(
+                    LandAvoidanceStatus.RouterUnsupported,
+                    "Land avoidance was not applied because the router is unsupported."))));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Equal(1, viewModel.SuccessfulRouteCount);
+        Assert.Contains("router is unsupported", viewModel.LandAvoidanceWarning);
+        Assert.Null(viewModel.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task Invalid_recalculation_preserves_warning_for_routes_still_displayed()
+    {
+        var warning = new RouteLandAvoidance(
+            LandAvoidanceStatus.RouterUnsupported,
+            "Displayed route was not checked for land.");
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(
+                request,
+                forecast.Request.Model,
+                landAvoidance: warning)));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        await viewModel.CalculateRoutesAsync();
+        viewModel.SetEndpoints(new Coordinate(34, -64), new Coordinate(34, -64));
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Equal(1, viewModel.SuccessfulRouteCount);
+        Assert.Equal(warning.Warning, viewModel.LandAvoidanceWarning);
+    }
+
+    [Fact]
     public async Task SelectedRouteDetailsIncludeApparentWindAngle()
     {
         var noaa = new DelegateForecastProvider(
@@ -219,6 +271,30 @@ public sealed class MainViewModelWorkflowTests
         Assert.Equal(1, preflight.CallCount);
         Assert.Equal(0, noaa.CallCount);
         Assert.Contains("Routing engine unavailable", viewModel.ErrorMessage);
+        Assert.Equal("No forecast was downloaded.", viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task MissingLandCapabilityBlocksBeforeForecastAcquisition()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var preflight = new DelegateNativeRoutingPreflight(landAvoidanceAvailable: false);
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            nativeRoutingPreflight: preflight);
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Equal(1, preflight.CallCount);
+        Assert.Equal(0, noaa.CallCount);
+        Assert.Equal(0, viewModel.SuccessfulRouteCount);
+        Assert.Contains("land avoidance is unavailable", viewModel.ErrorMessage);
         Assert.Equal("No forecast was downloaded.", viewModel.StatusMessage);
     }
 
@@ -602,7 +678,8 @@ public sealed class MainViewModelWorkflowTests
     private static RouteResult CreateRoute(
         RouteRequest request,
         ForecastModel model,
-        int stepHours = 3)
+        int stepHours = 3,
+        RouteLandAvoidance? landAvoidance = null)
     {
         var midpoint = new Coordinate(
             (request.Origin.Latitude + request.Destination.Latitude) / 2,
@@ -616,7 +693,8 @@ public sealed class MainViewModelWorkflowTests
                 CreatePoint(midpoint, request.DepartureTime.AddHours(stepHours), 50),
                 CreatePoint(request.Destination, request.DepartureTime.AddHours(stepHours * 2), 100)
             },
-            new RouteDiagnostics(1, 2, 1, 3));
+            new RouteDiagnostics(1, 2, 1, 3),
+            landAvoidance);
         return route;
     }
 
@@ -725,10 +803,14 @@ public sealed class MainViewModelWorkflowTests
         }
     }
 
-    private sealed class DelegateNativeRoutingPreflight(Exception? exception = null)
+    private sealed class DelegateNativeRoutingPreflight(
+        Exception? exception = null,
+        bool landAvoidanceAvailable = true)
         : INativeRoutingPreflight
     {
         public int CallCount { get; private set; }
+
+        public bool LandAvoidanceAvailable { get; } = landAvoidanceAvailable;
 
         public void EnsureAvailable()
         {

@@ -39,6 +39,13 @@ public enum NativeRouterStatus
     InternalError = 10
 }
 
+[Flags]
+public enum NativeRouterCapabilities : ulong
+{
+    None = 0,
+    LandSegmentConstraint = 1UL << 0
+}
+
 public sealed class NativeRouterException : Exception
 {
     public NativeRouterException(NativeRouterStatus status, string operation, string nativeMessage)
@@ -142,6 +149,7 @@ public sealed class NativeForecast : IDisposable
 public sealed class NativeRouterBridge
 {
     private readonly NativeRouterBridgeOptions _options;
+    private readonly NativeRouterCapabilities _capabilities;
     private int _streamingProgressAvailability;
 
     public NativeRouterBridge(NativeRouterBridgeOptions? options = null)
@@ -191,9 +199,25 @@ public sealed class NativeRouterBridge
             throw new NotSupportedException(
                 $"Navtool router bridge ABI {actualVersion} is incompatible; ABI {NativeRouterBridgeOptions.SupportedAbiVersion} is required.");
         }
+
+        try
+        {
+            _capabilities = NativeMethods.Capabilities();
+        }
+        catch (EntryPointNotFoundException)
+        {
+            _capabilities = NativeRouterCapabilities.None;
+        }
     }
 
     public uint AbiVersion => NativeRouterBridgeOptions.SupportedAbiVersion;
+
+    public NativeRouterCapabilities Capabilities => _capabilities;
+
+    // The capability bit is exposed for forward-compatible probing, but the
+    // constrained route entry point is intentionally not considered usable
+    // until router-lib#11 and its bridge integration are implemented together.
+    public bool LandConstraintAvailable => false;
 
     public bool? StreamingProgressAvailable => Volatile.Read(
         ref _streamingProgressAvailability) switch
@@ -414,7 +438,11 @@ public sealed class NativeRouterBridge
         cancellationToken.ThrowIfCancellationRequested();
         var result = NativeRouteJsonParser.Parse(json, request, model, stopwatch.Elapsed);
         EnsureWithinForecastHorizon(result, forecast.Metadata);
-        return result;
+        return LandConstraintAvailable
+            ? result
+            : result.WithLandAvoidance(new RouteLandAvoidance(
+                LandAvoidanceStatus.RouterUnsupported,
+                "Land avoidance was not applied because the routing engine does not support pre-retention segment constraints."));
     }
 
     // Mandatory postcondition: a route must never rely on weather past the loaded
@@ -705,6 +733,8 @@ public sealed class NativeRouteEngine : IRouteEngine
         _logger = logger ?? NullLogger<NativeRouteEngine>.Instance;
     }
 
+    public bool LandAvoidanceAvailable => _bridge.LandConstraintAvailable;
+
     public ValueTask<RouteResult> CalculateAsync(
         RouteRequest request,
         ForecastAcquisition forecast,
@@ -714,6 +744,12 @@ public sealed class NativeRouteEngine : IRouteEngine
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(forecast);
         cancellationToken.ThrowIfCancellationRequested();
+        if (!LandAvoidanceAvailable)
+        {
+            throw new NotSupportedException(
+                "Active land avoidance is unavailable with the installed router-lib; route calculation was blocked.");
+        }
+
         progress?.Report(new RouteCalculationProgress(0, "Loading forecast"));
 
         try
@@ -1123,6 +1159,9 @@ internal static class NativeMethods
 
     [DllImport(LibraryName, EntryPoint = "navtool_router_bridge_abi_version_v1", CallingConvention = CallingConvention.Cdecl)]
     internal static extern uint AbiVersion();
+
+    [DllImport(LibraryName, EntryPoint = "navtool_router_bridge_capabilities_v1", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern NativeRouterCapabilities Capabilities();
 
     [DllImport(LibraryName, EntryPoint = "navtool_router_last_error_v1", CallingConvention = CallingConvention.Cdecl)]
     private static extern IntPtr LastError();
