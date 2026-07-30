@@ -30,6 +30,16 @@ public sealed class DeferredNativeRouteEngine : IRouteEngine, IWeatherSampler, I
     {
     }
 
+    public DeferredNativeRouteEngine(
+        ILandDataProvider landDataProvider,
+        ILogger<NativeRouteEngine> logger)
+        : this(() => new NativeRouteEngine(
+            new NativeRouterBridge(),
+            logger,
+            landDataProvider))
+    {
+    }
+
     public DeferredNativeRouteEngine(Func<NativeRouteEngine> factory)
     {
         ArgumentNullException.ThrowIfNull(factory);

@@ -15,7 +15,7 @@ namespace Navtool.Infrastructure;
 
 public sealed record NativeRouterBridgeOptions
 {
-    public const uint SupportedAbiVersion = 3;
+    public const uint SupportedAbiVersion = 4;
 
     public int MaximumTextBytes { get; init; } = 64 * 1024 * 1024;
 
@@ -215,10 +215,8 @@ public sealed class NativeRouterBridge
 
     public NativeRouterCapabilities Capabilities => _capabilities;
 
-    // The capability bit is exposed for forward-compatible probing, but the
-    // constrained route entry point is intentionally not considered usable
-    // until router-lib#11 and its bridge integration are implemented together.
-    public bool LandConstraintAvailable => false;
+    public bool LandConstraintAvailable =>
+        (_capabilities & NativeRouterCapabilities.LandSegmentConstraint) != 0;
 
     public bool? StreamingProgressAvailable => Volatile.Read(
         ref _streamingProgressAvailability) switch
@@ -313,7 +311,30 @@ public sealed class NativeRouterBridge
         RouteRequest request,
         ForecastModel model,
         CancellationToken cancellationToken = default) =>
-        CalculateRouteCore(forecast, request, model, null, cancellationToken);
+        CalculateRouteCore(
+            forecast,
+            request,
+            model,
+            null,
+            null,
+            cancellationToken);
+
+    public RouteResult CalculateRoute(
+        NativeForecast forecast,
+        RouteRequest request,
+        ForecastModel model,
+        Func<Coordinate, Coordinate, bool> isSegmentEligible,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(isSegmentEligible);
+        return CalculateRouteCore(
+            forecast,
+            request,
+            model,
+            null,
+            isSegmentEligible,
+            cancellationToken);
+    }
 
     public RouteResult CalculateRoute(
         NativeForecast forecast,
@@ -328,6 +349,26 @@ public sealed class NativeRouterBridge
             request,
             model,
             onProgress,
+            null,
+            cancellationToken);
+    }
+
+    public RouteResult CalculateRoute(
+        NativeForecast forecast,
+        RouteRequest request,
+        ForecastModel model,
+        Action<RouteCalculationSnapshot> onProgress,
+        Func<Coordinate, Coordinate, bool> isSegmentEligible,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(onProgress);
+        ArgumentNullException.ThrowIfNull(isSegmentEligible);
+        return CalculateRouteCore(
+            forecast,
+            request,
+            model,
+            onProgress,
+            isSegmentEligible,
             cancellationToken);
     }
 
@@ -336,18 +377,25 @@ public sealed class NativeRouterBridge
         RouteRequest request,
         ForecastModel model,
         Action<RouteCalculationSnapshot>? onProgress,
+        Func<Coordinate, Coordinate, bool>? isSegmentEligible,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(forecast);
         ArgumentNullException.ThrowIfNull(request);
         _ = model.Provider();
         ThrowIfDisposed(forecast);
+        if (isSegmentEligible is not null && !LandConstraintAvailable)
+        {
+            throw new NotSupportedException(
+                "The native router bridge does not support pre-retention segment constraints.");
+        }
 
         cancellationToken.ThrowIfCancellationRequested();
         var departure = request.DepartureTime.ToUnixTimeSeconds();
         var stopwatch = Stopwatch.StartNew();
         ExceptionDispatchInfo? callbackFailure = null;
         NativeMethods.RoutingProgressCallback callback;
+        NativeMethods.SegmentEligibilityCallback? eligibilityCallback = null;
         RouteCalculationSnapshot? lastSnapshot = null;
         NativeRouterStatus status;
         IntPtr routePointer;
@@ -370,22 +418,74 @@ public sealed class NativeRouterBridge
             }
             catch (Exception exception)
             {
-                callbackFailure = ExceptionDispatchInfo.Capture(exception);
+                Interlocked.CompareExchange(
+                    ref callbackFailure,
+                    ExceptionDispatchInfo.Capture(exception),
+                    null);
             }
         };
+        if (isSegmentEligible is not null)
+        {
+            eligibilityCallback = (
+                ref NativeCoordinate parent,
+                ref NativeCoordinate candidate,
+                IntPtr _) =>
+            {
+                if (callbackFailure is not null)
+                {
+                    return 0;
+                }
+
+                try
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return isSegmentEligible(
+                        new Coordinate(
+                            parent.LatitudeDegrees,
+                            parent.LongitudeDegrees),
+                        new Coordinate(
+                            candidate.LatitudeDegrees,
+                            candidate.LongitudeDegrees))
+                        ? (byte)1
+                        : (byte)0;
+                }
+                catch (Exception exception)
+                {
+                    Interlocked.CompareExchange(
+                        ref callbackFailure,
+                        ExceptionDispatchInfo.Capture(exception),
+                        null);
+                    return 0;
+                }
+            };
+        }
         try
         {
-            status = NativeMethods.CalculateRouteStreaming(
-                forecast.Handle,
-                request.Origin.Latitude,
-                request.Origin.Longitude,
-                request.Destination.Latitude,
-                request.Destination.Longitude,
-                ref departure,
-                callback,
-                IntPtr.Zero,
-                out routePointer,
-                out routeLength);
+            status = eligibilityCallback is null
+                ? NativeMethods.CalculateRouteStreaming(
+                    forecast.Handle,
+                    request.Origin.Latitude,
+                    request.Origin.Longitude,
+                    request.Destination.Latitude,
+                    request.Destination.Longitude,
+                    ref departure,
+                    callback,
+                    IntPtr.Zero,
+                    out routePointer,
+                    out routeLength)
+                : NativeMethods.CalculateRouteConstrained(
+                    forecast.Handle,
+                    request.Origin.Latitude,
+                    request.Origin.Longitude,
+                    request.Destination.Latitude,
+                    request.Destination.Longitude,
+                    ref departure,
+                    callback,
+                    IntPtr.Zero,
+                    eligibilityCallback,
+                    IntPtr.Zero,
+                    out routePointer,
+                    out routeLength);
             Volatile.Write(ref _streamingProgressAvailability, 1);
         }
         catch (EntryPointNotFoundException exception)
@@ -397,6 +497,7 @@ public sealed class NativeRouterBridge
         }
 
         GC.KeepAlive(callback);
+        GC.KeepAlive(eligibilityCallback);
         stopwatch.Stop();
         using var routeBuffer = new NativeAllocatedBufferSafeHandle(routePointer);
         callbackFailure?.Throw();
@@ -419,7 +520,9 @@ public sealed class NativeRouterBridge
                         stopwatch.Elapsed),
                     RouteCompletion.ForecastExhausted);
                 EnsureWithinForecastHorizon(partial, forecast.Metadata);
-                return ApplyLandAvoidanceCapability(partial);
+                return ApplyLandAvoidanceCapability(
+                    partial,
+                    isSegmentEligible is not null);
             }
 
             throw new NativeRouterException(
@@ -432,15 +535,22 @@ public sealed class NativeRouterBridge
         cancellationToken.ThrowIfCancellationRequested();
         var result = NativeRouteJsonParser.Parse(json, request, model, stopwatch.Elapsed);
         EnsureWithinForecastHorizon(result, forecast.Metadata);
-        return ApplyLandAvoidanceCapability(result);
+        return ApplyLandAvoidanceCapability(
+            result,
+            isSegmentEligible is not null);
     }
 
-    private RouteResult ApplyLandAvoidanceCapability(RouteResult result) =>
-        LandConstraintAvailable
-            ? result
-            : result.WithLandAvoidance(new RouteLandAvoidance(
+    private RouteResult ApplyLandAvoidanceCapability(
+        RouteResult result,
+        bool constraintApplied) =>
+        !LandConstraintAvailable
+            ? result.WithLandAvoidance(new RouteLandAvoidance(
                 LandAvoidanceStatus.RouterUnsupported,
-                "Land avoidance was not applied because the routing engine does not support pre-retention segment constraints."));
+                "Land avoidance was not applied because the routing engine does not support pre-retention segment constraints."))
+            : constraintApplied
+                ? result.WithLandAvoidance(new RouteLandAvoidance(
+                    LandAvoidanceStatus.Applied))
+                : result;
 
     // Mandatory postcondition: a route must never rely on weather past the loaded
     // forecast's real validity. RouteResult (Core) is deliberately ignorant of forecast
@@ -752,18 +862,21 @@ public sealed class NativeRouteEngine : IRouteEngine
 {
     private readonly NativeRouterBridge _bridge;
     private readonly ILogger<NativeRouteEngine> _logger;
+    private readonly ILandDataProvider? _landDataProvider;
 
     public NativeRouteEngine(
         NativeRouterBridge? bridge = null,
-        ILogger<NativeRouteEngine>? logger = null)
+        ILogger<NativeRouteEngine>? logger = null,
+        ILandDataProvider? landDataProvider = null)
     {
         _bridge = bridge ?? new NativeRouterBridge();
         _logger = logger ?? NullLogger<NativeRouteEngine>.Instance;
+        _landDataProvider = landDataProvider;
     }
 
     public bool LandAvoidanceAvailable => _bridge.LandConstraintAvailable;
 
-    public ValueTask<RouteResult> CalculateAsync(
+    public async ValueTask<RouteResult> CalculateAsync(
         RouteRequest request,
         ForecastAcquisition forecast,
         IProgress<RouteCalculationProgress>? progress,
@@ -777,6 +890,19 @@ public sealed class NativeRouteEngine : IRouteEngine
             throw new NotSupportedException(
                 "Active land avoidance is unavailable with the installed router-lib; route calculation was blocked.");
         }
+
+        progress?.Report(new RouteCalculationProgress(0, "Acquiring land data"));
+        var landData = _landDataProvider is null
+            ? LandDataAcquisition.Unconfigured()
+            : await _landDataProvider
+                .AcquireAsync(GetLoadBounds(forecast), cancellationToken)
+                .ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        Func<Coordinate, Coordinate, bool>? isSegmentEligible =
+            landData.Geometry is null
+                ? null
+                : (parent, candidate) =>
+                    !landData.Geometry.IntersectsSegment(parent, candidate);
 
         progress?.Report(new RouteCalculationProgress(0, "Loading forecast"));
 
@@ -793,44 +919,67 @@ public sealed class NativeRouteEngine : IRouteEngine
                 cancellationToken: cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new RouteCalculationProgress(0.2, "Optimizing route"));
-            var result = progress is null
-                ? _bridge.CalculateRoute(
+            RouteResult result;
+            if (progress is null)
+            {
+                result = isSegmentEligible is null
+                    ? _bridge.CalculateRoute(
+                        loaded,
+                        request,
+                        forecast.Request.Model,
+                        cancellationToken)
+                    : _bridge.CalculateRoute(
+                        loaded,
+                        request,
+                        forecast.Request.Model,
+                        isSegmentEligible,
+                        cancellationToken);
+            }
+            else
+            {
+                Action<RouteCalculationSnapshot> reportSnapshot = snapshot =>
+                {
+                    var requestedDuration =
+                        request.LatestArrivalTime - request.DepartureTime;
+                    var elapsed =
+                        snapshot.FrontierTime - request.DepartureTime;
+                    var fraction = requestedDuration <= TimeSpan.Zero
+                        ? 0
+                        : Math.Clamp(
+                            elapsed.TotalSeconds /
+                            requestedDuration.TotalSeconds,
+                            0,
+                            1);
+                    progress.Report(new RouteCalculationProgress(
+                        0.2 + (fraction * 0.79),
+                        $"Step {snapshot.Diagnostics.TimeSteps:N0} · " +
+                        $"{snapshot.Diagnostics.RetainedCandidates:N0} retained",
+                        snapshot));
+                };
+                result = isSegmentEligible is null
+                    ? _bridge.CalculateRoute(
+                        loaded,
+                        request,
+                        forecast.Request.Model,
+                        reportSnapshot,
+                        cancellationToken)
+                    : _bridge.CalculateRoute(
                     loaded,
                     request,
                     forecast.Request.Model,
-                    cancellationToken)
-                : _bridge.CalculateRoute(
-                    loaded,
-                    request,
-                    forecast.Request.Model,
-                    snapshot =>
-                    {
-                        var requestedDuration =
-                            request.LatestArrivalTime - request.DepartureTime;
-                        var elapsed =
-                            snapshot.FrontierTime - request.DepartureTime;
-                        var fraction = requestedDuration <= TimeSpan.Zero
-                            ? 0
-                            : Math.Clamp(
-                                elapsed.TotalSeconds /
-                                requestedDuration.TotalSeconds,
-                                0,
-                                1);
-                        progress.Report(new RouteCalculationProgress(
-                            0.2 + (fraction * 0.79),
-                            $"Step {snapshot.Diagnostics.TimeSteps:N0} · " +
-                            $"{snapshot.Diagnostics.RetainedCandidates:N0} retained",
-                            snapshot));
-                    },
+                    reportSnapshot,
+                    isSegmentEligible,
                     cancellationToken);
+            }
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new RouteCalculationProgress(1, "Route complete"));
+            result = ApplyLandData(result, landData);
             _logger.LogInformation(
                 "Completed route {RouteId} using {Model} with {PointCount} points",
                 request.RouteId,
                 forecast.Request.Model,
                 result.Points.Length);
-            return ValueTask.FromResult(result);
+            return result;
         }
         catch (Exception exception) when (
             exception is not OperationCanceledException ||
@@ -843,6 +992,32 @@ public sealed class NativeRouteEngine : IRouteEngine
                 forecast.Artifact.Path);
             throw;
         }
+    }
+
+    private static RouteResult ApplyLandData(
+        RouteResult result,
+        LandDataAcquisition landData)
+    {
+        var landAvoidance = landData.Status switch
+        {
+            LandDataStatus.Available when landData.Geometry is not null =>
+                new RouteLandAvoidance(
+                    LandAvoidanceStatus.Applied,
+                    Attribution: landData.Attribution),
+            LandDataStatus.Available => throw new InvalidOperationException(
+                "Available land data did not include a geometry index."),
+            LandDataStatus.Unconfigured => new RouteLandAvoidance(
+                LandAvoidanceStatus.DataUnavailable,
+                landData.Warning,
+                landData.Attribution),
+            LandDataStatus.Unavailable => new RouteLandAvoidance(
+                LandAvoidanceStatus.DataUnavailable,
+                landData.Warning,
+                landData.Attribution),
+            _ => throw new InvalidOperationException(
+                $"Unsupported land data status {landData.Status}.")
+        };
+        return result.WithLandAvoidance(landAvoidance);
     }
 
     public ValueTask<ImmutableArray<ViewportWindSample>> SampleViewportAsync(
@@ -899,6 +1074,7 @@ internal static class NativeRouteJsonParser
         TimeSpan calculationDuration)
     {
         RouteDiagnostics diagnostics;
+        RouteCompletion completion;
         var raw = ImmutableArray.CreateBuilder<RawRoutePoint>();
 
         // Format boundary: JSON shape, kinds, and finiteness only. Domain object
@@ -911,6 +1087,13 @@ internal static class NativeRouteJsonParser
                 new JsonDocumentOptions { MaxDepth = 32 });
             var root = document.RootElement;
             RequireKind(root, JsonValueKind.Object, "root");
+            completion = RequiredString(root, "completion") switch
+            {
+                "destination_reached" => RouteCompletion.DestinationReached,
+                "forecast_exhausted" => RouteCompletion.ForecastExhausted,
+                var value => throw new NativeRouteFormatException(
+                    $"Native route JSON has unsupported completion '{value}'.")
+            };
             var diagnosticsElement = Required(root, "diagnostics", JsonValueKind.Object);
             diagnostics = new RouteDiagnostics(
                 RequiredInt64(diagnosticsElement, "expandedNodes"),
@@ -978,7 +1161,12 @@ internal static class NativeRouteJsonParser
         // surface as a descriptive native-contract error, not the generic JSON message.
         try
         {
-            return new RouteResult(request, model, points.ToImmutable(), diagnostics);
+            return new RouteResult(
+                request,
+                model,
+                points.ToImmutable(),
+                diagnostics,
+                completion);
         }
         catch (ArgumentException exception)
         {
@@ -1008,6 +1196,11 @@ internal static class NativeRouteJsonParser
         RequireKind(value, kind, name);
         return value;
     }
+
+    private static string RequiredString(JsonElement parent, string name) =>
+        Required(parent, name, JsonValueKind.String).GetString() ??
+        throw new NativeRouteFormatException(
+            $"Native route JSON field '{name}' must not be null.");
 
     private static void RequireKind(JsonElement element, JsonValueKind kind, string name)
     {
@@ -1243,6 +1436,12 @@ internal static class NativeMethods
         IntPtr progress,
         IntPtr userData);
 
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate byte SegmentEligibilityCallback(
+        ref NativeCoordinate parent,
+        ref NativeCoordinate candidate,
+        IntPtr userData);
+
     [DllImport(LibraryName, EntryPoint = "navtool_router_calculate_route_streaming_v3", CallingConvention = CallingConvention.Cdecl)]
     internal static extern NativeRouterStatus CalculateRouteStreaming(
         NativeForecastSafeHandle forecast,
@@ -1253,6 +1452,21 @@ internal static class NativeMethods
         ref long departureEpochSeconds,
         RoutingProgressCallback onProgress,
         IntPtr progressUserData,
+        out IntPtr routeJson,
+        out nuint routeJsonLength);
+
+    [DllImport(LibraryName, EntryPoint = "navtool_router_calculate_route_streaming_v4", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern NativeRouterStatus CalculateRouteConstrained(
+        NativeForecastSafeHandle forecast,
+        double startLatitude,
+        double startLongitude,
+        double destinationLatitude,
+        double destinationLongitude,
+        ref long departureEpochSeconds,
+        RoutingProgressCallback onProgress,
+        IntPtr progressUserData,
+        SegmentEligibilityCallback isSegmentEligible,
+        IntPtr segmentEligibilityUserData,
         out IntPtr routeJson,
         out nuint routeJsonLength);
 

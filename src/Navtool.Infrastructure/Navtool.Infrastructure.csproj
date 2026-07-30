@@ -7,6 +7,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource
+      Include="Assets\ne_10m_land.geojson.gz"
+      LogicalName="Navtool.Infrastructure.Assets.ne_10m_land.geojson.gz" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Navtool.Infrastructure.Tests" />
   </ItemGroup>
 

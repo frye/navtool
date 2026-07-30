@@ -1,0 +1,16 @@
+Natural Earth 1:10m land polygons
+
+Source:
+https://github.com/nvkelso/natural-earth-vector/blob/ca96624a56bd078437bca8184e78163e5039ad19/geojson/ne_10m_land.geojson
+
+Source commit:
+ca96624a56bd078437bca8184e78163e5039ad19
+
+Uncompressed SHA-256:
+1ac90796408bc6ad6911d69448485d3c4dbf2190370080368a09976e1c9f7416
+
+Bundled gzip SHA-256:
+645f50dfb0b5cd76cb98de9db719655321af1de9d5b18ef53d4e959892335539
+
+Natural Earth vector and raster map data is in the public domain:
+https://www.naturalearthdata.com/about/terms-of-use/

@@ -33,8 +33,8 @@ public sealed class NativeRouterBridgeIntegrationTests
         }
 
         using var forecast = bridge.LoadForecast(sample);
-        Assert.Equal(3u, bridge.AbiVersion);
-        Assert.False(bridge.LandConstraintAvailable);
+        Assert.Equal(4u, bridge.AbiVersion);
+        Assert.True(bridge.LandConstraintAvailable);
         Assert.True(forecast.Metadata.LatitudeCount > 0);
         Assert.True(forecast.Metadata.FirstValidAt < forecast.Metadata.LastValidAt);
 
@@ -62,8 +62,20 @@ public sealed class NativeRouterBridgeIntegrationTests
             snapshots.Add);
         Assert.NotEmpty(route.Points);
         Assert.True(route.Diagnostics.GeneratedCandidates > 0);
-        Assert.Equal(LandAvoidanceStatus.RouterUnsupported, route.LandAvoidance.Status);
-        Assert.True(route.LandAvoidance.HasWarning);
+        Assert.Equal(LandAvoidanceStatus.NotEvaluated, route.LandAvoidance.Status);
+        var eligibilityCalls = 0;
+        var rejected = Assert.Throws<NativeRouterException>(() =>
+            bridge.CalculateRoute(
+                forecast,
+                request,
+                ForecastModel.NoaaGfs,
+                (_, _) =>
+                {
+                    eligibilityCalls++;
+                    return false;
+                }));
+        Assert.Equal(NativeRouterStatus.NoRoute, rejected.Status);
+        Assert.True(eligibilityCalls > 0);
         Assert.NotNull(bridge.StreamingProgressAvailable);
         if (bridge.StreamingProgressAvailable is true)
         {
@@ -119,10 +131,15 @@ public sealed class NativeRouterBridgeIntegrationTests
         Assert.Equal(limitedRoute.Points[^1].Location, limitedRouteWithoutProgress.Points[^1].Location);
         Assert.True(limitedRoute.IsForecastLimited);
         Assert.Equal(
-            LandAvoidanceStatus.RouterUnsupported,
+            LandAvoidanceStatus.NotEvaluated,
             limitedRoute.LandAvoidance.Status);
         Assert.NotEmpty(limitedSnapshots);
-        Assert.Equal(limitedSnapshots[^1].ProvisionalRoute, limitedRoute.Points);
+        Assert.Equal(
+            limitedSnapshots[^1].ProvisionalRoute.Select(point => point.Location),
+            limitedRoute.Points.Select(point => point.Location));
+        Assert.Equal(
+            limitedSnapshots[^1].ProvisionalRoute.Select(point => point.Timestamp),
+            limitedRoute.Points.Select(point => point.Timestamp));
         Assert.Equal(limitedSnapshots[^1].FrontierTime, limitedRoute.ArrivalTime);
         Assert.True(limitedRoute.ArrivalTime <= forecast.Metadata.LastValidAt);
     }
