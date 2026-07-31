@@ -22,10 +22,9 @@ acquisition, live routing feedback, map clarity, and route inspection.
   can be selected with the native file picker. Navtool validates model
   metadata, wind fields, time coverage, and geographic coverage before
   routing. ([#7](https://github.com/frye/navtool/pull/7))
-- **Live route calculation progress:** Full reachability envelopes, the latest
-  destination-facing front, and the closest provisional route now stream onto
-  the map while each model calculates, including safe rendering across the
-  antimeridian.
+- **Live route calculation progress:** Open destination-facing isochrone fronts
+  and the closest provisional route stream onto the map while each model
+  calculates, including safe rendering across the antimeridian.
   ([#5](https://github.com/frye/navtool/pull/5))
 
 ### Added
@@ -67,14 +66,13 @@ acquisition, live routing feedback, map clarity, and route inspection.
   local-source and revision overrides.
   ([#12](https://github.com/frye/navtool/pull/12),
   [#18](https://github.com/frye/navtool/pull/18))
-- Expanded streamed isochrones to retain the full router-provided reachability
-  envelope as subtle historical context while emphasizing only the latest
-  destination-facing front. Closed, open, disconnected, singleton, and
-  antimeridian-split components retain their native topology without synthetic
-  smoothing.
+- Smoothed streamed isochrone fronts with bounded display-only corner cutting,
+  retaining subtle historical fronts while emphasizing the latest front.
 
 ### Fixed
 
+- Restored solid open isochrone fronts after filled alpha-shape contours caused
+  fragmented triangular reachability overlays.
 - Restored live isochrones after the router-lib v0.1.1 progress API change.
   Routes that outlast available weather now remain selectable through the final
   forecast-supported point, keep their route and isochrone overlays, and show

@@ -21,24 +21,25 @@ public sealed class RouteMapLayers
     public static readonly MapsuiColor NoaaColor = MapsuiColor.FromString("#0072B2");
     public static readonly MapsuiColor EcmwfColor = MapsuiColor.FromString("#D55E00");
     public static readonly MapsuiColor ReachabilityColor = MapsuiColor.FromString("#D32F2F");
-    public const double ReachabilityLineWidth = 0.75;
-    public const float ReachabilityOpacity = 0.18f;
+    public const double HistoricalFrontLineWidth = 0.75;
+    public const float HistoricalFrontOpacity = 0.18f;
     public const double DestinationFrontLineWidth = 2.0;
     public const float DestinationFrontOpacity = 0.92f;
+    private const int IsochroneSmoothingIterations = 2;
 
     private readonly MemoryLayer _noaaRoutes = CreateRouteLayer("NOAA GFS routes", NoaaColor);
     private readonly MemoryLayer _ecmwfRoutes = CreateRouteLayer("ECMWF IFS routes", EcmwfColor);
-    private readonly MemoryLayer _noaaEnvelopes = CreateEnvelopeLayer("NOAA GFS reachability envelopes");
-    private readonly MemoryLayer _ecmwfEnvelopes = CreateEnvelopeLayer("ECMWF IFS reachability envelopes");
-    private readonly MemoryLayer _noaaDestinationFront = CreateDestinationFrontLayer("NOAA GFS destination front");
-    private readonly MemoryLayer _ecmwfDestinationFront = CreateDestinationFrontLayer("ECMWF IFS destination front");
+    private readonly MemoryLayer _noaaHistoricalFronts = CreateHistoricalFrontLayer("NOAA GFS isochrone fronts");
+    private readonly MemoryLayer _ecmwfHistoricalFronts = CreateHistoricalFrontLayer("ECMWF IFS isochrone fronts");
+    private readonly MemoryLayer _noaaDestinationFront = CreateDestinationFrontLayer("NOAA GFS latest isochrone front");
+    private readonly MemoryLayer _ecmwfDestinationFront = CreateDestinationFrontLayer("ECMWF IFS latest isochrone front");
     private readonly MemoryLayer _noaaProvisionalRoute = CreateProvisionalRouteLayer(
         "NOAA GFS provisional route",
         NoaaColor);
     private readonly MemoryLayer _ecmwfProvisionalRoute = CreateProvisionalRouteLayer(
         "ECMWF IFS provisional route",
         EcmwfColor);
-    private readonly Dictionary<ForecastModel, List<IFeature>> _envelopeFeatures = new()
+    private readonly Dictionary<ForecastModel, List<IFeature>> _historicalFrontFeatures = new()
     {
         [ForecastModel.NoaaGfs] = new List<IFeature>(),
         [ForecastModel.EcmwfIfs] = new List<IFeature>()
@@ -52,8 +53,8 @@ public sealed class RouteMapLayers
         Map = map;
         map.Layers.Add(_windCells);
         map.Layers.Add(_windArrows);
-        map.Layers.Add(_noaaEnvelopes);
-        map.Layers.Add(_ecmwfEnvelopes);
+        map.Layers.Add(_noaaHistoricalFronts);
+        map.Layers.Add(_ecmwfHistoricalFronts);
         map.Layers.Add(_noaaDestinationFront);
         map.Layers.Add(_ecmwfDestinationFront);
         map.Layers.Add(_noaaProvisionalRoute);
@@ -68,10 +69,10 @@ public sealed class RouteMapLayers
 
     public int WeatherCellCount { get; private set; }
 
-    public int GetReachabilityEnvelopeCount(ForecastModel model) =>
-        GetEnvelopeFeatures(model).Count;
+    public int GetIsochroneFrontCount(ForecastModel model) =>
+        GetHistoricalFrontFeatures(model).Count;
 
-    public bool HasDestinationFront(ForecastModel model) =>
+    public bool HasLatestIsochroneFront(ForecastModel model) =>
         GetDestinationFrontLayer(model).Features.Any();
 
     public bool HasProvisionalRoute(ForecastModel model) =>
@@ -114,14 +115,15 @@ public sealed class RouteMapLayers
         RouteCalculationSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        var envelopes = GetEnvelopeFeatures(model);
-        envelopes.AddRange(CreateEnvelopeFeatures(snapshot));
-        var envelopeLayer = GetEnvelopeLayer(model);
-        envelopeLayer.Features = envelopes.ToArray();
-        envelopeLayer.FeaturesWereModified();
+        var frontFeatures = CreateIsochroneFrontFeatures(snapshot).ToArray();
+        var historicalFronts = GetHistoricalFrontFeatures(model);
+        historicalFronts.AddRange(frontFeatures);
+        var historicalFrontLayer = GetHistoricalFrontLayer(model);
+        historicalFrontLayer.Features = historicalFronts.ToArray();
+        historicalFrontLayer.FeaturesWereModified();
 
         var destinationFrontLayer = GetDestinationFrontLayer(model);
-        destinationFrontLayer.Features = CreateDestinationFrontFeatures(snapshot);
+        destinationFrontLayer.Features = frontFeatures;
         destinationFrontLayer.FeaturesWereModified();
 
         var provisionalLayer = GetProvisionalRouteLayer(model);
@@ -193,10 +195,17 @@ public sealed class RouteMapLayers
             }
         };
 
-    private static MemoryLayer CreateEnvelopeLayer(string name) =>
+    private static MemoryLayer CreateHistoricalFrontLayer(string name) =>
         new(name)
         {
-            Style = null
+            Style = new VectorStyle
+            {
+                Line = new Pen(ReachabilityColor, HistoricalFrontLineWidth)
+                {
+                    PenStrokeCap = PenStrokeCap.Round
+                },
+                Opacity = HistoricalFrontOpacity
+            }
         };
 
     private static MemoryLayer CreateDestinationFrontLayer(string name) =>
@@ -253,54 +262,7 @@ public sealed class RouteMapLayers
         return feature;
     }
 
-    private static IEnumerable<IFeature> CreateEnvelopeFeatures(
-        RouteCalculationSnapshot snapshot)
-    {
-        var referenceX = MapProjection.ToContinuousMapPoints(
-            snapshot.ProvisionalRoute.Select(point => point.Location))[^1].X;
-        foreach (var segment in snapshot.EnvelopeSegments)
-        {
-            var coordinates = MapProjection.ToContinuousMapPointsNear(
-                    segment.Points,
-                    referenceX)
-                .Select(point => new NtsCoordinate(point.X, point.Y))
-                .ToArray();
-            GeometryFeature feature;
-            var isPolygon = segment.Closed && coordinates.Length >= 3;
-            if (isPolygon)
-            {
-                var ring = coordinates.Append(coordinates[0]).ToArray();
-                feature = new GeometryFeature(new Polygon(new LinearRing(ring)));
-            }
-            else
-            {
-                if (coordinates.Length == 1)
-                {
-                    coordinates = new[] { coordinates[0], coordinates[0] };
-                }
-                feature = new GeometryFeature(new LineString(coordinates));
-            }
-
-            feature.Data = snapshot;
-            feature.Styles.Add(new VectorStyle
-            {
-                Fill = isPolygon
-                    ? new Brush(ReachabilityColor)
-                    : null,
-                Line = new Pen(ReachabilityColor, ReachabilityLineWidth)
-                {
-                    PenStrokeCap = PenStrokeCap.Round
-                },
-                Outline = isPolygon
-                    ? new Pen(ReachabilityColor, ReachabilityLineWidth)
-                    : null,
-                Opacity = ReachabilityOpacity
-            });
-            yield return feature;
-        }
-    }
-
-    private static IEnumerable<IFeature> CreateDestinationFrontFeatures(
+    private static IEnumerable<IFeature> CreateIsochroneFrontFeatures(
         RouteCalculationSnapshot snapshot)
     {
         var referenceX = MapProjection.ToContinuousMapPoints(
@@ -312,6 +274,7 @@ public sealed class RouteMapLayers
                     referenceX)
                 .Select(point => new NtsCoordinate(point.X, point.Y))
                 .ToArray();
+            coordinates = SmoothOpenLine(coordinates, IsochroneSmoothingIterations);
             if (coordinates.Length == 1)
             {
                 coordinates = new[] { coordinates[0], coordinates[0] };
@@ -324,15 +287,51 @@ public sealed class RouteMapLayers
         }
     }
 
-    private List<IFeature> GetEnvelopeFeatures(ForecastModel model) =>
-        _envelopeFeatures.TryGetValue(model, out var features)
+    private static NtsCoordinate[] SmoothOpenLine(
+        IReadOnlyList<NtsCoordinate> source,
+        int iterations)
+    {
+        var current = source
+            .Select(point => new NtsCoordinate(point.X, point.Y))
+            .ToArray();
+        if (current.Length < 3 || iterations <= 0)
+        {
+            return current;
+        }
+
+        for (var iteration = 0; iteration < iterations; iteration++)
+        {
+            var smoothed = new List<NtsCoordinate>(current.Length * 2)
+            {
+                current[0]
+            };
+            for (var index = 0; index < current.Length - 1; index++)
+            {
+                var start = current[index];
+                var end = current[index + 1];
+                smoothed.Add(new NtsCoordinate(
+                    (0.75 * start.X) + (0.25 * end.X),
+                    (0.75 * start.Y) + (0.25 * end.Y)));
+                smoothed.Add(new NtsCoordinate(
+                    (0.25 * start.X) + (0.75 * end.X),
+                    (0.25 * start.Y) + (0.75 * end.Y)));
+            }
+            smoothed.Add(current[^1]);
+            current = smoothed.ToArray();
+        }
+
+        return current;
+    }
+
+    private List<IFeature> GetHistoricalFrontFeatures(ForecastModel model) =>
+        _historicalFrontFeatures.TryGetValue(model, out var features)
             ? features
             : throw new ArgumentOutOfRangeException(nameof(model));
 
-    private MemoryLayer GetEnvelopeLayer(ForecastModel model) => model switch
+    private MemoryLayer GetHistoricalFrontLayer(ForecastModel model) => model switch
     {
-        ForecastModel.NoaaGfs => _noaaEnvelopes,
-        ForecastModel.EcmwfIfs => _ecmwfEnvelopes,
+        ForecastModel.NoaaGfs => _noaaHistoricalFronts,
+        ForecastModel.EcmwfIfs => _ecmwfHistoricalFronts,
         _ => throw new ArgumentOutOfRangeException(nameof(model))
     };
 
@@ -352,11 +351,11 @@ public sealed class RouteMapLayers
 
     private void ClearCalculationOverlay(ForecastModel model, bool refresh)
     {
-        var features = GetEnvelopeFeatures(model);
+        var features = GetHistoricalFrontFeatures(model);
         features.Clear();
-        var envelopeLayer = GetEnvelopeLayer(model);
-        envelopeLayer.Features = Array.Empty<IFeature>();
-        envelopeLayer.FeaturesWereModified();
+        var historicalFrontLayer = GetHistoricalFrontLayer(model);
+        historicalFrontLayer.Features = Array.Empty<IFeature>();
+        historicalFrontLayer.FeaturesWereModified();
         var destinationFrontLayer = GetDestinationFrontLayer(model);
         destinationFrontLayer.Features = Array.Empty<IFeature>();
         destinationFrontLayer.FeaturesWereModified();

@@ -14,7 +14,6 @@ using Navtool.App.Views;
 using AvaloniaColor = Avalonia.Media.Color;
 using LineString = NetTopologySuite.Geometries.LineString;
 using MultiLineString = NetTopologySuite.Geometries.MultiLineString;
-using Polygon = NetTopologySuite.Geometries.Polygon;
 
 namespace Navtool.App.Tests;
 
@@ -70,7 +69,7 @@ public sealed class MapRenderingTests
     }
 
     [AvaloniaFact]
-    public void MainWindowLegendDistinguishesReachabilityEnvelopeAndLatestFront()
+    public void MainWindowLegendDistinguishesHistoricalAndLatestFronts()
     {
         var window = new MainWindow
         {
@@ -81,14 +80,14 @@ public sealed class MapRenderingTests
         {
             window.Show();
 
-            var envelopeSwatch = window.FindControl<Border>("ReachabilityEnvelopeLegendSwatch");
+            var historicalSwatch = window.FindControl<Border>("HistoricalIsochroneLegendSwatch");
             var frontSwatch = window.FindControl<Border>("DestinationFrontLegendSwatch");
-            Assert.NotNull(envelopeSwatch);
+            Assert.NotNull(historicalSwatch);
             Assert.NotNull(frontSwatch);
             var brush = Assert.IsAssignableFrom<ISolidColorBrush>(frontSwatch.Background);
             Assert.Equal(AvaloniaColor.Parse("#D32F2F"), brush.Color);
             Assert.Equal(0.92, frontSwatch.Opacity);
-            Assert.True(envelopeSwatch.Opacity < frontSwatch.Opacity);
+            Assert.True(historicalSwatch.Opacity < frontSwatch.Opacity);
         }
         finally
         {
@@ -110,10 +109,10 @@ public sealed class MapRenderingTests
             [
                 "Wind speed",
                 "Wind direction",
-                "NOAA GFS reachability envelopes",
-                "ECMWF IFS reachability envelopes",
-                "NOAA GFS destination front",
-                "ECMWF IFS destination front",
+                "NOAA GFS isochrone fronts",
+                "ECMWF IFS isochrone fronts",
+                "NOAA GFS latest isochrone front",
+                "ECMWF IFS latest isochrone front",
                 "NOAA GFS provisional route",
                 "ECMWF IFS provisional route",
                 "NOAA GFS routes",
@@ -139,7 +138,7 @@ public sealed class MapRenderingTests
     }
 
     [Fact]
-    public void StreamingLayersAccumulateEnvelopesReplaceCurrentFrontAndProvisionalRoute()
+    public void StreamingLayersAccumulateFrontsAndReplaceLatestFrontAndProvisionalRoute()
     {
         var map = new Map();
         var layers = new RouteMapLayers(map);
@@ -155,16 +154,16 @@ public sealed class MapRenderingTests
         layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, first);
         layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, second);
 
-        Assert.Equal(2, layers.GetReachabilityEnvelopeCount(ForecastModel.NoaaGfs));
-        Assert.True(layers.HasDestinationFront(ForecastModel.NoaaGfs));
+        Assert.Equal(2, layers.GetIsochroneFrontCount(ForecastModel.NoaaGfs));
+        Assert.True(layers.HasLatestIsochroneFront(ForecastModel.NoaaGfs));
         Assert.True(layers.HasProvisionalRoute(ForecastModel.NoaaGfs));
         var provisional = Assert.IsType<MemoryLayer>(
             map.Layers.Single(layer => layer.Name == "NOAA GFS provisional route"));
         Assert.Same(second, Assert.Single(provisional.Features).Data);
 
-        var envelopes = Assert.IsType<MemoryLayer>(
-            map.Layers.Single(layer => layer.Name == "NOAA GFS reachability envelopes"));
-        var geometry = Assert.IsType<GeometryFeature>(envelopes.Features.First()).Geometry;
+        var historicalFronts = Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS isochrone fronts"));
+        var geometry = Assert.IsType<GeometryFeature>(historicalFronts.Features.First()).Geometry;
         var lines = geometry is MultiLineString multi
             ? multi.Geometries.Cast<LineString>()
             : new[] { Assert.IsType<LineString>(geometry) };
@@ -178,33 +177,40 @@ public sealed class MapRenderingTests
             }
         });
         var destinationFront = Assert.IsType<MemoryLayer>(
-            map.Layers.Single(layer => layer.Name == "NOAA GFS destination front"));
+            map.Layers.Single(layer => layer.Name == "NOAA GFS latest isochrone front"));
         Assert.Same(second, Assert.Single(destinationFront.Features).Data);
 
         layers.ClearCalculationOverlay(ForecastModel.NoaaGfs);
 
-        Assert.Equal(0, layers.GetReachabilityEnvelopeCount(ForecastModel.NoaaGfs));
-        Assert.False(layers.HasDestinationFront(ForecastModel.NoaaGfs));
+        Assert.Equal(0, layers.GetIsochroneFrontCount(ForecastModel.NoaaGfs));
+        Assert.False(layers.HasLatestIsochroneFront(ForecastModel.NoaaGfs));
         Assert.False(layers.HasProvisionalRoute(ForecastModel.NoaaGfs));
     }
 
     [Fact]
-    public void ReachabilityLayersUseSubtleEnvelopesAndStrongLatestFronts()
+    public void IsochroneLayersUseSubtleHistoricalAndStrongLatestFronts()
     {
         var map = new Map();
         _ = new RouteMapLayers(map);
 
-        var envelopeLayers = map.Layers
-            .Where(layer => layer.Name?.EndsWith(" reachability envelopes", StringComparison.Ordinal) is true)
+        var historicalLayers = map.Layers
+            .Where(layer => layer.Name?.EndsWith(" isochrone fronts", StringComparison.Ordinal) is true)
             .Cast<MemoryLayer>()
             .ToArray();
         var frontLayers = map.Layers
-            .Where(layer => layer.Name?.EndsWith(" destination front", StringComparison.Ordinal) is true)
+            .Where(layer => layer.Name?.EndsWith(" latest isochrone front", StringComparison.Ordinal) is true)
             .Cast<MemoryLayer>()
             .ToArray();
 
-        Assert.Equal(2, envelopeLayers.Length);
-        Assert.All(envelopeLayers, layer => Assert.Null(layer.Style));
+        Assert.Equal(2, historicalLayers.Length);
+        Assert.All(historicalLayers, layer =>
+        {
+            var style = Assert.IsType<VectorStyle>(layer.Style);
+            Assert.NotNull(style.Line);
+            Assert.Equal(RouteMapLayers.HistoricalFrontLineWidth, style.Line.Width);
+            Assert.Equal(RouteMapLayers.HistoricalFrontOpacity, style.Opacity);
+            Assert.Null(style.Fill);
+        });
         Assert.Equal(2, frontLayers.Length);
         Assert.Equal(2.0, RouteMapLayers.DestinationFrontLineWidth);
         Assert.All(frontLayers, layer =>
@@ -219,7 +225,7 @@ public sealed class MapRenderingTests
     }
 
     [Fact]
-    public void IsochronesRenderRouterProvidedDestinationFrontOrder()
+    public void IsochronesSmoothRouterProvidedFrontWithoutClosingOrOvershooting()
     {
         var map = new Map();
         var layers = new RouteMapLayers(map);
@@ -240,18 +246,25 @@ public sealed class MapRenderingTests
         layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, snapshot);
 
         var front = Assert.IsType<MemoryLayer>(
-            map.Layers.Single(layer => layer.Name == "NOAA GFS destination front"));
+            map.Layers.Single(layer => layer.Name == "NOAA GFS latest isochrone front"));
         var feature = Assert.IsType<GeometryFeature>(Assert.Single(front.Features));
         var line = Assert.IsType<LineString>(feature.Geometry);
         var expectedPoints = MapProjection.ToContinuousMapPoints(expectedArc);
 
-        Assert.Equal(expectedPoints.Count, line.Coordinates.Length);
-        for (var index = 0; index < expectedPoints.Count; index++)
+        Assert.True(line.Coordinates.Length > expectedPoints.Count);
+        Assert.Equal(expectedPoints[0].X, line.Coordinates[0].X, 6);
+        Assert.Equal(expectedPoints[0].Y, line.Coordinates[0].Y, 6);
+        Assert.Equal(expectedPoints[^1].X, line.Coordinates[^1].X, 6);
+        Assert.Equal(expectedPoints[^1].Y, line.Coordinates[^1].Y, 6);
+        var minimumX = expectedPoints.Min(expected => expected.X);
+        var maximumX = expectedPoints.Max(expected => expected.X);
+        var minimumY = expectedPoints.Min(expected => expected.Y);
+        var maximumY = expectedPoints.Max(expected => expected.Y);
+        Assert.All(line.Coordinates, point =>
         {
-            Assert.Equal(expectedPoints[index].X, line.Coordinates[index].X, 6);
-            Assert.Equal(expectedPoints[index].Y, line.Coordinates[index].Y, 6);
-        }
-
+            Assert.InRange(point.X, minimumX, maximumX);
+            Assert.InRange(point.Y, minimumY, maximumY);
+        });
         Assert.NotEqual(line.Coordinates[0], line.Coordinates[^1]);
     }
 
@@ -293,7 +306,7 @@ public sealed class MapRenderingTests
         layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, snapshot);
 
         var front = Assert.IsType<MemoryLayer>(
-            map.Layers.Single(layer => layer.Name == "NOAA GFS destination front"));
+            map.Layers.Single(layer => layer.Name == "NOAA GFS latest isochrone front"));
         var lines = front.Features
             .Cast<GeometryFeature>()
             .Select(feature => Assert.IsType<LineString>(feature.Geometry))
@@ -310,7 +323,7 @@ public sealed class MapRenderingTests
     }
 
     [Fact]
-    public void ReachabilityLayersRetainSingletonsWithoutInventingExtent()
+    public void IsochroneLayersRetainSingletonsWithoutInventingExtent()
     {
         var map = new Map();
         var layers = new RouteMapLayers(map);
@@ -340,15 +353,12 @@ public sealed class MapRenderingTests
         layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, snapshot);
         layers.SetRoutes(new[] { route });
 
-        var envelope = Assert.IsType<GeometryFeature>(Assert.Single(Assert.IsType<MemoryLayer>(
-            map.Layers.Single(layer => layer.Name == "NOAA GFS reachability envelopes")).Features));
-        var envelopeLine = Assert.IsType<LineString>(envelope.Geometry);
-        Assert.Equal(envelopeLine.Coordinates[0], envelopeLine.Coordinates[1]);
-        var envelopeStyle = Assert.IsType<VectorStyle>(Assert.Single(envelope.Styles));
-        Assert.Null(envelopeStyle.Fill);
-        Assert.Null(envelopeStyle.Outline);
+        var historical = Assert.IsType<GeometryFeature>(Assert.Single(Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS isochrone fronts")).Features));
+        var historicalLine = Assert.IsType<LineString>(historical.Geometry);
+        Assert.Equal(historicalLine.Coordinates[0], historicalLine.Coordinates[1]);
         var front = Assert.IsType<GeometryFeature>(Assert.Single(Assert.IsType<MemoryLayer>(
-            map.Layers.Single(layer => layer.Name == "NOAA GFS destination front")).Features));
+            map.Layers.Single(layer => layer.Name == "NOAA GFS latest isochrone front")).Features));
         var frontLine = Assert.IsType<LineString>(front.Geometry);
         Assert.Equal(frontLine.Coordinates[0], frontLine.Coordinates[1]);
         Assert.Empty(Assert.IsType<MemoryLayer>(
@@ -361,7 +371,7 @@ public sealed class MapRenderingTests
     }
 
     [Fact]
-    public void EnvelopeTopologyRendersClosedOpenAndDisconnectedComponentsWithoutJoining()
+    public void HistoricalIsochronesUseOpenFrontsInsteadOfFilledEnvelopeContours()
     {
         var map = new Map();
         var layers = new RouteMapLayers(map);
@@ -394,20 +404,20 @@ public sealed class MapRenderingTests
 
         layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, snapshot);
 
-        var envelopes = Assert.IsType<MemoryLayer>(
-            map.Layers.Single(layer => layer.Name == "NOAA GFS reachability envelopes"));
-        var geometries = envelopes.Features
-            .Cast<GeometryFeature>()
-            .Select(feature => feature.Geometry)
-            .ToArray();
-        Assert.Equal(2, geometries.Length);
-        Assert.IsType<Polygon>(geometries[0]);
-        Assert.IsType<LineString>(geometries[1]);
-        Assert.All(envelopes.Features, feature =>
-        {
-            var style = Assert.IsType<VectorStyle>(Assert.Single(feature.Styles));
-            Assert.Equal(RouteMapLayers.ReachabilityOpacity, style.Opacity);
-        });
+        var historicalFronts = Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS isochrone fronts"));
+        var feature = Assert.IsType<GeometryFeature>(Assert.Single(historicalFronts.Features));
+        var line = Assert.IsType<LineString>(feature.Geometry);
+        var expected = MapProjection.ToContinuousMapPointsNear(
+            open,
+            MapProjection.ToContinuousMapPoints(
+                snapshot.ProvisionalRoute.Select(point => point.Location))[^1].X);
+
+        Assert.Equal(2, line.Coordinates.Length);
+        Assert.Equal(expected[0].X, line.Coordinates[0].X, 6);
+        Assert.Equal(expected[1].X, line.Coordinates[1].X, 6);
+        Assert.NotEqual(line.Coordinates[0], line.Coordinates[^1]);
+        Assert.Same(snapshot, feature.Data);
     }
 
     [Fact]
