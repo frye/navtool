@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Navtool",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Navtool: Build",
+      "program": "${workspaceFolder}/src/Navtool.App/bin/Debug/net9.0/Navtool.App.dll",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "NAVTOOL_ROUTER_BRIDGE_PATH": "${workspaceFolder}/native/Navtool.RouterBridge/build"
+      },
+      "windows": {
+        "env": {
+          "NAVTOOL_ROUTER_BRIDGE_PATH": "${workspaceFolder}\\native\\Navtool.RouterBridge\\build\\Release"
+        }
+      },
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    }
+  ]
+}

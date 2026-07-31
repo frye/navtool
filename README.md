@@ -58,6 +58,11 @@ On Windows:
 .\scripts\run.ps1
 ```
 
+In GitHub Copilot App or VS Code, select the **Navtool** run configuration and
+press the play button (or press `F5`). To launch without the debugger, run the
+**Navtool: Run** task. Both options build the native bridge before starting the
+app.
+
 The launcher builds and tests the bridge before starting Avalonia, preventing a
 long forecast download from completing only to discover that routing is not
 available. To build or test separately:
