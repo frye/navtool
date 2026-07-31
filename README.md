@@ -15,8 +15,9 @@ It targets macOS, Windows, and Linux.
 - Calculate routes through the native `router-lib` bridge.
 - Apply bundled Natural Earth land geometry by default, with an optional
   higher-detail OSM-derived service override.
-- Watch full reachability envelopes, the latest destination-facing front, and
-  the closest provisional route stream onto the map while each model calculates.
+- Watch historical destination-facing isochrone fronts, the emphasized latest
+  front, and the closest provisional route stream onto the map while each model
+  calculates.
 - Compare model routes with distinct map colors. ECMWF is shown as an
   experimental option and currently fails explicitly because official indexed
   retrieval is not implemented.
@@ -101,21 +102,20 @@ route, and cumulative diagnostics into immutable managed data. The callback
 returns promptly; Mapsui updates are posted through the application's progress
 pipeline to the Avalonia UI context.
 
-At every routing time step, Navtool accumulates the complete router-provided
-reachability envelope as thin, translucent historical context. Closed, open,
-disconnected, and singleton contour components retain their original topology;
-Navtool does not join separate components or synthesize smoothed positions. One
-stronger red line shows only the latest destination-facing leading edge. Its
-points are ordered port-to-starboard, exclude internal search clusters, and are
-split where required at the antimeridian. The model's provisional route is also
-replaced by the latest snapshot. Successful and forecast-limited search overlays
-remain visible with the final route. Failed model overlays and all
-cancelled-calculation overlays are cleared. Envelopes, fronts, routes, and
-map-fit bounds are unwrapped safely at the antimeridian.
+At every routing time step, Navtool accumulates the router-provided open,
+destination-facing front as thin, translucent historical context. Display-only
+corner cutting softens angular joins without changing routing points, closing a
+front, or joining separate antimeridian segments. One stronger red line shows
+only the latest front. Its source points are ordered port-to-starboard and
+exclude internal search clusters. The model's provisional route is also replaced
+by the latest snapshot. Successful and forecast-limited search overlays remain
+visible with the final route. Failed model overlays and all cancelled-calculation
+overlays are cleared. Fronts, routes, and map-fit bounds are unwrapped safely at
+the antimeridian.
 
 When forecast coverage ends before the destination is reached, Navtool promotes
 the final provisional route to a selectable forecast-limited estimate, retains
-the accumulated reachability envelopes and latest destination front, and
+the accumulated isochrone fronts and latest destination front, and
 displays an amber warning. Complete final routes remain authoritative and may
 differ from the last provisional route.
 
