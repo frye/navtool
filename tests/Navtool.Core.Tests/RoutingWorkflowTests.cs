@@ -36,6 +36,18 @@ public sealed class RoutingWorkflowTests
                 frontierTime,
                 new[]
                 {
+                    new RouteCalculationEnvelopeSegment(
+                        new[]
+                        {
+                            request.Origin,
+                            new Coordinate(
+                                request.Origin.Latitude + 0.25,
+                                request.Origin.Longitude + 0.25)
+                        },
+                        closed: false)
+                },
+                new[]
+                {
                     new RouteCalculationFrontSegment(
                         new[]
                         {

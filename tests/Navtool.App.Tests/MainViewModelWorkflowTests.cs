@@ -440,9 +440,11 @@ public sealed class MainViewModelWorkflowTests
         await viewModel.CalculateRoutesAsync();
         await Task.Delay(20);
 
-        Assert.Single(GetLayer(viewModel, "NOAA GFS isochrones").Features);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS reachability envelopes").Features);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS destination front").Features);
         Assert.Single(GetLayer(viewModel, "NOAA GFS provisional route").Features);
-        Assert.Empty(GetLayer(viewModel, "ECMWF IFS isochrones").Features);
+        Assert.Empty(GetLayer(viewModel, "ECMWF IFS reachability envelopes").Features);
+        Assert.Empty(GetLayer(viewModel, "ECMWF IFS destination front").Features);
         Assert.Empty(GetLayer(viewModel, "ECMWF IFS provisional route").Features);
         Assert.Equal(1, viewModel.SuccessfulRouteCount);
     }
@@ -493,7 +495,8 @@ public sealed class MainViewModelWorkflowTests
         Assert.Contains("no more available forecast", viewModel.WarningMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("best estimate for now", viewModel.WarningMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Null(viewModel.ErrorMessage);
-        Assert.Single(GetLayer(viewModel, "NOAA GFS isochrones").Features);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS reachability envelopes").Features);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS destination front").Features);
         Assert.Single(GetLayer(viewModel, "NOAA GFS provisional route").Features);
         Assert.Single(GetLayer(viewModel, "NOAA GFS routes").Features);
     }
@@ -524,12 +527,14 @@ public sealed class MainViewModelWorkflowTests
         var calculation = viewModel.CalculateRoutesAsync();
         await reported.Task;
         await Task.Delay(20);
-        Assert.Single(GetLayer(viewModel, "NOAA GFS isochrones").Features);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS reachability envelopes").Features);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS destination front").Features);
 
         viewModel.CancelCommand.Execute(null);
         await calculation;
 
-        Assert.Empty(GetLayer(viewModel, "NOAA GFS isochrones").Features);
+        Assert.Empty(GetLayer(viewModel, "NOAA GFS reachability envelopes").Features);
+        Assert.Empty(GetLayer(viewModel, "NOAA GFS destination front").Features);
         Assert.Empty(GetLayer(viewModel, "NOAA GFS provisional route").Features);
     }
 
@@ -945,6 +950,18 @@ public sealed class MainViewModelWorkflowTests
             request.Origin.Longitude + 0.25);
         return new RouteCalculationSnapshot(
             frontierTime,
+            new[]
+            {
+                new RouteCalculationEnvelopeSegment(
+                    new[]
+                    {
+                        frontierPoint,
+                        new Coordinate(
+                            request.Origin.Latitude - 0.25,
+                            request.Origin.Longitude + 0.1)
+                    },
+                    closed: false)
+            },
             new[]
             {
                 new RouteCalculationFrontSegment(

@@ -333,20 +333,54 @@ public sealed record RouteCalculationFrontSegment
     public ImmutableArray<Coordinate> Points { get; }
 }
 
+public sealed record RouteCalculationEnvelopeSegment
+{
+    public RouteCalculationEnvelopeSegment(
+        IEnumerable<Coordinate> points,
+        bool closed)
+    {
+        ArgumentNullException.ThrowIfNull(points);
+        var immutablePoints = points.ToImmutableArray();
+        if (immutablePoints.IsEmpty)
+        {
+            throw new ArgumentException(
+                "A routing envelope segment must contain at least one point.",
+                nameof(points));
+        }
+
+        Points = immutablePoints;
+        Closed = closed;
+    }
+
+    public ImmutableArray<Coordinate> Points { get; }
+
+    public bool Closed { get; }
+}
+
 public sealed record RouteCalculationSnapshot
 {
     public RouteCalculationSnapshot(
         DateTimeOffset frontierTime,
+        IEnumerable<RouteCalculationEnvelopeSegment> envelopeSegments,
         IEnumerable<RouteCalculationFrontSegment> frontSegments,
         IEnumerable<RoutePoint> provisionalRoute,
         RouteDiagnostics diagnostics)
     {
+        ArgumentNullException.ThrowIfNull(envelopeSegments);
         ArgumentNullException.ThrowIfNull(frontSegments);
         ArgumentNullException.ThrowIfNull(provisionalRoute);
         ArgumentNullException.ThrowIfNull(diagnostics);
 
+        var immutableEnvelopeSegments = envelopeSegments.ToImmutableArray();
         var immutableFrontSegments = frontSegments.ToImmutableArray();
         var immutableRoute = provisionalRoute.ToImmutableArray();
+        if (immutableEnvelopeSegments.IsEmpty)
+        {
+            throw new ArgumentException(
+                "A routing snapshot must contain at least one reachability envelope segment.",
+                nameof(envelopeSegments));
+        }
+
         if (immutableFrontSegments.IsEmpty)
         {
             throw new ArgumentException(
@@ -380,12 +414,15 @@ public sealed record RouteCalculationSnapshot
         }
 
         FrontierTime = utcFrontierTime;
+        EnvelopeSegments = immutableEnvelopeSegments;
         FrontSegments = immutableFrontSegments;
         ProvisionalRoute = immutableRoute;
         Diagnostics = diagnostics;
     }
 
     public DateTimeOffset FrontierTime { get; }
+
+    public ImmutableArray<RouteCalculationEnvelopeSegment> EnvelopeSegments { get; }
 
     public ImmutableArray<RouteCalculationFrontSegment> FrontSegments { get; }
 
