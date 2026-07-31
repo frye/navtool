@@ -68,6 +68,9 @@ acquisition, live routing feedback, map clarity, and route inspection.
   [#18](https://github.com/frye/navtool/pull/18))
 - Smoothed streamed isochrone fronts with bounded display-only corner cutting,
   retaining subtle historical fronts while emphasizing the latest front.
+- Widened destination-facing isochrone fronts to approximately 120 degrees on
+  either side of the destination axis using router-lib `v0.3.0`, without
+  changing route search or pruning.
 
 ### Fixed
 

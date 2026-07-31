@@ -77,7 +77,7 @@ dotnet test Navtool.sln
 The application discovers the development bridge automatically. For a custom
 location, set `NAVTOOL_ROUTER_BRIDGE_PATH` to the shared library or its
 directory. Native builds fetch and compile the immutable `router-lib` revision
-`v0.2.0` by default. Set
+`v0.3.0` by default. Set
 `SAILROUTE_SOURCE_DIR` to a local `router-lib` checkout when testing other
 revisions.
 
@@ -106,12 +106,14 @@ At every routing time step, Navtool accumulates the router-provided open,
 destination-facing front as thin, translucent historical context. Display-only
 corner cutting softens angular joins without changing routing points, closing a
 front, or joining separate antimeridian segments. One stronger red line shows
-only the latest front. Its source points are ordered port-to-starboard and
-exclude internal search clusters. The model's provisional route is also replaced
-by the latest snapshot. Successful and forecast-limited search overlays remain
-visible with the final route. Failed model overlays and all cancelled-calculation
-overlays are cleared. Fronts, routes, and map-fit bounds are unwrapped safely at
-the antimeridian.
+only the latest front. Each front admits source points approximately 120 degrees
+to either side of the destination axis so broad detours remain visible. This
+aperture affects display only; it does not change route search or pruning. Source
+points are ordered port-to-starboard and exclude internal search clusters. The
+model's provisional route is also replaced by the latest snapshot. Successful
+and forecast-limited search overlays remain visible with the final route. Failed
+model overlays and all cancelled-calculation overlays are cleared. Fronts,
+routes, and map-fit bounds are unwrapped safely at the antimeridian.
 
 When forecast coverage ends before the destination is reached, Navtool promotes
 the final provisional route to a selectable forecast-limited estimate, retains
@@ -154,7 +156,7 @@ also be installed or packaged according to the target platform.
 | --- | --- |
 | `NAVTOOL_ROUTER_BRIDGE_PATH` | Native bridge file or directory |
 | `SAILROUTE_SOURCE_DIR` | Optional `router-lib` checkout override for native build/run scripts |
-| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default `v0.2.0`) |
+| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default `v0.3.0`) |
 | `NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY` | `router-lib` Git repository used when `SAILROUTE_SOURCE_DIR` is unset |
 | `NAVTOOL_NATIVE_BUILD_DIR` | Optional native bridge build directory |
 | `NAVTOOL_APP_DATA_ROOT` | Application data root |

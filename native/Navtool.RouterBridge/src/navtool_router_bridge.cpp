@@ -31,6 +31,7 @@ struct navtool_router_forecast_v1 {
 namespace {
 
 thread_local std::string last_error;
+constexpr double destination_front_half_angle_degrees = 120.0;
 
 void clear_error() {
     last_error.clear();
@@ -454,6 +455,8 @@ navtool_router_status_v1 calculate_route_with_fronts(
     request.options.progress.payload =
         sailroute::RoutingProgressPayload::destination_front |
         sailroute::RoutingProgressPayload::provisional_route;
+    request.options.progress.destination_front.half_angle_degrees =
+        destination_front_half_angle_degrees;
     if (is_segment_eligible != nullptr) {
         request.options.segment_eligibility =
             [is_segment_eligible, segment_eligibility_user_data](
@@ -567,6 +570,8 @@ navtool_router_status_v1 calculate_route_with_display(
         sailroute::RoutingProgressPayload::display_contours |
         sailroute::RoutingProgressPayload::destination_front |
         sailroute::RoutingProgressPayload::provisional_route;
+    request.options.progress.destination_front.half_angle_degrees =
+        destination_front_half_angle_degrees;
     if (is_segment_eligible != nullptr) {
         request.options.segment_eligibility =
             [is_segment_eligible, segment_eligibility_user_data](
