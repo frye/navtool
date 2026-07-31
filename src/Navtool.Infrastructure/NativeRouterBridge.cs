@@ -15,7 +15,7 @@ namespace Navtool.Infrastructure;
 
 public sealed record NativeRouterBridgeOptions
 {
-    public const uint SupportedAbiVersion = 4;
+    public const uint SupportedAbiVersion = 5;
 
     public int MaximumTextBytes { get; init; } = 64 * 1024 * 1024;
 
@@ -461,31 +461,19 @@ public sealed class NativeRouterBridge
         }
         try
         {
-            status = eligibilityCallback is null
-                ? NativeMethods.CalculateRouteStreaming(
-                    forecast.Handle,
-                    request.Origin.Latitude,
-                    request.Origin.Longitude,
-                    request.Destination.Latitude,
-                    request.Destination.Longitude,
-                    ref departure,
-                    callback,
-                    IntPtr.Zero,
-                    out routePointer,
-                    out routeLength)
-                : NativeMethods.CalculateRouteConstrained(
-                    forecast.Handle,
-                    request.Origin.Latitude,
-                    request.Origin.Longitude,
-                    request.Destination.Latitude,
-                    request.Destination.Longitude,
-                    ref departure,
-                    callback,
-                    IntPtr.Zero,
-                    eligibilityCallback,
-                    IntPtr.Zero,
-                    out routePointer,
-                    out routeLength);
+            status = NativeMethods.CalculateRouteStreaming(
+                forecast.Handle,
+                request.Origin.Latitude,
+                request.Origin.Longitude,
+                request.Destination.Latitude,
+                request.Destination.Longitude,
+                ref departure,
+                callback,
+                IntPtr.Zero,
+                eligibilityCallback,
+                IntPtr.Zero,
+                out routePointer,
+                out routeLength);
             Volatile.Write(ref _streamingProgressAvailability, 1);
         }
         catch (EntryPointNotFoundException exception)
@@ -600,6 +588,44 @@ public sealed class NativeRouterBridge
         }
 
         var progress = Marshal.PtrToStructure<NativeRoutingProgress>(progressPointer);
+        var contourPoints = CopyArray<NativeCoordinate>(
+            progress.ContourPoints,
+            progress.ContourPointCount,
+            "contour points");
+        var nativeContourSegments = CopyArray<NativeContourSegment>(
+            progress.ContourSegments,
+            progress.ContourSegmentCount,
+            "contour segments");
+        var envelopeSegments = ImmutableArray.CreateBuilder<RouteCalculationEnvelopeSegment>(
+            nativeContourSegments.Length);
+        foreach (var segment in nativeContourSegments)
+        {
+            if (segment.PointCount == 0 ||
+                segment.Closed > 1 ||
+                segment.PointOffset > (ulong)contourPoints.Length ||
+                segment.PointCount >
+                (ulong)contourPoints.Length - segment.PointOffset)
+            {
+                throw new NativeRouteFormatException(
+                    "Native progress contained an invalid reachability contour segment.");
+            }
+
+            var segmentPoints = ImmutableArray.CreateBuilder<Coordinate>(
+                checked((int)segment.PointCount));
+            var end = checked(segment.PointOffset + segment.PointCount);
+            for (var index = segment.PointOffset; index < end; index++)
+            {
+                var point = contourPoints[checked((int)index)];
+                segmentPoints.Add(new Coordinate(
+                    point.LatitudeDegrees,
+                    point.LongitudeDegrees));
+            }
+
+            envelopeSegments.Add(new RouteCalculationEnvelopeSegment(
+                segmentPoints.MoveToImmutable(),
+                segment.Closed == 1));
+        }
+
         var frontPoints = CopyArray<NativeCoordinate>(
             progress.FrontPoints,
             progress.FrontPointCount,
@@ -657,6 +683,7 @@ public sealed class NativeRouterBridge
             checked((int)progress.Diagnostics.TimeSteps));
         return new RouteCalculationSnapshot(
             DateTimeOffset.FromUnixTimeSeconds(progress.IsochroneUtcEpochSeconds),
+            envelopeSegments.MoveToImmutable(),
             frontSegments.MoveToImmutable(),
             provisionalRoute,
             diagnostics);
@@ -1361,6 +1388,10 @@ internal struct NativeRoutingDiagnostics
 internal struct NativeRoutingProgress
 {
     public long IsochroneUtcEpochSeconds;
+    public IntPtr ContourPoints;
+    public ulong ContourPointCount;
+    public IntPtr ContourSegments;
+    public ulong ContourSegmentCount;
     public IntPtr FrontPoints;
     public ulong FrontPointCount;
     public IntPtr FrontSegments;
@@ -1368,6 +1399,14 @@ internal struct NativeRoutingProgress
     public IntPtr ProvisionalRoutePoints;
     public ulong ProvisionalRoutePointCount;
     public NativeRoutingDiagnostics Diagnostics;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeContourSegment
+{
+    public ulong PointOffset;
+    public ulong PointCount;
+    public byte Closed;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -1442,7 +1481,7 @@ internal static class NativeMethods
         ref NativeCoordinate candidate,
         IntPtr userData);
 
-    [DllImport(LibraryName, EntryPoint = "navtool_router_calculate_route_streaming_v3", CallingConvention = CallingConvention.Cdecl)]
+    [DllImport(LibraryName, EntryPoint = "navtool_router_calculate_route_streaming_v5", CallingConvention = CallingConvention.Cdecl)]
     internal static extern NativeRouterStatus CalculateRouteStreaming(
         NativeForecastSafeHandle forecast,
         double startLatitude,
@@ -1452,20 +1491,7 @@ internal static class NativeMethods
         ref long departureEpochSeconds,
         RoutingProgressCallback onProgress,
         IntPtr progressUserData,
-        out IntPtr routeJson,
-        out nuint routeJsonLength);
-
-    [DllImport(LibraryName, EntryPoint = "navtool_router_calculate_route_streaming_v4", CallingConvention = CallingConvention.Cdecl)]
-    internal static extern NativeRouterStatus CalculateRouteConstrained(
-        NativeForecastSafeHandle forecast,
-        double startLatitude,
-        double startLongitude,
-        double destinationLatitude,
-        double destinationLongitude,
-        ref long departureEpochSeconds,
-        RoutingProgressCallback onProgress,
-        IntPtr progressUserData,
-        SegmentEligibilityCallback isSegmentEligible,
+        SegmentEligibilityCallback? isSegmentEligible,
         IntPtr segmentEligibilityUserData,
         out IntPtr routeJson,
         out nuint routeJsonLength);

@@ -20,7 +20,7 @@
 extern "C" {
 #endif
 
-#define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 4u
+#define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 5u
 
 enum {
     NAVTOOL_ROUTER_CAPABILITY_LAND_SEGMENT_CONSTRAINT_V1 = 1ull << 0
@@ -160,6 +160,30 @@ typedef uint8_t (*navtool_router_segment_eligibility_callback_v1)(
     const navtool_router_coordinate_v1* candidate,
     void* user_data);
 
+typedef struct navtool_router_progress_v5 {
+    int64_t isochrone_utc_epoch_seconds;
+    const navtool_router_coordinate_v1* contour_points;
+    uint64_t contour_point_count;
+    const navtool_router_contour_segment_v2* contour_segments;
+    uint64_t contour_segment_count;
+    const navtool_router_coordinate_v1* front_points;
+    uint64_t front_point_count;
+    const navtool_router_front_segment_v3* front_segments;
+    uint64_t front_segment_count;
+    const navtool_router_route_point_v1* provisional_route_points;
+    uint64_t provisional_route_point_count;
+    navtool_router_diagnostics_v1 diagnostics;
+} navtool_router_progress_v5;
+
+/*
+ * Version 5 progress exposes the full retained reachability contour topology
+ * together with the current destination-facing front. All views remain
+ * callback-scoped and must be copied before the callback returns.
+ */
+typedef void (*navtool_router_progress_callback_v5)(
+    const navtool_router_progress_v5* progress,
+    void* user_data);
+
 NAVTOOL_ROUTER_BRIDGE_API uint32_t
 navtool_router_bridge_abi_version_v1(void);
 
@@ -261,6 +285,25 @@ navtool_router_calculate_route_streaming_v4(
     double destination_longitude_degrees,
     const int64_t* departure_utc_epoch_seconds,
     navtool_router_progress_callback_v3 on_progress,
+    void* progress_user_data,
+    navtool_router_segment_eligibility_callback_v1 is_segment_eligible,
+    void* segment_eligibility_user_data,
+    char** out_route_json_utf8,
+    size_t* out_route_json_length);
+
+/*
+ * Combines full display contours and destination-front progress with optional
+ * pre-retention segment eligibility.
+ */
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_calculate_route_streaming_v5(
+    const navtool_router_forecast_v1* forecast,
+    double start_latitude_degrees,
+    double start_longitude_degrees,
+    double destination_latitude_degrees,
+    double destination_longitude_degrees,
+    const int64_t* departure_utc_epoch_seconds,
+    navtool_router_progress_callback_v5 on_progress,
     void* progress_user_data,
     navtool_router_segment_eligibility_callback_v1 is_segment_eligible,
     void* segment_eligibility_user_data,

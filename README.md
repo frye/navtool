@@ -15,8 +15,8 @@ It targets macOS, Windows, and Linux.
 - Calculate routes through the native `router-lib` bridge.
 - Apply bundled Natural Earth land geometry by default, with an optional
   higher-detail OSM-derived service override.
-- Watch retained isochrone frontiers and the closest provisional route stream
-  onto the map while each model calculates.
+- Watch full reachability envelopes, the latest destination-facing front, and
+  the closest provisional route stream onto the map while each model calculates.
 - Compare model routes with distinct map colors. ECMWF is shown as an
   experimental option and currently fails explicitly because official indexed
   retrieval is not implemented.
@@ -76,7 +76,7 @@ dotnet test Navtool.sln
 The application discovers the development bridge automatically. For a custom
 location, set `NAVTOOL_ROUTER_BRIDGE_PATH` to the shared library or its
 directory. Native builds fetch and compile the immutable `router-lib` revision
-`97487755fae6250023226b3c45affbb1a710ce49` from `main` by default. Set
+`v0.2.0` by default. Set
 `SAILROUTE_SOURCE_DIR` to a local `router-lib` checkout when testing other
 revisions.
 
@@ -85,7 +85,7 @@ configure CMake with an override before building:
 
 ```sh
 cmake -S native/Navtool.RouterBridge -B native/Navtool.RouterBridge/build \
-  -DNAVTOOL_ROUTER_LIB_RELEASE_TAG=v0.2
+  -DNAVTOOL_ROUTER_LIB_RELEASE_TAG=<revision-or-release>
 cmake --build native/Navtool.RouterBridge/build --config Release --parallel
 ```
 
@@ -96,34 +96,37 @@ fetch releases from a different fork.
 
 Navtool uses router-lib's `Router::optimize_view` progress contract. After each
 completed search step, the native bridge synchronously copies the
-callback-scoped destination-facing isochrone front, provisional route, and cumulative
-diagnostics into immutable managed data. The callback returns promptly; Mapsui
-updates are posted through the application's progress pipeline to the Avalonia
-UI context.
+callback-scoped reachability contours, destination-facing front, provisional
+route, and cumulative diagnostics into immutable managed data. The callback
+returns promptly; Mapsui updates are posted through the application's progress
+pipeline to the Avalonia UI context.
 
-Each model uses its normal route color. At every routing time step, one logical
-open isochrone front shows the destination-facing leading boundary of positions
-the vessel can reach through different viable heading sequences. Front points
-are ordered port-to-starboard, exclude internal search clusters, and are split
-into separate line segments only where required at the antimeridian. Fronts
-accumulate as thin red lines, while the model's provisional route is replaced by
-the latest snapshot. Successful and forecast-limited search overlays remain
-visible with the final route. Failed model overlays and all cancelled-calculation
-overlays are cleared. Fronts, routes, and map-fit bounds are unwrapped safely at
-the antimeridian.
+At every routing time step, Navtool accumulates the complete router-provided
+reachability envelope as thin, translucent historical context. Closed, open,
+disconnected, and singleton contour components retain their original topology;
+Navtool does not join separate components or synthesize smoothed positions. One
+stronger red line shows only the latest destination-facing leading edge. Its
+points are ordered port-to-starboard, exclude internal search clusters, and are
+split where required at the antimeridian. The model's provisional route is also
+replaced by the latest snapshot. Successful and forecast-limited search overlays
+remain visible with the final route. Failed model overlays and all
+cancelled-calculation overlays are cleared. Envelopes, fronts, routes, and
+map-fit bounds are unwrapped safely at the antimeridian.
 
 When forecast coverage ends before the destination is reached, Navtool promotes
 the final provisional route to a selectable forecast-limited estimate, retains
-all accumulated fronts, and displays an amber warning. Complete final routes
-remain authoritative and may differ from the last provisional route.
+the accumulated reachability envelopes and latest destination front, and
+displays an amber warning. Complete final routes remain authoritative and may
+differ from the last provisional route.
 
-The ABI-v4 bridge preserves the existing final-route and v1/v2/v3 streaming
-functions. `navtool_router_calculate_route_streaming_v3` adds open
-destination-front segments, while the v4 entry point adds pre-retention segment
-eligibility. Callback array and coordinate pointers are valid only for the
+The ABI-v5 bridge preserves the existing final-route and v1-v4 streaming
+functions. The v4 entry point adds pre-retention segment eligibility to the v3
+destination-front stream. The v5 entry point combines optional segment
+eligibility with display-contour topology and open destination-front segments
+in one snapshot. Callback array and coordinate pointers are valid only for the
 duration of the synchronous callback and must be copied by consumers. Navtool
-rejects stale bridges so missing destination-front or land-constraint support
-cannot silently restore unsafe behavior.
+rejects stale bridges so missing contour or land-constraint support cannot
+silently degrade display or routing safety.
 
 ## Publish
 
@@ -151,7 +154,7 @@ also be installed or packaged according to the target platform.
 | --- | --- |
 | `NAVTOOL_ROUTER_BRIDGE_PATH` | Native bridge file or directory |
 | `SAILROUTE_SOURCE_DIR` | Optional `router-lib` checkout override for native build/run scripts |
-| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default `97487755fae6250023226b3c45affbb1a710ce49`) |
+| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default `v0.2.0`) |
 | `NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY` | `router-lib` Git repository used when `SAILROUTE_SOURCE_DIR` is unset |
 | `NAVTOOL_NATIVE_BUILD_DIR` | Optional native bridge build directory |
 | `NAVTOOL_APP_DATA_ROOT` | Application data root |
@@ -205,14 +208,14 @@ service must be suitable for production use and return OSM-derived data under
 the Open Database License; public Overpass endpoints are not used as a default.
 
 Land avoidance also requires router-lib's pre-retention segment-eligibility
-capability. Navtool's ABI-v4 bridge preserves the v1/v2/v3 route entry points
-and exposes the constrained route entry point and capability additively. When
-land geometry is available, every candidate segment is checked before
-router-lib retains it. A configured service failure marks the route as
-unchecked rather than silently falling back to less detailed geometry. Direct
-lower-level bridge results are likewise marked as not evaluated unless the
-caller supplies a segment constraint. The existing raster basemap is never
-sampled as land geometry.
+capability. Navtool's ABI-v5 bridge preserves the v1-v4 route entry points and
+exposes combined contour streaming and segment eligibility additively. When land
+geometry is available, every candidate segment is checked before router-lib
+retains it. A configured service failure marks the route as unchecked rather
+than silently falling back to less detailed geometry. Direct lower-level bridge
+results are likewise marked as not evaluated unless the caller supplies a
+segment constraint. The existing raster basemap is never sampled as land
+geometry.
 
 ## Safety and current limitations
 

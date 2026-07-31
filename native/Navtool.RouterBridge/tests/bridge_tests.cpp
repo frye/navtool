@@ -51,6 +51,13 @@ struct FrontProgressCapture {
     bool valid{true};
 };
 
+struct DisplayProgressCapture {
+    size_t count{};
+    int64_t previous_time{};
+    uint64_t previous_time_steps{};
+    bool valid{true};
+};
+
 struct SegmentEligibilityCapture {
     size_t count{};
 };
@@ -174,6 +181,79 @@ void capture_front_progress(
         progress->front_points != nullptr &&
         progress->front_point_count > 0U &&
         segments_valid &&
+        route_ends_on_front &&
+        progress->provisional_route_points != nullptr &&
+        progress->provisional_route_point_count > 0U &&
+        (capture->count == 0U ||
+         progress->isochrone_utc_epoch_seconds > capture->previous_time) &&
+        progress->diagnostics.time_steps ==
+            capture->previous_time_steps + 1U &&
+        progress->provisional_route_points[
+            progress->provisional_route_point_count - 1U]
+                .utc_epoch_seconds ==
+            progress->isochrone_utc_epoch_seconds;
+    capture->previous_time = progress->isochrone_utc_epoch_seconds;
+    capture->previous_time_steps = progress->diagnostics.time_steps;
+    ++capture->count;
+}
+
+void capture_display_progress(
+    const navtool_router_progress_v5* progress,
+    void* user_data) {
+    auto* capture = static_cast<DisplayProgressCapture*>(user_data);
+    if (capture == nullptr || progress == nullptr) {
+        return;
+    }
+    bool contours_valid = progress->contour_segments != nullptr &&
+                          progress->contour_segment_count > 0U;
+    for (uint64_t index = 0U;
+         contours_valid && index < progress->contour_segment_count;
+         ++index) {
+        const auto& segment = progress->contour_segments[index];
+        contours_valid =
+            segment.point_count > 0U &&
+            segment.closed <= 1U &&
+            segment.point_offset <= progress->contour_point_count &&
+            segment.point_count <=
+                progress->contour_point_count - segment.point_offset;
+    }
+    bool fronts_valid = progress->front_segments != nullptr &&
+                        progress->front_segment_count > 0U;
+    for (uint64_t index = 0U;
+         fronts_valid && index < progress->front_segment_count;
+         ++index) {
+        const auto& segment = progress->front_segments[index];
+        fronts_valid =
+            segment.point_count > 0U &&
+            segment.point_offset <= progress->front_point_count &&
+            segment.point_count <=
+                progress->front_point_count - segment.point_offset;
+    }
+    bool route_ends_on_front = false;
+    if (progress->front_points != nullptr &&
+        progress->provisional_route_points != nullptr &&
+        progress->provisional_route_point_count > 0U) {
+        const auto& route_end = progress->provisional_route_points[
+            progress->provisional_route_point_count - 1U].position;
+        for (uint64_t index = 0U;
+             index < progress->front_point_count;
+             ++index) {
+            route_ends_on_front =
+                route_ends_on_front ||
+                (progress->front_points[index].latitude_degrees ==
+                     route_end.latitude_degrees &&
+                 progress->front_points[index].longitude_degrees ==
+                     route_end.longitude_degrees);
+        }
+    }
+    capture->valid =
+        capture->valid &&
+        progress->contour_points != nullptr &&
+        progress->contour_point_count > 0U &&
+        contours_valid &&
+        progress->front_points != nullptr &&
+        progress->front_point_count > 0U &&
+        fronts_valid &&
         route_ends_on_front &&
         progress->provisional_route_points != nullptr &&
         progress->provisional_route_point_count > 0U &&
@@ -403,6 +483,38 @@ int main() {
             "route JSON does not contain points");
         navtool_router_bridge_free_v1(route_json);
 
+        route_json = nullptr;
+        route_json_length = 0U;
+        DisplayProgressCapture display_progress_capture;
+        require_ok(
+            navtool_router_calculate_route_streaming_v5(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                capture_display_progress,
+                &display_progress_capture,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length),
+            "calculate combined display streaming route");
+        require(
+            display_progress_capture.count > 0U,
+            "combined display streaming route reported no progress");
+        require(
+            display_progress_capture.valid,
+            "combined display streaming route progress was invalid");
+        require(
+            route_json != nullptr,
+            "combined display streaming route JSON was not allocated");
+        require(
+            route_json_length == std::strlen(route_json),
+            "combined display streaming route JSON length mismatch");
+        navtool_router_bridge_free_v1(route_json);
+
 #if NAVTOOL_ROUTER_HAS_PROGRESS_CALLBACK
         route_json = nullptr;
         route_json_length = 0U;
@@ -493,7 +605,7 @@ int main() {
         route_json_length = 0U;
         SegmentEligibilityCapture segment_capture;
         require(
-            navtool_router_calculate_route_streaming_v4(
+            navtool_router_calculate_route_streaming_v5(
                 forecast,
                 48.25,
                 -123.65,
@@ -514,6 +626,32 @@ int main() {
         require(
             route_json == nullptr && route_json_length == 0U,
             "rejected route unexpectedly returned route JSON");
+
+        route_json = nullptr;
+        route_json_length = 0U;
+        SegmentEligibilityCapture v4_segment_capture;
+        require(
+            navtool_router_calculate_route_streaming_v4(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                nullptr,
+                nullptr,
+                reject_all_segments,
+                &v4_segment_capture,
+                &route_json,
+                &route_json_length) ==
+                NAVTOOL_ROUTER_STATUS_NO_ROUTE_V1,
+            "ABI v4 segment rejection did not prevent route creation");
+        require(
+            v4_segment_capture.count > 0U,
+            "ABI v4 segment eligibility callback was not invoked");
+        require(
+            route_json == nullptr && route_json_length == 0U,
+            "ABI v4 rejected route unexpectedly returned route JSON");
 
         route_json = nullptr;
         route_json_length = 0U;
@@ -577,23 +715,25 @@ int main() {
             departure = metadata.first_valid_utc_epoch_seconds;
             route_json = nullptr;
             route_json_length = 0U;
-            FrontProgressCapture exhausted_progress;
+            DisplayProgressCapture exhausted_progress;
             require_ok(
-                navtool_router_calculate_route_streaming_v3(
+                navtool_router_calculate_route_streaming_v5(
                     forecast,
                     48.05,
                     -123.70,
                     48.45,
                     -123.30,
                     &departure,
-                    capture_front_progress,
+                    capture_display_progress,
                     &exhausted_progress,
+                    nullptr,
+                    nullptr,
                     &route_json,
                     &route_json_length),
                 "calculate forecast-limited route");
             require(
                 exhausted_progress.count > 0U && exhausted_progress.valid,
-                "forecast exhaustion did not preserve valid front progress");
+                "forecast exhaustion did not preserve valid display progress");
             require(
                 route_json != nullptr && route_json_length > 0U,
                 "forecast exhaustion did not return partial route JSON");

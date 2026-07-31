@@ -33,7 +33,7 @@ public sealed class NativeRouterBridgeIntegrationTests
         }
 
         using var forecast = bridge.LoadForecast(sample);
-        Assert.Equal(4u, bridge.AbiVersion);
+        Assert.Equal(5u, bridge.AbiVersion);
         Assert.True(bridge.LandConstraintAvailable);
         Assert.True(forecast.Metadata.LatitudeCount > 0);
         Assert.True(forecast.Metadata.FirstValidAt < forecast.Metadata.LastValidAt);
@@ -88,6 +88,8 @@ public sealed class NativeRouterBridgeIntegrationTests
                 snapshots.Select(snapshot => snapshot.Diagnostics.TimeSteps));
             Assert.All(snapshots, snapshot =>
             {
+                Assert.NotEmpty(snapshot.EnvelopeSegments);
+                Assert.All(snapshot.EnvelopeSegments, segment => Assert.NotEmpty(segment.Points));
                 Assert.NotEmpty(snapshot.FrontSegments);
                 Assert.All(snapshot.FrontSegments, segment => Assert.NotEmpty(segment.Points));
                 Assert.Contains(
