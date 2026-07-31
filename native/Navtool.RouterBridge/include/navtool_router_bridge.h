@@ -272,6 +272,10 @@ navtool_router_calculate_route_streaming_v3(
     char** out_route_json_utf8,
     size_t* out_route_json_length);
 
+/*
+ * Adds pre-retention segment eligibility to the v3 destination-front stream.
+ * The eligibility callback is required when this entry point is used.
+ */
 NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
 navtool_router_calculate_route_streaming_v4(
     const navtool_router_forecast_v1* forecast,
