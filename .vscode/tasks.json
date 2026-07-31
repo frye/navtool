@@ -1,0 +1,64 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Navtool: Build native bridge",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/build-native.sh",
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}\\scripts\\build-native.ps1"
+        ]
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Navtool: Build managed app",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "${workspaceFolder}/src/Navtool.App/Navtool.App.csproj"
+      ],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "Navtool: Build",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Navtool: Build native bridge",
+        "Navtool: Build managed app"
+      ],
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Navtool: Run",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/run.sh",
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}\\scripts\\run.ps1"
+        ]
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    }
+  ]
+}
