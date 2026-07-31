@@ -34,7 +34,7 @@ jobs:
       - name: Install native dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libeccodes-dev
+          sudo apt-get install --yes libeccodes-dev libeccodes-tools
 
       - name: Restore managed dependencies
         run: dotnet restore Navtool.sln
