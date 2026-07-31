@@ -266,7 +266,8 @@ public sealed class RouteMapLayers
                 .Select(point => new NtsCoordinate(point.X, point.Y))
                 .ToArray();
             GeometryFeature feature;
-            if (segment.Closed && coordinates.Length >= 3)
+            var isPolygon = segment.Closed && coordinates.Length >= 3;
+            if (isPolygon)
             {
                 var ring = coordinates.Append(coordinates[0]).ToArray();
                 feature = new GeometryFeature(new Polygon(new LinearRing(ring)));
@@ -283,14 +284,14 @@ public sealed class RouteMapLayers
             feature.Data = snapshot;
             feature.Styles.Add(new VectorStyle
             {
-                Fill = segment.Closed
+                Fill = isPolygon
                     ? new Brush(ReachabilityColor)
                     : null,
                 Line = new Pen(ReachabilityColor, ReachabilityLineWidth)
                 {
                     PenStrokeCap = PenStrokeCap.Round
                 },
-                Outline = segment.Closed
+                Outline = isPolygon
                     ? new Pen(ReachabilityColor, ReachabilityLineWidth)
                     : null,
                 Opacity = ReachabilityOpacity

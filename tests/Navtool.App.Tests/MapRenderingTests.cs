@@ -320,7 +320,7 @@ public sealed class MapRenderingTests
         var diagnostics = new RouteDiagnostics(1, 2, 1, 1);
         var snapshot = new RouteCalculationSnapshot(
             timestamp,
-            new[] { new RouteCalculationEnvelopeSegment(new[] { location }, closed: false) },
+            new[] { new RouteCalculationEnvelopeSegment(new[] { location }, closed: true) },
             new[] { new RouteCalculationFrontSegment(new[] { location }) },
             new[] { point },
             diagnostics);
@@ -344,6 +344,9 @@ public sealed class MapRenderingTests
             map.Layers.Single(layer => layer.Name == "NOAA GFS reachability envelopes")).Features));
         var envelopeLine = Assert.IsType<LineString>(envelope.Geometry);
         Assert.Equal(envelopeLine.Coordinates[0], envelopeLine.Coordinates[1]);
+        var envelopeStyle = Assert.IsType<VectorStyle>(Assert.Single(envelope.Styles));
+        Assert.Null(envelopeStyle.Fill);
+        Assert.Null(envelopeStyle.Outline);
         var front = Assert.IsType<GeometryFeature>(Assert.Single(Assert.IsType<MemoryLayer>(
             map.Layers.Single(layer => layer.Name == "NOAA GFS destination front")).Features));
         var frontLine = Assert.IsType<LineString>(front.Geometry);
