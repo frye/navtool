@@ -1,6 +1,7 @@
 param(
     [string]$RouterSource = $env:SAILROUTE_SOURCE_DIR,
-    [string]$BuildDirectory = $env:NAVTOOL_NATIVE_BUILD_DIR
+    [string]$BuildDirectory = $env:NAVTOOL_NATIVE_BUILD_DIR,
+    [string]$RouterRevision = $env:NAVTOOL_ROUTER_LIB_RELEASE_TAG
 )
 
 $ErrorActionPreference = "Stop"
@@ -8,10 +9,14 @@ $Root = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
     $BuildDirectory = Join-Path $Root "native\Navtool.RouterBridge\build"
 }
+if ([string]::IsNullOrWhiteSpace($RouterRevision)) {
+    $RouterRevision = "97487755fae6250023226b3c45affbb1a710ce49"
+}
 
 if ([string]::IsNullOrWhiteSpace($RouterSource)) {
     cmake -S (Join-Path $Root "native\Navtool.RouterBridge") -B $BuildDirectory `
         -DCMAKE_BUILD_TYPE=Release `
+        -DNAVTOOL_ROUTER_LIB_RELEASE_TAG="$RouterRevision" `
         -DNAVTOOL_ROUTER_BRIDGE_BUILD_TESTS=ON
 }
 else {

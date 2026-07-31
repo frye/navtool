@@ -95,10 +95,10 @@ acquisition, live routing feedback, map clarity, and route inspection.
 - Fixed an ambiguous Avalonia color type in map-rendering tests to keep the
   application test suite compiling consistently.
   ([#17](https://github.com/frye/navtool/pull/17))
-- Versioned the native bridge as ABI v4 for callback-scoped reachability
-  contours and destination-front segments while preserving the v1-v3 entry
-  points. Stale bridges now fail preflight instead of silently degrading the
-  progress display.
+- Versioned the native bridge as ABI v5 to combine callback-scoped reachability
+  contours, destination-front segments, and optional land-segment eligibility
+  while preserving the v1-v4 entry points. Stale bridges now fail preflight
+  instead of silently degrading display or routing safety.
 
 ### Known limitations
 

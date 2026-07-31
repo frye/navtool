@@ -58,6 +58,22 @@ struct DisplayProgressCapture {
     bool valid{true};
 };
 
+struct SegmentEligibilityCapture {
+    size_t count{};
+};
+
+uint8_t reject_all_segments(
+    const navtool_router_coordinate_v1* parent,
+    const navtool_router_coordinate_v1* candidate,
+    void* user_data) {
+    auto* capture = static_cast<SegmentEligibilityCapture*>(user_data);
+    if (capture == nullptr || parent == nullptr || candidate == nullptr) {
+        return 0U;
+    }
+    capture->count++;
+    return 0U;
+}
+
 void capture_progress(
     const navtool_router_progress_v1* progress,
     void* user_data) {
@@ -182,7 +198,7 @@ void capture_front_progress(
 }
 
 void capture_display_progress(
-    const navtool_router_progress_v4* progress,
+    const navtool_router_progress_v5* progress,
     void* user_data) {
     auto* capture = static_cast<DisplayProgressCapture*>(user_data);
     if (capture == nullptr || progress == nullptr) {
@@ -368,8 +384,9 @@ int main() {
                 NAVTOOL_ROUTER_BRIDGE_ABI_VERSION,
             "unexpected bridge ABI version");
         require(
-            navtool_router_bridge_capabilities_v1() == 0U,
-            "v0.1.1 bridge unexpectedly advertises land constraints");
+            navtool_router_bridge_capabilities_v1() ==
+                NAVTOOL_ROUTER_CAPABILITY_LAND_SEGMENT_CONSTRAINT_V1,
+            "bridge did not advertise land segment constraints");
 
         navtool_router_forecast_v1* forecast = nullptr;
         require(
@@ -470,7 +487,7 @@ int main() {
         route_json_length = 0U;
         DisplayProgressCapture display_progress_capture;
         require_ok(
-            navtool_router_calculate_route_streaming_v4(
+            navtool_router_calculate_route_streaming_v5(
                 forecast,
                 48.25,
                 -123.65,
@@ -479,6 +496,8 @@ int main() {
                 &departure,
                 capture_display_progress,
                 &display_progress_capture,
+                nullptr,
+                nullptr,
                 &route_json,
                 &route_json_length),
             "calculate combined display streaming route");
@@ -584,6 +603,32 @@ int main() {
 
         route_json = nullptr;
         route_json_length = 0U;
+        SegmentEligibilityCapture segment_capture;
+        require(
+            navtool_router_calculate_route_streaming_v5(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                nullptr,
+                nullptr,
+                reject_all_segments,
+                &segment_capture,
+                &route_json,
+                &route_json_length) ==
+                NAVTOOL_ROUTER_STATUS_NO_ROUTE_V1,
+            "rejecting every segment did not prevent route creation");
+        require(
+            segment_capture.count > 0U,
+            "segment eligibility callback was not invoked");
+        require(
+            route_json == nullptr && route_json_length == 0U,
+            "rejected route unexpectedly returned route JSON");
+
+        route_json = nullptr;
+        route_json_length = 0U;
         require(
             navtool_router_calculate_route_v1(
                 forecast,
@@ -645,8 +690,8 @@ int main() {
             route_json = nullptr;
             route_json_length = 0U;
             DisplayProgressCapture exhausted_progress;
-            const auto exhausted_status =
-                navtool_router_calculate_route_streaming_v4(
+            require_ok(
+                navtool_router_calculate_route_streaming_v5(
                     forecast,
                     48.05,
                     -123.70,
@@ -655,22 +700,23 @@ int main() {
                     &departure,
                     capture_display_progress,
                     &exhausted_progress,
+                    nullptr,
+                    nullptr,
                     &route_json,
-                    &route_json_length);
-            require(
-                exhausted_status ==
-                    NAVTOOL_ROUTER_STATUS_FORECAST_EXHAUSTED_V2,
-                "short forecast did not report forecast exhaustion");
+                    &route_json_length),
+                "calculate forecast-limited route");
             require(
                 exhausted_progress.count > 0U && exhausted_progress.valid,
                 "forecast exhaustion did not preserve valid display progress");
             require(
-                route_json == nullptr && route_json_length == 0U,
-                "forecast exhaustion unexpectedly returned final route JSON");
+                route_json != nullptr && route_json_length > 0U,
+                "forecast exhaustion did not return partial route JSON");
             require(
-                std::string{navtool_router_last_error_v1()}.starts_with(
-                    "forecast coverage ended before the destination was reached"),
-                "forecast exhaustion did not retain its specific native error");
+                std::string{route_json}.find(
+                    "\"completion\":\"forecast_exhausted\"") !=
+                    std::string::npos,
+                "partial route JSON did not report forecast exhaustion");
+            navtool_router_bridge_free_v1(route_json);
             require_ok(
                 navtool_router_forecast_destroy_v1(&forecast),
                 "destroy short forecast");

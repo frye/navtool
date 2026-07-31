@@ -42,6 +42,7 @@ public sealed class NativeRouteJsonParserTests
 
         return $$"""
         {
+          "completion": "destination_reached",
           "diagnostics": {
             "expandedNodes": 10,
             "generatedCandidates": 20,
@@ -65,6 +66,26 @@ public sealed class NativeRouteJsonParserTests
 
         Assert.Equal(2, result.Points.Length);
         Assert.True(result.ExceedsRequestedArrival);
+    }
+
+    [Fact]
+    public void Parse_preserves_forecast_exhausted_completion()
+    {
+        var request = CreateRequest(TimeSpan.FromHours(10));
+        var json = BuildJson(
+                (Departure, 40, -60, 0),
+                (Departure.AddHours(8), 44, -56, 35))
+            .Replace(
+                "\"completion\": \"destination_reached\"",
+                "\"completion\": \"forecast_exhausted\"");
+
+        var result = NativeRouteJsonParser.Parse(
+            json,
+            request,
+            ForecastModel.NoaaGfs,
+            TimeSpan.FromSeconds(1));
+
+        Assert.True(result.IsForecastLimited);
     }
 
     [Fact]
@@ -138,6 +159,7 @@ public sealed class NativeRouteJsonParserTests
         var request = CreateRequest(TimeSpan.FromHours(10));
         var json = """
         {
+          "completion": "destination_reached",
           "diagnostics": { "expandedNodes": 1, "generatedCandidates": 2, "retainedCandidates": 1, "timeSteps": 1 },
           "points": []
         }

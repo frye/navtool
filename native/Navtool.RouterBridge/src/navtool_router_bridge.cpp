@@ -156,12 +156,6 @@ navtool_router_status_v1 copy_route_json(
     const sailroute::RouteResult& route,
     char** out_route_json_utf8,
     size_t* out_route_json_length) {
-    if (route.completion == sailroute::RouteCompletion::forecast_exhausted) {
-        return fail(
-            NAVTOOL_ROUTER_STATUS_FORECAST_EXHAUSTED_V2,
-            "forecast coverage ended before the destination was reached");
-    }
-
     auto json = sailroute::route_to_json(route);
     if (!json) {
         return map_error(json.error());
@@ -424,6 +418,8 @@ navtool_router_status_v1 calculate_route_with_fronts(
     const int64_t* departure_utc_epoch_seconds,
     navtool_router_progress_callback_v3 on_progress,
     void* progress_user_data,
+    navtool_router_segment_eligibility_callback_v1 is_segment_eligible,
+    void* segment_eligibility_user_data,
     char** out_route_json_utf8,
     size_t* out_route_json_length) {
     if (out_route_json_utf8 != nullptr) {
@@ -458,6 +454,19 @@ navtool_router_status_v1 calculate_route_with_fronts(
     request.options.progress.payload =
         sailroute::RoutingProgressPayload::destination_front |
         sailroute::RoutingProgressPayload::provisional_route;
+    if (is_segment_eligible != nullptr) {
+        request.options.segment_eligibility =
+            [is_segment_eligible, segment_eligibility_user_data](
+                const sailroute::RouteSegmentView& segment) {
+                const auto parent = copy_coordinate(segment.parent.position);
+                const auto candidate =
+                    copy_coordinate(segment.candidate.position);
+                return is_segment_eligible(
+                           &parent,
+                           &candidate,
+                           segment_eligibility_user_data) != 0U;
+            };
+    }
 
     sailroute::RoutingProgressViewCallback progress_callback;
     if (on_progress != nullptr) {
@@ -519,8 +528,10 @@ navtool_router_status_v1 calculate_route_with_display(
     double destination_latitude_degrees,
     double destination_longitude_degrees,
     const int64_t* departure_utc_epoch_seconds,
-    navtool_router_progress_callback_v4 on_progress,
+    navtool_router_progress_callback_v5 on_progress,
     void* progress_user_data,
+    navtool_router_segment_eligibility_callback_v1 is_segment_eligible,
+    void* segment_eligibility_user_data,
     char** out_route_json_utf8,
     size_t* out_route_json_length) {
     if (out_route_json_utf8 != nullptr) {
@@ -556,6 +567,19 @@ navtool_router_status_v1 calculate_route_with_display(
         sailroute::RoutingProgressPayload::display_contours |
         sailroute::RoutingProgressPayload::destination_front |
         sailroute::RoutingProgressPayload::provisional_route;
+    if (is_segment_eligible != nullptr) {
+        request.options.segment_eligibility =
+            [is_segment_eligible, segment_eligibility_user_data](
+                const sailroute::RouteSegmentView& segment) {
+                const auto parent = copy_coordinate(segment.parent.position);
+                const auto candidate =
+                    copy_coordinate(segment.candidate.position);
+                return is_segment_eligible(
+                           &parent,
+                           &candidate,
+                           segment_eligibility_user_data) != 0U;
+            };
+    }
 
     sailroute::RoutingProgressViewCallback progress_callback;
     if (on_progress != nullptr) {
@@ -605,7 +629,7 @@ navtool_router_status_v1 calculate_route_with_display(
                     route_points.push_back(copy_route_point(point));
                 }
 
-                const navtool_router_progress_v4 bridge_progress{
+                const navtool_router_progress_v5 bridge_progress{
                     to_epoch(progress.time),
                     contour_points.data(),
                     static_cast<uint64_t>(contour_points.size()),
@@ -842,9 +866,7 @@ uint32_t navtool_router_bridge_abi_version_v1(void) {
 }
 
 uint64_t navtool_router_bridge_capabilities_v1(void) {
-    // router-lib v0.1.1 has no pre-retention segment constraint. Keep the
-    // additive capability surface in place without claiming unsupported safety.
-    return 0U;
+    return NAVTOOL_ROUTER_CAPABILITY_LAND_SEGMENT_CONSTRAINT_V1;
 }
 
 const char* navtool_router_last_error_v1(void) {
@@ -996,6 +1018,41 @@ navtool_router_status_v1 navtool_router_calculate_route_streaming_v1(
     });
 }
 
+navtool_router_status_v1 navtool_router_calculate_route_streaming_v4(
+    const navtool_router_forecast_v1* forecast,
+    double start_latitude_degrees,
+    double start_longitude_degrees,
+    double destination_latitude_degrees,
+    double destination_longitude_degrees,
+    const int64_t* departure_utc_epoch_seconds,
+    navtool_router_progress_callback_v3 on_progress,
+    void* progress_user_data,
+    navtool_router_segment_eligibility_callback_v1 is_segment_eligible,
+    void* segment_eligibility_user_data,
+    char** out_route_json_utf8,
+    size_t* out_route_json_length) {
+    return protect([&] {
+        if (is_segment_eligible == nullptr) {
+            return fail(
+                NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
+                "segment eligibility callback must not be null");
+        }
+        return calculate_route_with_fronts(
+            forecast,
+            start_latitude_degrees,
+            start_longitude_degrees,
+            destination_latitude_degrees,
+            destination_longitude_degrees,
+            departure_utc_epoch_seconds,
+            on_progress,
+            progress_user_data,
+            is_segment_eligible,
+            segment_eligibility_user_data,
+            out_route_json_utf8,
+            out_route_json_length);
+    });
+}
+
 navtool_router_status_v1 navtool_router_calculate_route_streaming_v2(
     const navtool_router_forecast_v1* forecast,
     double start_latitude_degrees,
@@ -1043,20 +1100,24 @@ navtool_router_status_v1 navtool_router_calculate_route_streaming_v3(
             departure_utc_epoch_seconds,
             on_progress,
             progress_user_data,
+            nullptr,
+            nullptr,
             out_route_json_utf8,
             out_route_json_length);
     });
 }
 
-navtool_router_status_v1 navtool_router_calculate_route_streaming_v4(
+navtool_router_status_v1 navtool_router_calculate_route_streaming_v5(
     const navtool_router_forecast_v1* forecast,
     double start_latitude_degrees,
     double start_longitude_degrees,
     double destination_latitude_degrees,
     double destination_longitude_degrees,
     const int64_t* departure_utc_epoch_seconds,
-    navtool_router_progress_callback_v4 on_progress,
+    navtool_router_progress_callback_v5 on_progress,
     void* progress_user_data,
+    navtool_router_segment_eligibility_callback_v1 is_segment_eligible,
+    void* segment_eligibility_user_data,
     char** out_route_json_utf8,
     size_t* out_route_json_length) {
     return protect([&] {
@@ -1069,6 +1130,8 @@ navtool_router_status_v1 navtool_router_calculate_route_streaming_v4(
             departure_utc_epoch_seconds,
             on_progress,
             progress_user_data,
+            is_segment_eligible,
+            segment_eligibility_user_data,
             out_route_json_utf8,
             out_route_json_length);
     });
