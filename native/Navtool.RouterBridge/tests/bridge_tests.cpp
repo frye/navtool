@@ -629,6 +629,32 @@ int main() {
 
         route_json = nullptr;
         route_json_length = 0U;
+        SegmentEligibilityCapture v4_segment_capture;
+        require(
+            navtool_router_calculate_route_streaming_v4(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                nullptr,
+                nullptr,
+                reject_all_segments,
+                &v4_segment_capture,
+                &route_json,
+                &route_json_length) ==
+                NAVTOOL_ROUTER_STATUS_NO_ROUTE_V1,
+            "ABI v4 segment rejection did not prevent route creation");
+        require(
+            v4_segment_capture.count > 0U,
+            "ABI v4 segment eligibility callback was not invoked");
+        require(
+            route_json == nullptr && route_json_length == 0U,
+            "ABI v4 rejected route unexpectedly returned route JSON");
+
+        route_json = nullptr;
+        route_json_length = 0U;
         require(
             navtool_router_calculate_route_v1(
                 forecast,
