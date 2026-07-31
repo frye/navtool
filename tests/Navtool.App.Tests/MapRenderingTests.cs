@@ -256,10 +256,14 @@ public sealed class MapRenderingTests
         Assert.Equal(expectedPoints[0].Y, line.Coordinates[0].Y, 6);
         Assert.Equal(expectedPoints[^1].X, line.Coordinates[^1].X, 6);
         Assert.Equal(expectedPoints[^1].Y, line.Coordinates[^1].Y, 6);
+        var minimumX = expectedPoints.Min(expected => expected.X);
+        var maximumX = expectedPoints.Max(expected => expected.X);
+        var minimumY = expectedPoints.Min(expected => expected.Y);
+        var maximumY = expectedPoints.Max(expected => expected.Y);
         Assert.All(line.Coordinates, point =>
         {
-            Assert.InRange(point.X, expectedPoints.Min(expected => expected.X), expectedPoints.Max(expected => expected.X));
-            Assert.InRange(point.Y, expectedPoints.Min(expected => expected.Y), expectedPoints.Max(expected => expected.Y));
+            Assert.InRange(point.X, minimumX, maximumX);
+            Assert.InRange(point.Y, minimumY, maximumY);
         });
         Assert.NotEqual(line.Coordinates[0], line.Coordinates[^1]);
     }

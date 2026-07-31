@@ -115,7 +115,7 @@ the antimeridian.
 
 When forecast coverage ends before the destination is reached, Navtool promotes
 the final provisional route to a selectable forecast-limited estimate, retains
-the accumulated isochrone fronts and latest destination front, and
+the accumulated isochrone fronts and latest isochrone front, and
 displays an amber warning. Complete final routes remain authoritative and may
 differ from the last provisional route.
 

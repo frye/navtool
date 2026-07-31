@@ -115,14 +115,15 @@ public sealed class RouteMapLayers
         RouteCalculationSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        var frontFeatures = CreateIsochroneFrontFeatures(snapshot).ToArray();
         var historicalFronts = GetHistoricalFrontFeatures(model);
-        historicalFronts.AddRange(CreateIsochroneFrontFeatures(snapshot));
+        historicalFronts.AddRange(frontFeatures);
         var historicalFrontLayer = GetHistoricalFrontLayer(model);
         historicalFrontLayer.Features = historicalFronts.ToArray();
         historicalFrontLayer.FeaturesWereModified();
 
         var destinationFrontLayer = GetDestinationFrontLayer(model);
-        destinationFrontLayer.Features = CreateIsochroneFrontFeatures(snapshot);
+        destinationFrontLayer.Features = frontFeatures;
         destinationFrontLayer.FeaturesWereModified();
 
         var provisionalLayer = GetProvisionalRouteLayer(model);
