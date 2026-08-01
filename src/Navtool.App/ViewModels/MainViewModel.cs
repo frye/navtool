@@ -304,11 +304,21 @@ public partial class MainViewModel : ViewModelBase
 
     public void SetEndpoints(Coordinate start, Coordinate destination)
     {
-        _interaction.Activate(MapInteractionMode.SetStart);
-        _interaction.HandleMapClick(start);
-        _interaction.Activate(MapInteractionMode.SetDestination);
-        _interaction.HandleMapClick(destination);
+        _interaction.SetStart(start);
+        _interaction.SetDestination(destination);
         NotifyInteractionChanged();
+    }
+
+    public void SetStartAt(Coordinate coordinate)
+    {
+        _interaction.SetStart(coordinate);
+        CompleteEndpointPlacement();
+    }
+
+    public void SetDestinationAt(Coordinate coordinate)
+    {
+        _interaction.SetDestination(coordinate);
+        CompleteEndpointPlacement();
     }
 
     public void DisplayRoutes(IEnumerable<RouteResult> routes)
@@ -329,15 +339,22 @@ public partial class MainViewModel : ViewModelBase
         var coordinate = MapProjection.ToCoordinate(worldPosition);
         if (_interaction.HandleMapClick(coordinate))
         {
-            NotifyInteractionChanged();
-            StatusMessage = Start is not null && Destination is not null
-                ? "Endpoints ready. Choose forecast models and calculate."
-                : "Endpoint placed. Set the remaining endpoint.";
+            CompleteEndpointPlacement();
             return;
         }
 
+        InspectRouteAt(
+            worldPosition,
+            new ScreenPoint(screenPosition.X, screenPosition.Y));
+    }
+
+    public RouteMapSelection? FindRouteAt(
+        MPoint worldPosition,
+        ScreenPoint screenPosition)
+    {
+        ArgumentNullException.ThrowIfNull(worldPosition);
         var viewport = Map.Navigator.Viewport;
-        var hit = RouteHitTester.FindNearest(
+        return RouteHitTester.FindNearest(
             _mapLayers.Routes,
             (RouteResult route) => MapProjection
                 .ToContinuousMapPointsNear(
@@ -349,13 +366,29 @@ public partial class MainViewModel : ViewModelBase
                     return new ScreenPoint(projected.X, projected.Y);
                 })
                 .ToArray(),
-            new ScreenPoint(screenPosition.X, screenPosition.Y),
+            screenPosition,
             RouteHitTolerancePixels,
             RoutePointHitTolerancePixels);
+    }
+
+    public bool CanInspectRouteAt(
+        MPoint worldPosition,
+        ScreenPoint screenPosition) =>
+        FindRouteAt(worldPosition, screenPosition) is not null;
+
+    public bool InspectRouteAt(
+        MPoint worldPosition,
+        ScreenPoint screenPosition,
+        bool focus = true)
+    {
+        var hit = FindRouteAt(worldPosition, screenPosition);
         if (hit is not null)
         {
-            SelectRoutePoint(hit, focus: true);
+            SelectRoutePoint(hit, focus);
+            return true;
         }
+
+        return false;
     }
 
     public void SelectRoutePoint(RouteMapSelection selection, bool focus = true)
@@ -1212,6 +1245,14 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsSettingStart));
         OnPropertyChanged(nameof(IsSettingDestination));
         UpdateForecastAreaSummary();
+    }
+
+    private void CompleteEndpointPlacement()
+    {
+        NotifyInteractionChanged();
+        StatusMessage = Start is not null && Destination is not null
+            ? "Endpoints ready. Choose forecast models and calculate."
+            : "Endpoint placed. Set the remaining endpoint.";
     }
 
     private bool TryGetPassageDuration(out TimeSpan duration, out string? error)

@@ -14,6 +14,52 @@ public sealed class MainViewModelWorkflowTests
         new(2026, 7, 14, 16, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public void DirectContextualEndpointAssignmentPreservesInteractionWorkflow()
+    {
+        var viewModel = new MainViewModel(
+            null,
+            null,
+            new FixedTimeProvider(Now),
+            TimeZoneInfo.Utc,
+            new OsmTileOptions(Enabled: false));
+        var notifications = new HashSet<string>();
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName is not null)
+            {
+                notifications.Add(args.PropertyName);
+            }
+        };
+        var start = new Coordinate(34, -64);
+        var destination = new Coordinate(39, -52);
+
+        viewModel.SetDestinationCommand.Execute(null);
+        viewModel.SetStartAt(start);
+
+        Assert.Equal(start, viewModel.Start);
+        Assert.Null(viewModel.Destination);
+        Assert.Equal(MapInteractionMode.Browse, viewModel.InteractionMode);
+        Assert.Equal("Endpoint placed. Set the remaining endpoint.", viewModel.StatusMessage);
+        Assert.Equal("Set both endpoints to estimate the forecast download.", viewModel.ForecastAreaSummary);
+
+        notifications.Clear();
+        viewModel.SetStartCommand.Execute(null);
+        viewModel.SetDestinationAt(destination);
+
+        Assert.Equal(start, viewModel.Start);
+        Assert.Equal(destination, viewModel.Destination);
+        Assert.Equal(MapInteractionMode.Browse, viewModel.InteractionMode);
+        Assert.Equal("Endpoints ready. Choose forecast models and calculate.", viewModel.StatusMessage);
+        Assert.StartsWith("Buffered area ", viewModel.ForecastAreaSummary);
+        Assert.Contains(nameof(MainViewModel.Start), notifications);
+        Assert.Contains(nameof(MainViewModel.Destination), notifications);
+        Assert.Contains(nameof(MainViewModel.StartDisplay), notifications);
+        Assert.Contains(nameof(MainViewModel.DestinationDisplay), notifications);
+        Assert.Contains(nameof(MainViewModel.InteractionMode), notifications);
+        Assert.Contains(nameof(MainViewModel.MapInstruction), notifications);
+    }
+
+    [Fact]
     public void LocalDepartureConversionHandlesUtcAndDstEdgeCases()
     {
         Assert.True(LocalDepartureConverter.TryConvertToUtc(
@@ -628,6 +674,52 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task CapturedPointRouteInspectionUsesOriginalPointAndSharedSelectionPath()
+    {
+        var providers = new[]
+        {
+            new DelegateForecastProvider(
+                ForecastModel.NoaaGfs,
+                (request, _) => ValueTask.FromResult(CreateAcquisition(request))),
+            new DelegateForecastProvider(
+                ForecastModel.EcmwfIfs,
+                (request, _) => ValueTask.FromResult(CreateAcquisition(request)))
+        };
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(
+                request,
+                forecast.Request.Model,
+                midpointLatitudeOffset: forecast.Request.Model == ForecastModel.EcmwfIfs ? 4 : 0)));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(providers, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        viewModel.UseEcmwf = true;
+        await viewModel.CalculateRoutesAsync();
+        var ecmwf = viewModel.SuccessfulRoutes.Single(
+            route => route.Model == ForecastModel.EcmwfIfs);
+        var capturedWorldPoint = MapProjection.ToMapPoint(ecmwf.Points[1].Location);
+        var projected = viewModel.Map.Navigator.Viewport.WorldToScreen(capturedWorldPoint);
+        var capturedScreenPoint = new ScreenPoint(projected.X, projected.Y);
+
+        Assert.True(viewModel.CanInspectRouteAt(capturedWorldPoint, capturedScreenPoint));
+        Assert.False(viewModel.CanInspectRouteAt(
+            capturedWorldPoint,
+            new ScreenPoint(capturedScreenPoint.X + 100, capturedScreenPoint.Y + 100)));
+
+        Assert.True(viewModel.InspectRouteAt(
+            capturedWorldPoint,
+            capturedScreenPoint,
+            focus: false));
+
+        Assert.Same(ecmwf, viewModel.SelectedRoutePoint!.Route);
+        Assert.Equal(1, viewModel.SelectedRoutePoint.PointIndex);
+        Assert.Equal(ecmwf.Points[1].Timestamp, viewModel.SelectedTimelineUtc);
+        Assert.Equal(ForecastModel.EcmwfIfs, viewModel.ActiveWeatherModel);
+        Assert.Contains("ECMWF", viewModel.StatusMessage);
+    }
+
+    [Fact]
     public async Task WeatherRefreshSuppressesStaleSamples()
     {
         var provider = new DelegateForecastProvider(
@@ -735,10 +827,12 @@ public sealed class MainViewModelWorkflowTests
         RouteRequest request,
         ForecastModel model,
         int stepHours = 3,
-        RouteLandAvoidance? landAvoidance = null)
+        RouteLandAvoidance? landAvoidance = null,
+        double midpointLatitudeOffset = 0)
     {
         var midpoint = new Coordinate(
-            (request.Origin.Latitude + request.Destination.Latitude) / 2,
+            ((request.Origin.Latitude + request.Destination.Latitude) / 2) +
+            midpointLatitudeOffset,
             (request.Origin.Longitude + request.Destination.Longitude) / 2);
         var route = new RouteResult(
             request,
