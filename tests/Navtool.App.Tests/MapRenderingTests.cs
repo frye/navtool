@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Mapsui;
+using Mapsui.Extensions;
 using Mapsui.Layers;
 using Mapsui.Nts;
 using Mapsui.Styles;
@@ -19,6 +20,46 @@ namespace Navtool.App.Tests;
 
 public sealed class MapRenderingTests
 {
+    [AvaloniaFact]
+    public void MainWindowOpensOnBufferedSalishSeaRegion()
+    {
+        var viewModel = CreateViewModel(tilesEnabled: false);
+        var window = new MainWindow
+        {
+            DataContext = viewModel
+        };
+
+        try
+        {
+            window.Show();
+
+            var visible = viewModel.Map.Navigator.Viewport.ToExtent();
+            Coordinate[] requiredVisibleLocations =
+            [
+                new(48.1163, -122.7583), // Port Townsend
+                new(48.5343, -123.0171), // Friday Harbor
+                new(48.5126, -122.6127), // Anacortes
+                new(48.9416, -125.5464), // Ucluelet
+                new(47.95, -122.7583),   // 10 NM south
+                new(49.108, -125.5464),  // 10 NM north
+                new(48.9416, -125.8),    // 10 NM west
+                new(48.5126, -122.36)    // 10 NM east
+            ];
+            Assert.All(requiredVisibleLocations, location =>
+            {
+                var point = MapProjection.ToMapPoint(location);
+                Assert.InRange(point.X, visible.Left, visible.Right);
+                Assert.InRange(point.Y, visible.Bottom, visible.Top);
+            });
+            Assert.True(visible.Width < 500_000);
+            Assert.True(visible.Height < 400_000);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void MainWindowLeavesMapsuiSurfaceUncoveredAndEnablesContinuousZoom()
     {
