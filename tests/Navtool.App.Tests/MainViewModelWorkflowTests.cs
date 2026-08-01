@@ -707,7 +707,10 @@ public sealed class MainViewModelWorkflowTests
             viewModel.FindRouteAt(capturedWorldPoint, capturedScreenPoint));
         Assert.True(viewModel.CanInspectRouteAt(capturedWorldPoint, capturedScreenPoint));
 
-        viewModel.SelectRoutePoint(capturedSelection, focus: false);
+        Assert.True(viewModel.InspectRouteAt(
+            capturedWorldPoint,
+            capturedScreenPoint,
+            focus: false));
 
         Assert.Same(ecmwf, viewModel.SelectedRoutePoint!.Route);
         Assert.Equal(capturedSelection.PointIndex, viewModel.SelectedRoutePoint.PointIndex);
