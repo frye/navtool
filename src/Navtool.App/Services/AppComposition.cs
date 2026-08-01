@@ -34,6 +34,10 @@ public static class AppComposition
 
         services.AddSingleton(_ => new AtomicFileCache(
             new AtomicFileCacheOptions(ResolveCacheRoot())));
+        services.AddSingleton<IRoutePlanSchemaMigrator, RoutePlanSchemaMigrator>();
+        services.AddSingleton<IRoutePlanRepository>(provider => new RoutePlanJsonRepository(
+            ResolveAppDataRoot(),
+            provider.GetRequiredService<IRoutePlanSchemaMigrator>()));
         services.AddSingleton<ILandDataProvider>(provider =>
         {
             var endpoint = ResolveLandDataEndpoint();

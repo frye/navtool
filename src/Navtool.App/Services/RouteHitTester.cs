@@ -69,12 +69,22 @@ public static class RouteHitTester
         ScreenPoint click,
         double tolerance)
     {
+        if (!IsFinite(click))
+        {
+            return null;
+        }
+
         RouteMapSelection? nearest = null;
 
         foreach (var route in routes)
         {
             for (var index = 0; index < route.Points.Length; index++)
             {
+                if (!IsFinite(route.Points[index]))
+                {
+                    continue;
+                }
+
                 var distance = click.DistanceTo(route.Points[index]);
                 if (distance <= tolerance && (nearest is null || distance < nearest.DistancePixels))
                 {
@@ -91,6 +101,11 @@ public static class RouteHitTester
         ScreenPoint click,
         double tolerance)
     {
+        if (!IsFinite(click))
+        {
+            return null;
+        }
+
         RouteMapSelection? nearest = null;
 
         foreach (var route in routes)
@@ -102,8 +117,15 @@ public static class RouteHitTester
 
             for (var index = 1; index < route.Points.Length; index++)
             {
+                if (!IsFinite(route.Points[index - 1]) || !IsFinite(route.Points[index]))
+                {
+                    continue;
+                }
+
                 var distance = DistanceToSegment(click, route.Points[index - 1], route.Points[index]);
-                if (distance > tolerance || (nearest is not null && distance >= nearest.DistancePixels))
+                if (!double.IsFinite(distance) ||
+                    distance > tolerance ||
+                    (nearest is not null && distance >= nearest.DistancePixels))
                 {
                     continue;
                 }
@@ -150,5 +172,9 @@ public static class RouteHitTester
             throw new ArgumentOutOfRangeException(parameterName);
         }
     }
+
+    private static bool IsFinite(ScreenPoint point) =>
+        double.IsFinite(point.X) && double.IsFinite(point.Y);
+
     private sealed record ProjectedRoute(RouteResult Route, ScreenPoint[] Points);
 }
