@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Mapsui;
+using Mapsui.Extensions;
 using Mapsui.Layers;
 using Mapsui.Nts;
 using Mapsui.Styles;
@@ -19,6 +20,34 @@ namespace Navtool.App.Tests;
 
 public sealed class MapRenderingTests
 {
+    [AvaloniaFact]
+    public void MainWindowOpensOnBufferedSalishSeaRegion()
+    {
+        var viewModel = CreateViewModel(tilesEnabled: false);
+        var window = new MainWindow
+        {
+            DataContext = viewModel
+        };
+
+        try
+        {
+            window.Show();
+
+            var visible = viewModel.Map.Navigator.Viewport.ToExtent();
+            var expected = CreateDefaultChartExtent();
+            Assert.InRange(expected.Left, visible.Left, visible.Right);
+            Assert.InRange(expected.Right, visible.Left, visible.Right);
+            Assert.InRange(expected.Bottom, visible.Bottom, visible.Top);
+            Assert.InRange(expected.Top, visible.Bottom, visible.Top);
+            Assert.True(visible.Width < expected.Width * 1.25);
+            Assert.True(visible.Height < expected.Height * 1.75);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void MainWindowLeavesMapsuiSurfaceUncoveredAndEnablesContinuousZoom()
     {
@@ -447,6 +476,30 @@ public sealed class MapRenderingTests
             TimeProvider.System,
             TimeZoneInfo.Utc,
             new OsmTileOptions(Enabled: tilesEnabled));
+
+    private static MRect CreateDefaultChartExtent()
+    {
+        const double bufferNauticalMiles = 10;
+        Coordinate[] locations =
+        [
+            new(48.1163, -122.7583),
+            new(48.5343, -123.0171),
+            new(48.5126, -122.6127),
+            new(48.9416, -125.5464)
+        ];
+        var bounds = GeographicBounds.FromCoordinates(locations);
+        var latitudePadding = bufferNauticalMiles / 60d;
+        var south = bounds.South - latitudePadding;
+        var north = bounds.North + latitudePadding;
+        var polewardLatitude = Math.Max(Math.Abs(south), Math.Abs(north));
+        var longitudePadding = bufferNauticalMiles /
+            (60d * Math.Cos(polewardLatitude * Math.PI / 180d));
+        var lowerLeft = MapProjection.ToMapPoint(
+            new Coordinate(south, bounds.West - longitudePadding));
+        var upperRight = MapProjection.ToMapPoint(
+            new Coordinate(north, bounds.East + longitudePadding));
+        return new MRect(lowerLeft.X, lowerLeft.Y, upperRight.X, upperRight.Y);
+    }
 
     private static RouteCalculationSnapshot CreateSnapshot(
         DateTimeOffset frontierTime,
