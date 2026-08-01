@@ -269,16 +269,17 @@ public sealed class RouteMapLayers
             snapshot.ProvisionalRoute.Select(point => point.Location))[^1].X;
         foreach (var segment in snapshot.FrontSegments)
         {
+            if (segment.Points.Length < 2)
+            {
+                continue;
+            }
+
             var coordinates = MapProjection.ToContinuousMapPointsNear(
                     segment.Points,
                     referenceX)
                 .Select(point => new NtsCoordinate(point.X, point.Y))
                 .ToArray();
             coordinates = SmoothOpenLine(coordinates, IsochroneSmoothingIterations);
-            if (coordinates.Length == 1)
-            {
-                coordinates = new[] { coordinates[0], coordinates[0] };
-            }
 
             yield return new GeometryFeature(new LineString(coordinates))
             {
