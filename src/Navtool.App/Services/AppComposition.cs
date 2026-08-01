@@ -76,6 +76,9 @@ public static class AppComposition
                 provider.GetRequiredService<EcmwfOpenDataForecastProvider>()
             },
             provider.GetRequiredService<IRouteEngine>()));
+        services.AddSingleton(provider => new RoutePlanRoutingWorkflow(
+            provider.GetRequiredService<RoutingWorkflow>(),
+            provider.GetRequiredService<IRoutePlanRepository>()));
         services.AddSingleton<MainViewModel>();
         return services.BuildServiceProvider();
     }
