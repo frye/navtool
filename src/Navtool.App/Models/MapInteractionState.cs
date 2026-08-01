@@ -22,21 +22,32 @@ public sealed class MapInteractionState
         Mode = mode;
     }
 
+    public void SetStart(Coordinate coordinate)
+    {
+        Start = coordinate;
+        Mode = MapInteractionMode.Browse;
+    }
+
+    public void SetDestination(Coordinate coordinate)
+    {
+        Destination = coordinate;
+        Mode = MapInteractionMode.Browse;
+    }
+
     public bool HandleMapClick(Coordinate coordinate)
     {
         switch (Mode)
         {
             case MapInteractionMode.SetStart:
-                Start = coordinate;
+                SetStart(coordinate);
                 break;
             case MapInteractionMode.SetDestination:
-                Destination = coordinate;
+                SetDestination(coordinate);
                 break;
             default:
                 return false;
         }
 
-        Mode = MapInteractionMode.Browse;
         return true;
     }
 }
