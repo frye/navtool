@@ -6,7 +6,9 @@ It targets macOS, Windows, and Linux.
 
 ## Features
 
-- Select start and destination points on an OpenStreetMap-based map.
+- Build and save named, ordered itineraries with fixed start/finish waypoints,
+  reorderable intermediate waypoints, optional stopovers, and numbered map
+  markers connected by an antimeridian-safe planning guide.
 - Choose a local departure date/time, converted to UTC with DST validation.
 - Set the expected passage duration so only the required forecast times are
   acquired, up to the ten-day planning limit.
@@ -27,6 +29,8 @@ It targets macOS, Windows, and Linux.
   model.
 - Switch at runtime among Light, Dark, and the midnight-blue and brass
   **Kind of Blue** theme. Navtool remembers the selected theme across launches.
+- Persist route plans and their latest per-model leg outcomes as
+  schema-versioned JSON beneath the application data root.
 
 ## Prerequisites
 
@@ -167,6 +171,10 @@ also be installed or packaged according to the target platform.
 
 The selected display theme is stored in `preferences/theme.txt` beneath
 `NAVTOOL_APP_DATA_ROOT` (or Navtool's default local application-data directory).
+Route plans are stored atomically as JSON beneath `routes/` in the same root.
+Plan files contain waypoint, stopover, calculation-session, leg-outcome, sailed
+state, and route-point metadata, but never forecast binaries. Files from unknown
+future schemas or with inconsistent IDs/references are rejected visibly.
 
 NOAA data is downloaded from the operational NOMADS GFS filter. Navtool derives
 an antimeridian-safe buffered passage area, requests every available forecast
@@ -235,6 +243,12 @@ ECMWF Open Data remains an explicit experimental option. Official data supports
 field/step selection but not server-side geographic cropping, and indexed
 10u/10v retrieval has not yet been implemented in this application. No fallback
 or other model is presented as ECMWF data.
+
+Ordered waypoint editing and persistence are available now, while route
+calculation remains intentionally limited to a direct two-waypoint plan.
+Sequential calculation across intermediate waypoints and optimized multi-leg
+rendering are deferred; remove intermediate waypoints to calculate a direct
+route with the existing native engine.
 
 Saildocs is not used as an application API: it is an asynchronous email service
 for bandwidth-constrained users rather than a reliable regional download

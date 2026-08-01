@@ -150,6 +150,7 @@ public sealed class MapRenderingTests
             [
                 "Wind speed",
                 "Wind direction",
+                "Waypoint guide",
                 "NOAA GFS isochrone fronts",
                 "ECMWF IFS isochrone fronts",
                 "NOAA GFS latest isochrone front",
@@ -157,9 +158,45 @@ public sealed class MapRenderingTests
                 "NOAA GFS provisional route",
                 "ECMWF IFS provisional route",
                 "NOAA GFS routes",
-                "ECMWF IFS routes"
+                "ECMWF IFS routes",
+                "Waypoint markers"
             ],
             layers.Skip(1).Select(layer => layer.Name));
+    }
+
+    [Fact]
+    public void Waypoint_markers_are_numbered_and_guide_is_antimeridian_safe()
+    {
+        var map = new Map();
+        var layers = new RouteMapLayers(map);
+        layers.SetWaypoints(
+        [
+            new WaypointMapMarker(1, "Start", new Coordinate(10, 179)),
+            new WaypointMapMarker(2, "Stop", new Coordinate(11, -179.5)),
+            new WaypointMapMarker(3, "Finish", new Coordinate(12, -178))
+        ]);
+
+        Assert.Equal(3, layers.WaypointMarkerCount);
+        Assert.Equal(1, layers.WaypointGuideSegmentCount);
+        var markerLayer = Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "Waypoint markers"));
+        Assert.Equal(
+            [1, 2, 3],
+            markerLayer.Features.Select(feature =>
+                Assert.IsType<WaypointMapMarker>(feature.Data).Number));
+        Assert.Equal(
+            ["1", "2", "3"],
+            markerLayer.Features.Select(feature =>
+                Assert.IsType<LabelStyle>(Assert.Single(feature.Styles)).GetLabelText(feature)));
+
+        var guide = Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "Waypoint guide"));
+        var line = Assert.IsType<LineString>(
+            Assert.IsType<GeometryFeature>(Assert.Single(guide.Features)).Geometry);
+        for (var index = 1; index < line.Coordinates.Length; index++)
+        {
+            Assert.True(Math.Abs(line.Coordinates[index].X - line.Coordinates[index - 1].X) < 500_000);
+        }
     }
 
     [Fact]

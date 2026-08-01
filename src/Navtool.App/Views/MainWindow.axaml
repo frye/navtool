@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Navtool.App.ViewModels"
+        xmlns:core="using:Navtool.Core"
         xmlns:mapsui="using:Mapsui.UI.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -43,61 +44,130 @@
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Spacing="2">
                                 <TextBlock Text="Plan a passage"
-                                           FontSize="20"
-                                           FontWeight="SemiBold" />
+                                          FontSize="20"
+                                          FontWeight="SemiBold" />
                                 <TextBlock Classes="muted"
-                                           Text="Endpoints, timing, and forecast inputs." />
+                                          Text="Build an ordered itinerary, then choose departure and forecasts." />
                             </StackPanel>
                             <TextBlock Grid.Column="1"
-                                       Text="NAVTOOL"
+                                      Text="NAVTOOL"
                                        FontSize="10"
                                        FontWeight="Bold"
-                                       Foreground="{DynamicResource TextSecondaryColor}"
-                                       VerticalAlignment="Center" />
+                                      Foreground="{DynamicResource TextSecondaryColor}"
+                                      VerticalAlignment="Center" />
                         </Grid>
 
                         <Border Classes="card">
                             <StackPanel Spacing="9">
                                 <TextBlock Classes="section-title"
-                                           Text="ROUTE ENDPOINTS" />
-                                <ToggleButton x:Name="SetStartButton"
-                                              Classes="map-tool"
-                                              IsChecked="{Binding IsSettingStart, Mode=OneWay}"
-                                              Command="{Binding SetStartCommand}"
-                                              ToolTip.Tip="Arm start placement, then select the map">
-                                    <Grid ColumnDefinitions="14,9,*">
-                                        <Ellipse Width="12"
-                                                 Height="12"
-                                                 Fill="#009E73"
-                                                 Stroke="{DynamicResource MarkerOutlineColor}"
-                                                 StrokeThickness="2" />
-                                        <StackPanel Grid.Column="2">
-                                            <TextBlock Text="Set start"
-                                                       FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding StartDisplay}"
-                                                       Classes="muted" />
-                                        </StackPanel>
-                                    </Grid>
-                                </ToggleButton>
-                                <ToggleButton x:Name="SetDestinationButton"
-                                              Classes="map-tool"
-                                              IsChecked="{Binding IsSettingDestination, Mode=OneWay}"
-                                              Command="{Binding SetDestinationCommand}"
-                                              ToolTip.Tip="Arm destination placement, then select the map">
-                                    <Grid ColumnDefinitions="14,9,*">
-                                        <Ellipse Width="12"
-                                                 Height="12"
-                                                 Fill="#CC3311"
-                                                 Stroke="{DynamicResource MarkerOutlineColor}"
-                                                 StrokeThickness="2" />
-                                        <StackPanel Grid.Column="2">
-                                            <TextBlock Text="Set destination"
-                                                       FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding DestinationDisplay}"
-                                                       Classes="muted" />
-                                        </StackPanel>
-                                    </Grid>
-                                </ToggleButton>
+                                          Text="1  ITINERARY" />
+                                <TextBox Text="{Binding Itinerary.RouteName}"
+                                        Watermark="Route name" />
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                                    <Button Content="New"
+                                            Command="{Binding Itinerary.NewCommand}" />
+                                    <ComboBox Grid.Column="1"
+                                              ItemsSource="{Binding Itinerary.SavedPlans}"
+                                              SelectedItem="{Binding Itinerary.SelectedSavedPlan}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="core:RoutePlanSummary">
+                                                <TextBlock Text="{Binding Name}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <Button Grid.Column="2"
+                                            Content="Open"
+                                            Command="{Binding Itinerary.OpenCommand}" />
+                                </Grid>
+                                <Button Content="Refresh saved routes"
+                                        Command="{Binding Itinerary.RefreshSavedPlansCommand}" />
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                                    <ToggleButton x:Name="SetStartButton"
+                                                  Classes="map-tool"
+                                                  Content="Set start"
+                                                  IsChecked="{Binding IsSettingStart, Mode=OneWay}"
+                                                  Command="{Binding SetStartCommand}"
+                                                  ToolTip.Tip="Arm start placement, then select the map" />
+                                    <ToggleButton x:Name="SetDestinationButton"
+                                                  Grid.Column="1"
+                                                  Classes="map-tool"
+                                                  Content="Set finish"
+                                                  IsChecked="{Binding IsSettingDestination, Mode=OneWay}"
+                                                  Command="{Binding SetDestinationCommand}"
+                                                  ToolTip.Tip="Arm finish placement, then select the map" />
+                                </Grid>
+                                <ItemsControl ItemsSource="{Binding Itinerary.Waypoints}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:WaypointEditorItemViewModel">
+                                            <Border Classes="subtle" Margin="0,0,0,6">
+                                                <StackPanel Spacing="6">
+                                                    <Grid ColumnDefinitions="28,*,Auto" ColumnSpacing="6">
+                                                        <Border Width="24"
+                                                                Height="24"
+                                                                CornerRadius="12"
+                                                                Background="#263238">
+                                                            <TextBlock Text="{Binding PositionLabel}"
+                                                                       Foreground="White"
+                                                                       FontWeight="Bold"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center" />
+                                                        </Border>
+                                                        <StackPanel Grid.Column="1">
+                                                            <TextBox Text="{Binding Name}" />
+                                                            <TextBlock Text="{Binding CoordinateDisplay}"
+                                                                       Classes="muted" />
+                                                        </StackPanel>
+                                                        <Button Grid.Column="2"
+                                                                Content="Map"
+                                                                Command="{Binding SetOnMapCommand}" />
+                                                    </Grid>
+                                                    <Grid IsVisible="{Binding IsIntermediate}"
+                                                          ColumnDefinitions="Auto,*,Auto,Auto"
+                                                          ColumnSpacing="5">
+                                                        <CheckBox Content="Stopover"
+                                                                  IsChecked="{Binding HasStopover}" />
+                                                        <NumericUpDown Grid.Column="1"
+                                                                       Minimum="0.25"
+                                                                       Maximum="240"
+                                                                       Increment="0.25"
+                                                                       Value="{Binding StopoverHours}"
+                                                                       IsEnabled="{Binding HasStopover}" />
+                                                        <Button Grid.Column="2"
+                                                                Content="↑"
+                                                                Command="{Binding MoveUpCommand}" />
+                                                        <Button Grid.Column="3"
+                                                                Content="↓"
+                                                                Command="{Binding MoveDownCommand}" />
+                                                    </Grid>
+                                                    <Button IsVisible="{Binding IsIntermediate}"
+                                                            Content="Remove waypoint"
+                                                            Command="{Binding RemoveCommand}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Content="Add waypoint"
+                                        Command="{Binding Itinerary.AddWaypointCommand}" />
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                    <TextBox Text="{Binding Itinerary.SaveAsName}"
+                                             Watermark="Save-as name" />
+                                    <Button Grid.Column="1"
+                                            Content="Save as"
+                                            Command="{Binding Itinerary.SaveAsCommand}" />
+                                </Grid>
+                                <Button Content="Save"
+                                        Command="{Binding Itinerary.SaveCommand}" />
+                                <TextBlock Text="{Binding Itinerary.StorageError}"
+                                           Classes="error"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding Itinerary.ValidationMessage}"
+                                           Classes="error"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Classes="muted"
+                                           Text="{Binding Itinerary.IsDirty, StringFormat=Unsaved changes: {0}}" />
+                                <TextBlock Classes="muted"
+                                           Text="{Binding Itinerary.ResultsInvalidated, StringFormat=Results invalidated: {0}}" />
                             </StackPanel>
                         </Border>
 

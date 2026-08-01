@@ -168,7 +168,7 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
-    public async Task Invalid_recalculation_preserves_warning_for_routes_still_displayed()
+    public async Task Endpoint_change_clears_route_and_its_warning_before_invalid_recalculation()
     {
         var warning = new RouteLandAvoidance(
             LandAvoidanceStatus.RouterUnsupported,
@@ -190,8 +190,8 @@ public sealed class MainViewModelWorkflowTests
 
         await viewModel.CalculateRoutesAsync();
 
-        Assert.Equal(1, viewModel.SuccessfulRouteCount);
-        Assert.Equal(warning.Warning, viewModel.LandAvoidanceWarning);
+        Assert.Equal(0, viewModel.SuccessfulRouteCount);
+        Assert.Null(viewModel.LandAvoidanceWarning);
     }
 
     [Fact]
@@ -251,6 +251,53 @@ public sealed class MainViewModelWorkflowTests
 
         Assert.Null(noaa.LastRequest);
         Assert.Contains("cannot exceed 10 days", viewModel.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task Invalid_itinerary_does_not_acquire_forecast()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        viewModel.Itinerary.RouteName = " ";
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Null(noaa.LastRequest);
+        Assert.Contains("whitespace", viewModel.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Intermediate_waypoint_is_editable_but_sequential_calculation_is_deferred()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        viewModel.Itinerary.AddWaypointCommand.Execute(null);
+        var waypoint = viewModel.Itinerary.Waypoints[1];
+        waypoint.SetOnMapCommand.Execute(null);
+        viewModel.HandleMapClick(
+            MapProjection.ToMapPoint(new Coordinate(36, -58)),
+            default);
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Null(noaa.LastRequest);
+        Assert.Equal(36, waypoint.Coordinate!.Value.Latitude, 10);
+        Assert.Equal(-58, waypoint.Coordinate.Value.Longitude, 10);
+        Assert.Contains("Sequential multi-leg", viewModel.ErrorMessage);
     }
 
     [Fact]
@@ -482,6 +529,7 @@ public sealed class MainViewModelWorkflowTests
             new RoutingWorkflow(providers, engine),
             new DelegateWeatherSampler((_, _, _, _, _, _) =>
                 ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        viewModel.Map.Navigator.SetSize(1280, 800);
         viewModel.UseEcmwf = true;
 
         await viewModel.CalculateRoutesAsync();
@@ -629,6 +677,38 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task Itinerary_change_discards_late_result_and_clears_displayed_route()
+    {
+        var started = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<ForecastAcquisition>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var provider = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            async (_, _) =>
+            {
+                started.SetResult();
+                return await release.Task;
+            });
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { provider }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+
+        var calculation = viewModel.CalculateRoutesAsync();
+        await started.Task;
+        viewModel.SetDestinationAt(new Coordinate(40, -50));
+        release.SetResult(CreateAcquisition(provider.LastRequest!));
+        await calculation;
+
+        Assert.Equal(0, viewModel.SuccessfulRouteCount);
+        Assert.False(viewModel.HasTimeline);
+        Assert.False(viewModel.IsCalculating);
+    }
+
+    [Fact]
     public async Task TimelineCommandsAndRouteSelectionShareUtcState()
     {
         var providers = new[]
@@ -700,6 +780,13 @@ public sealed class MainViewModelWorkflowTests
         var ecmwf = viewModel.SuccessfulRoutes.Single(
             route => route.Model == ForecastModel.EcmwfIfs);
         var capturedWorldPoint = MapProjection.ToMapPoint(ecmwf.Points[1].Location);
+        viewModel.Map.Navigator.SetViewport(new Mapsui.Viewport(
+            capturedWorldPoint.X,
+            capturedWorldPoint.Y,
+            10_000,
+            0,
+            1280,
+            800));
         var projected = viewModel.Map.Navigator.Viewport.WorldToScreen(capturedWorldPoint);
         var capturedScreenPoint = new ScreenPoint(projected.X, projected.Y);
 
