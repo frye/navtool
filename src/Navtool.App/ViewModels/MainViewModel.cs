@@ -1559,6 +1559,11 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        if (ReferenceEquals(SelectedLeg, leg))
+        {
+            return;
+        }
+
         SelectedLeg = leg;
         _mapLayers.SelectRouteLeg(leg.HasOptimizedGeometry ? key : null);
         Itinerary.SetSelectedLeg(leg.Key.LegId);
@@ -1694,7 +1699,6 @@ public partial class MainViewModel : ViewModelBase
         SelectLegGeometry(candidate.Leg.Key);
         OnPropertyChanged(nameof(TimelineDisplay));
         UpdateWeatherAvailability();
-        RequestWeatherRefreshFromViewport();
     }
 
     private void RequestWeatherRefresh(
@@ -1853,7 +1857,9 @@ public partial class MainViewModel : ViewModelBase
         var selectedModel = selectedLeg?.Key.Model;
         var compatible = selectedModel is { } model &&
                          FindCompatibleAcquisition(selectedLeg, model) is not null;
-        ActiveWeatherModel = compatible ? selectedModel : null;
+        var nextWeatherModel = compatible ? selectedModel : null;
+        var weatherModelChanged = ActiveWeatherModel != nextWeatherModel;
+        ActiveWeatherModel = nextWeatherModel;
         if (!compatible)
         {
             CancelWeather();
@@ -1864,7 +1870,10 @@ public partial class MainViewModel : ViewModelBase
         else
         {
             WeatherLayerError = null;
-            RequestWeatherRefreshFromViewport();
+            if (!weatherModelChanged)
+            {
+                RequestWeatherRefreshFromViewport();
+            }
         }
     }
 
