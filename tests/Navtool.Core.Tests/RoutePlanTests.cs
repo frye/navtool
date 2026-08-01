@@ -329,6 +329,15 @@ public sealed class RoutePlanTests
         // should be retained rather than incorrectly invalidated for a coordinate "mismatch".
         Assert.Equal(RouteLegOutcomeState.Succeeded, unmarked.Results[0].Legs[0].State);
         Assert.Equal(0, unmarked.ActiveLegIndex);
+
+        var laterActive = sailed
+            .SetActiveLeg(plan.Legs[1].Id)
+            .UnmarkSailed(plan.Legs[0].Id);
+        Assert.Equal(RouteLegOutcomeState.Invalidated, laterActive.Results[0].Legs[0].State);
+        Assert.Equal(
+            RouteLegOutcomeReason.CurrentPositionChanged,
+            laterActive.Results[0].Legs[0].Reason);
+        Assert.Equal(1, laterActive.ActiveLegIndex);
     }
 
     [Fact]

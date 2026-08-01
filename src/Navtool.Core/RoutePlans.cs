@@ -586,9 +586,18 @@ public sealed record RoutePlan
                     leg.Index == newActiveIndex &&
                     outcome.Route.Request.Origin.IsSameLocation(CurrentPosition.Coordinate);
                 var destinationMatches = outcome.Route.Request.Destination.IsSameLocation(to.Coordinate);
-                return (originMatchesWaypoint || originMatchesCurrentPosition) && destinationMatches
-                    ? outcome
-                    : outcome.Invalidate(RouteLegOutcomeReason.WaypointCoordinateChanged);
+                if ((originMatchesWaypoint || originMatchesCurrentPosition) && destinationMatches)
+                {
+                    return outcome;
+                }
+
+                var usedCurrentPosition =
+                    CurrentPosition is not null &&
+                    !originMatchesWaypoint &&
+                    outcome.Route.Request.Origin.IsSameLocation(CurrentPosition.Coordinate);
+                return outcome.Invalidate(usedCurrentPosition
+                    ? RouteLegOutcomeReason.CurrentPositionChanged
+                    : RouteLegOutcomeReason.WaypointCoordinateChanged);
             })));
         return new RoutePlan(
             Id,
