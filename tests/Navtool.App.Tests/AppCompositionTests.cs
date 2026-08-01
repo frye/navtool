@@ -42,6 +42,7 @@ public sealed class AppCompositionTests
             var repository = Assert.IsType<RoutePlanJsonRepository>(
                 services.GetRequiredService<IRoutePlanRepository>());
             Assert.Equal(Path.Combine(root, "routes"), repository.RootDirectory);
+            Assert.NotNull(services.GetRequiredService<RoutePlanRoutingWorkflow>());
             Assert.NotNull(services.GetRequiredService<MainViewModel>().Itinerary);
         }
         finally

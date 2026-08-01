@@ -39,6 +39,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly MapInteractionState _interaction = new();
     private readonly RouteMapLayers _mapLayers;
     private readonly RoutingWorkflow? _workflow;
+    private readonly RoutePlanRoutingWorkflow? _routePlanWorkflow;
     private readonly IWeatherSampler? _weatherSampler;
     private readonly ILocalGribInspector? _localGribInspector;
     private readonly INativeRoutingPreflight? _nativeRoutingPreflight;
@@ -203,6 +204,30 @@ public partial class MainViewModel : ViewModelBase
     }
 
     public MainViewModel(
+        RoutingWorkflow workflow,
+        IWeatherSampler weatherSampler,
+        ILocalGribInspector localGribInspector,
+        INativeRoutingPreflight nativeRoutingPreflight,
+        NoaaGfsForecastProvider noaaProvider,
+        ILogger<MainViewModel> logger,
+        IRoutePlanRepository routePlanRepository,
+        RoutePlanRoutingWorkflow routePlanWorkflow)
+        : this(
+            workflow,
+            weatherSampler,
+            TimeProvider.System,
+            TimeZoneInfo.Local,
+            new OsmTileOptions(),
+            logger,
+            localGribInspector,
+            nativeRoutingPreflight,
+            noaaProvider,
+            routePlanRepository,
+            routePlanWorkflow)
+    {
+    }
+
+    public MainViewModel(
         RoutingWorkflow? workflow,
         IWeatherSampler? weatherSampler,
         TimeProvider timeProvider,
@@ -212,12 +237,16 @@ public partial class MainViewModel : ViewModelBase
         ILocalGribInspector? localGribInspector = null,
         INativeRoutingPreflight? nativeRoutingPreflight = null,
         NoaaGfsForecastProvider? noaaProvider = null,
-        IRoutePlanRepository? routePlanRepository = null)
+        IRoutePlanRepository? routePlanRepository = null,
+        RoutePlanRoutingWorkflow? routePlanWorkflow = null)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(localTimeZone);
         ArgumentNullException.ThrowIfNull(tileOptions);
         _workflow = workflow;
+        _routePlanWorkflow = routePlanWorkflow ?? (workflow is null || routePlanRepository is null
+            ? null
+            : new RoutePlanRoutingWorkflow(workflow, routePlanRepository, timeProvider));
         _weatherSampler = weatherSampler;
         _localGribInspector = localGribInspector;
         _nativeRoutingPreflight = nativeRoutingPreflight;
@@ -517,6 +546,28 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        RoutePlanRoutingRequest? planRequest = null;
+        if (Itinerary.Waypoints.Count > 2)
+        {
+            if (_routePlanWorkflow is null)
+            {
+                ErrorMessage = "Route plan storage is required for multi-leg calculation.";
+                return;
+            }
+
+            if (!Itinerary.TryBuildPlan(out var plan, out validationError))
+            {
+                ErrorMessage = validationError;
+                return;
+            }
+
+            planRequest = new RoutePlanRoutingRequest(
+                plan!,
+                request!.Route.DepartureTime,
+                request.Route.LatestArrivalTime,
+                request.Selections);
+        }
+
         try
         {
             _nativeRoutingPreflight?.EnsureAvailable();
@@ -585,11 +636,57 @@ public partial class MainViewModel : ViewModelBase
                 _mapLayers.ClearCalculationOverlay(value.Model);
             }
         });
+        var planProgress = new Progress<RoutePlanRoutingProgress>(value =>
+        {
+            if (!IsCurrentCalculation(generation) || !IsCalculating)
+            {
+                return;
+            }
+
+            ProgressFraction = value.OverallFraction;
+            SetModelStatus(
+                value.Model,
+                $"{(IsExperimentalDownload(request, value.Model) ? "Experimental · " : string.Empty)}" +
+                $"leg {value.LegIndex + 1} {PlanProgressStageName(value.Status)} " +
+                $"{value.UnitFraction:P0}" +
+                $"{(string.IsNullOrWhiteSpace(value.Message) ? string.Empty : $" · {value.Message}")}");
+            if (value.Snapshot is not null)
+            {
+                _mapLayers.AddCalculationSnapshot(value.Model, value.Snapshot);
+            }
+            else if (value.Status is RoutePlanRoutingUnitStatus.Failed or
+                     RoutePlanRoutingUnitStatus.Cancelled)
+            {
+                _mapLayers.ClearCalculationOverlay(value.Model);
+            }
+        });
 
         try
         {
-            var result = await _workflow.ExecuteAsync(request, progress, cancellation.Token);
-            if (!IsCurrentCalculation(generation))
+            if (planRequest is not null)
+            {
+                var planResult = await _routePlanWorkflow!.ExecuteAsync(
+                    planRequest,
+                    planProgress,
+                    cancellation.Token);
+                if (!IsCurrentCalculation(generation) || !planResult.IsCurrent)
+                {
+                    return;
+                }
+
+                if (Itinerary.PlanId != calculationPlanId ||
+                    Itinerary.CalculationRevision != calculationRevision)
+                {
+                    StatusMessage = "Calculation result discarded because the itinerary changed.";
+                    return;
+                }
+
+                ApplyPlanWorkflowResult(planResult);
+                return;
+            }
+
+            var result = await _workflow.ExecuteAsync(request!, progress, cancellation.Token);
+            if (!IsCurrentCalculation(generation) || cancellation.IsCancellationRequested)
             {
                 return;
             }
@@ -748,7 +845,10 @@ public partial class MainViewModel : ViewModelBase
     private void Cancel()
     {
         var wasCalculating = IsCalculating;
-        Interlocked.Increment(ref _calculationGeneration);
+        if (IsInspectingLocalGrib)
+        {
+            Interlocked.Increment(ref _calculationGeneration);
+        }
         var cancellation = Interlocked.Exchange(ref _calculationCancellation, null);
         cancellation?.Cancel();
         cancellation?.Dispose();
@@ -853,6 +953,78 @@ public partial class MainViewModel : ViewModelBase
         RequestWeatherRefreshFromViewport();
     }
 
+    private void ApplyPlanWorkflowResult(RoutePlanRoutingResult result)
+    {
+        Itinerary.AcceptCalculationResult(result.Plan);
+        _acquisitions.Clear();
+        var failures = new List<string>();
+        var warnings = new List<string>();
+        foreach (var outcome in result.Models)
+        {
+            if (!outcome.Acquisitions.IsEmpty)
+            {
+                _acquisitions[outcome.Model] = outcome.Acquisitions[^1];
+            }
+
+            var legStatuses = outcome.Legs.Select((leg, index) =>
+                $"leg {index + 1} {LegStatusName(leg)}");
+            var modelStatus =
+                $"{(IsExperimentalDownload(result.Request.Selections, outcome.Model) ? "Experimental · " : string.Empty)}" +
+                string.Join(" · ", legStatuses);
+            SetModelStatus(outcome.Model, modelStatus);
+
+            foreach (var leg in outcome.Legs)
+            {
+                if (leg.State == RouteLegOutcomeState.Failed)
+                {
+                    failures.Add(
+                        $"{ModelName(outcome.Model)} failed: {leg.Detail ?? LegStatusName(leg)}");
+                }
+                else if (leg.Reason == RouteLegOutcomeReason.ForecastExhausted ||
+                         leg.State == RouteLegOutcomeState.OutsideForecastWindow)
+                {
+                    warnings.Add(
+                        $"{ModelName(outcome.Model)} {LegStatusName(leg)}" +
+                        $"{(string.IsNullOrWhiteSpace(leg.Detail) ? "." : $": {leg.Detail}")}");
+                }
+            }
+        }
+
+        HasNoaaWeather = _acquisitions.ContainsKey(ForecastModel.NoaaGfs);
+        HasEcmwfWeather = _acquisitions.ContainsKey(ForecastModel.EcmwfIfs);
+        ActiveWeatherModel = HasNoaaWeather
+            ? ForecastModel.NoaaGfs
+            : HasEcmwfWeather
+                ? ForecastModel.EcmwfIfs
+                : null;
+
+        var routes = result.Models
+            .SelectMany(outcome => outcome.Legs)
+            .Where(leg => leg.Route is not null)
+            .Select(leg => leg.Route!)
+            .ToImmutableArray();
+        _mapLayers.SetRoutes(routes);
+        _displayedRoutePlanId = Itinerary.PlanId;
+        _mapLayers.FitRoutes();
+        OnPropertyChanged(nameof(SuccessfulRouteCount));
+        BuildTimeline(routes);
+        ProgressFraction = 1;
+        ErrorMessage = failures.Count == 0 ? null : string.Join(Environment.NewLine, failures);
+        WarningMessage = warnings.Count == 0 ? null : string.Join(Environment.NewLine, warnings);
+        UpdateLandAvoidanceWarning(routes);
+        StatusMessage = result.Status switch
+        {
+            RoutePlanRoutingStatus.Succeeded => "All itinerary legs are complete.",
+            RoutePlanRoutingStatus.PartialSuccess =>
+                "The itinerary has partial results; review the model and leg statuses.",
+            RoutePlanRoutingStatus.Cancelled =>
+                "Calculation cancelled; completed legs were saved.",
+            _ => "No model completed the itinerary."
+        };
+        OnPropertyChanged(nameof(SelectedRouteDetails));
+        RequestWeatherRefreshFromViewport();
+    }
+
     partial void OnHasNoaaWeatherChanged(bool value) =>
         ActivateNoaaWeatherCommand.NotifyCanExecuteChanged();
 
@@ -905,13 +1077,6 @@ public partial class MainViewModel : ViewModelBase
         if (Start is null || Destination is null)
         {
             error = "Set both endpoints before calculating.";
-            return false;
-        }
-
-        if (Itinerary.Waypoints.Count != 2)
-        {
-            error = "Sequential multi-leg route calculation is not available yet. " +
-                    "Save the itinerary, or remove intermediate waypoints to calculate a direct route.";
             return false;
         }
 
@@ -1383,7 +1548,7 @@ public partial class MainViewModel : ViewModelBase
         StatusMessage = Start is not null && Destination is not null
             ? Itinerary.Waypoints.Count == 2
                 ? "Endpoints ready. Choose forecast models and calculate."
-                : "Itinerary updated. Multi-leg calculation will be added in a later slice."
+                : "Itinerary ready. Choose forecast models and calculate."
             : "Endpoint placed. Set the remaining endpoint.";
     }
 
@@ -1487,10 +1652,41 @@ public partial class MainViewModel : ViewModelBase
     private static bool IsExperimentalDownload(
         RoutingWorkflowRequest request,
         ForecastModel model) =>
+        IsExperimentalDownload(request.Selections, model);
+
+    private static bool IsExperimentalDownload(
+        IEnumerable<ForecastSelection> selections,
+        ForecastModel model) =>
         model == ForecastModel.EcmwfIfs &&
-        request.Selections.Any(selection =>
+        selections.Any(selection =>
             selection.Model == model &&
             selection.Kind == ForecastSelectionKind.OfficialDownload);
+
+    private static string PlanProgressStageName(RoutePlanRoutingUnitStatus status) => status switch
+    {
+        RoutePlanRoutingUnitStatus.AcquiringForecast => "acquiring",
+        RoutePlanRoutingUnitStatus.CalculatingRoute => "routing",
+        RoutePlanRoutingUnitStatus.Succeeded => "complete",
+        RoutePlanRoutingUnitStatus.ForecastLimited => "forecast-limited",
+        RoutePlanRoutingUnitStatus.Failed => "failed",
+        RoutePlanRoutingUnitStatus.Cancelled => "cancelled",
+        RoutePlanRoutingUnitStatus.Blocked => "blocked",
+        RoutePlanRoutingUnitStatus.OutsideForecastWindow => "outside forecast window",
+        _ => status.ToString()
+    };
+
+    private static string LegStatusName(RouteLegResult leg) => leg.State switch
+    {
+        RouteLegOutcomeState.Succeeded
+            when leg.Reason == RouteLegOutcomeReason.ForecastExhausted => "forecast-limited",
+        RouteLegOutcomeState.Succeeded => "complete",
+        RouteLegOutcomeState.Failed => "failed",
+        RouteLegOutcomeState.Cancelled => "cancelled",
+        RouteLegOutcomeState.Blocked => "blocked by prior failure",
+        RouteLegOutcomeState.OutsideForecastWindow => "outside forecast window",
+        RouteLegOutcomeState.Invalidated => "invalidated",
+        _ => "not calculated"
+    };
 
     private static string ProgressStageName(RoutingProgressStage stage) => stage switch
     {
