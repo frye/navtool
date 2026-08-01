@@ -293,7 +293,7 @@ public partial class MainWindow : Window
             screenPosition);
     }
 
-    private void OpenRadialMenu(MPoint worldPoint, ScreenPoint screenPoint)
+    internal void OpenRadialMenu(MPoint worldPoint, ScreenPoint screenPoint)
     {
         if (_mapControl is null ||
             _radialMenuLayer is null ||
@@ -309,6 +309,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        _lastPointerPosition = screenPoint;
         _capturedWorldPoint = worldPoint;
         _capturedRouteSelection = viewModel.FindRouteAt(worldPoint, screenPoint);
         _inspectRadialButton.IsEnabled = _capturedRouteSelection is not null;

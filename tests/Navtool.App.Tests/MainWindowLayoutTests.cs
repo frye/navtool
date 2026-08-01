@@ -8,6 +8,7 @@ using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Mapsui.Extensions;
 using Mapsui.UI.Avalonia;
 using Navtool.App.Models;
 using Navtool.App.Services;
@@ -288,6 +289,45 @@ public sealed class MainWindowLayoutTests
                 string.Empty);
 
             Assert.False(window.IsRadialMenuOpen);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void EveryRadialOpenUpdatesTheNextKeyboardAnchor()
+    {
+        var window = CreateWindow();
+
+        try
+        {
+            window.Show();
+            var map = Assert.IsType<MapControl>(window.FindControl<MapControl>("MapView"));
+            var anchor = new ScreenPoint(map.Bounds.Width * 0.25, map.Bounds.Height * 0.25);
+            window.OpenRadialMenu(
+                map.Map.Navigator.Viewport.ScreenToWorld(anchor.X, anchor.Y),
+                anchor);
+            var start = Assert.IsType<Button>(
+                window.FindControl<Button>("SetStartRadialButton"));
+            var expectedLeft = Canvas.GetLeft(start);
+            var expectedTop = Canvas.GetTop(start);
+            window.KeyPress(
+                Key.Escape,
+                RawInputModifiers.None,
+                PhysicalKey.Escape,
+                string.Empty);
+
+            window.KeyPress(
+                Key.Apps,
+                RawInputModifiers.None,
+                PhysicalKey.ContextMenu,
+                string.Empty);
+
+            Assert.True(window.IsRadialMenuOpen);
+            Assert.Equal(expectedLeft, Canvas.GetLeft(start));
+            Assert.Equal(expectedTop, Canvas.GetTop(start));
         }
         finally
         {
