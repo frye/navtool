@@ -372,6 +372,11 @@
                                                        TextWrapping="Wrap" />
                                         </StackPanel>
                                     </CheckBox>
+                                    <CheckBox IsChecked="{Binding UseNewestWeatherData}"
+                                              Content="Use newest weather data" />
+                                    <TextBlock Classes="muted"
+                                               Text="Normally Navtool reuses a covering cached run. Enable this only when newer published weather is required."
+                                               TextWrapping="Wrap" />
                                 </StackPanel>
                                 <StackPanel IsVisible="{Binding IsLocalForecast}"
                                             Spacing="7">

@@ -14,7 +14,7 @@ public sealed record NoaaGfsOptions
 
     public TimeSpan PublicationDelay { get; init; } = TimeSpan.FromHours(5);
 
-    public TimeSpan CacheFreshness { get; init; } = TimeSpan.FromHours(6);
+    public double CacheTileSizeDegrees { get; init; } = 10;
 
     public TimeSpan ForecastHorizon { get; init; } = TimeSpan.FromHours(384);
 
@@ -79,6 +79,8 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
     private readonly Dictionary<string, AcquisitionGate> _acquisitionGates =
         new(StringComparer.Ordinal);
     private readonly object _acquisitionGatesLock = new();
+    private readonly Dictionary<string, int> _activePartPaths;
+    private readonly object _activePartPathsLock = new();
 
     public NoaaGfsForecastProvider(
         HttpClient httpClient,
@@ -94,6 +96,8 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         _timeProvider = timeProvider ?? TimeProvider.System;
         _options = options ?? new NoaaGfsOptions();
         _logger = logger ?? NullLogger<NoaaGfsForecastProvider>.Instance;
+        _activePartPaths = new Dictionary<string, int>(
+            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
         ValidateOptions(_options);
     }
 
@@ -125,8 +129,8 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         var runTime = SelectRun(request, _timeProvider.GetUtcNow());
         var steps = GetRequiredForecastHours(runTime, request.From, request.Through);
         var bounds = AlignBoundsToGrid(request.Bounds);
-        var regions = GetNomadsLongitudeWindows(bounds);
-        return new NoaaGfsDownloadEstimate(runTime, bounds, steps.Length, regions.Length);
+        var tiles = GetCacheTiles(bounds, _options.CacheTileSizeDegrees);
+        return new NoaaGfsDownloadEstimate(runTime, bounds, steps.Length, tiles.Length);
     }
 
     public async ValueTask<ForecastAcquisition> AcquireAsync(
@@ -145,7 +149,7 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         // (including the definitive cache key) is computed ONCE here and threaded into the
         // core so the gate and the download/store always agree on the same key, even if
         // the clock advances across a run-publish boundary while queued behind the gate.
-        var plan = CreateAcquisitionPlan(request);
+        var plan = await SelectAcquisitionPlanAsync(request, cancellationToken).ConfigureAwait(false);
         var gate = RentGate(plan.CacheKey);
 
         try
@@ -208,22 +212,85 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
     // for a request against a single captured "now". Computing this once (rather than
     // recomputing inside the gated core) is what keeps the acquisition gate key and the
     // stored artifact key identical.
-    private AcquisitionPlan CreateAcquisitionPlan(ForecastRequest request)
+    private AcquisitionPlan CreateAcquisitionPlan(
+        ForecastRequest request,
+        DateTimeOffset now,
+        DateTimeOffset runTime)
     {
-        var now = _timeProvider.GetUtcNow();
-        var runTime = SelectRun(request, now);
         var steps = GetRequiredForecastHours(runTime, request.From, request.Through);
         var downloadBounds = AlignBoundsToGrid(request.Bounds);
-        var cacheKey = CreateCacheKey(downloadBounds, runTime, steps);
-        return new AcquisitionPlan(now, runTime, steps, downloadBounds, cacheKey);
+        var tiles = GetCacheTiles(downloadBounds, _options.CacheTileSizeDegrees);
+        var manifest = BuildTiledPartManifest(runTime, steps, tiles);
+        var cacheKey = CreateAssemblyCacheKey(runTime, manifest);
+        var legacyCacheKey = CreateLegacyCacheKey(downloadBounds, runTime, steps);
+        return new AcquisitionPlan(
+            now,
+            runTime,
+            SelectRun(request, now),
+            steps,
+            downloadBounds,
+            manifest,
+            cacheKey,
+            legacyCacheKey);
     }
 
     private readonly record struct AcquisitionPlan(
         DateTimeOffset Now,
         DateTimeOffset RunTime,
+        DateTimeOffset LatestPublishedRun,
         ImmutableArray<int> Steps,
         GeographicBounds DownloadBounds,
-        string CacheKey);
+        ImmutableArray<GribPartDescriptor> Manifest,
+        string CacheKey,
+        string LegacyCacheKey);
+
+    private async ValueTask<AcquisitionPlan> SelectAcquisitionPlanAsync(
+        ForecastRequest request,
+        CancellationToken cancellationToken)
+    {
+        var now = _timeProvider.GetUtcNow();
+        var latestRun = SelectRun(request, now);
+        var latestPlan = CreateAcquisitionPlan(request, now, latestRun);
+        if (request.RefreshPolicy == ForecastRefreshPolicy.LatestAvailable)
+        {
+            return latestPlan;
+        }
+
+        for (var index = 0; index <= _options.MaximumRunLookbackCycles; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var candidate = latestRun.AddHours(-6d * index);
+            if (candidate > request.From ||
+                request.Through > candidate + _options.ForecastHorizon)
+            {
+                continue;
+            }
+
+            var plan = index == 0
+                ? latestPlan
+                : CreateAcquisitionPlan(request, now, candidate);
+            if (await IsPlanFullyCachedAsync(plan, cancellationToken).ConfigureAwait(false))
+            {
+                return plan;
+            }
+        }
+
+        return latestPlan;
+    }
+
+    private async ValueTask<bool> IsPlanFullyCachedAsync(
+        AcquisitionPlan plan,
+        CancellationToken cancellationToken)
+    {
+        if (await _cache.TryGetAsync(plan.CacheKey, plan.Now, cancellationToken).ConfigureAwait(false) is not null ||
+            await _cache.TryGetAsync(plan.LegacyCacheKey, plan.Now, cancellationToken).ConfigureAwait(false) is not null)
+        {
+            return true;
+        }
+
+        var partsDirectory = GetPartsDirectory();
+        return plan.Manifest.All(part => File.Exists(Path.Combine(partsDirectory, part.PartKey + ".grib2")));
+    }
 
     private async ValueTask<ForecastAcquisition> AcquireCoreAsync(
         ForecastRequest request,
@@ -237,21 +304,23 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         var runTime = plan.RunTime;
         var steps = plan.Steps;
         var downloadBounds = plan.DownloadBounds;
-        var regions = GetNomadsLongitudeWindows(downloadBounds);
         var cacheKey = plan.CacheKey;
+        var manifest = plan.Manifest;
         _logger.LogInformation(
-            "Selected NOAA GFS run {RunTime} with {StepCount} steps, {RegionCount} regions, download bounds " +
+            "Selected NOAA GFS run {RunTime} with {StepCount} steps, {PartCount} tiled parts, download bounds " +
             "south={South}, north={North}, west={West}, east={East}, and cache key {CacheKey}",
             runTime,
             steps.Length,
-            regions.Length,
+            manifest.Length,
             downloadBounds.South,
             downloadBounds.North,
             downloadBounds.West,
             downloadBounds.East,
             cacheKey);
 
-        var cached = await _cache.TryGetFreshAsync(cacheKey, now, cancellationToken)
+        var cached = await _cache.TryGetAsync(cacheKey, now, cancellationToken)
+            .ConfigureAwait(false);
+        cached ??= await _cache.TryGetAsync(plan.LegacyCacheKey, now, cancellationToken)
             .ConfigureAwait(false);
         if (cached is not null)
         {
@@ -262,23 +331,20 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
                 request,
                 runTime,
                 cached,
-                ForecastAcquisitionSource.Cache);
+                ForecastAcquisitionSource.Cache,
+                new ForecastCacheUsage(
+                    manifest.Length,
+                    0,
+                    runTime,
+                    plan.LatestPublishedRun));
         }
 
         _logger.LogInformation("NOAA GFS cache miss for {CacheKey}", cacheKey);
 
-        // Build deterministic download manifest: forecast_hour ascending, then region index ascending.
-        var manifest = BuildPartManifest(runTime, steps, regions, downloadBounds);
-        // Isolate this cache key's resumable parts in their own subdirectory. Acquisitions
-        // for a given cache key are serialized by the keyed gate, so each subdirectory has a
-        // single writer at a time; acquisitions for different cache keys use different
-        // subdirectories. Pruning and orphan sweeping therefore only ever touch the current
-        // key's own parts, so a concurrent acquisition for another key can never have its
-        // freshly downloaded parts deleted as "stale," and file enumeration cannot race a
-        // delete from another acquisition. The cache key is a "<category>-<sha256-hex>"
-        // token (see AtomicFileCache.CreateKey), which is always a filesystem-safe segment.
-        var partsDirectory = Path.Combine(_cache.RootDirectory, "noaa-gfs-parts", cacheKey);
+        var partsDirectory = GetPartsDirectory();
         Directory.CreateDirectory(partsDirectory);
+        MigrateLegacyParts(partsDirectory);
+        using var partProtection = ProtectParts(partsDirectory, manifest);
         PrunePartCache(partsDirectory, manifest);
 
         var totalParts = manifest.Length;
@@ -291,40 +357,56 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             var part = manifest[index];
             var partFile = Path.Combine(partsDirectory, part.PartKey + ".grib2");
 
-            if (File.Exists(partFile))
+            var partGate = RentGate(part.PartKey);
+            var partGateAcquired = false;
+            try
             {
-                _logger.LogInformation(
-                    "Resuming cached part {PartIndex}/{Total} f{ForecastHour:000} region {RegionIndex}",
-                    index + 1, totalParts, part.ForecastHour, part.RegionIndex);
+                await partGate.Semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                partGateAcquired = true;
+                if (File.Exists(partFile))
+                {
+                    File.SetLastWriteTimeUtc(partFile, now.UtcDateTime);
+                    _logger.LogInformation(
+                        "Reusing cached tile {PartIndex}/{Total} f{ForecastHour:000} tile {RegionIndex}",
+                        index + 1, totalParts, part.ForecastHour, part.RegionIndex);
+                    Report(
+                        progress,
+                        ForecastProgressStage.Downloading,
+                        (index + 1) / (double)totalParts,
+                        $"Resumed cached f{part.ForecastHour:000} tile {index + 1}/{totalParts}");
+                    continue;
+                }
+
+                if (downloadedParts > 0 && _options.MinimumRequestInterval > TimeSpan.Zero)
+                {
+                    await Task.Delay(_options.MinimumRequestInterval, cancellationToken).ConfigureAwait(false);
+                }
+
+                Report(
+                    progress,
+                    ForecastProgressStage.Downloading,
+                    index / (double)totalParts,
+                    $"Downloading GFS f{part.ForecastHour:000} tile {index + 1}/{totalParts}");
+
+                await DownloadPartAsync(part, partFile, cancellationToken).ConfigureAwait(false);
+                downloadedParts++;
+                PrunePartCache(partsDirectory, manifest);
+
                 Report(
                     progress,
                     ForecastProgressStage.Downloading,
                     (index + 1) / (double)totalParts,
-                    $"Resumed cached f{part.ForecastHour:000} (part {index + 1}/{totalParts})");
-                continue;
+                    $"Downloaded {index + 1}/{totalParts} GFS tiles ({downloadedParts} new this run)");
             }
-
-            // Apply pacing before each HTTP request except the very first.
-            if (downloadedParts > 0 && _options.MinimumRequestInterval > TimeSpan.Zero)
+            finally
             {
-                await Task.Delay(_options.MinimumRequestInterval, cancellationToken).ConfigureAwait(false);
+                if (partGateAcquired)
+                {
+                    partGate.Semaphore.Release();
+                }
+
+                ReturnGate(part.PartKey, partGate);
             }
-
-            Report(
-                progress,
-                ForecastProgressStage.Downloading,
-                index / (double)totalParts,
-                $"Downloading GFS f{part.ForecastHour:000} (part {index + 1}/{totalParts})");
-
-            await DownloadPartAsync(part, partFile, cancellationToken).ConfigureAwait(false);
-            downloadedParts++;
-            PrunePartCache(partsDirectory, manifest);
-
-            Report(
-                progress,
-                ForecastProgressStage.Downloading,
-                (index + 1) / (double)totalParts,
-                $"Downloaded {index + 1}/{totalParts} GFS parts ({downloadedParts} new this run)");
         }
 
         // Concatenate all parts in manifest order into the final cached artifact.
@@ -339,7 +421,7 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         var stored = await _cache.StoreAsync(
                 cacheKey,
                 cacheNow,
-                cacheNow + _options.CacheFreshness,
+                DateTimeOffset.MaxValue,
                 async (output, token) =>
                 {
                     foreach (var part in manifest)
@@ -365,18 +447,21 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             "Stored NOAA GFS artifact {CacheKey} with {LengthBytes} bytes",
             cacheKey,
             stored.LengthBytes);
-        foreach (var part in manifest)
-        {
-            TryDeletePart(
-                Path.Combine(partsDirectory, part.PartKey + ".grib2"),
-                "assembled NOAA part");
-        }
-
-        // The parts subdirectory is now empty on success; remove it so per-key subdirectories
-        // do not accumulate across the many distinct cache keys a long-lived session requests.
-        TryDeleteDirectoryIfEmpty(partsDirectory);
-
-        return CreateAcquisition(request, runTime, stored, ForecastAcquisitionSource.Remote);
+        partProtection.Dispose();
+        PrunePartCache(partsDirectory, [], includeAssemblyCache: true);
+        var source = downloadedParts == 0
+            ? ForecastAcquisitionSource.Cache
+            : ForecastAcquisitionSource.Remote;
+        return CreateAcquisition(
+            request,
+            runTime,
+            stored,
+            source,
+            new ForecastCacheUsage(
+                totalParts - downloadedParts,
+                downloadedParts,
+                runTime,
+                plan.LatestPublishedRun));
     }
 
     public DateTimeOffset SelectRun(ForecastRequest request, DateTimeOffset now)
@@ -534,6 +619,98 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
                 var partKey = CreatePartKey(downloadBounds, runTime, forecastHour, regionIndex);
                 var uri = BuildNomadsUri(runTime, forecastHour, downloadBounds, region);
                 builder.Add(new GribPartDescriptor(forecastHour, regionIndex, region, downloadBounds, partKey, uri));
+            }
+        }
+
+        return builder.MoveToImmutable();
+    }
+
+    internal ImmutableArray<GeographicBounds> GetCacheTiles(GeographicBounds bounds) =>
+        GetCacheTiles(bounds, _options.CacheTileSizeDegrees);
+
+    internal static ImmutableArray<GeographicBounds> GetCacheTiles(
+        GeographicBounds bounds,
+        double tileSizeDegrees)
+    {
+        if (!double.IsFinite(tileSizeDegrees) ||
+            tileSizeDegrees < 0.25 ||
+            tileSizeDegrees > 180 ||
+            tileSizeDegrees % 0.25 != 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(tileSizeDegrees),
+                "The cache tile size must be a 0.25-degree multiple between 0.25 and 180.");
+        }
+
+        var south = Math.Max(-90, Math.Floor(bounds.South / tileSizeDegrees) * tileSizeDegrees);
+        var north = Math.Min(90, Math.Ceiling(bounds.North / tileSizeDegrees) * tileSizeDegrees);
+        if (north <= south)
+        {
+            north = Math.Min(90, south + tileSizeDegrees);
+            if (north <= south)
+            {
+                south = Math.Max(-90, north - tileSizeDegrees);
+            }
+        }
+
+        var longitudeSegments = bounds.CrossesAntimeridian
+            ? new[] { (bounds.West, 180d), (-180d, bounds.East) }
+            : new[] { (bounds.West, bounds.East) };
+        var builder = ImmutableArray.CreateBuilder<GeographicBounds>();
+        for (var latitude = south; latitude < north; latitude += tileSizeDegrees)
+        {
+            var tileNorth = Math.Min(90, latitude + tileSizeDegrees);
+            foreach (var (segmentWest, segmentEast) in longitudeSegments)
+            {
+                if (segmentEast <= segmentWest)
+                {
+                    continue;
+                }
+
+                var west = Math.Max(-180, Math.Floor(segmentWest / tileSizeDegrees) * tileSizeDegrees);
+                var east = Math.Min(180, Math.Ceiling(segmentEast / tileSizeDegrees) * tileSizeDegrees);
+                if (east <= west)
+                {
+                    east = Math.Min(180, west + tileSizeDegrees);
+                }
+
+                for (var longitude = west; longitude < east; longitude += tileSizeDegrees)
+                {
+                    builder.Add(new GeographicBounds(
+                        latitude,
+                        tileNorth,
+                        longitude,
+                        Math.Min(180, longitude + tileSizeDegrees)));
+                }
+            }
+        }
+
+        return builder
+            .Distinct()
+            .OrderBy(tile => tile.South)
+            .ThenBy(tile => Normalize360(tile.West))
+            .ToImmutableArray();
+    }
+
+    private ImmutableArray<GribPartDescriptor> BuildTiledPartManifest(
+        DateTimeOffset runTime,
+        ImmutableArray<int> steps,
+        ImmutableArray<GeographicBounds> tiles)
+    {
+        var builder = ImmutableArray.CreateBuilder<GribPartDescriptor>(steps.Length * tiles.Length);
+        foreach (var forecastHour in steps)
+        {
+            for (var tileIndex = 0; tileIndex < tiles.Length; tileIndex++)
+            {
+                var tile = tiles[tileIndex];
+                var longitudeWindow = GetNomadsLongitudeWindows(tile).Single();
+                builder.Add(new GribPartDescriptor(
+                    forecastHour,
+                    tileIndex,
+                    longitudeWindow,
+                    tile,
+                    CreatePartKey(tile, runTime, forecastHour, 0),
+                    BuildNomadsUri(runTime, forecastHour, tile, longitudeWindow)));
             }
         }
 
@@ -841,7 +1018,8 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         ForecastRequest request,
         DateTimeOffset runTime,
         AtomicCacheEntry entry,
-        ForecastAcquisitionSource source)
+        ForecastAcquisitionSource source,
+        ForecastCacheUsage? cacheUsage = null)
     {
         var file = new FileInfo(entry.Path);
         return new ForecastAcquisition(
@@ -849,10 +1027,11 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             new ForecastRun(ForecastProvider.Noaa, ForecastModel.NoaaGfs, runTime),
             new LocalGribArtifact(entry.Path, file.Length, file.LastWriteTimeUtc),
             source,
-            entry.Metadata);
+            entry.Metadata,
+            cacheUsage);
     }
 
-    private static string CreateCacheKey(
+    private static string CreateLegacyCacheKey(
         GeographicBounds bounds,
         DateTimeOffset runTime,
         ImmutableArray<int> steps) =>
@@ -864,6 +1043,14 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             Format(bounds.West),
             Format(bounds.East),
             string.Join(",", steps));
+
+    private static string CreateAssemblyCacheKey(
+        DateTimeOffset runTime,
+        ImmutableArray<GribPartDescriptor> manifest) =>
+        AtomicFileCache.CreateKey(
+            "noaa-gfs-assembly-v2",
+            runTime.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+            string.Join(",", manifest.Select(part => part.PartKey)));
 
     private static string CreatePartKey(
         GeographicBounds bounds,
@@ -915,9 +1102,90 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         string message) =>
         progress?.Report(new ForecastProgress(Provider, Model, stage, fraction, message));
 
+    private string GetPartsDirectory() =>
+        Path.Combine(_cache.RootDirectory, "noaa-gfs-parts");
+
+    private void MigrateLegacyParts(string partsDirectory)
+    {
+        foreach (var legacyDirectory in Directory.EnumerateDirectories(
+                     partsDirectory,
+                     "*",
+                     SearchOption.TopDirectoryOnly))
+        {
+            foreach (var source in Directory.EnumerateFiles(
+                         legacyDirectory,
+                         "*.grib2",
+                         SearchOption.TopDirectoryOnly))
+            {
+                var destination = Path.Combine(partsDirectory, Path.GetFileName(source));
+                if (File.Exists(destination))
+                {
+                    TryDeletePart(source, "duplicate legacy NOAA part");
+                    continue;
+                }
+
+                try
+                {
+                    File.Move(source, destination);
+                }
+                catch (IOException exception)
+                {
+                    _logger.LogWarning(
+                        exception,
+                        "Could not migrate legacy NOAA part {Source} to {Destination}",
+                        source,
+                        destination);
+                }
+            }
+
+            TryDeleteDirectoryIfEmpty(legacyDirectory);
+        }
+    }
+
+    private IDisposable ProtectParts(
+        string partsDirectory,
+        ImmutableArray<GribPartDescriptor> manifest)
+    {
+        var paths = manifest
+            .Select(part => Path.Combine(partsDirectory, part.PartKey + ".grib2"))
+            .Distinct(OperatingSystem.IsWindows()
+                ? StringComparer.OrdinalIgnoreCase
+                : StringComparer.Ordinal)
+            .ToArray();
+        lock (_activePartPathsLock)
+        {
+            foreach (var path in paths)
+            {
+                _activePartPaths[path] = _activePartPaths.GetValueOrDefault(path) + 1;
+            }
+        }
+
+        return new PartProtection(this, paths);
+    }
+
+    private void ReleasePartProtection(IEnumerable<string> paths)
+    {
+        lock (_activePartPathsLock)
+        {
+            foreach (var path in paths)
+            {
+                var count = _activePartPaths[path] - 1;
+                if (count == 0)
+                {
+                    _activePartPaths.Remove(path);
+                }
+                else
+                {
+                    _activePartPaths[path] = count;
+                }
+            }
+        }
+    }
+
     private void PrunePartCache(
         string partsDirectory,
-        ImmutableArray<GribPartDescriptor> protectedManifest)
+        ImmutableArray<GribPartDescriptor> protectedManifest,
+        bool includeAssemblyCache = false)
     {
         SweepOrphanedPartials(partsDirectory);
 
@@ -927,11 +1195,23 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         var protectedPaths = protectedManifest
             .Select(part => Path.Combine(partsDirectory, part.PartKey + ".grib2"))
             .ToHashSet(comparer);
+        lock (_activePartPathsLock)
+        {
+            protectedPaths.UnionWith(_activePartPaths.Keys);
+        }
+
         var files = Directory
             .EnumerateFiles(partsDirectory, "*.grib2", SearchOption.TopDirectoryOnly)
             .Select(path => new FileInfo(path))
             .ToList();
-        var maximumEntries = Math.Max(_cache.MaximumEntries, protectedManifest.Length);
+        var assemblyFiles = includeAssemblyCache
+            ? Directory.EnumerateFiles(_cache.RootDirectory, "*.grib2", SearchOption.TopDirectoryOnly)
+                .Select(path => new FileInfo(path))
+                .ToArray()
+            : [];
+        var availableBytes = Math.Max(0, _cache.MaximumBytes - assemblyFiles.Sum(file => file.Length));
+        var availableEntries = Math.Max(0, _cache.MaximumEntries - assemblyFiles.Length);
+        var maximumEntries = Math.Max(availableEntries, protectedPaths.Count);
         var bytes = files.Sum(file => file.Length);
         var count = files.Count;
 
@@ -940,7 +1220,7 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
                      .OrderBy(file => file.LastWriteTimeUtc)
                      .ThenBy(file => file.Name, StringComparer.Ordinal))
         {
-            if (count <= maximumEntries && bytes <= _cache.MaximumBytes)
+            if (count <= maximumEntries && bytes <= availableBytes)
             {
                 break;
             }
@@ -953,19 +1233,17 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             }
         }
 
-        if (count > maximumEntries || bytes > _cache.MaximumBytes)
+        if (count > maximumEntries || bytes > availableBytes)
         {
-            throw new IOException(
-                "The resumable NOAA parts for the current request exceed the configured cache bounds.");
+            _logger.LogWarning(
+                "Active NOAA tiles temporarily exceed the shared cache bounds: {Count} entries, {Bytes} bytes",
+                count,
+                bytes);
         }
     }
 
-    // Deletes ".partial" temp files left behind by a prior process that was terminated
-    // mid-download. The parts subdirectory is isolated per cache key and acquisitions for a
-    // given key are serialized, so at every prune point the current acquisition holds no
-    // in-flight partial of its own: any ".partial" here is therefore an orphan from an
-    // earlier interrupted run of the same key. A completed download is atomically moved to
-    // its ".grib2" name, so a lingering ".partial" is always incomplete and safe to delete.
+    // Completed downloads are atomically promoted to ".grib2", so partials encountered
+    // before an acquisition starts are remnants of an interrupted process.
     private void SweepOrphanedPartials(string partsDirectory)
     {
         foreach (var path in Directory.EnumerateFiles(
@@ -1021,11 +1299,14 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
 
     private static void ValidateOptions(NoaaGfsOptions options)
     {
-        if (options.FilterEndpoint is null ||
-            !options.FilterEndpoint.IsAbsoluteUri ||
-            options.PublicationDelay < TimeSpan.Zero ||
-            options.CacheFreshness <= TimeSpan.Zero ||
-            options.ForecastHorizon <= TimeSpan.Zero ||
+        if (        options.FilterEndpoint is null ||
+        !options.FilterEndpoint.IsAbsoluteUri ||
+        options.PublicationDelay < TimeSpan.Zero ||
+        !double.IsFinite(options.CacheTileSizeDegrees) ||
+        options.CacheTileSizeDegrees < 0.25 ||
+        options.CacheTileSizeDegrees > 180 ||
+        options.CacheTileSizeDegrees % 0.25 != 0 ||
+        options.ForecastHorizon <= TimeSpan.Zero ||
             options.ForecastHorizon > TimeSpan.FromHours(384) ||
             options.MaximumRunLookbackCycles < 0 ||
             options.MaximumResponseBytes <= 0 ||
@@ -1044,6 +1325,21 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         : ForecastDownloadException(message)
     {
         public TimeSpan? RetryAfter { get; } = retryAfter;
+    }
+
+    private sealed class PartProtection(
+        NoaaGfsForecastProvider owner,
+        string[] paths) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                owner.ReleasePartProtection(paths);
+            }
+        }
     }
 }
 

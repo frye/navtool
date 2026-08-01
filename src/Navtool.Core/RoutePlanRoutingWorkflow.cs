@@ -10,10 +10,16 @@ public sealed record RoutePlanRoutingRequest
         RoutePlan plan,
         DateTimeOffset departureTime,
         DateTimeOffset forecastCutoff,
-        IEnumerable<ForecastSelection> selections)
+        IEnumerable<ForecastSelection> selections,
+        ForecastRefreshPolicy refreshPolicy = ForecastRefreshPolicy.PreferCache)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(selections);
+        if (!Enum.IsDefined(refreshPolicy))
+        {
+            throw new ArgumentOutOfRangeException(nameof(refreshPolicy));
+        }
+
         var immutableSelections = selections.ToImmutableArray();
         if (immutableSelections.Length is < 1 or > 2 ||
             immutableSelections.Select(selection => selection.Model).Distinct().Count() !=
@@ -45,6 +51,7 @@ public sealed record RoutePlanRoutingRequest
         ForecastCutoff = cutoffUtc;
         Selections = immutableSelections;
         Models = immutableSelections.Select(selection => selection.Model).ToImmutableArray();
+        RefreshPolicy = refreshPolicy;
         StartLegIndex = plan.ActiveLegIndex;
         StartOrigin = plan.CurrentPosition?.Coordinate ??
             plan.Waypoints[StartLegIndex].Coordinate;
@@ -59,6 +66,8 @@ public sealed record RoutePlanRoutingRequest
     public ImmutableArray<ForecastSelection> Selections { get; }
 
     public ImmutableArray<ForecastModel> Models { get; }
+
+    public ForecastRefreshPolicy RefreshPolicy { get; }
 
     /// <summary>
     /// The index of the leg routing should resume from: <see cref="RoutePlan.ActiveLegIndex"/> at
@@ -240,7 +249,8 @@ public sealed class RoutePlanRoutingWorkflow
                     var workflowRequest = new RoutingWorkflowRequest(
                         route,
                         [modelState.Selection],
-                        ForecastCorridor.Create(route.Origin, route.Destination));
+                        ForecastCorridor.Create(route.Origin, route.Destination),
+                        request.RefreshPolicy);
                     var legProgress = new InlineProgress<RoutingProgress>(value =>
                         progressState.Report(
                             value.Model,

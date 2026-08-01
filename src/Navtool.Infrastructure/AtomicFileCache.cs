@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Navtool.Core;
 
 namespace Navtool.Infrastructure;
@@ -10,7 +12,7 @@ public sealed record AtomicFileCacheOptions
     public AtomicFileCacheOptions(
         string rootDirectory,
         long maximumBytes = 2L * 1024 * 1024 * 1024,
-        int maximumEntries = 64)
+        int maximumEntries = 4096)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
         if (maximumBytes <= 0)
@@ -46,13 +48,18 @@ public sealed class AtomicFileCache
     private const string ArtifactExtension = ".grib2";
     private const string MetadataExtension = ".metadata.json";
     private readonly AtomicFileCacheOptions _options;
+    private readonly ILogger<AtomicFileCache> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public AtomicFileCache(AtomicFileCacheOptions options)
+    public AtomicFileCache(
+        AtomicFileCacheOptions options,
+        ILogger<AtomicFileCache>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         _options = options;
+        _logger = logger ?? NullLogger<AtomicFileCache>.Instance;
         Directory.CreateDirectory(_options.RootDirectory);
+        SweepOrphanedPartials();
     }
 
     public string RootDirectory => _options.RootDirectory;
@@ -84,7 +91,20 @@ public sealed class AtomicFileCache
     public async ValueTask<AtomicCacheEntry?> TryGetFreshAsync(
         string key,
         DateTimeOffset now,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await TryGetAsync(key, now, requireFresh: true, cancellationToken).ConfigureAwait(false);
+
+    public async ValueTask<AtomicCacheEntry?> TryGetAsync(
+        string key,
+        DateTimeOffset accessedAt,
+        CancellationToken cancellationToken = default) =>
+        await TryGetAsync(key, accessedAt, requireFresh: false, cancellationToken).ConfigureAwait(false);
+
+    private async ValueTask<AtomicCacheEntry?> TryGetAsync(
+        string key,
+        DateTimeOffset accessedAt,
+        bool requireFresh,
+        CancellationToken cancellationToken)
     {
         ValidateKey(key);
         cancellationToken.ThrowIfCancellationRequested();
@@ -108,9 +128,23 @@ public sealed class AtomicFileCache
             }
 
             var metadata = new CacheMetadata(stored.Key, stored.CreatedAt, stored.ExpiresAt);
-            if (!metadata.IsFreshAt(now))
+            if (requireFresh && !metadata.IsFreshAt(accessedAt))
             {
                 return null;
+            }
+
+            var touched = stored with { LastAccessedAt = accessedAt.ToUniversalTime() };
+            try
+            {
+                await WriteMetadataAtomicallyAsync(metadataPath, touched, cancellationToken).ConfigureAwait(false);
+            }
+            catch (IOException exception)
+            {
+                _logger.LogWarning(exception, "Could not update cache access time for {CacheKey}", key);
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                _logger.LogWarning(exception, "Could not update cache access time for {CacheKey}", key);
             }
 
             return new AtomicCacheEntry(key, artifactPath, file.Length, metadata);
@@ -163,20 +197,9 @@ public sealed class AtomicFileCache
                 key,
                 metadata.CreatedAt,
                 metadata.ExpiresAt,
-                length);
-            await using (var output = new FileStream(
-                             metadataTemp,
-                             FileMode.CreateNew,
-                             FileAccess.Write,
-                             FileShare.None,
-                             16 * 1024,
-                             FileOptions.Asynchronous | FileOptions.WriteThrough))
-            {
-                await JsonSerializer.SerializeAsync(output, stored, cancellationToken: cancellationToken)
-                    .ConfigureAwait(false);
-                await output.FlushAsync(cancellationToken).ConfigureAwait(false);
-                output.Flush(true);
-            }
+                length,
+                metadata.CreatedAt);
+            await WriteMetadataFileAsync(metadataTemp, stored, cancellationToken).ConfigureAwait(false);
 
             cancellationToken.ThrowIfCancellationRequested();
             var artifactPath = GetArtifactPath(key);
@@ -244,7 +267,7 @@ public sealed class AtomicFileCache
         foreach (var entry in entries
                      .Where(entry => !string.Equals(entry.Metadata.Key, protectedKey, StringComparison.Ordinal))
                      .OrderBy(entry => entry.Metadata.ExpiresAt > now)
-                     .ThenBy(entry => entry.Metadata.CreatedAt)
+                     .ThenBy(entry => entry.Metadata.LastAccessedAt ?? entry.Metadata.CreatedAt)
                      .ThenBy(entry => entry.Metadata.Key, StringComparer.Ordinal))
         {
             if (count <= _options.MaximumEntries && bytes <= _options.MaximumBytes)
@@ -288,9 +311,45 @@ public sealed class AtomicFileCache
                        .ConfigureAwait(false) ??
                    throw new InvalidDataException($"Cache metadata '{path}' is empty.");
         }
+
         catch (JsonException exception)
         {
             throw new InvalidDataException($"Cache metadata '{path}' is invalid JSON.", exception);
+        }
+    }
+
+    private static async ValueTask WriteMetadataFileAsync(
+        string path,
+        StoredCacheMetadata metadata,
+        CancellationToken cancellationToken)
+    {
+        await using var output = new FileStream(
+            path,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            16 * 1024,
+            FileOptions.Asynchronous | FileOptions.WriteThrough);
+        await JsonSerializer.SerializeAsync(output, metadata, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+        output.Flush(true);
+    }
+
+    private static async ValueTask WriteMetadataAtomicallyAsync(
+        string path,
+        StoredCacheMetadata metadata,
+        CancellationToken cancellationToken)
+    {
+        var temp = $"{path}.{Guid.NewGuid():N}.partial";
+        try
+        {
+            await WriteMetadataFileAsync(temp, metadata, cancellationToken).ConfigureAwait(false);
+            File.Move(temp, path, true);
+        }
+        finally
+        {
+            DeleteIfPresent(temp);
         }
     }
 
@@ -370,11 +429,23 @@ public sealed class AtomicFileCache
         }
     }
 
+    private void SweepOrphanedPartials()
+    {
+        foreach (var path in Directory.EnumerateFiles(
+                     _options.RootDirectory,
+                     "*.partial",
+                     SearchOption.TopDirectoryOnly))
+        {
+            DeleteIfPresent(path);
+        }
+    }
+
     private sealed record StoredCacheMetadata(
         string Key,
         DateTimeOffset CreatedAt,
         DateTimeOffset ExpiresAt,
-        long LengthBytes);
+        long LengthBytes,
+        DateTimeOffset? LastAccessedAt = null);
 
     private sealed record StoredEntry(
         StoredCacheMetadata Metadata,

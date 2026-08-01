@@ -32,8 +32,9 @@ public static class AppComposition
             client.Timeout = TimeSpan.FromMinutes(10);
         });
 
-        services.AddSingleton(_ => new AtomicFileCache(
-            new AtomicFileCacheOptions(ResolveCacheRoot())));
+        services.AddSingleton(provider => new AtomicFileCache(
+            new AtomicFileCacheOptions(ResolveCacheRoot()),
+            provider.GetRequiredService<ILogger<AtomicFileCache>>()));
         services.AddSingleton<IRoutePlanSchemaMigrator, RoutePlanSchemaMigrator>();
         services.AddSingleton<IRoutePlanRepository>(provider => new RoutePlanJsonRepository(
             ResolveAppDataRoot(),

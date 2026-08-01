@@ -7,21 +7,29 @@ public sealed record RoutingWorkflowRequest
     public RoutingWorkflowRequest(
         RouteRequest route,
         IEnumerable<ForecastModel> models,
-        GeographicBounds? forecastBounds = null)
+        GeographicBounds? forecastBounds = null,
+        ForecastRefreshPolicy refreshPolicy = ForecastRefreshPolicy.PreferCache)
         : this(
             route,
             CreateDownloadSelections(models),
-            forecastBounds)
+            forecastBounds,
+            refreshPolicy)
     {
     }
 
     public RoutingWorkflowRequest(
         RouteRequest route,
         IEnumerable<ForecastSelection> selections,
-        GeographicBounds? forecastBounds = null)
+        GeographicBounds? forecastBounds = null,
+        ForecastRefreshPolicy refreshPolicy = ForecastRefreshPolicy.PreferCache)
     {
         ArgumentNullException.ThrowIfNull(route);
         ArgumentNullException.ThrowIfNull(selections);
+        if (!Enum.IsDefined(refreshPolicy))
+        {
+            throw new ArgumentOutOfRangeException(nameof(refreshPolicy));
+        }
+
         var immutableSelections = selections.ToImmutableArray();
         if (immutableSelections.Length is < 1 or > 2 ||
             immutableSelections.Select(selection => selection.Model).Distinct().Count() !=
@@ -52,6 +60,7 @@ public sealed record RoutingWorkflowRequest
         Models = immutableSelections.Select(selection => selection.Model).ToImmutableArray();
         ForecastBounds = forecastBounds ?? GeographicBounds.FromCoordinates(
             new[] { route.Origin, route.Destination });
+        RefreshPolicy = refreshPolicy;
     }
 
     public RouteRequest Route { get; }
@@ -61,6 +70,8 @@ public sealed record RoutingWorkflowRequest
     public ImmutableArray<ForecastSelection> Selections { get; }
 
     public GeographicBounds ForecastBounds { get; }
+
+    public ForecastRefreshPolicy RefreshPolicy { get; }
 
     private static IEnumerable<ForecastSelection> CreateDownloadSelections(
         IEnumerable<ForecastModel> models)
@@ -279,7 +290,8 @@ public sealed class RoutingWorkflow
                 model,
                 request.ForecastBounds,
                 request.Route.DepartureTime,
-                request.Route.LatestArrivalTime);
+                request.Route.LatestArrivalTime,
+                request.RefreshPolicy);
             var forecastProgress = new SynchronousProgress<ForecastProgress>(value =>
                 Report(
                     progress,

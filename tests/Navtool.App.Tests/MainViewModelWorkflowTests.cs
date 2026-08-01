@@ -119,6 +119,53 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task Newest_weather_control_propagates_refresh_policy()
+    {
+        ForecastRefreshPolicy? observedPolicy = null;
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) =>
+            {
+                observedPolicy = request.RefreshPolicy;
+                return ValueTask.FromResult(CreateAcquisition(request));
+            });
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        viewModel.UseNewestWeatherData = true;
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Equal(ForecastRefreshPolicy.LatestAvailable, observedPolicy);
+    }
+
+    [Fact]
+    public async Task Covering_cached_run_warns_when_newer_weather_is_available()
+    {
+        var selectedRun = new DateTimeOffset(2026, 7, 14, 6, 0, 0, TimeSpan.Zero);
+        var latestRun = selectedRun.AddHours(6);
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(
+                request,
+                new ForecastCacheUsage(3, 0, selectedRun, latestRun))));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Contains("cached run", viewModel.WarningMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Use newest weather data", viewModel.WarningMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ArrivalBeyondRequestedDurationSucceedsWithOverDurationNote()
     {
         var noaa = new DelegateForecastProvider(
@@ -1245,13 +1292,16 @@ public sealed class MainViewModelWorkflowTests
         return viewModel;
     }
 
-    private static ForecastAcquisition CreateAcquisition(ForecastRequest request) =>
+    private static ForecastAcquisition CreateAcquisition(
+        ForecastRequest request,
+        ForecastCacheUsage? cacheUsage = null) =>
         new(
             request,
             new ForecastRun(request.Provider, request.Model, request.From.AddHours(-6)),
             new LocalGribArtifact(Path.GetFullPath("fake-forecast.grib2")),
             ForecastAcquisitionSource.Cache,
-            new CacheMetadata("fake", request.From.AddHours(-1), request.Through.AddHours(1)));
+            new CacheMetadata("fake", request.From.AddHours(-1), request.Through.AddHours(1)),
+            cacheUsage);
 
     private static RouteResult CreateRoute(
         RouteRequest request,
