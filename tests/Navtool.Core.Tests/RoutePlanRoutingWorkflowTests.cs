@@ -137,14 +137,18 @@ public sealed class RoutePlanRoutingWorkflowTests
             ForecastModel.NoaaGfs,
             (request, _, _) => ValueTask.FromResult(Acquisition(request)));
         var plan = ThreeLegPlan();
-        var workflow = CreateWorkflow(
-            provider,
-            new DelegateRouteEngine((request, forecast, _) =>
-                ValueTask.FromResult(Route(
-                    request,
-                    forecast.Request.Model,
-                    TimeSpan.FromHours(4),
-                    RouteCompletion.ForecastExhausted))));
+        var repository = new RecordingRepository();
+        var workflow = new RoutePlanRoutingWorkflow(
+            new RoutingWorkflow(
+                [provider],
+                new DelegateRouteEngine((request, forecast, _) =>
+                    ValueTask.FromResult(Route(
+                        request,
+                        forecast.Request.Model,
+                        TimeSpan.FromHours(4),
+                        RouteCompletion.ForecastExhausted)))),
+            repository,
+            new FixedTimeProvider(Now));
 
         var result = await workflow.ExecuteAsync(
             Request(plan, Now.AddHours(1), Now.AddDays(8)));
@@ -158,6 +162,10 @@ public sealed class RoutePlanRoutingWorkflowTests
             Assert.Equal(RouteLegOutcomeState.Blocked, leg.State);
             Assert.Equal(RouteLegOutcomeReason.BlockedByPriorFailure, leg.Reason);
         });
+        Assert.Equal(
+            [false, false, true],
+            repository.SavedPlans.Select(saved =>
+                saved.LatestResult(ForecastModel.NoaaGfs)!.Session.CompletedAt is not null));
     }
 
     [Fact]
@@ -427,6 +435,8 @@ public sealed class RoutePlanRoutingWorkflowTests
 
         public int SaveCount { get; private set; }
 
+        public List<RoutePlan> SavedPlans { get; } = [];
+
         public ValueTask<ImmutableArray<RoutePlanSummary>> ListAsync(
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(ImmutableArray<RoutePlanSummary>.Empty);
@@ -452,6 +462,7 @@ public sealed class RoutePlanRoutingWorkflowTests
             {
                 _plan = plan;
                 SaveCount++;
+                SavedPlans.Add(plan);
             }
 
             return ValueTask.CompletedTask;
