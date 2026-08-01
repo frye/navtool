@@ -1008,6 +1008,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         RouteLegOutcomeState.Blocked => "blocked",
         RouteLegOutcomeState.OutsideForecastWindow => "outside window",
         RouteLegOutcomeState.Invalidated => "stale",
+        RouteLegOutcomeState.Pending => "pending",
         _ => "not calculated"
     };
 

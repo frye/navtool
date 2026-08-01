@@ -1607,6 +1607,7 @@ public partial class MainViewModel : ViewModelBase
             RouteLegOutcomeState.Blocked => "blocked by prior failure",
             RouteLegOutcomeState.OutsideForecastWindow => "outside forecast window",
             RouteLegOutcomeState.Invalidated => "stale",
+            RouteLegOutcomeState.Pending => "pending",
             _ => "not calculated"
         };
 

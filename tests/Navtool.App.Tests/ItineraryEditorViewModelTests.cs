@@ -71,6 +71,7 @@ public sealed class ItineraryEditorViewModelTests
         var editor = new ItineraryEditorViewModel(repository);
         await editor.RefreshSavedPlansCommand.ExecuteAsync(null);
         await editor.OpenCommand.ExecuteAsync(null);
+        Assert.All(editor.Legs, leg => Assert.Equal("NOAA pending", leg.OutcomeStatus));
 
         editor.Waypoints[1].HasStopover = true;
 
