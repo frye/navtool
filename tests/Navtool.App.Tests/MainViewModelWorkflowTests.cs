@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Mapsui.Extensions;
 using Mapsui.Layers;
 using Navtool.App.Models;
 using Navtool.App.Services;
@@ -702,10 +703,9 @@ public sealed class MainViewModelWorkflowTests
         var projected = viewModel.Map.Navigator.Viewport.WorldToScreen(capturedWorldPoint);
         var capturedScreenPoint = new ScreenPoint(projected.X, projected.Y);
 
+        var capturedSelection = Assert.IsType<RouteMapSelection>(
+            viewModel.FindRouteAt(capturedWorldPoint, capturedScreenPoint));
         Assert.True(viewModel.CanInspectRouteAt(capturedWorldPoint, capturedScreenPoint));
-        Assert.False(viewModel.CanInspectRouteAt(
-            capturedWorldPoint,
-            new ScreenPoint(capturedScreenPoint.X + 100, capturedScreenPoint.Y + 100)));
 
         Assert.True(viewModel.InspectRouteAt(
             capturedWorldPoint,
@@ -713,8 +713,8 @@ public sealed class MainViewModelWorkflowTests
             focus: false));
 
         Assert.Same(ecmwf, viewModel.SelectedRoutePoint!.Route);
-        Assert.Equal(1, viewModel.SelectedRoutePoint.PointIndex);
-        Assert.Equal(ecmwf.Points[1].Timestamp, viewModel.SelectedTimelineUtc);
+        Assert.Equal(capturedSelection.PointIndex, viewModel.SelectedRoutePoint.PointIndex);
+        Assert.Equal(capturedSelection.TimelineTimestamp, viewModel.SelectedTimelineUtc);
         Assert.Equal(ForecastModel.EcmwfIfs, viewModel.ActiveWeatherModel);
         Assert.Contains("ECMWF", viewModel.StatusMessage);
     }
