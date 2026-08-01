@@ -281,7 +281,7 @@ public sealed class RoutePlanRoutingWorkflow
                             acceptedRoute);
                         if (!await PublishAsync(
                                 modelState,
-                                completeSession: limited || legIndex == request.Plan.Legs.Length - 1)
+                                completeSession: legIndex == request.Plan.Legs.Length - 1)
                             .ConfigureAwait(false))
                         {
                             return;
@@ -385,7 +385,7 @@ public sealed class RoutePlanRoutingWorkflow
                     legs,
                     state.Acquisitions.ToImmutableArray());
             })
-            .OrderBy(outcome => Array.IndexOf(request.Models.ToArray(), outcome.Model))
+            .OrderBy(outcome => request.Models.IndexOf(outcome.Model))
             .ToImmutableArray();
         return new RoutePlanRoutingResult(
             request,
@@ -594,10 +594,11 @@ public sealed class RoutePlanRoutingWorkflow
             string? message = null,
             RouteCalculationSnapshot? snapshot = null)
         {
+            RoutePlanRoutingProgress report;
             lock (_gate)
             {
                 _fractions[(model, legIndex)] = fraction;
-                _progress?.Report(new RoutePlanRoutingProgress(
+                report = new RoutePlanRoutingProgress(
                     model.Provider(),
                     model,
                     legIndex,
@@ -606,8 +607,10 @@ public sealed class RoutePlanRoutingWorkflow
                     fraction,
                     _fractions.Values.Average(),
                     message,
-                    snapshot));
+                    snapshot);
             }
+
+            _progress?.Report(report);
         }
     }
 
