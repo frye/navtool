@@ -342,6 +342,187 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task Marking_a_leg_sailed_skips_it_during_recalculation_and_retains_history()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"navtool-sailed-leg-{Guid.NewGuid():N}");
+        var repository = new RoutePlanJsonRepository(root);
+        var routeRequests = new List<RouteRequest>();
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+        {
+            routeRequests.Add(request);
+            return ValueTask.FromResult(CreateRoute(request, forecast.Request.Model));
+        });
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            routePlanRepository: repository);
+        viewModel.Itinerary.AddWaypointCommand.Execute(null);
+        var intermediate = viewModel.Itinerary.Waypoints[1];
+        intermediate.SetOnMapCommand.Execute(null);
+        viewModel.HandleMapClick(
+            MapProjection.ToMapPoint(new Coordinate(36, -58)),
+            default);
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Equal(2, routeRequests.Count);
+        Assert.Equal(2, viewModel.Itinerary.Legs.Count);
+        var firstLegId = viewModel.Itinerary.Legs[0].Id;
+        var firstLegRoute = routeRequests[0];
+
+        viewModel.Itinerary.Legs[0].MarkSailedCommand.Execute(null);
+        Assert.True(viewModel.Itinerary.Legs[0].IsSailed);
+        Assert.True(viewModel.Itinerary.Legs[1].IsActive);
+        routeRequests.Clear();
+
+        // Sailed leg geometry/results are history: recalculation replaces only the eligible
+        // current/future leg, never the sailed one.
+        await viewModel.CalculateRoutesAsync();
+
+        var recalculated = Assert.Single(routeRequests);
+        Assert.Equal(intermediate.Coordinate!.Value, recalculated.Origin);
+
+        var reopened = await repository.OpenAsync(viewModel.Itinerary.PlanId);
+        Assert.Contains(firstLegId, reopened.SailedLegIds);
+        var recalculatedResult = reopened.LatestResult(ForecastModel.NoaaGfs)!;
+        var retainedFirstLeg = recalculatedResult.Legs[0];
+        Assert.Equal(firstLegRoute.RouteId, retainedFirstLeg.Route!.Request.RouteId);
+        Assert.Equal(RouteLegOutcomeState.Succeeded, retainedFirstLeg.State);
+        Assert.Equal(RouteLegOutcomeState.Succeeded, recalculatedResult.Legs[1].State);
+        Directory.Delete(root, recursive: true);
+    }
+
+    [Fact]
+    public async Task Explicit_active_leg_selection_skips_the_earlier_unfinished_leg()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var routeRequests = new List<RouteRequest>();
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+        {
+            routeRequests.Add(request);
+            return ValueTask.FromResult(CreateRoute(request, forecast.Request.Model));
+        });
+        var root = Path.Combine(Path.GetTempPath(), $"navtool-active-leg-{Guid.NewGuid():N}");
+        var repository = new RoutePlanJsonRepository(root);
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            routePlanRepository: repository);
+        viewModel.Itinerary.AddWaypointCommand.Execute(null);
+        var intermediate = viewModel.Itinerary.Waypoints[1];
+        intermediate.SetOnMapCommand.Execute(null);
+        viewModel.HandleMapClick(
+            MapProjection.ToMapPoint(new Coordinate(36, -58)),
+            default);
+
+        Assert.Equal(2, viewModel.Itinerary.Legs.Count);
+        // Explicitly select leg 2 as active without ever calculating (or marking sailed) leg 1.
+        viewModel.Itinerary.Legs[1].MakeActiveCommand.Execute(null);
+        Assert.False(viewModel.Itinerary.Legs[0].IsActive);
+        Assert.True(viewModel.Itinerary.Legs[1].IsActive);
+
+        await viewModel.CalculateRoutesAsync();
+
+        var routed = Assert.Single(routeRequests);
+        Assert.Equal(intermediate.Coordinate!.Value, routed.Origin);
+
+        var reopened = await repository.OpenAsync(viewModel.Itinerary.PlanId);
+        var result = reopened.LatestResult(ForecastModel.NoaaGfs)!;
+        Assert.Equal(RouteLegOutcomeState.NotCalculated, result.Legs[0].State);
+        Assert.Equal(RouteLegOutcomeReason.BeforeActiveLeg, result.Legs[0].Reason);
+        Assert.Equal(RouteLegOutcomeState.Succeeded, result.Legs[1].State);
+        Directory.Delete(root, recursive: true);
+    }
+
+    [Fact]
+    public async Task Current_position_overrides_origin_and_departure_time_never_wall_clock()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var routeRequests = new List<RouteRequest>();
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+        {
+            routeRequests.Add(request);
+            return ValueTask.FromResult(CreateRoute(request, forecast.Request.Model));
+        });
+        var root = Path.Combine(Path.GetTempPath(), $"navtool-current-position-{Guid.NewGuid():N}");
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            routePlanRepository: new RoutePlanJsonRepository(root));
+        var currentPosition = new Coordinate(35.5, -60);
+        var explicitDeparture = Now.AddHours(9);
+        viewModel.Itinerary.PlaceCurrentPosition(currentPosition, explicitDeparture, out var error);
+        Assert.Null(error);
+
+        await viewModel.CalculateRoutesAsync();
+
+        var routed = Assert.Single(routeRequests);
+        Assert.Equal(currentPosition, routed.Origin);
+        Assert.Equal(explicitDeparture, routed.DepartureTime);
+        Assert.NotEqual(viewModel.DepartureDate, routed.DepartureTime);
+        Directory.Delete(root, recursive: true);
+    }
+
+    [Fact]
+    public async Task Cancelling_a_multi_leg_calculation_preserves_the_completed_leg()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var secondLegStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var engine = new StreamingRouteEngine(async (request, forecast, progress, cancellationToken) =>
+        {
+            if (request.RouteId.Contains("leg-1", StringComparison.Ordinal))
+            {
+                secondLegStarted.SetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                throw new InvalidOperationException("Unreachable.");
+            }
+
+            progress?.Report(new RouteCalculationProgress(1, "fake route"));
+            return CreateRoute(request, forecast.Request.Model);
+        });
+        var root = Path.Combine(Path.GetTempPath(), $"navtool-cancel-multi-leg-{Guid.NewGuid():N}");
+        var repository = new RoutePlanJsonRepository(root);
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            routePlanRepository: repository);
+        viewModel.Itinerary.AddWaypointCommand.Execute(null);
+        var intermediate = viewModel.Itinerary.Waypoints[1];
+        intermediate.SetOnMapCommand.Execute(null);
+        viewModel.HandleMapClick(
+            MapProjection.ToMapPoint(new Coordinate(36, -58)),
+            default);
+
+        var calculation = viewModel.CalculateRoutesAsync();
+        await secondLegStarted.Task;
+        viewModel.CancelCommand.Execute(null);
+        await calculation;
+
+        // Manual cancellation preserves completed results; the unfinished leg is cancelled, not
+        // silently dropped or reported as outside the forecast window.
+        var reopened = await repository.OpenAsync(viewModel.Itinerary.PlanId);
+        var result = reopened.LatestResult(ForecastModel.NoaaGfs)!;
+        Assert.Equal(RouteLegOutcomeState.Succeeded, result.Legs[0].State);
+        Assert.Equal(RouteLegOutcomeState.Cancelled, result.Legs[1].State);
+        Assert.Equal(RouteLegOutcomeReason.CalculationCancelled, result.Legs[1].Reason);
+        Directory.Delete(root, recursive: true);
+    }
+
+    [Fact]
     public async Task LocalGribSelectionRoutesWithoutCallingForecastProvider()
     {
         var noaa = new DelegateForecastProvider(

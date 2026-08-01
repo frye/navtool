@@ -14,6 +14,7 @@ using Navtool.App.Models;
 using Navtool.App.Services;
 using Navtool.App.ViewModels;
 using Navtool.App.Views;
+using Navtool.Core;
 using Navtool.Infrastructure;
 
 namespace Navtool.App.Tests;
@@ -38,6 +39,7 @@ public sealed class MainWindowLayoutTests
             Assert.NotNull(window.FindControl<ComboBox>("ThemeSelector"));
             Assert.NotNull(window.FindControl<ToggleButton>("SetStartButton"));
             Assert.NotNull(window.FindControl<ToggleButton>("SetDestinationButton"));
+            Assert.NotNull(window.FindControl<ToggleButton>("SetCurrentPositionButton"));
             Assert.NotNull(window.FindControl<Button>("CalculateRoutesButton"));
             Assert.NotNull(window.FindControl<NumericUpDown>("PassageDaysInput"));
             Assert.NotNull(window.FindControl<NumericUpDown>("PassageHoursInput"));
@@ -341,6 +343,88 @@ public sealed class MainWindowLayoutTests
         var window = CreateWindow();
         Assert.Equal(1040, window.MinWidth);
         Assert.Equal(680, window.MinHeight);
+    }
+
+    [AvaloniaFact]
+    public void LegsListButtonsAreWiredToTheRealMarkAndUnmarkSailedCommands()
+    {
+        var viewModel = new MainViewModel(
+            null,
+            null,
+            TimeProvider.System,
+            TimeZoneInfo.Utc,
+            new OsmTileOptions(Enabled: false));
+        viewModel.SetEndpoints(new Coordinate(34, -64), new Coordinate(39, -52));
+        viewModel.Itinerary.AddWaypointCommand.Execute(null);
+        var intermediate = viewModel.Itinerary.Waypoints[1];
+        intermediate.SetOnMapCommand.Execute(null);
+        viewModel.HandleMapClick(
+            MapProjection.ToMapPoint(new Coordinate(36, -58)),
+            default);
+        var window = new MainWindow { DataContext = viewModel };
+
+        try
+        {
+            window.Show();
+            window.SetPlanningDrawerOpen(true);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(2, viewModel.Itinerary.Legs.Count);
+            var firstLegId = viewModel.Itinerary.Legs[0].Id;
+
+            var sailedButton = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Single(button =>
+                    button.DataContext is RouteLegEditorItemViewModel leg &&
+                    leg.Id == firstLegId &&
+                    Equals(button.Content, "Sailed"));
+            Assert.True(sailedButton.Command?.CanExecute(null));
+            sailedButton.Command!.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+
+            // Marking sailed rebuilds the Legs collection with fresh items, so re-index instead
+            // of relying on the (now stale) view-model instance captured before the click.
+            Assert.True(viewModel.Itinerary.Legs[0].IsSailed);
+            Assert.Equal("Sailed", viewModel.Itinerary.Legs[0].StatusLabel);
+
+            var unmarkButton = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Single(button =>
+                    button.DataContext is RouteLegEditorItemViewModel leg &&
+                    leg.Id == firstLegId &&
+                    Equals(button.Content, "Unmark"));
+            Assert.True(unmarkButton.Command?.CanExecute(null));
+            unmarkButton.Command!.Execute(null);
+
+            Assert.False(viewModel.Itinerary.Legs[0].IsSailed);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void CurrentPositionButtonArmsPlacementModeThroughTheRealBinding()
+    {
+        var window = CreateWindow();
+        var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
+
+        try
+        {
+            window.Show();
+            var setCurrentPosition = Assert.IsType<ToggleButton>(
+                window.FindControl<ToggleButton>("SetCurrentPositionButton"));
+
+            setCurrentPosition.Command?.Execute(null);
+
+            Assert.Equal(MapInteractionMode.SetCurrentPosition, viewModel.InteractionMode);
+            Assert.True(viewModel.IsSettingCurrentPosition);
+            Assert.True(viewModel.Itinerary.IsAwaitingCurrentPositionPlacement);
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     private static MainWindow CreateWindow() =>

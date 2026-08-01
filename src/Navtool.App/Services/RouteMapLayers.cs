@@ -57,6 +57,7 @@ public sealed class RouteMapLayers
         }
     };
     private readonly MemoryLayer _waypointMarkers = new("Waypoint markers") { Style = null };
+    private readonly MemoryLayer _currentPositionMarkers = new("Current position") { Style = null };
 
     public RouteMapLayers(Map map)
     {
@@ -74,6 +75,7 @@ public sealed class RouteMapLayers
         map.Layers.Add(_noaaRoutes);
         map.Layers.Add(_ecmwfRoutes);
         map.Layers.Add(_waypointMarkers);
+        map.Layers.Add(_currentPositionMarkers);
     }
 
     public Map Map { get; }
@@ -85,6 +87,13 @@ public sealed class RouteMapLayers
     public int WaypointMarkerCount => _waypointMarkers.Features.Count();
 
     public int WaypointGuideSegmentCount => _waypointGuide.Features.Count();
+
+    /// <summary>
+    /// Number of rendered current-position markers (0 or 1). Distinct from
+    /// <see cref="WaypointMarkerCount"/> because a current position is a mid-itinerary session
+    /// marker, never a permanent waypoint.
+    /// </summary>
+    public int CurrentPositionMarkerCount => _currentPositionMarkers.Features.Count();
 
     public int GetIsochroneFrontCount(ForecastModel model) =>
         GetHistoricalFrontFeatures(model).Count;
@@ -118,6 +127,20 @@ public sealed class RouteMapLayers
         _waypointGuide.Features = CreateWaypointGuideFeatures(ordered);
         _waypointMarkers.FeaturesWereModified();
         _waypointGuide.FeaturesWereModified();
+        Map.Refresh(ChangeType.Discrete);
+    }
+
+    /// <summary>
+    /// Renders (or clears, when <paramref name="coordinate"/> is null) the distinct
+    /// current-position marker used for rolling-route resume. This is a session marker
+    /// representing where the vessel actually is now, not an itinerary waypoint.
+    /// </summary>
+    public void SetCurrentPosition(CoreCoordinate? coordinate)
+    {
+        _currentPositionMarkers.Features = coordinate is null
+            ? Array.Empty<IFeature>()
+            : [CreateCurrentPositionMarker(coordinate.Value)];
+        _currentPositionMarkers.FeaturesWereModified();
         Map.Refresh(ChangeType.Discrete);
     }
 
@@ -242,6 +265,23 @@ public sealed class RouteMapLayers
             BorderColor = MapsuiColor.White,
             BorderThickness = 2,
             CornerRounding = 14
+        });
+        return feature;
+    }
+
+    private static IFeature CreateCurrentPositionMarker(CoreCoordinate coordinate)
+    {
+        var point = MapProjection.ToMapPoint(coordinate);
+        var feature = new GeometryFeature(new Point(point.X, point.Y));
+        feature.Styles.Add(new LabelStyle
+        {
+            Text = "\u2693",
+            Font = new Font { Size = 16, Bold = true },
+            ForeColor = MapsuiColor.White,
+            BackColor = new Brush(MapsuiColor.FromString("#00695C")),
+            BorderColor = MapsuiColor.White,
+            BorderThickness = 2,
+            CornerRounding = 20
         });
         return feature;
     }

@@ -303,6 +303,148 @@ public sealed class RoutePlanRoutingWorkflowTests
             persisted.LatestResult(ForecastModel.NoaaGfs)!.Session.Id);
     }
 
+    [Fact]
+    public async Task Resume_routes_only_active_and_later_legs_from_current_position()
+    {
+        var provider = new RecordingProvider(
+            ForecastModel.NoaaGfs,
+            (request, _, _) => ValueTask.FromResult(Acquisition(request)));
+        var plan = ThreeLegPlan();
+        var sailedResult = SuccessfulResult(plan, ForecastModel.NoaaGfs);
+        plan = plan.WithResult(sailedResult).MarkSailed(plan.Legs[0].Id);
+        var currentPosition = new Coordinate(31.5, -66.5);
+        plan = plan.SetCurrentPosition(currentPosition, Now.AddHours(2));
+        var workflow = CreateWorkflow(
+            provider,
+            new DelegateRouteEngine((request, forecast, _) =>
+                ValueTask.FromResult(Route(request, forecast.Request.Model, TimeSpan.FromHours(2)))));
+
+        var result = await workflow.ExecuteAsync(
+            Request(plan, plan.CurrentPosition!.DepartureTime, Now.AddDays(8)));
+
+        var model = Assert.Single(result.Models);
+        // Leg 0 (sailed) is carried forward untouched; only legs 1 and 2 are recalculated.
+        Assert.Equal(2, provider.Requests.Count);
+        Assert.Equal(RouteLegOutcomeState.Succeeded, model.Legs[0].State);
+        Assert.Same(sailedResult.Legs[0].Route, model.Legs[0].Route);
+        Assert.Equal(RouteLegOutcomeState.Succeeded, model.Legs[1].State);
+        Assert.Equal(currentPosition, model.Legs[1].Route!.Request.Origin);
+        Assert.Equal(RouteLegOutcomeState.Succeeded, model.Legs[2].State);
+        Assert.Equal(plan.Waypoints[2].Coordinate, model.Legs[2].Route!.Request.Origin);
+    }
+
+    [Fact]
+    public async Task Explicit_active_leg_skips_earlier_unsailed_leg_carrying_its_history_forward()
+    {
+        var provider = new RecordingProvider(
+            ForecastModel.NoaaGfs,
+            (request, _, _) => ValueTask.FromResult(Acquisition(request)));
+        var plan = ThreeLegPlan();
+        var existingResult = SuccessfulResult(plan, ForecastModel.NoaaGfs);
+        plan = plan.WithResult(existingResult).SetActiveLeg(plan.Legs[1].Id);
+        var workflow = CreateWorkflow(
+            provider,
+            new DelegateRouteEngine((request, forecast, _) =>
+                ValueTask.FromResult(Route(request, forecast.Request.Model, TimeSpan.FromHours(2)))));
+
+        var result = await workflow.ExecuteAsync(
+            Request(plan, Now.AddHours(1), Now.AddDays(8)));
+
+        var model = Assert.Single(result.Models);
+        Assert.Equal(2, provider.Requests.Count);
+        // Leg 0 was explicitly skipped (not sailed) but its prior successful, waypoint-anchored
+        // result is carried forward rather than recalculated.
+        Assert.Equal(RouteLegOutcomeState.Succeeded, model.Legs[0].State);
+        Assert.Same(existingResult.Legs[0].Route, model.Legs[0].Route);
+        Assert.Equal(RouteLegOutcomeState.Succeeded, model.Legs[1].State);
+        Assert.Equal(RouteLegOutcomeState.Succeeded, model.Legs[2].State);
+    }
+
+    [Fact]
+    public async Task New_model_records_legs_before_active_leg_as_not_calculated()
+    {
+        var provider = new RecordingProvider(
+            ForecastModel.NoaaGfs,
+            (request, _, _) => ValueTask.FromResult(Acquisition(request)));
+        var plan = ThreeLegPlan();
+        plan = plan.MarkSailed(plan.Legs[0].Id);
+        var workflow = CreateWorkflow(
+            provider,
+            new DelegateRouteEngine((request, forecast, _) =>
+                ValueTask.FromResult(Route(request, forecast.Request.Model, TimeSpan.FromHours(2)))));
+
+        var result = await workflow.ExecuteAsync(
+            Request(plan, Now.AddHours(1), Now.AddDays(8)));
+
+        var model = Assert.Single(result.Models);
+        Assert.Equal(RouteLegOutcomeState.NotCalculated, model.Legs[0].State);
+        Assert.Equal(RouteLegOutcomeReason.BeforeActiveLeg, model.Legs[0].Reason);
+        Assert.Equal(RouteLegOutcomeState.Succeeded, model.Legs[1].State);
+        Assert.Equal(RouteLegOutcomeState.Succeeded, model.Legs[2].State);
+    }
+
+    [Fact]
+    public void Building_initial_legs_invalidates_a_carried_leg_whose_stale_current_position_origin_no_longer_applies()
+    {
+        var plan = ThreeLegPlan();
+        var currentPosition = new Coordinate(31.5, -66.5);
+        var positioned = plan.SetCurrentPosition(currentPosition, Now.AddHours(1));
+        var request = new RouteRequest(
+            "leg-0-from-current-position",
+            currentPosition,
+            plan.Waypoints[1].Coordinate,
+            Now.AddHours(1),
+            Now.AddDays(8));
+        var route = Route(request, ForecastModel.NoaaGfs, TimeSpan.FromHours(2));
+        var session = new RouteCalculationSession(plan.Id, ForecastModel.NoaaGfs, Now).Complete(Now.AddMinutes(1));
+        var accepted = positioned.WithResult(new RoutePlanResult(session,
+        [
+            new RouteLegResult(plan.Legs[0].Id, RouteLegOutcomeState.Succeeded,
+                RouteLegOutcomeReason.CalculationSucceeded, route),
+            new RouteLegResult(plan.Legs[1].Id, RouteLegOutcomeState.Pending, RouteLegOutcomeReason.None),
+            new RouteLegResult(plan.Legs[2].Id, RouteLegOutcomeState.Pending, RouteLegOutcomeReason.None)
+        ]));
+
+        // Skip ahead to leg 1 as the active leg without marking leg 0 sailed: leg 0's carried
+        // result used the current-position origin, which no longer applies once leg 0 is not the
+        // active leg, so RoutePlanRoutingWorkflow's BuildInitialLegs must invalidate it rather
+        // than carry it through (avoiding a validation failure when the new result is saved).
+        var skippedAhead = accepted.SetActiveLeg(plan.Legs[1].Id);
+        var buildInitialLegs = typeof(RoutePlanRoutingWorkflow).GetMethod(
+            "BuildInitialLegs",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var routingRequest = Request(skippedAhead, Now.AddHours(2), Now.AddDays(8));
+
+        var initialLegs = (RouteLegResult[])buildInitialLegs.Invoke(
+            null, [routingRequest, ForecastModel.NoaaGfs])!;
+
+        Assert.Equal(RouteLegOutcomeState.Invalidated, initialLegs[0].State);
+        Assert.Equal(RouteLegOutcomeReason.CurrentPositionChanged, initialLegs[0].Reason);
+        Assert.Null(initialLegs[0].Route);
+    }
+
+    private static RoutePlanResult SuccessfulResult(RoutePlan plan, ForecastModel model)
+    {
+        var session = new RouteCalculationSession(plan.Id, model, Now).Complete(Now.AddMinutes(1));
+        var outcomes = plan.Legs.Select(leg =>
+        {
+            var from = plan.Waypoints[leg.Index];
+            var to = plan.Waypoints[leg.Index + 1];
+            var request = new RouteRequest(
+                $"existing-{leg.Index}",
+                from.Coordinate,
+                to.Coordinate,
+                Now,
+                Now.AddDays(8));
+            return new RouteLegResult(
+                leg.Id,
+                RouteLegOutcomeState.Succeeded,
+                RouteLegOutcomeReason.CalculationSucceeded,
+                Route(request, model, TimeSpan.FromHours(2)));
+        });
+        return new RoutePlanResult(session, outcomes);
+    }
+
     private static RoutePlanRoutingWorkflow CreateWorkflow(
         IForecastProvider provider,
         IRouteEngine engine) =>

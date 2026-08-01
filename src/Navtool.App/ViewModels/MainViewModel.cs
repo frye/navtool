@@ -257,6 +257,7 @@ public partial class MainViewModel : ViewModelBase
         Itinerary = new ItineraryEditorViewModel(routePlanRepository);
         Itinerary.ItineraryChanged += OnItineraryChanged;
         Itinerary.MapPlacementStarted += OnMapPlacementStarted;
+        Itinerary.CurrentPositionPlacementStarted += OnCurrentPositionPlacementStarted;
 
         Map = new Map
         {
@@ -310,6 +311,8 @@ public partial class MainViewModel : ViewModelBase
 
     public bool IsSettingWaypoint => InteractionMode == MapInteractionMode.SetWaypoint;
 
+    public bool IsSettingCurrentPosition => InteractionMode == MapInteractionMode.SetCurrentPosition;
+
     public string LocalGribDisplay => LocalForecast is null
         ? "No file selected"
         : $"{Path.GetFileName(LocalForecast.Artifact.Path)} · {ModelName(LocalForecast.Model)}\n" +
@@ -322,6 +325,8 @@ public partial class MainViewModel : ViewModelBase
         MapInteractionMode.SetStart => "Click the map to place the start",
         MapInteractionMode.SetDestination => "Click the map to place the finish",
         MapInteractionMode.SetWaypoint => $"Click the map to place {Itinerary.ActiveWaypoint?.Name ?? "the waypoint"}",
+        MapInteractionMode.SetCurrentPosition =>
+            "Click the map to place the current position (where the vessel is now)",
         _ => "Pan and zoom, or select an endpoint tool"
     };
 
@@ -443,6 +448,18 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        if (Itinerary.IsAwaitingCurrentPositionPlacement)
+        {
+            if (!Itinerary.TryPlaceCurrentPosition(coordinate, _localTimeZone, out var error))
+            {
+                ErrorMessage = error;
+            }
+
+            _interaction.Activate(MapInteractionMode.Browse);
+            CompleteEndpointPlacement();
+            return;
+        }
+
         if (_interaction.HandleMapClick(coordinate))
         {
             CompleteEndpointPlacement();
@@ -547,7 +564,20 @@ public partial class MainViewModel : ViewModelBase
         }
 
         RoutePlanRoutingRequest? planRequest = null;
-        if (Itinerary.Waypoints.Count > 2)
+        var useSequentialWorkflow = Itinerary.Waypoints.Count > 2;
+        RoutePlan? sequentialPlan = null;
+        if (!useSequentialWorkflow && Itinerary.Waypoints.Count == 2 &&
+            Itinerary.TryBuildPlan(out var twoPointPlan, out _) &&
+            (twoPointPlan!.CurrentPosition is not null || twoPointPlan.SailedLegIds.Count > 0))
+        {
+            // A two-waypoint itinerary with resume state (a placed current position, or a sailed
+            // leg) still needs sequential/mid-leg resume semantics, so route it through the same
+            // plan workflow used for longer itineraries instead of the legacy two-point path.
+            useSequentialWorkflow = true;
+            sequentialPlan = twoPointPlan;
+        }
+
+        if (useSequentialWorkflow)
         {
             if (_routePlanWorkflow is null)
             {
@@ -555,16 +585,19 @@ public partial class MainViewModel : ViewModelBase
                 return;
             }
 
-            if (!Itinerary.TryBuildPlan(out var plan, out validationError))
+            if (sequentialPlan is null && !Itinerary.TryBuildPlan(out sequentialPlan, out validationError))
             {
                 ErrorMessage = validationError;
                 return;
             }
 
+            // The explicit current-position departure time (never wall clock/GPS) takes priority
+            // over the itinerary-start departure fields once a current position has been placed.
+            var departureTime = sequentialPlan!.CurrentPosition?.DepartureTime ?? request!.Route.DepartureTime;
             planRequest = new RoutePlanRoutingRequest(
-                plan!,
-                request!.Route.DepartureTime,
-                request.Route.LatestArrivalTime,
+                sequentialPlan,
+                departureTime,
+                request!.Route.LatestArrivalTime,
                 request.Selections);
         }
 
@@ -827,6 +860,19 @@ public partial class MainViewModel : ViewModelBase
         Itinerary.BeginMapPlacement(Itinerary.Waypoints[^1]);
     }
 
+    /// <summary>
+    /// Arms the distinct current-position map placement mode. This is never the same interaction
+    /// as placing a waypoint: it records a session-scoped "where the vessel is now" marker used
+    /// to resume routing mid-itinerary, not a permanent route point.
+    /// </summary>
+    [RelayCommand]
+    private void SetCurrentPosition() => Itinerary.BeginCurrentPositionPlacement();
+
+    [RelayCommand(CanExecute = nameof(CanClearCurrentPosition))]
+    private void ClearCurrentPosition() => Itinerary.ClearCurrentPosition();
+
+    private bool CanClearCurrentPosition() => Itinerary.HasCurrentPosition;
+
     [RelayCommand(CanExecute = nameof(CanCalculate))]
     private Task Calculate() => CalculateRoutesAsync();
 
@@ -967,7 +1013,7 @@ public partial class MainViewModel : ViewModelBase
             }
 
             var legStatuses = outcome.Legs.Select((leg, index) =>
-                $"leg {index + 1} {LegStatusName(leg)}");
+                $"leg {index + 1} {LegStatusName(leg, result.Plan.SailedLegIds.Contains(leg.LegId))}");
             var modelStatus =
                 $"{(IsExperimentalDownload(result.Request.Selections, outcome.Model) ? "Experimental · " : string.Empty)}" +
                 string.Join(" · ", legStatuses);
@@ -1538,7 +1584,10 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsSettingDestination));
         OnPropertyChanged(nameof(IsEndpointPlacementArmed));
         OnPropertyChanged(nameof(IsSettingWaypoint));
+        OnPropertyChanged(nameof(IsSettingCurrentPosition));
+        ClearCurrentPositionCommand.NotifyCanExecuteChanged();
         UpdateWaypointLayers();
+        _mapLayers.SetCurrentPosition(Itinerary.CurrentPositionCoordinate);
         UpdateForecastAreaSummary();
     }
 
@@ -1675,18 +1724,29 @@ public partial class MainViewModel : ViewModelBase
         _ => status.ToString()
     };
 
-    private static string LegStatusName(RouteLegResult leg) => leg.State switch
+    private static string LegStatusName(RouteLegResult leg, bool isSailed = false)
     {
-        RouteLegOutcomeState.Succeeded
-            when leg.Reason == RouteLegOutcomeReason.ForecastExhausted => "forecast-limited",
-        RouteLegOutcomeState.Succeeded => "complete",
-        RouteLegOutcomeState.Failed => "failed",
-        RouteLegOutcomeState.Cancelled => "cancelled",
-        RouteLegOutcomeState.Blocked => "blocked by prior failure",
-        RouteLegOutcomeState.OutsideForecastWindow => "outside forecast window",
-        RouteLegOutcomeState.Invalidated => "invalidated",
-        _ => "not calculated"
-    };
+        if (isSailed)
+        {
+            return "sailed";
+        }
+
+        return leg.State switch
+        {
+            RouteLegOutcomeState.Succeeded
+                when leg.Reason == RouteLegOutcomeReason.ForecastExhausted => "forecast-limited",
+            RouteLegOutcomeState.Succeeded => "complete",
+            RouteLegOutcomeState.Failed => "failed",
+            RouteLegOutcomeState.Cancelled => "cancelled",
+            RouteLegOutcomeState.Blocked => "blocked by prior failure",
+            RouteLegOutcomeState.OutsideForecastWindow => "outside forecast window",
+            RouteLegOutcomeState.Invalidated
+                when leg.Reason == RouteLegOutcomeReason.CurrentPositionChanged =>
+                "active reroute pending (current position changed)",
+            RouteLegOutcomeState.Invalidated => "invalidated",
+            _ => "not calculated"
+        };
+    }
 
     private static string ProgressStageName(RoutingProgressStage stage) => stage switch
     {
@@ -1766,6 +1826,12 @@ public partial class MainViewModel : ViewModelBase
         NotifyInteractionChanged();
     }
 
+    private void OnCurrentPositionPlacementStarted(object? sender, EventArgs e)
+    {
+        _interaction.Activate(MapInteractionMode.SetCurrentPosition);
+        NotifyInteractionChanged();
+    }
+
     private void OnItineraryChanged(object? sender, EventArgs e)
     {
         if (IsCalculating &&
@@ -1782,7 +1848,7 @@ public partial class MainViewModel : ViewModelBase
             StatusMessage = "Calculation cancelled because the itinerary changed.";
         }
 
-        if (Itinerary.ActiveWaypoint is null)
+        if (Itinerary.ActiveWaypoint is null && !Itinerary.IsAwaitingCurrentPositionPlacement)
         {
             _interaction.Activate(MapInteractionMode.Browse);
         }

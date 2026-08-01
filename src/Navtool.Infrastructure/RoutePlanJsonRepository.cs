@@ -12,14 +12,83 @@ public interface IRoutePlanSchemaMigrator
 
 public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
 {
-    public JsonDocument MigrateToCurrent(JsonDocument document, int fromVersion, int currentVersion) =>
+    public JsonDocument MigrateToCurrent(JsonDocument document, int fromVersion, int currentVersion)
+    {
+        if (fromVersion == 1 && currentVersion == 2)
+        {
+            return MigrateV1ToV2(document);
+        }
+
         throw new InvalidDataException(
             $"Route plan schema version {fromVersion} is not supported by this application version.");
+    }
+
+    /// <summary>
+    /// Rewrites a version-1 route plan document to version 2 by adding the new
+    /// <c>currentPosition</c> and <c>activeLegId</c> fields (both absent/null for plans that
+    /// predate Slice 3's current-position/active-leg feature) and bumping <c>schemaVersion</c>.
+    /// The plan's own <c>sailedLegIds</c> collection already existed pre-migration and is
+    /// preserved as-is.
+    /// </summary>
+    private static JsonDocument MigrateV1ToV2(JsonDocument document)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            WriteMigratedEnvelope(writer, document.RootElement);
+        }
+
+        stream.Position = 0;
+        return JsonDocument.Parse(stream.ToArray());
+    }
+
+    private static void WriteMigratedEnvelope(Utf8JsonWriter writer, JsonElement root)
+    {
+        writer.WriteStartObject();
+        foreach (var property in root.EnumerateObject())
+        {
+            if (property.NameEquals("schemaVersion"))
+            {
+                writer.WriteNumber("schemaVersion", 2);
+                continue;
+            }
+
+            if (property.NameEquals("plan"))
+            {
+                WriteMigratedPlan(writer, "plan", property.Value);
+                continue;
+            }
+
+            property.WriteTo(writer);
+        }
+
+        writer.WriteEndObject();
+    }
+
+    private static void WriteMigratedPlan(Utf8JsonWriter writer, string propertyName, JsonElement plan)
+    {
+        writer.WritePropertyName(propertyName);
+        if (plan.ValueKind != JsonValueKind.Object)
+        {
+            plan.WriteTo(writer);
+            return;
+        }
+
+        writer.WriteStartObject();
+        foreach (var property in plan.EnumerateObject())
+        {
+            property.WriteTo(writer);
+        }
+
+        writer.WriteNull("currentPosition");
+        writer.WriteNull("activeLegId");
+        writer.WriteEndObject();
+    }
 }
 
 public sealed class RoutePlanJsonRepository : IRoutePlanRepository
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -323,7 +392,14 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
                 waypoint.Coordinate.Longitude,
                 waypoint.Stopover?.Ticks)).ToArray(),
             plan.Results.Select(ToDto).ToArray(),
-            plan.SailedLegIds.Select(id => id.Value).ToArray());
+            plan.SailedLegIds.Select(id => id.Value).ToArray(),
+            plan.CurrentPosition is null
+                ? null
+                : new RouteCurrentPositionDto(
+                    plan.CurrentPosition.Coordinate.Latitude,
+                    plan.CurrentPosition.Coordinate.Longitude,
+                    plan.CurrentPosition.DepartureTime),
+            plan.ActiveLegId?.Value);
 
     private static RoutePlanResultDto ToDto(RoutePlanResult result) =>
         new(
@@ -408,12 +484,26 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
             throw new InvalidDataException("A stored route plan contains empty or duplicate sailed-leg IDs.");
         }
 
+        var currentPosition = dto.CurrentPosition is null
+            ? null
+            : new RouteCurrentPosition(
+                new Coordinate(dto.CurrentPosition.Latitude, dto.CurrentPosition.Longitude),
+                dto.CurrentPosition.DepartureTime);
+        if (dto.ActiveLegId is Guid activeLegGuid && activeLegGuid == Guid.Empty)
+        {
+            throw new InvalidDataException("A stored route plan has an empty active-leg ID.");
+        }
+
+        var activeLegId = dto.ActiveLegId is Guid guid ? new RouteLegId(guid) : (RouteLegId?)null;
+
         return new RoutePlan(
             new RoutePlanId(dto.Id),
             dto.Name,
             waypoints,
             results,
-            sailedIds);
+            sailedIds,
+            currentPosition,
+            activeLegId);
     }
 
     private static RoutePlanResult FromDto(
@@ -517,7 +607,14 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
         string Name,
         RouteWaypointDto[] Waypoints,
         RoutePlanResultDto[] Results,
-        Guid[] SailedLegIds);
+        Guid[] SailedLegIds,
+        RouteCurrentPositionDto? CurrentPosition = null,
+        Guid? ActiveLegId = null);
+
+    private sealed record RouteCurrentPositionDto(
+        double Latitude,
+        double Longitude,
+        DateTimeOffset DepartureTime);
 
     private sealed record RouteWaypointDto(
         Guid Id,

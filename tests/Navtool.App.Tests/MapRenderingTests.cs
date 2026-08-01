@@ -15,6 +15,7 @@ using Navtool.App.Views;
 using AvaloniaColor = Avalonia.Media.Color;
 using LineString = NetTopologySuite.Geometries.LineString;
 using MultiLineString = NetTopologySuite.Geometries.MultiLineString;
+using Point = NetTopologySuite.Geometries.Point;
 
 namespace Navtool.App.Tests;
 
@@ -159,7 +160,8 @@ public sealed class MapRenderingTests
                 "ECMWF IFS provisional route",
                 "NOAA GFS routes",
                 "ECMWF IFS routes",
-                "Waypoint markers"
+                "Waypoint markers",
+                "Current position"
             ],
             layers.Skip(1).Select(layer => layer.Name));
     }
@@ -197,6 +199,41 @@ public sealed class MapRenderingTests
         {
             Assert.True(Math.Abs(line.Coordinates[index].X - line.Coordinates[index - 1].X) < 500_000);
         }
+    }
+
+    [Fact]
+    public void Current_position_marker_is_distinct_from_waypoint_markers_and_clears_on_null()
+    {
+        var map = new Map();
+        var layers = new RouteMapLayers(map);
+        layers.SetWaypoints(
+        [
+            new WaypointMapMarker(1, "Start", new Coordinate(10, 20)),
+            new WaypointMapMarker(2, "Finish", new Coordinate(11, 21))
+        ]);
+
+        Assert.Equal(0, layers.CurrentPositionMarkerCount);
+
+        var position = new Coordinate(10.5, 20.5);
+        layers.SetCurrentPosition(position);
+
+        Assert.Equal(1, layers.CurrentPositionMarkerCount);
+        // Waypoint markers are unaffected: a current-position marker is a distinct session
+        // marker, not an itinerary waypoint.
+        Assert.Equal(2, layers.WaypointMarkerCount);
+        var markerLayer = Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "Current position"));
+        var feature = Assert.Single(markerLayer.Features);
+        var point = Assert.IsType<Point>(Assert.IsType<GeometryFeature>(feature).Geometry);
+        var expected = MapProjection.ToMapPoint(position);
+        Assert.Equal(expected.X, point.X, 6);
+        Assert.Equal(expected.Y, point.Y, 6);
+        var label = Assert.IsType<LabelStyle>(Assert.Single(feature.Styles));
+        Assert.Equal("\u2693", label.GetLabelText(feature));
+
+        layers.SetCurrentPosition(null);
+
+        Assert.Equal(0, layers.CurrentPositionMarkerCount);
     }
 
     [Fact]

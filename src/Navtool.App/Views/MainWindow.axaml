@@ -174,6 +174,65 @@
                         <Border Classes="card">
                             <StackPanel Spacing="9">
                                 <TextBlock Classes="section-title"
+                                           Text="CURRENT POSITION &amp; PROGRESS" />
+                                <TextBlock Classes="muted"
+                                           Text="Mark completed legs as sailed, choose the active leg to resume from, and place the vessel's current position for a mid-leg reroute."
+                                           TextWrapping="Wrap" />
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                    <ToggleButton x:Name="SetCurrentPositionButton"
+                                                  Classes="map-tool"
+                                                  Content="Set current position"
+                                                  IsChecked="{Binding IsSettingCurrentPosition, Mode=OneWay}"
+                                                  Command="{Binding SetCurrentPositionCommand}"
+                                                  ToolTip.Tip="Arm current-position placement, then select the map" />
+                                    <Button Grid.Column="1"
+                                            Content="Clear"
+                                            Command="{Binding ClearCurrentPositionCommand}"
+                                            ToolTip.Tip="Remove the placed current position" />
+                                </Grid>
+                                <Grid ColumnDefinitions="*,104"
+                                      ColumnSpacing="7">
+                                    <DatePicker SelectedDate="{Binding Itinerary.CurrentPositionDepartureDate}" />
+                                    <TimePicker Grid.Column="1"
+                                                SelectedTime="{Binding Itinerary.CurrentPositionDepartureTimeOfDay}"
+                                                ClockIdentifier="24HourClock" />
+                                </Grid>
+                                <TextBlock Classes="muted"
+                                           Text="{Binding Itinerary.CurrentPositionDisplay}"
+                                           TextWrapping="Wrap" />
+                                <ItemsControl ItemsSource="{Binding Itinerary.Legs}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:RouteLegEditorItemViewModel">
+                                            <Border Classes="subtle" Margin="0,0,0,6">
+                                                <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="5">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Label}" />
+                                                        <TextBlock Text="{Binding StatusLabel}"
+                                                                   Classes="muted" />
+                                                    </StackPanel>
+                                                    <Button Grid.Column="1"
+                                                            Content="Sailed"
+                                                            Command="{Binding MarkSailedCommand}"
+                                                            ToolTip.Tip="Mark this leg as sailed/completed" />
+                                                    <Button Grid.Column="2"
+                                                            Content="Unmark"
+                                                            Command="{Binding UnmarkSailedCommand}"
+                                                            ToolTip.Tip="Unmark this leg as sailed" />
+                                                    <Button Grid.Column="3"
+                                                            Content="Active"
+                                                            Command="{Binding MakeActiveCommand}"
+                                                            ToolTip.Tip="Explicitly resume from this leg" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card">
+                            <StackPanel Spacing="9">
+                                <TextBlock Classes="section-title"
                                            Text="DEPARTURE &amp; DURATION" />
                                 <Grid ColumnDefinitions="*,104"
                                       ColumnSpacing="7">
