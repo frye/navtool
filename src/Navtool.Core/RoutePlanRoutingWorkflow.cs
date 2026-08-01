@@ -47,9 +47,7 @@ public sealed record RoutePlanRoutingRequest
         Models = immutableSelections.Select(selection => selection.Model).ToImmutableArray();
         StartLegIndex = plan.ActiveLegIndex;
         StartOrigin = plan.CurrentPosition?.Coordinate ??
-            (StartLegIndex < plan.Waypoints.Length
-                ? plan.Waypoints[StartLegIndex].Coordinate
-                : plan.Waypoints[^1].Coordinate);
+            plan.Waypoints[StartLegIndex].Coordinate;
     }
 
     public RoutePlan Plan { get; }
