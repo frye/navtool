@@ -51,7 +51,8 @@ discoverable by CMake and the application.
 
 ## Build and run
 
-Build the native bridge and run the app with one command:
+Source checkout launches must use the platform launcher, which builds and tests
+the current worktree's native bridge before starting the app:
 
 ```sh
 ./scripts/run.sh
@@ -62,6 +63,11 @@ On Windows:
 ```powershell
 .\scripts\run.ps1
 ```
+
+Raw `dotnet run`, `dotnet exec`, and direct `Navtool.App.dll` execution are not
+supported for functional source checkout launches. Native build outputs are
+gitignored and local to each worktree, so a managed build alone does not provide
+the bridge and a bridge from another checkout must not be reused.
 
 In GitHub Copilot App or VS Code, select the **Navtool** run configuration and
 press the play button (or press `F5`). To launch without the debugger, run the
@@ -78,10 +84,12 @@ dotnet build Navtool.sln
 dotnet test Navtool.sln
 ```
 
-The application discovers the development bridge automatically. For a custom
-location, set `NAVTOOL_ROUTER_BRIDGE_PATH` to the shared library or its
-directory. Native builds fetch and compile the immutable `router-lib` revision
-`v0.3.0` by default. Set
+Use `scripts/build-native.sh` or `scripts/build-native.ps1` for native-only
+validation, and use `scripts/publish.sh` or `scripts/publish.ps1` for
+distributable artifacts. For a custom bridge location, set
+`NAVTOOL_ROUTER_BRIDGE_PATH` to the shared library or its directory. Packaged
+applications discover their bridge under `runtimes/<RID>/native`. Native builds
+fetch and compile the immutable `router-lib` revision `v0.3.0` by default. Set
 `SAILROUTE_SOURCE_DIR` to a local `router-lib` checkout when testing other
 revisions.
 

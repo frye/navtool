@@ -527,6 +527,28 @@ public partial class MainViewModel : ViewModelBase
                     "Route calculation is blocked to prevent unchecked land crossings.");
             }
         }
+        catch (NativeBridgeUnavailableException exception)
+            when (exception.InnerException is DllNotFoundException)
+        {
+            _logger.LogError(exception, "Native routing preflight failed");
+            var sourceLauncher = OperatingSystem.IsWindows()
+                ? @".\scripts\run.ps1"
+                : "./scripts/run.sh";
+            ErrorMessage =
+                $"Routing engine unavailable: {exception.Message}{Environment.NewLine}" +
+                $"For a source checkout, relaunch with {sourceLauncher}. " +
+                "For a packaged app, verify the bridge under runtimes/<RID>/native " +
+                "or configure NAVTOOL_ROUTER_BRIDGE_PATH.";
+            StatusMessage = "No forecast was downloaded.";
+            return;
+        }
+        catch (NativeBridgeUnavailableException exception)
+        {
+            _logger.LogError(exception, "Native routing preflight failed");
+            ErrorMessage = $"Routing engine unavailable: {exception.Message}";
+            StatusMessage = "No forecast was downloaded.";
+            return;
+        }
         catch (Exception exception)
         {
             _logger.LogError(exception, "Native routing preflight failed");

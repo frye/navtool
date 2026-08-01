@@ -343,7 +343,7 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
-    public async Task NativePreflightFailureHappensBeforeForecastAcquisition()
+    public async Task MissingNativeBridgePreservesDegradedModeAndProvidesRecoveryGuidance()
     {
         var noaa = new DelegateForecastProvider(
             ForecastModel.NoaaGfs,
@@ -364,7 +364,43 @@ public sealed class MainViewModelWorkflowTests
 
         Assert.Equal(1, preflight.CallCount);
         Assert.Equal(0, noaa.CallCount);
+        Assert.False(viewModel.IsCalculating);
+        Assert.Equal(0, viewModel.SuccessfulRouteCount);
         Assert.Contains("Routing engine unavailable", viewModel.ErrorMessage);
+        Assert.Contains(
+            OperatingSystem.IsWindows() ? @".\scripts\run.ps1" : "./scripts/run.sh",
+            viewModel.ErrorMessage);
+        Assert.Contains("runtimes/<RID>/native", viewModel.ErrorMessage);
+        Assert.Contains("NAVTOOL_ROUTER_BRIDGE_PATH", viewModel.ErrorMessage);
+        Assert.Equal("No forecast was downloaded.", viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task GenericNativePreflightFailureDoesNotSuggestMissingBridgeRecovery()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var preflight = new DelegateNativeRoutingPreflight(
+            new InvalidOperationException("Preflight failed generically."));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            nativeRoutingPreflight: preflight);
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Equal(1, preflight.CallCount);
+        Assert.Equal(0, noaa.CallCount);
+        Assert.False(viewModel.IsCalculating);
+        Assert.Equal(0, viewModel.SuccessfulRouteCount);
+        Assert.Contains("Preflight failed generically.", viewModel.ErrorMessage);
+        Assert.DoesNotContain("./scripts/run.sh", viewModel.ErrorMessage);
+        Assert.DoesNotContain(@".\scripts\run.ps1", viewModel.ErrorMessage);
+        Assert.DoesNotContain("runtimes/<RID>/native", viewModel.ErrorMessage);
         Assert.Equal("No forecast was downloaded.", viewModel.StatusMessage);
     }
 
