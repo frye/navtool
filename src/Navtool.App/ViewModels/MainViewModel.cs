@@ -46,6 +46,9 @@ public partial class MainViewModel : ViewModelBase
     private CancellationTokenSource? _inspectionCancellation;
     private SharedRouteTimeline? _timeline;
     private long _calculationGeneration;
+    private RoutePlanId? _displayedRoutePlanId;
+    private RoutePlanId? _activeCalculationPlanId;
+    private long _activeCalculationRevision;
     private long _weatherGeneration;
     private bool _updatingTimelinePosition;
 
@@ -161,13 +164,33 @@ public partial class MainViewModel : ViewModelBase
         : this(
             workflow,
             weatherSampler,
+            localGribInspector,
+            nativeRoutingPreflight,
+            noaaProvider,
+            logger,
+            null)
+    {
+    }
+
+    public MainViewModel(
+        RoutingWorkflow workflow,
+        IWeatherSampler weatherSampler,
+        ILocalGribInspector localGribInspector,
+        INativeRoutingPreflight nativeRoutingPreflight,
+        NoaaGfsForecastProvider noaaProvider,
+        ILogger<MainViewModel> logger,
+        IRoutePlanRepository? routePlanRepository)
+        : this(
+            workflow,
+            weatherSampler,
             TimeProvider.System,
             TimeZoneInfo.Local,
             new OsmTileOptions(),
             logger,
             localGribInspector,
             nativeRoutingPreflight,
-            noaaProvider)
+            noaaProvider,
+            routePlanRepository)
     {
     }
 
@@ -180,7 +203,8 @@ public partial class MainViewModel : ViewModelBase
         ILogger<MainViewModel>? logger = null,
         ILocalGribInspector? localGribInspector = null,
         INativeRoutingPreflight? nativeRoutingPreflight = null,
-        NoaaGfsForecastProvider? noaaProvider = null)
+        NoaaGfsForecastProvider? noaaProvider = null,
+        IRoutePlanRepository? routePlanRepository = null)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(localTimeZone);
@@ -193,6 +217,9 @@ public partial class MainViewModel : ViewModelBase
         _timeProvider = timeProvider;
         _localTimeZone = localTimeZone;
         _logger = logger ?? NullLogger<MainViewModel>.Instance;
+        Itinerary = new ItineraryEditorViewModel(routePlanRepository);
+        Itinerary.ItineraryChanged += OnItineraryChanged;
+        Itinerary.MapPlacementStarted += OnMapPlacementStarted;
 
         Map = new Map
         {
@@ -206,6 +233,7 @@ public partial class MainViewModel : ViewModelBase
         Map.Layers.Add(osmLayer);
 
         _mapLayers = new RouteMapLayers(Map);
+        UpdateWaypointLayers();
         UtcOffsetDisplay = FormatUtcOffset(localTimeZone.GetUtcOffset(timeProvider.GetLocalNow()));
         Map.Navigator.CenterOnAndZoomTo(
             MapProjection.ToMapPoint(new Coordinate(35, -55)),
@@ -217,13 +245,15 @@ public partial class MainViewModel : ViewModelBase
 
     public Map Map { get; }
 
+    public ItineraryEditorViewModel Itinerary { get; }
+
     public string UtcOffsetDisplay { get; }
 
     public MapInteractionMode InteractionMode => _interaction.Mode;
 
-    public Coordinate? Start => _interaction.Start;
+    public Coordinate? Start => Itinerary.Start;
 
-    public Coordinate? Destination => _interaction.Destination;
+    public Coordinate? Destination => Itinerary.Finish;
 
     public string StartDisplay => FormatCoordinate(Start, "Not set");
 
@@ -237,6 +267,8 @@ public partial class MainViewModel : ViewModelBase
 
     public bool IsSettingDestination => InteractionMode == MapInteractionMode.SetDestination;
 
+    public bool IsSettingWaypoint => InteractionMode == MapInteractionMode.SetWaypoint;
+
     public string LocalGribDisplay => LocalForecast is null
         ? "No file selected"
         : $"{Path.GetFileName(LocalForecast.Artifact.Path)} · {ModelName(LocalForecast.Model)}\n" +
@@ -247,7 +279,8 @@ public partial class MainViewModel : ViewModelBase
     public string MapInstruction => InteractionMode switch
     {
         MapInteractionMode.SetStart => "Click the map to place the start",
-        MapInteractionMode.SetDestination => "Click the map to place the destination",
+        MapInteractionMode.SetDestination => "Click the map to place the finish",
+        MapInteractionMode.SetWaypoint => $"Click the map to place {Itinerary.ActiveWaypoint?.Name ?? "the waypoint"}",
         _ => "Pan and zoom, or select an endpoint tool"
     };
 
@@ -306,18 +339,23 @@ public partial class MainViewModel : ViewModelBase
     {
         _interaction.SetStart(start);
         _interaction.SetDestination(destination);
+        Itinerary.SetEndpoints(start, destination);
         NotifyInteractionChanged();
     }
 
     public void SetStartAt(Coordinate coordinate)
     {
         _interaction.SetStart(coordinate);
+        Itinerary.CancelMapPlacement();
+        Itinerary.Waypoints[0].Coordinate = coordinate;
         CompleteEndpointPlacement();
     }
 
     public void SetDestinationAt(Coordinate coordinate)
     {
         _interaction.SetDestination(coordinate);
+        Itinerary.CancelMapPlacement();
+        Itinerary.Waypoints[^1].Coordinate = coordinate;
         CompleteEndpointPlacement();
     }
 
@@ -337,6 +375,27 @@ public partial class MainViewModel : ViewModelBase
     public void HandleMapClick(MPoint worldPosition, ScreenPosition screenPosition)
     {
         var coordinate = MapProjection.ToCoordinate(worldPosition);
+        if (Itinerary.ActiveWaypoint is not null)
+        {
+            var waypoint = Itinerary.ActiveWaypoint;
+            Itinerary.PlaceActiveWaypoint(coordinate);
+            if (waypoint.IsStart)
+            {
+                _interaction.SetStart(coordinate);
+            }
+            else if (waypoint.IsFinish)
+            {
+                _interaction.SetDestination(coordinate);
+            }
+            else
+            {
+                _interaction.Activate(MapInteractionMode.Browse);
+            }
+
+            CompleteEndpointPlacement();
+            return;
+        }
+
         if (_interaction.HandleMapClick(coordinate))
         {
             CompleteEndpointPlacement();
@@ -459,6 +518,10 @@ public partial class MainViewModel : ViewModelBase
         }
 
         var generation = Interlocked.Increment(ref _calculationGeneration);
+        var calculationPlanId = Itinerary.PlanId;
+        var calculationRevision = Itinerary.CalculationRevision;
+        _activeCalculationPlanId = calculationPlanId;
+        _activeCalculationRevision = calculationRevision;
         var cancellation = new CancellationTokenSource();
         var previous = Interlocked.Exchange(ref _calculationCancellation, cancellation);
         previous?.Cancel();
@@ -513,6 +576,13 @@ public partial class MainViewModel : ViewModelBase
                 return;
             }
 
+            if (Itinerary.PlanId != calculationPlanId ||
+                Itinerary.CalculationRevision != calculationRevision)
+            {
+                StatusMessage = "Calculation result discarded because the itinerary changed.";
+                return;
+            }
+
             ApplyWorkflowResult(result);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
@@ -537,6 +607,7 @@ public partial class MainViewModel : ViewModelBase
             if (IsCurrentCalculation(generation))
             {
                 IsCalculating = false;
+                _activeCalculationPlanId = null;
             }
         }
     }
@@ -632,15 +703,13 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void SetStart()
     {
-        _interaction.Activate(MapInteractionMode.SetStart);
-        NotifyInteractionChanged();
+        Itinerary.BeginMapPlacement(Itinerary.Waypoints[0]);
     }
 
     [RelayCommand]
     private void SetDestination()
     {
-        _interaction.Activate(MapInteractionMode.SetDestination);
-        NotifyInteractionChanged();
+        Itinerary.BeginMapPlacement(Itinerary.Waypoints[^1]);
     }
 
     [RelayCommand(CanExecute = nameof(CanCalculate))]
@@ -821,6 +890,13 @@ public partial class MainViewModel : ViewModelBase
             return false;
         }
 
+        if (Itinerary.Waypoints.Count != 2)
+        {
+            error = "Sequential multi-leg route calculation is not available yet. " +
+                    "Save the itinerary, or remove intermediate waypoints to calculate a direct route.";
+            return false;
+        }
+
         var selections = new List<ForecastSelection>();
         if (ForecastInputMode == ForecastInputMode.LocalFile)
         {
@@ -898,6 +974,7 @@ public partial class MainViewModel : ViewModelBase
         _acquisitions.Clear();
         var failures = new List<string>();
         var warnings = new List<string>();
+        var recordedRoutes = new List<RouteResult>();
         foreach (var outcome in result.Outcomes)
         {
             if (outcome.Acquisition is not null)
@@ -976,8 +1053,35 @@ public partial class MainViewModel : ViewModelBase
                 ? ForecastModel.EcmwfIfs
                 : null;
 
-        var routes = result.SuccessfulRoutes;
+        foreach (var outcome in result.Outcomes)
+        {
+            var reason = outcome.Route is not null
+                ? outcome.Route.IsForecastLimited
+                    ? RouteLegOutcomeReason.ForecastExhausted
+                    : RouteLegOutcomeReason.CalculationSucceeded
+                : outcome.Failure!.Stage switch
+                {
+                    ModelRouteFailureStage.ForecastAcquisition =>
+                        RouteLegOutcomeReason.ForecastAcquisitionFailed,
+                    ModelRouteFailureStage.RouteCalculation =>
+                        RouteLegOutcomeReason.RouteCalculationFailed,
+                    _ => RouteLegOutcomeReason.ResultValidationFailed
+                };
+            var recordedRoute = Itinerary.RecordSingleLegOutcome(
+                outcome.Model,
+                outcome.Route,
+                reason,
+                outcome.Failure?.Message,
+                _timeProvider.GetUtcNow());
+            if (recordedRoute is not null)
+            {
+                recordedRoutes.Add(recordedRoute);
+            }
+        }
+
+        var routes = recordedRoutes.ToImmutableArray();
         _mapLayers.SetRoutes(routes);
+        _displayedRoutePlanId = Itinerary.PlanId;
         _mapLayers.FitRoutes();
         OnPropertyChanged(nameof(SuccessfulRouteCount));
         BuildTimeline(routes);
@@ -1244,6 +1348,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(MapInstruction));
         OnPropertyChanged(nameof(IsSettingStart));
         OnPropertyChanged(nameof(IsSettingDestination));
+        OnPropertyChanged(nameof(IsSettingWaypoint));
+        UpdateWaypointLayers();
         UpdateForecastAreaSummary();
     }
 
@@ -1251,7 +1357,9 @@ public partial class MainViewModel : ViewModelBase
     {
         NotifyInteractionChanged();
         StatusMessage = Start is not null && Destination is not null
-            ? "Endpoints ready. Choose forecast models and calculate."
+            ? Itinerary.Waypoints.Count == 2
+                ? "Endpoints ready. Choose forecast models and calculate."
+                : "Itinerary updated. Multi-leg calculation will be added in a later slice."
             : "Endpoint placed. Set the remaining endpoint.";
     }
 
@@ -1409,4 +1517,74 @@ public partial class MainViewModel : ViewModelBase
 
         return minutes > 0 ? $"{minutes}m" : $"{overrun.Seconds}s";
     }
+
+    private void OnMapPlacementStarted(
+        object? sender,
+        WaypointEditorItemViewModel waypoint)
+    {
+        _interaction.Activate(waypoint.IsStart
+            ? MapInteractionMode.SetStart
+            : waypoint.IsFinish
+                ? MapInteractionMode.SetDestination
+                : MapInteractionMode.SetWaypoint);
+        NotifyInteractionChanged();
+    }
+
+    private void OnItineraryChanged(object? sender, EventArgs e)
+    {
+        if (IsCalculating &&
+            (_activeCalculationPlanId != Itinerary.PlanId ||
+             _activeCalculationRevision != Itinerary.CalculationRevision))
+        {
+            Interlocked.Increment(ref _calculationGeneration);
+            var cancellation = Interlocked.Exchange(ref _calculationCancellation, null);
+            cancellation?.Cancel();
+            cancellation?.Dispose();
+            _mapLayers.ClearCalculationOverlays();
+            IsCalculating = false;
+            _activeCalculationPlanId = null;
+            StatusMessage = "Calculation cancelled because the itinerary changed.";
+        }
+
+        if (Itinerary.ActiveWaypoint is null)
+        {
+            _interaction.Activate(MapInteractionMode.Browse);
+        }
+
+        if (Itinerary.Start is { } start)
+        {
+            _interaction.SetStart(start);
+        }
+
+        if (Itinerary.Finish is { } finish)
+        {
+            _interaction.SetDestination(finish);
+        }
+
+        if (_mapLayers.Routes.Count > 0 &&
+            (_displayedRoutePlanId != Itinerary.PlanId ||
+             Itinerary.ResultsInvalidated ||
+             Start is null ||
+             Destination is null ||
+             _mapLayers.Routes.Any(route =>
+                 !route.Request.Origin.IsSameLocation(Start.Value) ||
+                 !route.Request.Destination.IsSameLocation(Destination.Value))))
+        {
+            _mapLayers.SetRoutes([]);
+            _displayedRoutePlanId = null;
+            BuildTimeline([]);
+            _acquisitions.Clear();
+            HasNoaaWeather = false;
+            HasEcmwfWeather = false;
+            ActiveWeatherModel = null;
+            OnPropertyChanged(nameof(SuccessfulRouteCount));
+            LandAvoidanceWarning = null;
+        }
+
+        NotifyInteractionChanged();
+    }
+
+    private void UpdateWaypointLayers() =>
+        _mapLayers.SetWaypoints(Itinerary.Waypoints.Select(waypoint =>
+            new WaypointMapMarker(waypoint.Position, waypoint.Name, waypoint.Coordinate)));
 }

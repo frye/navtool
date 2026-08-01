@@ -16,6 +16,8 @@ public sealed record OsmTileOptions(
     bool Enabled = true,
     string UserAgent = "Navtool/1.0");
 
+public sealed record WaypointMapMarker(int Number, string Name, CoreCoordinate? Coordinate);
+
 public sealed class RouteMapLayers
 {
     public static readonly MapsuiColor NoaaColor = MapsuiColor.FromString("#0072B2");
@@ -46,6 +48,15 @@ public sealed class RouteMapLayers
     };
     private readonly MemoryLayer _windCells = new("Wind speed") { Style = null };
     private readonly MemoryLayer _windArrows = new("Wind direction") { Style = null };
+    private readonly MemoryLayer _waypointGuide = new("Waypoint guide")
+    {
+        Style = new VectorStyle
+        {
+            Line = new Pen(MapsuiColor.FromString("#607D8B"), 2),
+            Opacity = 0.65f
+        }
+    };
+    private readonly MemoryLayer _waypointMarkers = new("Waypoint markers") { Style = null };
 
     public RouteMapLayers(Map map)
     {
@@ -53,6 +64,7 @@ public sealed class RouteMapLayers
         Map = map;
         map.Layers.Add(_windCells);
         map.Layers.Add(_windArrows);
+        map.Layers.Add(_waypointGuide);
         map.Layers.Add(_noaaHistoricalFronts);
         map.Layers.Add(_ecmwfHistoricalFronts);
         map.Layers.Add(_noaaDestinationFront);
@@ -61,6 +73,7 @@ public sealed class RouteMapLayers
         map.Layers.Add(_ecmwfProvisionalRoute);
         map.Layers.Add(_noaaRoutes);
         map.Layers.Add(_ecmwfRoutes);
+        map.Layers.Add(_waypointMarkers);
     }
 
     public Map Map { get; }
@@ -68,6 +81,10 @@ public sealed class RouteMapLayers
     public IReadOnlyList<RouteResult> Routes { get; private set; } = Array.Empty<RouteResult>();
 
     public int WeatherCellCount { get; private set; }
+
+    public int WaypointMarkerCount => _waypointMarkers.Features.Count();
+
+    public int WaypointGuideSegmentCount => _waypointGuide.Features.Count();
 
     public int GetIsochroneFrontCount(ForecastModel model) =>
         GetHistoricalFrontFeatures(model).Count;
@@ -87,6 +104,20 @@ public sealed class RouteMapLayers
         _ecmwfRoutes.Features = CreateRouteFeatures(Routes.Where(route => route.Model == ForecastModel.EcmwfIfs));
         _noaaRoutes.FeaturesWereModified();
         _ecmwfRoutes.FeaturesWereModified();
+        Map.Refresh(ChangeType.Discrete);
+    }
+
+    public void SetWaypoints(IEnumerable<WaypointMapMarker> waypoints)
+    {
+        ArgumentNullException.ThrowIfNull(waypoints);
+        var ordered = waypoints.OrderBy(waypoint => waypoint.Number).ToArray();
+        _waypointMarkers.Features = ordered
+            .Where(waypoint => waypoint.Coordinate is not null)
+            .Select(CreateWaypointMarker)
+            .ToArray();
+        _waypointGuide.Features = CreateWaypointGuideFeatures(ordered);
+        _waypointMarkers.FeaturesWereModified();
+        _waypointGuide.FeaturesWereModified();
         Map.Refresh(ChangeType.Discrete);
     }
 
@@ -195,11 +226,69 @@ public sealed class RouteMapLayers
             }
         };
 
+    private static IFeature CreateWaypointMarker(WaypointMapMarker marker)
+    {
+        var point = MapProjection.ToMapPoint(marker.Coordinate!.Value);
+        var feature = new GeometryFeature(new Point(point.X, point.Y))
+        {
+            Data = marker
+        };
+        feature.Styles.Add(new LabelStyle
+        {
+            Text = marker.Number.ToString(),
+            Font = new Font { Size = 12, Bold = true },
+            ForeColor = MapsuiColor.White,
+            BackColor = new Brush(MapsuiColor.FromString("#263238")),
+            BorderColor = MapsuiColor.White,
+            BorderThickness = 2,
+            CornerRounding = 14
+        });
+        return feature;
+    }
+
+    private static IFeature[] CreateWaypointGuideFeatures(
+        IReadOnlyList<WaypointMapMarker> waypoints)
+    {
+        var features = new List<IFeature>();
+        var contiguous = new List<CoreCoordinate>();
+        foreach (var waypoint in waypoints)
+        {
+            if (waypoint.Coordinate is null)
+            {
+                AddGuideSegment(contiguous, features);
+                contiguous.Clear();
+            }
+            else
+            {
+                contiguous.Add(waypoint.Coordinate.Value);
+            }
+        }
+
+        AddGuideSegment(contiguous, features);
+        return features.ToArray();
+    }
+
+    private static void AddGuideSegment(
+        IReadOnlyList<CoreCoordinate> coordinates,
+        ICollection<IFeature> features)
+    {
+        if (coordinates.Count < 2)
+        {
+            return;
+        }
+
+        var projected = MapProjection.ToContinuousMapPoints(coordinates)
+            .Select(point => new NtsCoordinate(point.X, point.Y))
+            .ToArray();
+        features.Add(new GeometryFeature(new LineString(projected)));
+    }
+
     private static MemoryLayer CreateHistoricalFrontLayer(string name) =>
         new(name)
         {
             Style = new VectorStyle
             {
+                Fill = null,
                 Line = new Pen(ReachabilityColor, HistoricalFrontLineWidth)
                 {
                     PenStrokeCap = PenStrokeCap.Round
@@ -213,6 +302,7 @@ public sealed class RouteMapLayers
         {
             Style = new VectorStyle
             {
+                Fill = null,
                 Line = new Pen(ReachabilityColor, DestinationFrontLineWidth)
                 {
                     PenStrokeCap = PenStrokeCap.Round
