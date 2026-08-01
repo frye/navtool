@@ -101,4 +101,48 @@ public sealed class MapInputRoutingTests
             window.Close();
         }
     }
+
+    [AvaloniaFact]
+    public void CalculateRadialActionExecutesBoundCommandClosesAndDoesNotLeakToMap()
+    {
+        var viewModel = new MainViewModel(
+            null,
+            null,
+            TimeProvider.System,
+            TimeZoneInfo.Utc,
+            new OsmTileOptions(Enabled: false));
+        var window = new MainWindow { DataContext = viewModel };
+        var mapPresses = 0;
+
+        try
+        {
+            window.Show();
+            var map = Assert.IsType<MapControl>(window.FindControl<MapControl>("MapView"));
+            map.AddHandler(
+                InputElement.PointerPressedEvent,
+                (_, _) => mapPresses++,
+                RoutingStrategies.Bubble);
+            var mapPoint = map.TranslatePoint(map.Bounds.Center, window);
+            Assert.NotNull(mapPoint);
+            window.MouseDown(mapPoint.Value, MouseButton.Right, RawInputModifiers.None);
+            window.MouseUp(mapPoint.Value, MouseButton.Right, RawInputModifiers.None);
+            var calculate = Assert.IsType<Button>(
+                window.FindControl<Button>("CalculateRadialButton"));
+            Assert.Same(viewModel.CalculateCommand, calculate.Command);
+            calculate.Focus();
+            window.KeyPress(
+                Key.Enter,
+                RawInputModifiers.None,
+                PhysicalKey.Enter,
+                "\r");
+
+            Assert.False(window.IsRadialMenuOpen);
+            Assert.Equal("Routing services are unavailable in the designer.", viewModel.ErrorMessage);
+            Assert.Equal(0, mapPresses);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
 }
