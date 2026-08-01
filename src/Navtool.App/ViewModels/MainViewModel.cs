@@ -273,6 +273,12 @@ public partial class MainViewModel : ViewModelBase
 
     public bool IsSettingDestination => InteractionMode == MapInteractionMode.SetDestination;
 
+    public bool IsEndpointPlacementArmed => InteractionMode != MapInteractionMode.Browse;
+
+    public bool HasWarning => !string.IsNullOrWhiteSpace(WarningMessage);
+
+    public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
+
     public bool IsSettingWaypoint => InteractionMode == MapInteractionMode.SetWaypoint;
 
     public string LocalGribDisplay => LocalForecast is null
@@ -340,6 +346,12 @@ public partial class MainViewModel : ViewModelBase
     public int SuccessfulRouteCount => _mapLayers.Routes.Count;
 
     public IReadOnlyList<RouteResult> SuccessfulRoutes => _mapLayers.Routes;
+
+    partial void OnWarningMessageChanged(string? value) =>
+        OnPropertyChanged(nameof(HasWarning));
+
+    partial void OnErrorMessageChanged(string? value) =>
+        OnPropertyChanged(nameof(HasError));
 
     public void SetEndpoints(Coordinate start, Coordinate destination)
     {
@@ -1359,6 +1371,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(MapInstruction));
         OnPropertyChanged(nameof(IsSettingStart));
         OnPropertyChanged(nameof(IsSettingDestination));
+        OnPropertyChanged(nameof(IsEndpointPlacementArmed));
         OnPropertyChanged(nameof(IsSettingWaypoint));
         UpdateWaypointLayers();
         UpdateForecastAreaSummary();

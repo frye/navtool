@@ -316,6 +316,7 @@ public sealed class RouteMapLayers
         {
             Style = new VectorStyle
             {
+                Fill = null,
                 Line = new Pen(color, 2.5)
                 {
                     PenStrokeCap = PenStrokeCap.Round

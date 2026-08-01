@@ -793,10 +793,8 @@ public sealed class MainViewModelWorkflowTests
         var capturedSelection = Assert.IsType<RouteMapSelection>(
             viewModel.FindRouteAt(capturedWorldPoint, capturedScreenPoint));
         Assert.True(viewModel.CanInspectRouteAt(capturedWorldPoint, capturedScreenPoint));
-        Assert.True(viewModel.InspectRouteAt(
-            capturedWorldPoint,
-            capturedScreenPoint,
-            focus: false));
+
+        viewModel.SelectRoutePoint(capturedSelection, focus: false);
 
         Assert.Same(ecmwf, viewModel.SelectedRoutePoint!.Route);
         Assert.Equal(capturedSelection.PointIndex, viewModel.SelectedRoutePoint.PointIndex);

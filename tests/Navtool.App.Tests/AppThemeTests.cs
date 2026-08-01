@@ -30,6 +30,7 @@ public sealed class AppThemeTests
         try
         {
             window.Show();
+            window.SetPlanningDrawerOpen(true);
             var selector = Assert.IsType<ComboBox>(window.FindControl<ComboBox>("ThemeSelector"));
             var startButton = Assert.IsType<ToggleButton>(
                 window.FindControl<ToggleButton>("SetStartButton"));
@@ -219,6 +220,7 @@ public sealed class AppThemeTests
 
     private static Color GetPresenterBackground(TemplatedControl control)
     {
+        control.ApplyTemplate();
         var presenter = control.GetVisualDescendants()
             .OfType<ContentPresenter>()
             .Single(candidate => candidate.Name == "PART_ContentPresenter");
