@@ -39,4 +39,26 @@ public sealed class MapInteractionStateTests
         Assert.Null(state.Start);
         Assert.Null(state.Destination);
     }
+
+    [Fact]
+    public void DirectAssignmentsSetOnlyTheirEndpointAndReturnToBrowse()
+    {
+        var state = new MapInteractionState();
+        var start = new Coordinate(41.2, -70.4);
+        var destination = new Coordinate(36.8, -54.1);
+
+        state.Activate(MapInteractionMode.SetDestination);
+        state.SetStart(start);
+
+        Assert.Equal(start, state.Start);
+        Assert.Null(state.Destination);
+        Assert.Equal(MapInteractionMode.Browse, state.Mode);
+
+        state.Activate(MapInteractionMode.SetStart);
+        state.SetDestination(destination);
+
+        Assert.Equal(start, state.Start);
+        Assert.Equal(destination, state.Destination);
+        Assert.Equal(MapInteractionMode.Browse, state.Mode);
+    }
 }
