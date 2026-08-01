@@ -23,8 +23,16 @@ public enum ForecastInputMode
 
 public partial class MainViewModel : ViewModelBase
 {
+    private const double DefaultChartBufferNauticalMiles = 10;
     private const double RouteHitTolerancePixels = 10;
     private const double RoutePointHitTolerancePixels = 14;
+    private static readonly Coordinate[] DefaultChartLocations =
+    [
+        new(48.1163, -122.7583), // Port Townsend
+        new(48.5343, -123.0171), // Friday Harbor
+        new(48.5126, -122.6127), // Anacortes
+        new(48.9416, -125.5464)  // Ucluelet
+    ];
     private static readonly TimeSpan MaximumRouteWindow = TimeSpan.FromDays(10);
     private static readonly TimeSpan MaximumDepartureLeadTime = TimeSpan.FromDays(5);
     private static readonly TimeSpan WeatherDebounce = TimeSpan.FromMilliseconds(220);
@@ -207,9 +215,7 @@ public partial class MainViewModel : ViewModelBase
 
         _mapLayers = new RouteMapLayers(Map);
         UtcOffsetDisplay = FormatUtcOffset(localTimeZone.GetUtcOffset(timeProvider.GetLocalNow()));
-        Map.Navigator.CenterOnAndZoomTo(
-            MapProjection.ToMapPoint(new Coordinate(35, -55)),
-            25_000);
+        Map.Navigator.ZoomToBox(CreateDefaultChartExtent());
         UpdateForecastAreaSummary();
     }
 
@@ -1330,6 +1336,22 @@ public partial class MainViewModel : ViewModelBase
         {
             ForecastAreaSummary = $"{area} · estimate unavailable: {exception.Message}";
         }
+    }
+
+    private static MRect CreateDefaultChartExtent()
+    {
+        var bounds = GeographicBounds.FromCoordinates(DefaultChartLocations);
+        var latitudePadding = DefaultChartBufferNauticalMiles / 60d;
+        var south = bounds.South - latitudePadding;
+        var north = bounds.North + latitudePadding;
+        var polewardLatitude = Math.Max(Math.Abs(south), Math.Abs(north));
+        var longitudePadding = DefaultChartBufferNauticalMiles /
+            (60d * Math.Cos(polewardLatitude * Math.PI / 180d));
+        var lowerLeft = MapProjection.ToMapPoint(
+            new Coordinate(south, bounds.West - longitudePadding));
+        var upperRight = MapProjection.ToMapPoint(
+            new Coordinate(north, bounds.East + longitudePadding));
+        return new MRect(lowerLeft.X, lowerLeft.Y, upperRight.X, upperRight.Y);
     }
 
     private static string FormatBounds(GeographicBounds bounds) =>
