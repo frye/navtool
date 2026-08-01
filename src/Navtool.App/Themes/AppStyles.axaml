@@ -34,11 +34,14 @@
         <Setter Property="BorderBrush" Value="{DynamicResource OverlayBorderColor}" />
         <Setter Property="BorderThickness" Value="1" />
     </Style>
+    <Style Selector="Button">
+        <Setter Property="MinHeight" Value="44" />
+    </Style>
     <Style Selector="Button.primary">
         <Setter Property="Background" Value="{DynamicResource AccentColor}" />
         <Setter Property="Foreground" Value="{DynamicResource AccentTextColor}" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="MinHeight" Value="38" />
+        <Setter Property="MinHeight" Value="44" />
     </Style>
     <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource AccentHoverColor}" />
@@ -57,7 +60,7 @@
         <Setter Property="BorderThickness" Value="2" />
     </Style>
     <Style Selector="ToggleButton.map-tool">
-        <Setter Property="MinHeight" Value="38" />
+        <Setter Property="MinHeight" Value="44" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="Padding" Value="12,8" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
@@ -86,10 +89,53 @@
         <Setter Property="BorderBrush" Value="{DynamicResource FocusColor}" />
         <Setter Property="BorderThickness" Value="2" />
     </Style>
+    <Style Selector="ToggleButton.edge-handle">
+        <Setter Property="Background" Value="{DynamicResource SurfaceRaisedColor}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderColor}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontSize" Value="24" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Padding" Value="0" />
+    </Style>
+    <Style Selector="ToggleButton.edge-handle:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource ControlHoverColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="ToggleButton.edge-handle:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource ControlPressedColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="ToggleButton.edge-handle:focus-visible /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="BorderBrush" Value="{DynamicResource FocusColor}" />
+        <Setter Property="BorderThickness" Value="2" />
+    </Style>
+    <Style Selector="Button.radial-action">
+        <Setter Property="Background" Value="{DynamicResource SurfaceRaisedColor}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentColor}" />
+        <Setter Property="BorderThickness" Value="2" />
+        <Setter Property="CornerRadius" Value="24" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Padding" Value="10,0" />
+    </Style>
+    <Style Selector="Button.radial-action:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource ControlHoverColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="Button.radial-action:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource ControlPressedColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="Button.radial-action:focus-visible /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="BorderBrush" Value="{DynamicResource FocusColor}" />
+        <Setter Property="BorderThickness" Value="3" />
+    </Style>
     <Style Selector="ComboBox.theme-picker">
         <Setter Property="MinWidth" Value="128" />
-        <Setter Property="Foreground" Value="{DynamicResource HeaderTextColor}" />
-        <Setter Property="Background" Value="{DynamicResource HeaderBadgeBackgroundColor}" />
+        <Setter Property="MinHeight" Value="44" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceRaisedColor}" />
         <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderColor}" />
     </Style>
     <Style Selector="ComboBox.theme-picker:pointerover /template/ Border#Background">

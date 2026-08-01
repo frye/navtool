@@ -200,6 +200,7 @@ public sealed class RouteMapLayers
         {
             Style = new VectorStyle
             {
+                Fill = null,
                 Line = new Pen(ReachabilityColor, HistoricalFrontLineWidth)
                 {
                     PenStrokeCap = PenStrokeCap.Round
@@ -213,6 +214,7 @@ public sealed class RouteMapLayers
         {
             Style = new VectorStyle
             {
+                Fill = null,
                 Line = new Pen(ReachabilityColor, DestinationFrontLineWidth)
                 {
                     PenStrokeCap = PenStrokeCap.Round
@@ -226,6 +228,7 @@ public sealed class RouteMapLayers
         {
             Style = new VectorStyle
             {
+                Fill = null,
                 Line = new Pen(color, 2.5)
                 {
                     PenStrokeCap = PenStrokeCap.Round

@@ -142,7 +142,7 @@ public static class RadialMenuPlacement
         }
         else if (canUseVertical)
         {
-            var step = actionSize.Height + verticalGap.Value;
+            var step = actionSize.Height + verticalGap!.Value;
             offsets = [new ScreenPoint(0, -step), new ScreenPoint(0, 0), new ScreenPoint(0, step)];
             halfWidth = actionSize.Width / 2;
             halfHeight = step + (actionSize.Height / 2);
@@ -207,7 +207,7 @@ public static class RadialMenuPlacement
         ImmutableArray<RadialMenuActionPlacement> actions,
         RadialMenuLayout layout)
     {
-        var connector = anchor.DistanceTo(center) > ConnectorEpsilon
+        RadialMenuConnector? connector = anchor.DistanceTo(center) > ConnectorEpsilon
             ? new RadialMenuConnector(anchor, center)
             : null;
         return new RadialMenuPlacementResult(anchor, center, actions, layout, connector);

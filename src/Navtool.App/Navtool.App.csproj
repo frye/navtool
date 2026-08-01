@@ -27,4 +27,8 @@
     <ProjectReference Include="..\Navtool.Core\Navtool.Core.csproj" />
     <ProjectReference Include="..\Navtool.Infrastructure\Navtool.Infrastructure.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Navtool.App.Tests" />
+  </ItemGroup>
 </Project>

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Mapsui.Extensions;
 using Mapsui.Layers;
 using Navtool.App.Models;
 using Navtool.App.Services;
@@ -696,16 +697,28 @@ public sealed class MainViewModelWorkflowTests
                 ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
         viewModel.UseEcmwf = true;
         await viewModel.CalculateRoutesAsync();
+        viewModel.Map.Navigator.SetSize(1280, 800);
         var ecmwf = viewModel.SuccessfulRoutes.Single(
             route => route.Model == ForecastModel.EcmwfIfs);
         var capturedWorldPoint = MapProjection.ToMapPoint(ecmwf.Points[1].Location);
-        var projected = viewModel.Map.Navigator.Viewport.WorldToScreen(capturedWorldPoint);
+        var viewport = viewModel.Map.Navigator.Viewport;
+        var projected = viewport.WorldToScreen(capturedWorldPoint);
         var capturedScreenPoint = new ScreenPoint(projected.X, projected.Y);
+        var projectedRoutePoints = viewModel.SuccessfulRoutes
+            .SelectMany(route => MapProjection
+                .ToContinuousMapPointsNear(
+                    route.Points.Select(point => point.Location),
+                    capturedWorldPoint.X)
+                .Select(point => viewport.WorldToScreen(point)))
+            .ToArray();
+        var distantScreenPoint = new ScreenPoint(
+            projectedRoutePoints.Max(point => point.X) + 10_000,
+            projectedRoutePoints.Max(point => point.Y) + 10_000);
 
         Assert.True(viewModel.CanInspectRouteAt(capturedWorldPoint, capturedScreenPoint));
         Assert.False(viewModel.CanInspectRouteAt(
             capturedWorldPoint,
-            new ScreenPoint(capturedScreenPoint.X + 100, capturedScreenPoint.Y + 100)));
+            distantScreenPoint));
 
         Assert.True(viewModel.InspectRouteAt(
             capturedWorldPoint,
