@@ -2169,6 +2169,11 @@ public partial class MainViewModel : ViewModelBase
         var candidates = _visualizationLegs.Where(leg => leg.Key.LegId == legId).ToArray();
         if (candidates.Length == 0)
         {
+            SelectedRoutePoint = null;
+            SelectedLeg = null;
+            _selectedStopoverLabel = null;
+            _mapLayers.SelectRouteLeg(null);
+            UpdateWeatherAvailability();
             Itinerary.SetSelectedLeg(legId);
             StatusMessage = "This leg has not been calculated by any forecast model.";
             return;

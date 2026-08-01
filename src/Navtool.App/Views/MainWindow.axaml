@@ -254,10 +254,11 @@
                                                                    Classes="muted"
                                                                    TextWrapping="Wrap" />
                                                     </StackPanel>
-                                                    <Button Grid.Column="1"
-                                                            Content="View"
-                                                            Command="{Binding SelectCommand}"
-                                                            ToolTip.Tip="Select this leg on the full-route map" />
+                                                    <ToggleButton Grid.Column="1"
+                                                                  Content="View"
+                                                                  Command="{Binding SelectCommand}"
+                                                                  IsChecked="{Binding IsSelected, Mode=OneWay}"
+                                                                  ToolTip.Tip="Select this leg on the full-route map" />
                                                     <Button Grid.Column="2"
                                                             Content="Sailed"
                                                             Command="{Binding MarkSailedCommand}"
