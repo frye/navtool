@@ -323,7 +323,7 @@ public sealed class MapRenderingTests
     }
 
     [Fact]
-    public void IsochroneLayersRetainSingletonsWithoutInventingExtent()
+    public void IsochroneLayersOmitSingletonsInsteadOfDrawingZeroLengthLines()
     {
         var map = new Map();
         var layers = new RouteMapLayers(map);
@@ -353,14 +353,12 @@ public sealed class MapRenderingTests
         layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, snapshot);
         layers.SetRoutes(new[] { route });
 
-        var historical = Assert.IsType<GeometryFeature>(Assert.Single(Assert.IsType<MemoryLayer>(
-            map.Layers.Single(layer => layer.Name == "NOAA GFS isochrone fronts")).Features));
-        var historicalLine = Assert.IsType<LineString>(historical.Geometry);
-        Assert.Equal(historicalLine.Coordinates[0], historicalLine.Coordinates[1]);
-        var front = Assert.IsType<GeometryFeature>(Assert.Single(Assert.IsType<MemoryLayer>(
-            map.Layers.Single(layer => layer.Name == "NOAA GFS latest isochrone front")).Features));
-        var frontLine = Assert.IsType<LineString>(front.Geometry);
-        Assert.Equal(frontLine.Coordinates[0], frontLine.Coordinates[1]);
+        Assert.Equal(0, layers.GetIsochroneFrontCount(ForecastModel.NoaaGfs));
+        Assert.False(layers.HasLatestIsochroneFront(ForecastModel.NoaaGfs));
+        Assert.Empty(Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS isochrone fronts")).Features);
+        Assert.Empty(Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS latest isochrone front")).Features);
         Assert.Empty(Assert.IsType<MemoryLayer>(
             map.Layers.Single(layer => layer.Name == "NOAA GFS provisional route")).Features);
         Assert.Empty(Assert.IsType<MemoryLayer>(
