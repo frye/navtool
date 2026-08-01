@@ -53,6 +53,17 @@ public sealed class ItineraryEditorViewModelTests
     }
 
     [Fact]
+    public void Open_is_disabled_when_route_plan_storage_is_unavailable()
+    {
+        var editor = new ItineraryEditorViewModel
+        {
+            SelectedSavedPlan = new RoutePlanSummary(new RoutePlanId(), "Saved", 2)
+        };
+
+        Assert.False(editor.OpenCommand.CanExecute(null));
+    }
+
+    [Fact]
     public async Task Opened_result_is_invalidated_at_field_specific_boundary()
     {
         var plan = CreatePlanWithPendingResult();

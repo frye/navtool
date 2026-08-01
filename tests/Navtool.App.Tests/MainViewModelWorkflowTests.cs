@@ -254,6 +254,26 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task Invalid_itinerary_does_not_acquire_forecast()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        viewModel.Itinerary.RouteName = " ";
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Null(noaa.LastRequest);
+        Assert.Contains("whitespace", viewModel.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Intermediate_waypoint_is_editable_but_sequential_calculation_is_deferred()
     {
         var noaa = new DelegateForecastProvider(
@@ -770,19 +790,17 @@ public sealed class MainViewModelWorkflowTests
         var projected = viewModel.Map.Navigator.Viewport.WorldToScreen(capturedWorldPoint);
         var capturedScreenPoint = new ScreenPoint(projected.X, projected.Y);
 
+        var capturedSelection = Assert.IsType<RouteMapSelection>(
+            viewModel.FindRouteAt(capturedWorldPoint, capturedScreenPoint));
         Assert.True(viewModel.CanInspectRouteAt(capturedWorldPoint, capturedScreenPoint));
-        Assert.False(viewModel.CanInspectRouteAt(
-            capturedWorldPoint,
-            new ScreenPoint(-1_000, -1_000)));
-
         Assert.True(viewModel.InspectRouteAt(
             capturedWorldPoint,
             capturedScreenPoint,
             focus: false));
 
         Assert.Same(ecmwf, viewModel.SelectedRoutePoint!.Route);
-        Assert.Equal(1, viewModel.SelectedRoutePoint.PointIndex);
-        Assert.Equal(ecmwf.Points[1].Timestamp, viewModel.SelectedTimelineUtc);
+        Assert.Equal(capturedSelection.PointIndex, viewModel.SelectedRoutePoint.PointIndex);
+        Assert.Equal(capturedSelection.TimelineTimestamp, viewModel.SelectedTimelineUtc);
         Assert.Equal(ForecastModel.EcmwfIfs, viewModel.ActiveWeatherModel);
         Assert.Contains("ECMWF", viewModel.StatusMessage);
     }

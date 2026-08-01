@@ -239,10 +239,21 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
                 $"this app supports through version {CurrentSchemaVersion}.");
         }
 
-        using var migrated = version == CurrentSchemaVersion
-            ? JsonDocument.Parse(original.RootElement.GetRawText())
-            : _migrator.MigrateToCurrent(original, version, CurrentSchemaVersion);
-        var envelope = migrated.Deserialize<RoutePlanEnvelope>(JsonOptions) ??
+        if (version == CurrentSchemaVersion)
+        {
+            return DeserializeCurrent(original, path);
+        }
+
+        using var migrated = _migrator.MigrateToCurrent(
+            original,
+            version,
+            CurrentSchemaVersion);
+        return DeserializeCurrent(migrated, path);
+    }
+
+    private static RoutePlan DeserializeCurrent(JsonDocument document, string path)
+    {
+        var envelope = document.Deserialize<RoutePlanEnvelope>(JsonOptions) ??
                        throw new InvalidDataException($"Route plan file '{path}' is empty.");
         if (envelope.SchemaVersion != CurrentSchemaVersion || envelope.Plan is null)
         {

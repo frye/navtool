@@ -244,7 +244,13 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanOpen))]
     private async Task Open()
     {
-        if (_repository is null || SelectedSavedPlan is null)
+        if (_repository is null)
+        {
+            StorageError = "Route plan storage is unavailable.";
+            return;
+        }
+
+        if (SelectedSavedPlan is null)
         {
             StorageError = "Select a saved route plan to open.";
             return;
@@ -261,7 +267,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         }
     }
 
-    private bool CanOpen() => SelectedSavedPlan is not null;
+    private bool CanOpen() => _repository is not null && SelectedSavedPlan is not null;
 
     [RelayCommand]
     private async Task Save()
