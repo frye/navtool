@@ -31,15 +31,16 @@
 
         <Grid x:Name="PlanningDrawer"
               Grid.Column="0"
+              ColumnDefinitions="*,44"
               Background="{DynamicResource SidebarBackgroundColor}">
             <Border x:Name="PlanningDrawerContent"
+                    Grid.Column="0"
                     Background="{DynamicResource SidebarBackgroundColor}"
                     BorderBrush="{DynamicResource BorderColor}"
                     BorderThickness="0,0,1,0"
-                    Padding="0,0,44,0"
                     IsVisible="False">
                 <ScrollViewer>
-                    <StackPanel Margin="14"
+                    <StackPanel Margin="16"
                                 Spacing="12">
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Spacing="2">
@@ -51,39 +52,53 @@
                             </StackPanel>
                             <TextBlock Grid.Column="1"
                                       Text="NAVTOOL"
-                                       FontSize="10"
-                                       FontWeight="Bold"
+                                      FontSize="9"
+                                      FontWeight="SemiBold"
                                       Foreground="{DynamicResource TextSecondaryColor}"
-                                      VerticalAlignment="Center" />
+                                      TextAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      Opacity="0.75" />
                         </Grid>
 
                         <Border Classes="card">
-                            <StackPanel Spacing="9">
+                            <StackPanel Spacing="8">
                                 <TextBlock Classes="section-title"
                                           Text="1  ITINERARY" />
-                                <TextBox Text="{Binding Itinerary.RouteName}"
-                                        Watermark="Route name" />
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
-                                    <Button Content="New"
-                                            Command="{Binding Itinerary.NewCommand}" />
-                                    <ComboBox Grid.Column="1"
-                                              ItemsSource="{Binding Itinerary.SavedPlans}"
-                                              SelectedItem="{Binding Itinerary.SelectedSavedPlan}">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate x:DataType="core:RoutePlanSummary">
-                                                <TextBlock Text="{Binding Name}" />
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-                                    <Button Grid.Column="2"
-                                            Content="Open"
-                                            Command="{Binding Itinerary.OpenCommand}" />
-                                </Grid>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Classes="field-label"
+                                              Text="Route name" />
+                                    <TextBox Text="{Binding Itinerary.RouteName}"
+                                            Watermark="Route name" />
+                                </StackPanel>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Classes="field-label"
+                                              Text="Saved route" />
+                                    <Grid x:Name="SavedRouteActions"
+                                         Classes="compact-action-row"
+                                         ColumnDefinitions="*,Auto,Auto">
+                                        <ComboBox ItemsSource="{Binding Itinerary.SavedPlans}"
+                                                 SelectedItem="{Binding Itinerary.SelectedSavedPlan}">
+                                           <ComboBox.ItemTemplate>
+                                               <DataTemplate x:DataType="core:RoutePlanSummary">
+                                                   <TextBlock Text="{Binding Name}" />
+                                               </DataTemplate>
+                                           </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                        <Button Grid.Column="1"
+                                               Content="New"
+                                               Command="{Binding Itinerary.NewCommand}" />
+                                        <Button Grid.Column="2"
+                                               Content="Open"
+                                               Command="{Binding Itinerary.OpenCommand}" />
+                                    </Grid>
+                                </StackPanel>
                                 <Button Content="Refresh saved routes"
                                         Command="{Binding Itinerary.RefreshSavedPlansCommand}" />
-                                <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                                <Grid x:Name="EndpointActions"
+                                      ColumnDefinitions="*,*"
+                                      ColumnSpacing="8">
                                     <ToggleButton x:Name="SetStartButton"
-                                                  Classes="map-tool"
+                                                 Classes="map-tool"
                                                   Content="Set start"
                                                   IsChecked="{Binding IsSettingStart, Mode=OneWay}"
                                                   Command="{Binding SetStartCommand}"
@@ -101,47 +116,70 @@
                                         <DataTemplate x:DataType="vm:WaypointEditorItemViewModel">
                                             <Border Classes="subtle" Margin="0,0,0,6">
                                                 <StackPanel Spacing="6">
-                                                    <Grid ColumnDefinitions="28,*,Auto" ColumnSpacing="6">
+                                                    <Grid ColumnDefinitions="28,*,Auto" ColumnSpacing="8">
                                                         <Border Width="24"
                                                                 Height="24"
                                                                 CornerRadius="12"
-                                                                Background="#263238">
+                                                                Background="{DynamicResource AccentColor}"
+                                                                VerticalAlignment="Center">
                                                             <TextBlock Text="{Binding PositionLabel}"
-                                                                       Foreground="White"
+                                                                       Foreground="{DynamicResource AccentTextColor}"
                                                                        FontWeight="Bold"
                                                                        HorizontalAlignment="Center"
                                                                        VerticalAlignment="Center" />
                                                         </Border>
-                                                        <StackPanel Grid.Column="1">
+                                                        <StackPanel Grid.Column="1"
+                                                                    VerticalAlignment="Center"
+                                                                    Spacing="2">
                                                             <TextBox Text="{Binding Name}" />
                                                             <TextBlock Text="{Binding CoordinateDisplay}"
                                                                        Classes="muted" />
                                                         </StackPanel>
                                                         <Button Grid.Column="2"
                                                                 Content="Map"
+                                                                VerticalAlignment="Center"
                                                                 Command="{Binding SetOnMapCommand}" />
                                                     </Grid>
                                                     <Grid IsVisible="{Binding IsIntermediate}"
-                                                          ColumnDefinitions="Auto,*,Auto,Auto"
-                                                          ColumnSpacing="5">
+                                                          ColumnDefinitions="Auto,*"
+                                                          RowDefinitions="Auto,Auto"
+                                                          ColumnSpacing="8"
+                                                          RowSpacing="4">
                                                         <CheckBox Content="Stopover"
+                                                                  VerticalAlignment="Center"
                                                                   IsChecked="{Binding HasStopover}" />
-                                                        <NumericUpDown Grid.Column="1"
-                                                                       Minimum="0.25"
-                                                                       Maximum="240"
-                                                                       Increment="0.25"
-                                                                       Value="{Binding StopoverHours}"
-                                                                       IsEnabled="{Binding HasStopover}" />
-                                                        <Button Grid.Column="2"
-                                                                Content="↑"
-                                                                Command="{Binding MoveUpCommand}" />
-                                                        <Button Grid.Column="3"
-                                                                Content="↓"
-                                                                Command="{Binding MoveDownCommand}" />
+                                                        <Grid Grid.Column="1"
+                                                              ColumnDefinitions="*,Auto"
+                                                              ColumnSpacing="4">
+                                                            <NumericUpDown MinWidth="88"
+                                                                           Minimum="0.25"
+                                                                           Maximum="240"
+                                                                           Increment="0.25"
+                                                                           Value="{Binding StopoverHours}"
+                                                                           IsEnabled="{Binding HasStopover}" />
+                                                            <TextBlock Grid.Column="1"
+                                                                       Classes="field-label"
+                                                                       Text="hours"
+                                                                       VerticalAlignment="Center" />
+                                                        </Grid>
+                                                        <StackPanel Grid.Row="1"
+                                                                    Grid.ColumnSpan="2"
+                                                                    Classes="compact-action-row"
+                                                                    HorizontalAlignment="Right">
+                                                            <Button Classes="compact-action"
+                                                                    Content="↑"
+                                                                    ToolTip.Tip="Move waypoint earlier"
+                                                                    Command="{Binding MoveUpCommand}" />
+                                                            <Button Classes="compact-action"
+                                                                    Content="↓"
+                                                                    ToolTip.Tip="Move waypoint later"
+                                                                    Command="{Binding MoveDownCommand}" />
+                                                            <Button Classes="compact-action"
+                                                                    Content="×"
+                                                                    ToolTip.Tip="Remove waypoint"
+                                                                    Command="{Binding RemoveCommand}" />
+                                                        </StackPanel>
                                                     </Grid>
-                                                    <Button IsVisible="{Binding IsIntermediate}"
-                                                            Content="Remove waypoint"
-                                                            Command="{Binding RemoveCommand}" />
                                                 </StackPanel>
                                             </Border>
                                         </DataTemplate>
@@ -149,15 +187,18 @@
                                 </ItemsControl>
                                 <Button Content="Add waypoint"
                                         Command="{Binding Itinerary.AddWaypointCommand}" />
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                <Grid x:Name="SaveRouteActions"
+                                      Classes="compact-action-row"
+                                      ColumnDefinitions="*,Auto,Auto">
                                     <TextBox Text="{Binding Itinerary.SaveAsName}"
                                              Watermark="Save-as name" />
                                     <Button Grid.Column="1"
                                             Content="Save as"
                                             Command="{Binding Itinerary.SaveAsCommand}" />
+                                    <Button Grid.Column="2"
+                                            Content="Save"
+                                            Command="{Binding Itinerary.SaveCommand}" />
                                 </Grid>
-                                <Button Content="Save"
-                                        Command="{Binding Itinerary.SaveCommand}" />
                                 <TextBlock Text="{Binding Itinerary.StorageError}"
                                            Classes="error"
                                            TextWrapping="Wrap" />
@@ -172,7 +213,7 @@
                         </Border>
 
                         <Border Classes="card">
-                            <StackPanel Spacing="9">
+                            <StackPanel Spacing="8">
                                 <TextBlock Classes="section-title"
                                            Text="CURRENT POSITION &amp; PROGRESS" />
                                 <TextBlock Classes="muted"
@@ -234,18 +275,27 @@
                             <StackPanel Spacing="9">
                                 <TextBlock Classes="section-title"
                                            Text="DEPARTURE &amp; DURATION" />
-                                <Grid ColumnDefinitions="*,104"
-                                      ColumnSpacing="7">
-                                    <DatePicker SelectedDate="{Binding DepartureDate}" />
-                                    <TimePicker Grid.Column="1"
-                                                SelectedTime="{Binding DepartureTime}"
-                                                ClockIdentifier="24HourClock" />
+                                <Grid x:Name="DepartureFields"
+                                      ColumnDefinitions="*,104"
+                                      ColumnSpacing="8">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Classes="field-label"
+                                                   Text="Departure date" />
+                                        <DatePicker SelectedDate="{Binding DepartureDate}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1"
+                                                Spacing="4">
+                                        <TextBlock Classes="field-label"
+                                                   Text="Departure time" />
+                                        <TimePicker SelectedTime="{Binding DepartureTime}"
+                                                    ClockIdentifier="24HourClock" />
+                                    </StackPanel>
                                 </Grid>
                                 <Grid ColumnDefinitions="*,*"
-                                      ColumnSpacing="7">
-                                    <StackPanel Spacing="3">
-                                        <TextBlock Text="Days"
-                                                   Classes="muted" />
+                                      ColumnSpacing="8">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Passage days"
+                                                   Classes="field-label" />
                                         <NumericUpDown x:Name="PassageDaysInput"
                                                        Minimum="0"
                                                        Maximum="10"
@@ -254,9 +304,9 @@
                                                        Value="{Binding PassageDays}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1"
-                                                Spacing="3">
-                                        <TextBlock Text="Hours"
-                                                   Classes="muted" />
+                                                Spacing="4">
+                                        <TextBlock Text="Passage hours"
+                                                   Classes="field-label" />
                                         <NumericUpDown x:Name="PassageHoursInput"
                                                        Minimum="0"
                                                        Maximum="23"
@@ -280,7 +330,7 @@
                         </Border>
 
                         <Border Classes="card">
-                            <StackPanel Spacing="9">
+                            <StackPanel Spacing="8">
                                 <TextBlock Classes="section-title"
                                            Text="FORECAST SOURCE" />
                                 <RadioButton x:Name="DownloadForecastSource"
@@ -403,6 +453,7 @@
             </Border>
 
             <ToggleButton x:Name="PlanningDrawerHandle"
+                          Grid.Column="1"
                           Classes="edge-handle"
                           Width="44"
                           MinHeight="44"
@@ -426,65 +477,82 @@
 
             <Border HorizontalAlignment="Left"
                     VerticalAlignment="Top"
-                    Margin="14"
+                    Margin="16"
                     Classes="map-overlay"
                     CornerRadius="6"
-                    Padding="10,7"
+                    Padding="9,6"
                     IsHitTestVisible="False">
-                <StackPanel Spacing="0">
+                <StackPanel Spacing="0"
+                            HorizontalAlignment="Center">
                     <TextBlock Text="NAVTOOL"
-                               FontSize="12"
-                               FontWeight="Bold"
-                               LetterSpacing="1.2" />
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               LetterSpacing="1"
+                               TextAlignment="Center" />
                     <TextBlock Text="WEATHER ROUTING"
                                Classes="muted"
-                               FontSize="8" />
+                               FontSize="8"
+                               TextAlignment="Center"
+                               Opacity="0.8" />
                 </StackPanel>
             </Border>
 
             <Border x:Name="InstrumentRail"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Top"
-                    Margin="14"
+                    Margin="16"
                     MaxWidth="720"
                     Classes="map-overlay"
                     CornerRadius="18"
                     Padding="14,7"
                     IsHitTestVisible="False">
                 <StackPanel Orientation="Horizontal"
-                            Spacing="11">
+                            Spacing="11"
+                            VerticalAlignment="Center">
                     <TextBlock Text="{Binding SelectedRouteTitle}"
                                FontWeight="SemiBold"
                                FontSize="11"
                                MaxWidth="150"
-                               TextTrimming="CharacterEllipsis" />
+                               TextTrimming="CharacterEllipsis"
+                               TextAlignment="Center"
+                               VerticalAlignment="Center" />
                     <Border Width="1"
                             Background="{DynamicResource OverlayBorderColor}" />
                     <TextBlock Text="{Binding StatusMessage}"
                                Classes="muted"
                                FontSize="11"
                                MaxWidth="210"
-                               TextTrimming="CharacterEllipsis" />
+                               TextTrimming="CharacterEllipsis"
+                               TextAlignment="Center"
+                               VerticalAlignment="Center" />
                     <Border Width="1"
                             Background="{DynamicResource OverlayBorderColor}" />
                     <TextBlock Text="{Binding ActiveWeatherDisplay}"
                                Classes="muted"
                                FontSize="11"
                                MaxWidth="140"
-                               TextTrimming="CharacterEllipsis" />
+                               TextTrimming="CharacterEllipsis"
+                               TextAlignment="Center"
+                               VerticalAlignment="Center" />
                     <TextBlock Text="{Binding TimelineDisplay}"
                                Classes="muted"
                                FontSize="11"
                                MaxWidth="160"
-                               TextTrimming="CharacterEllipsis" />
+                               TextTrimming="CharacterEllipsis"
+                               TextAlignment="Center"
+                               VerticalAlignment="Center" />
                     <TextBlock Text="!"
                                Foreground="{DynamicResource WarningTextColor}"
                                FontWeight="Bold"
+                               TextAlignment="Center"
+                               VerticalAlignment="Center"
                                IsVisible="{Binding HasWarning}"
                                ToolTip.Tip="{Binding WarningMessage}" />
                     <TextBlock Text="!"
                                Foreground="{DynamicResource DangerTextColor}"
                                FontWeight="Bold"
+                               TextAlignment="Center"
+                               VerticalAlignment="Center"
                                IsVisible="{Binding HasError}"
                                ToolTip.Tip="{Binding ErrorMessage}" />
                 </StackPanel>
@@ -523,33 +591,53 @@
                         Click="OnSetStartRadialClicked"
                         ToolTip.Tip="Set passage start at this map point"
                         AutomationProperties.Name="Set start here"
-                        Content="Set start" />
+                        Content="Set start"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center" />
                 <Button x:Name="SetDestinationRadialButton"
                         Classes="radial-action"
                         Click="OnSetDestinationRadialClicked"
                         ToolTip.Tip="Set passage destination at this map point"
                         AutomationProperties.Name="Set destination here"
-                        Content="Set destination" />
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center">
+                    <TextBlock Text="Set&#x0a;destination"
+                               TextAlignment="Center"
+                               LineHeight="16" />
+                </Button>
+                <Button x:Name="CalculateRadialButton"
+                        Classes="radial-action primary-radial"
+                        Command="{Binding CalculateCommand}"
+                        Click="OnCalculateRadialClicked"
+                        ToolTip.Tip="Calculate route using the current passage plan"
+                        AutomationProperties.Name="Calculate route">
+                    <TextBlock Text="Calculate&#x0a;route"
+                               TextAlignment="Center"
+                               LineHeight="16" />
+                </Button>
                 <Button x:Name="InspectRadialButton"
                         Classes="radial-action"
                         Click="OnInspectRadialClicked"
                         ToolTip.Tip="Inspect the captured route point"
                         AutomationProperties.Name="Inspect route point"
-                        Content="Inspect" />
+                        Content="Inspect"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center" />
             </Canvas>
         </Grid>
 
         <Grid x:Name="RouteDrawer"
               Grid.Column="2"
+              ColumnDefinitions="44,*"
               Background="{DynamicResource SidebarBackgroundColor}">
             <Border x:Name="RouteDrawerContent"
+                    Grid.Column="1"
                     Background="{DynamicResource SidebarBackgroundColor}"
                     BorderBrush="{DynamicResource BorderColor}"
                     BorderThickness="1,0,0,0"
-                    Padding="44,0,0,0"
                     IsVisible="False">
                 <ScrollViewer>
-                    <StackPanel Margin="14"
+                    <StackPanel Margin="16"
                                 Spacing="12">
                         <StackPanel Spacing="2">
                             <TextBlock Text="Route &amp; weather"
@@ -560,7 +648,7 @@
                         </StackPanel>
 
                         <Border Classes="card">
-                            <StackPanel Spacing="9">
+                            <StackPanel Spacing="8">
                                 <TextBlock Text="{Binding SelectedRouteTitle}"
                                            FontSize="16"
                                            FontWeight="SemiBold" />
@@ -575,24 +663,29 @@
                         </Border>
 
                         <Border Classes="card">
-                            <StackPanel Spacing="9">
+                            <StackPanel Spacing="8">
                                 <TextBlock Classes="section-title"
                                            Text="TIMELINE" />
-                                <Grid ColumnDefinitions="44,44,*,Auto"
-                                      ColumnSpacing="7">
+                                <Grid x:Name="TimelineControls"
+                                      ColumnDefinitions="44,44,*"
+                                      ColumnSpacing="8">
                                     <Button x:Name="PreviousTimelineButton"
                                             Content="◀"
                                             ToolTip.Tip="Previous point"
                                             AutomationProperties.Name="Previous timeline point"
                                             Command="{Binding PreviousTimelineCommand}"
-                                            MinWidth="44" />
+                                            MinWidth="44"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center" />
                                     <Button x:Name="NextTimelineButton"
                                             Grid.Column="1"
                                             Content="▶"
                                             ToolTip.Tip="Next point"
                                             AutomationProperties.Name="Next timeline point"
                                             Command="{Binding NextTimelineCommand}"
-                                            MinWidth="44" />
+                                            MinWidth="44"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center" />
                                     <Slider x:Name="TimelineSlider"
                                             Grid.Column="2"
                                             Minimum="0"
@@ -600,13 +693,12 @@
                                             Value="{Binding TimelinePosition}"
                                             IsEnabled="{Binding HasTimeline}"
                                             VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="3"
-                                               Text="{Binding TimelineDisplay}"
-                                               Classes="muted"
-                                               VerticalAlignment="Center"
-                                               MaxWidth="92"
-                                               TextWrapping="Wrap" />
                                 </Grid>
+                                <TextBlock Text="{Binding TimelineDisplay}"
+                                           Classes="muted"
+                                           HorizontalAlignment="Center"
+                                           TextAlignment="Center"
+                                           TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
 
@@ -614,7 +706,7 @@
                                   Header="Route legend"
                                   IsExpanded="False">
                             <Border Classes="card"
-                                    Margin="0,7,0,0">
+                                    Margin="0,8,0,0">
                                 <Grid ColumnDefinitions="24,*"
                                       RowDefinitions="Auto,Auto,Auto,Auto,Auto"
                                       RowSpacing="7">
@@ -625,7 +717,8 @@
                                             VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="1"
                                                Text="NOAA GFS"
-                                               FontSize="11" />
+                                               FontSize="11"
+                                               VerticalAlignment="Center" />
                                     <Border Grid.Row="1"
                                             Width="20"
                                             Height="4"
@@ -635,7 +728,8 @@
                                     <TextBlock Grid.Row="1"
                                                Grid.Column="1"
                                                Text="ECMWF IFS"
-                                               FontSize="11" />
+                                               FontSize="11"
+                                               VerticalAlignment="Center" />
                                     <Border x:Name="HistoricalIsochroneLegendSwatch"
                                             Grid.Row="2"
                                             Width="20"
@@ -647,7 +741,8 @@
                                     <TextBlock Grid.Row="2"
                                                Grid.Column="1"
                                                Text="Historical isochrone fronts"
-                                               FontSize="11" />
+                                               FontSize="11"
+                                               VerticalAlignment="Center" />
                                     <Border x:Name="DestinationFrontLegendSwatch"
                                             Grid.Row="3"
                                             Width="20"
@@ -659,7 +754,8 @@
                                     <TextBlock Grid.Row="3"
                                                Grid.Column="1"
                                                Text="Latest isochrone front"
-                                               FontSize="11" />
+                                               FontSize="11"
+                                               VerticalAlignment="Center" />
                                     <Border Grid.Row="4"
                                             Width="20"
                                             Height="3"
@@ -670,7 +766,8 @@
                                     <TextBlock Grid.Row="4"
                                                Grid.Column="1"
                                                Text="Latest provisional route"
-                                               FontSize="11" />
+                                               FontSize="11"
+                                               VerticalAlignment="Center" />
                                 </Grid>
                             </Border>
                         </Expander>
@@ -679,7 +776,7 @@
                                   Header="Weather overlay"
                                   IsExpanded="False">
                             <Border Classes="card"
-                                    Margin="0,7,0,0">
+                                    Margin="0,8,0,0">
                                 <StackPanel Spacing="8">
                                     <StackPanel Spacing="5">
                                         <RadioButton Content="NOAA GFS"
@@ -693,18 +790,24 @@
                                     </StackPanel>
                                     <TextBlock Text="{Binding ActiveWeatherDisplay}"
                                                Classes="muted" />
-                                    <StackPanel Orientation="Horizontal"
-                                                Spacing="3">
-                                        <Border Width="19" Height="8" Background="#5BC0EB" />
-                                        <Border Width="19" Height="8" Background="#00A6A6" />
-                                        <Border Width="19" Height="8" Background="#7FB800" />
-                                        <Border Width="19" Height="8" Background="#F4D35E" />
-                                        <Border Width="19" Height="8" Background="#E4572E" />
-                                        <Border Width="19" Height="8" Background="#9B2C67" />
-                                    </StackPanel>
-                                    <TextBlock Text="0   5   10   15   25   35+ knots"
-                                               FontSize="10"
-                                               Foreground="{DynamicResource TextSecondaryColor}" />
+                                    <Grid x:Name="WeatherLegend"
+                                          ColumnDefinitions="*,*,*,*,*,*"
+                                          RowDefinitions="8,Auto"
+                                          ColumnSpacing="3"
+                                          RowSpacing="4">
+                                        <Border Background="#5BC0EB" />
+                                        <Border Grid.Column="1" Background="#00A6A6" />
+                                        <Border Grid.Column="2" Background="#7FB800" />
+                                        <Border Grid.Column="3" Background="#F4D35E" />
+                                        <Border Grid.Column="4" Background="#E4572E" />
+                                        <Border Grid.Column="5" Background="#9B2C67" />
+                                        <TextBlock Grid.Row="1" Text="0" FontSize="10" TextAlignment="Center" />
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Text="5" FontSize="10" TextAlignment="Center" />
+                                        <TextBlock Grid.Row="1" Grid.Column="2" Text="10" FontSize="10" TextAlignment="Center" />
+                                        <TextBlock Grid.Row="1" Grid.Column="3" Text="15" FontSize="10" TextAlignment="Center" />
+                                        <TextBlock Grid.Row="1" Grid.Column="4" Text="25" FontSize="10" TextAlignment="Center" />
+                                        <TextBlock Grid.Row="1" Grid.Column="5" Text="35+ kt" FontSize="10" TextAlignment="Center" />
+                                    </Grid>
                                     <TextBlock Text="{Binding WeatherLayerError}"
                                                TextWrapping="Wrap"
                                                Classes="error"
@@ -731,6 +834,7 @@
             </Border>
 
             <ToggleButton x:Name="RouteDrawerHandle"
+                          Grid.Column="0"
                           Classes="edge-handle"
                           Width="44"
                           MinHeight="44"
