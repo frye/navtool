@@ -23,8 +23,14 @@ It targets macOS, Windows, and Linux.
 - Compare model routes with distinct map colors. ECMWF is shown as an
   experimental option and currently fails explicitly because official indexed
   retrieval is not implemented.
-- Scrub a shared UTC timeline or move among route-point timestamps.
-- Click near a route to select and focus its nearest point.
+- Render every saved successful itinerary leg together on one full-route map,
+  including sailed history, while retaining waypoint guides for blocked,
+  uncalculated, and out-of-window legs.
+- Select a leg from the ordered list or map to emphasize it without hiding the
+  rest of the route, then fit the leg or focus an individual route point.
+- Scrub a route-wide UTC timeline for one active forecast model at a time, move
+  among that model's route-point timestamps, and see waypoint stopovers as
+  explicit stationary holds.
 - Display time-varying wind-speed colors and directional arrows for the active
   model.
 - Switch at runtime among Light, Dark, and the midnight-blue and brass
@@ -96,6 +102,30 @@ cmake --build native/Navtool.RouterBridge/build --config Release --parallel
 
 `NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY` can also be overridden if you need to
 fetch releases from a different fork.
+
+## Multi-point routes and visualization
+
+Each forecast model calculates itinerary legs sequentially. A successful leg's
+arrival plus the destination waypoint's optional stopover determines that
+model's next departure; NOAA and ECMWF may therefore reach the same leg at
+different UTC times. Failure, cancellation, forecast exhaustion, or a departure
+beyond the rolling forecast cutoff is recorded per model and leg. Later legs
+remain visibly listed with their status, but Navtool never draws invented
+optimized geometry between successful legs.
+
+The map stores feature identity as plan, stable leg, model, calculation session,
+and route-result ID. This keeps revisions and parallel model results distinct
+during list selection, map hit testing, selected-leg emphasis, and timeline
+navigation. The active model's timeline spans its saved successful legs in
+chronological order. Stopover gaps are stationary holds at the waypoint; the
+timeline does not compare unrelated nearest NOAA and ECMWF points as though they
+represented the same forecast instant.
+
+Marking a leg sailed preserves its latest model geometry as historical context.
+An explicit active leg and optional current-position marker can resume a rolling
+route without changing stable itinerary leg IDs. Recalculation publishes each
+completed leg atomically, so cancellation retains completed work while stale
+calculation generations cannot replace newer itinerary state.
 
 ## Streaming route visualization
 
@@ -175,6 +205,9 @@ Route plans are stored atomically as JSON beneath `routes/` in the same root.
 Plan files contain waypoint, stopover, calculation-session, leg-outcome, sailed
 state, and route-point metadata, but never forecast binaries. Files from unknown
 future schemas or with inconsistent IDs/references are rejected visibly.
+Opening a saved plan restores full-route geometry, sailed history, per-model leg
+status, and the model-specific timeline. Weather overlays are not restored from
+route JSON.
 
 NOAA data is downloaded from the operational NOMADS GFS filter. Navtool derives
 an antimeridian-safe buffered passage area, requests every available forecast
@@ -197,6 +230,13 @@ contain compatible paired 10 m U/V fields, and cover both the buffered route
 area and the full departure-to-arrival interval. Choosing a local file performs
 no forecast HTTP request. If inspection or routing setup fails, the app reports
 that separately from online forecast acquisition.
+
+Weather availability is scoped to the selected leg and forecast model. Navtool
+uses an in-memory acquisition only when its model, time range, and geographic
+bounds cover that leg. Switching legs or models cancels stale sampling and
+clears the overlay before a compatible acquisition is selected. Saved route
+geometry and details remain available after restart, but the UI explicitly
+reports weather unavailable until a compatible forecast is acquired again.
 
 The default map uses standard OpenStreetMap tiles with attribution. Those tiles
 are intended for normal interactive use, not bulk/offline prefetching. A
@@ -244,11 +284,11 @@ field/step selection but not server-side geographic cropping, and indexed
 10u/10v retrieval has not yet been implemented in this application. No fallback
 or other model is presented as ECMWF data.
 
-Ordered waypoint editing and persistence are available now, while route
-calculation remains intentionally limited to a direct two-waypoint plan.
-Sequential calculation across intermediate waypoints and optimized multi-leg
-rendering are deferred; remove intermediate waypoints to calculate a direct
-route with the existing native engine.
+Multi-point results depend on the forecast available when each leg was
+calculated. A sailed line is historical planning context, not a recorded vessel
+track, and a stationary stopover is a schedule representation rather than
+evidence that the vessel remained at that exact coordinate. Blocked or
+out-of-window legs intentionally show only itinerary guides and status.
 
 Saildocs is not used as an application API: it is an asynchronous email service
 for bandwidth-constrained users rather than a reliable regional download

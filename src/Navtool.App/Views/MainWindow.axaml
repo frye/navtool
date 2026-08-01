@@ -204,21 +204,28 @@
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:RouteLegEditorItemViewModel">
                                             <Border Classes="subtle" Margin="0,0,0,6">
-                                                <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="5">
+                                                <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="5">
                                                     <StackPanel>
                                                         <TextBlock Text="{Binding Label}" />
                                                         <TextBlock Text="{Binding StatusLabel}"
                                                                    Classes="muted" />
+                                                        <TextBlock Text="{Binding OutcomeStatus}"
+                                                                   Classes="muted"
+                                                                   TextWrapping="Wrap" />
                                                     </StackPanel>
                                                     <Button Grid.Column="1"
+                                                            Content="View"
+                                                            Command="{Binding SelectCommand}"
+                                                            ToolTip.Tip="Select this leg on the full-route map" />
+                                                    <Button Grid.Column="2"
                                                             Content="Sailed"
                                                             Command="{Binding MarkSailedCommand}"
                                                             ToolTip.Tip="Mark this leg as sailed/completed" />
-                                                    <Button Grid.Column="2"
+                                                    <Button Grid.Column="3"
                                                             Content="Unmark"
                                                             Command="{Binding UnmarkSailedCommand}"
                                                             ToolTip.Tip="Unmark this leg as sailed" />
-                                                    <Button Grid.Column="3"
+                                                    <Button Grid.Column="4"
                                                             Content="Active"
                                                             Command="{Binding MakeActiveCommand}"
                                                             ToolTip.Tip="Explicitly resume from this leg" />
@@ -556,7 +563,7 @@
                                        FontSize="20"
                                        FontWeight="SemiBold" />
                             <TextBlock Classes="muted"
-                                       Text="Selected point and shared UTC timeline." />
+                                       Text="Full-route context with a model-specific UTC timeline." />
                         </StackPanel>
 
                         <Border Classes="card">
@@ -567,10 +574,17 @@
                                 <TextBlock Text="{Binding SelectedRouteDetails}"
                                            Classes="muted"
                                            TextWrapping="Wrap" />
-                                <Button Command="{Binding FocusSelectedRoutePointCommand}"
-                                        Content="Focus on map"
-                                        HorizontalAlignment="Stretch"
-                                        ToolTip.Tip="Center the selected route point" />
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="7">
+                                    <Button Command="{Binding FocusSelectedLegCommand}"
+                                            Content="Fit selected leg"
+                                            HorizontalAlignment="Stretch"
+                                            ToolTip.Tip="Fit the selected leg without hiding route-wide context" />
+                                    <Button Grid.Column="1"
+                                            Command="{Binding FocusSelectedRoutePointCommand}"
+                                            Content="Focus point"
+                                            HorizontalAlignment="Stretch"
+                                            ToolTip.Tip="Center the selected route point" />
+                                </Grid>
                             </StackPanel>
                         </Border>
 
@@ -578,6 +592,16 @@
                             <StackPanel Spacing="9">
                                 <TextBlock Classes="section-title"
                                            Text="TIMELINE" />
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <RadioButton Content="NOAA GFS"
+                                                 Command="{Binding ActivateNoaaRouteCommand}"
+                                                 IsChecked="{Binding IsNoaaRouteActive, Mode=OneWay}"
+                                                 IsVisible="{Binding HasNoaaRoutes}" />
+                                    <RadioButton Content="ECMWF experimental"
+                                                 Command="{Binding ActivateEcmwfRouteCommand}"
+                                                 IsChecked="{Binding IsEcmwfRouteActive, Mode=OneWay}"
+                                                 IsVisible="{Binding HasEcmwfRoutes}" />
+                                </StackPanel>
                                 <Grid ColumnDefinitions="44,44,*,Auto"
                                       ColumnSpacing="7">
                                     <Button x:Name="PreviousTimelineButton"

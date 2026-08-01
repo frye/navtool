@@ -555,6 +555,47 @@ public sealed class MapRenderingTests
         Assert.True(nearWesternCopy.Average(point => point.X) < 0);
     }
 
+    [Fact]
+    public void Route_leg_features_keep_identity_and_selected_emphasis_across_antimeridian()
+    {
+        var map = new Map();
+        var layers = new RouteMapLayers(map);
+        var first = CreateVisualizationLeg(
+            ForecastModel.NoaaGfs,
+            0,
+            new Coordinate(10, 179),
+            new Coordinate(10, -179));
+        var second = CreateVisualizationLeg(
+            ForecastModel.NoaaGfs,
+            1,
+            new Coordinate(10, -179),
+            new Coordinate(11, -175));
+
+        layers.SetRouteLegs([first, second], second.Key);
+
+        var routeLayer = Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS routes"));
+        var features = routeLayer.Features.Cast<GeometryFeature>().ToArray();
+        Assert.Equal(2, features.Length);
+        Assert.Equal(first.Key, Assert.IsType<RouteLegVisualization>(features[0].Data).Key);
+        Assert.Equal(second.Key, Assert.IsType<RouteLegVisualization>(features[1].Data).Key);
+        var subdued = Assert.IsType<VectorStyle>(Assert.Single(features[0].Styles));
+        var selected = Assert.IsType<VectorStyle>(Assert.Single(features[1].Styles));
+        Assert.Equal(0.3f, subdued.Opacity);
+        Assert.Equal(2.25, subdued.Line!.Width);
+        Assert.Equal(1f, selected.Opacity);
+        Assert.Equal(6, selected.Line!.Width);
+        var datelineLine = Assert.IsType<LineString>(features[0].Geometry);
+        var followingLine = Assert.IsType<LineString>(features[1].Geometry);
+        Assert.True(Math.Abs(datelineLine.Coordinates[1].X - datelineLine.Coordinates[0].X) < 500_000);
+        Assert.Equal(datelineLine.Coordinates[^1].X, followingLine.Coordinates[0].X, 6);
+        Assert.Equal(
+            followingLine.Coordinates[1].X,
+            layers.GetProjectedRoutePoint(second.Key, 1)!.X,
+            6);
+        Assert.Equal(second.Key, layers.SelectedRouteKey);
+    }
+
     private static MainViewModel CreateViewModel(bool tilesEnabled) =>
         new(
             null,
@@ -593,6 +634,46 @@ public sealed class MapRenderingTests
                     10)
             },
             new RouteDiagnostics(10, 20, 5, (int)(frontierTime.Hour + 1)));
+    }
+
+    private static RouteLegVisualization CreateVisualizationLeg(
+        ForecastModel model,
+        int index,
+        Coordinate fromCoordinate,
+        Coordinate toCoordinate)
+    {
+        var planId = new RoutePlanId();
+        var sessionId = new RouteCalculationSessionId();
+        var from = new RouteWaypoint($"From {index}", fromCoordinate);
+        var to = new RouteWaypoint($"To {index}", toCoordinate);
+        var legId = RouteLegId.FromEndpoints(from.Id, to.Id);
+        var departure = new DateTimeOffset(2026, 7, 15, index * 2, 0, 0, TimeSpan.Zero);
+        var request = new RouteRequest(
+            $"{planId}-leg-{index}-{sessionId}",
+            fromCoordinate,
+            toCoordinate,
+            departure,
+            departure.AddHours(4));
+        var route = new RouteResult(
+            request,
+            model,
+            [
+                new RoutePoint(fromCoordinate, departure, 90, 6, 15, 180, 0),
+                new RoutePoint(toCoordinate, departure.AddHours(2), 90, 6, 15, 180, 100)
+            ],
+            new RouteDiagnostics(10, 20, 5, 2));
+        return new RouteLegVisualization(
+            new RouteVisualizationKey(planId, legId, model, sessionId, request.RouteId),
+            index,
+            from,
+            to,
+            RouteLegOutcomeState.Succeeded,
+            RouteLegOutcomeReason.CalculationSucceeded,
+            route,
+            null,
+            false,
+            departure,
+            departure.AddHours(2));
     }
 
     private static Coordinate[] CreateDatelineFrontier(double longitudeOffset) =>

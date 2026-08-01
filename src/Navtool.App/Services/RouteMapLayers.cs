@@ -29,8 +29,8 @@ public sealed class RouteMapLayers
     public const float DestinationFrontOpacity = 0.92f;
     private const int IsochroneSmoothingIterations = 2;
 
-    private readonly MemoryLayer _noaaRoutes = CreateRouteLayer("NOAA GFS routes", NoaaColor);
-    private readonly MemoryLayer _ecmwfRoutes = CreateRouteLayer("ECMWF IFS routes", EcmwfColor);
+    private readonly MemoryLayer _noaaRoutes = CreateRouteLayer("NOAA GFS routes");
+    private readonly MemoryLayer _ecmwfRoutes = CreateRouteLayer("ECMWF IFS routes");
     private readonly MemoryLayer _noaaHistoricalFronts = CreateHistoricalFrontLayer("NOAA GFS isochrone fronts");
     private readonly MemoryLayer _ecmwfHistoricalFronts = CreateHistoricalFrontLayer("ECMWF IFS isochrone fronts");
     private readonly MemoryLayer _noaaDestinationFront = CreateDestinationFrontLayer("NOAA GFS latest isochrone front");
@@ -82,6 +82,11 @@ public sealed class RouteMapLayers
 
     public IReadOnlyList<RouteResult> Routes { get; private set; } = Array.Empty<RouteResult>();
 
+    public IReadOnlyList<RouteLegVisualization> RouteLegs { get; private set; } =
+        Array.Empty<RouteLegVisualization>();
+
+    public RouteVisualizationKey? SelectedRouteKey { get; private set; }
+
     public int WeatherCellCount { get; private set; }
 
     public int WaypointMarkerCount => _waypointMarkers.Features.Count();
@@ -108,13 +113,43 @@ public sealed class RouteMapLayers
     {
         ArgumentNullException.ThrowIfNull(routes);
         Routes = routes.ToArray();
+        RouteLegs = Array.Empty<RouteLegVisualization>();
+        SelectedRouteKey = null;
 
-        _noaaRoutes.Features = CreateRouteFeatures(Routes.Where(route => route.Model == ForecastModel.NoaaGfs));
-        _ecmwfRoutes.Features = CreateRouteFeatures(Routes.Where(route => route.Model == ForecastModel.EcmwfIfs));
+        _noaaRoutes.Features = CreateRouteFeatures(
+            Routes.Where(route => route.Model == ForecastModel.NoaaGfs),
+            NoaaColor);
+        _ecmwfRoutes.Features = CreateRouteFeatures(
+            Routes.Where(route => route.Model == ForecastModel.EcmwfIfs),
+            EcmwfColor);
         _noaaRoutes.FeaturesWereModified();
         _ecmwfRoutes.FeaturesWereModified();
         Map.Refresh(ChangeType.Discrete);
     }
+
+    public void SetRouteLegs(
+        IEnumerable<RouteLegVisualization> legs,
+        RouteVisualizationKey? selectedKey = null)
+    {
+        ArgumentNullException.ThrowIfNull(legs);
+        RouteLegs = legs.Where(leg => leg.HasOptimizedGeometry).ToArray();
+        Routes = RouteLegs.Select(leg => leg.Route!).ToArray();
+        SelectedRouteKey = selectedKey;
+        _noaaRoutes.Features = CreateRouteFeatures(
+            RouteLegs.Where(leg => leg.Key.Model == ForecastModel.NoaaGfs),
+            NoaaColor,
+            selectedKey);
+        _ecmwfRoutes.Features = CreateRouteFeatures(
+            RouteLegs.Where(leg => leg.Key.Model == ForecastModel.EcmwfIfs),
+            EcmwfColor,
+            selectedKey);
+        _noaaRoutes.FeaturesWereModified();
+        _ecmwfRoutes.FeaturesWereModified();
+        Map.Refresh(ChangeType.Discrete);
+    }
+
+    public void SelectRouteLeg(RouteVisualizationKey? key) =>
+        SetRouteLegs(RouteLegs, key);
 
     public void SetWaypoints(IEnumerable<WaypointMapMarker> waypoints)
     {
@@ -146,10 +181,19 @@ public sealed class RouteMapLayers
 
     public void FitRoutes()
     {
-        var projected = Routes
-            .SelectMany(route => MapProjection.ToContinuousMapPoints(
-                route.Points.Select(point => point.Location)))
+        var projected = Enum.GetValues<ForecastModel>()
+            .SelectMany(model => ProjectRouteLegs(
+                RouteLegs.Where(leg => leg.Key.Model == model)))
+            .SelectMany(item => item.Points)
             .ToArray();
+        if (projected.Length == 0)
+        {
+            projected = Routes
+                .SelectMany(route => MapProjection.ToContinuousMapPoints(
+                    route.Points.Select(point => point.Location)))
+                .ToArray();
+        }
+
         if (projected.Length == 0)
         {
             return;
@@ -162,6 +206,37 @@ public sealed class RouteMapLayers
             projected.Max(point => point.Y));
         Map.Navigator.ZoomToBox(extent.Grow(
             Math.Max(extent.Width, extent.Height) * 0.08 + 1_000));
+    }
+
+    public void FitRouteLeg(RouteVisualizationKey key)
+    {
+        var projected = ProjectRouteLegs(
+                RouteLegs.Where(leg => leg.Key.Model == key.Model))
+            .SingleOrDefault(item => item.Leg.Key == key)
+            ?.Points;
+        if (projected is null || projected.Count == 0)
+        {
+            return;
+        }
+
+        var extent = new MRect(
+            projected.Min(point => point.X),
+            projected.Min(point => point.Y),
+            projected.Max(point => point.X),
+            projected.Max(point => point.Y));
+        Map.Navigator.ZoomToBox(extent.Grow(
+            Math.Max(extent.Width, extent.Height) * 0.12 + 1_000));
+    }
+
+    public MPoint? GetProjectedRoutePoint(RouteVisualizationKey key, int pointIndex)
+    {
+        var projected = ProjectRouteLegs(
+                RouteLegs.Where(leg => leg.Key.Model == key.Model))
+            .SingleOrDefault(item => item.Leg.Key == key)
+            ?.Points;
+        return projected is not null && pointIndex >= 0 && pointIndex < projected.Count
+            ? projected[pointIndex]
+            : null;
     }
 
     public void AddCalculationSnapshot(
@@ -237,16 +312,10 @@ public sealed class RouteMapLayers
         Map.Refresh(ChangeType.Discrete);
     }
 
-    private static MemoryLayer CreateRouteLayer(string name, MapsuiColor color) =>
+    private static MemoryLayer CreateRouteLayer(string name) =>
         new(name)
         {
-            Style = new VectorStyle
-            {
-                Line = new Pen(color, 4)
-                {
-                    PenStrokeCap = PenStrokeCap.Round
-                }
-            }
+            Style = null
         };
 
     private static IFeature CreateWaypointMarker(WaypointMapMarker marker)
@@ -365,11 +434,85 @@ public sealed class RouteMapLayers
             }
         };
 
-    private static IEnumerable<IFeature> CreateRouteFeatures(IEnumerable<RouteResult> routes) =>
+    private static IEnumerable<IFeature> CreateRouteFeatures(
+        IEnumerable<RouteResult> routes,
+        MapsuiColor color) =>
         routes
-            .Select(CreateRouteFeature)
+            .Select(route =>
+            {
+                var feature = CreateRouteFeature(route);
+                if (feature is not null)
+                {
+                    feature.Styles.Add(CreateRouteStyle(color, 4, 0.92f));
+                }
+
+                return feature;
+            })
             .OfType<IFeature>()
             .ToArray();
+
+    private static IEnumerable<IFeature> CreateRouteFeatures(
+        IEnumerable<RouteLegVisualization> legs,
+        MapsuiColor color,
+        RouteVisualizationKey? selectedKey) =>
+        ProjectRouteLegs(legs)
+            .Select(projected =>
+            {
+                var leg = projected.Leg;
+                var feature = CreateRouteFeature(projected.Points, leg);
+                if (feature is null)
+                {
+                    return null;
+                }
+
+                var isSelected = selectedKey == leg.Key;
+                feature.Styles.Add(CreateRouteStyle(
+                    color,
+                    isSelected ? 6 : selectedKey is null ? 4 : 2.25,
+                    isSelected ? 1f : selectedKey is null ? 0.92f : 0.3f));
+                return feature;
+            })
+            .OfType<IFeature>()
+            .ToArray();
+
+    private static IReadOnlyList<ProjectedRouteLeg> ProjectRouteLegs(
+        IEnumerable<RouteLegVisualization> legs)
+    {
+        var projected = new List<ProjectedRouteLeg>();
+        double? referenceX = null;
+        foreach (var leg in legs
+                     .OrderBy(item => item.LegIndex)
+                     .ThenBy(item => item.Route!.Request.DepartureTime))
+        {
+            var points = referenceX is { } reference
+                ? MapProjection.ToContinuousMapPointsNear(
+                    leg.Route!.Points.Select(point => point.Location),
+                    reference)
+                : MapProjection.ToContinuousMapPoints(
+                    leg.Route!.Points.Select(point => point.Location));
+            if (points.Count > 0)
+            {
+                referenceX = points[^1].X;
+            }
+
+            projected.Add(new ProjectedRouteLeg(leg, points));
+        }
+
+        return projected;
+    }
+
+    private static VectorStyle CreateRouteStyle(
+        MapsuiColor color,
+        double width,
+        float opacity) =>
+        new()
+        {
+            Line = new Pen(color, width)
+            {
+                PenStrokeCap = PenStrokeCap.Round
+            },
+            Opacity = opacity
+        };
 
     private static IFeature? CreateRouteFeature(RouteResult route) =>
         CreateRouteFeature(route.Points, route);
@@ -392,6 +535,27 @@ public sealed class RouteMapLayers
         feature.Data = data;
         return feature;
     }
+
+    private static IFeature? CreateRouteFeature(
+        IReadOnlyList<MPoint> points,
+        object data)
+    {
+        if (points.Count < 2)
+        {
+            return null;
+        }
+
+        return new GeometryFeature(new LineString(points
+            .Select(point => new NtsCoordinate(point.X, point.Y))
+            .ToArray()))
+        {
+            Data = data
+        };
+    }
+
+    private sealed record ProjectedRouteLeg(
+        RouteLegVisualization Leg,
+        IReadOnlyList<MPoint> Points);
 
     private static IEnumerable<IFeature> CreateIsochroneFrontFeatures(
         RouteCalculationSnapshot snapshot)

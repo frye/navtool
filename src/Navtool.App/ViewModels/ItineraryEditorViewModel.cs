@@ -119,13 +119,15 @@ public sealed partial class RouteLegEditorItemViewModel : ViewModelBase
         RouteLegId id,
         int index,
         string fromName,
-        string toName)
+        string toName,
+        string outcomeStatus)
     {
         _owner = owner;
         Id = id;
         Index = index;
         FromName = fromName;
         ToName = toName;
+        OutcomeStatus = outcomeStatus;
     }
 
     public RouteLegId Id { get; }
@@ -138,6 +140,8 @@ public sealed partial class RouteLegEditorItemViewModel : ViewModelBase
 
     public string Label => $"Leg {Index + 1}: {FromName} \u2192 {ToName}";
 
+    public string OutcomeStatus { get; }
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(MarkSailedCommand))]
     [NotifyCanExecuteChangedFor(nameof(UnmarkSailedCommand))]
@@ -148,7 +152,13 @@ public sealed partial class RouteLegEditorItemViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(MakeActiveCommand))]
     private bool _isActive;
 
+    [ObservableProperty]
+    private bool _isSelected;
+
     public string StatusLabel => IsSailed ? "Sailed" : IsActive ? "Active" : "Upcoming";
+
+    [RelayCommand]
+    private void Select() => _owner.SelectLeg(Id);
 
     [RelayCommand(CanExecute = nameof(CanMarkSailed))]
     private void MarkSailed() => _owner.MarkLegSailed(Id);
@@ -227,7 +237,11 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
 
     public event EventHandler? CurrentPositionPlacementStarted;
 
+    public event EventHandler<RouteLegId>? LegSelected;
+
     public ObservableCollection<RouteLegEditorItemViewModel> Legs { get; } = [];
+
+    public RoutePlan? CurrentPlan => _plan;
 
     public Coordinate? Start => Waypoints.FirstOrDefault()?.Coordinate;
 
@@ -398,6 +412,16 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         {
             CalculationRevision++;
             MarkChanged();
+        }
+    }
+
+    internal void SelectLeg(RouteLegId legId) => LegSelected?.Invoke(this, legId);
+
+    public void SetSelectedLeg(RouteLegId? legId)
+    {
+        foreach (var leg in Legs)
+        {
+            leg.IsSelected = leg.Id == legId;
         }
     }
 
@@ -949,13 +973,43 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         {
             var from = planForLegs.Waypoints.Single(waypoint => waypoint.Id == leg.FromWaypointId);
             var to = planForLegs.Waypoints.Single(waypoint => waypoint.Id == leg.ToWaypointId);
-            Legs.Add(new RouteLegEditorItemViewModel(this, leg.Id, leg.Index, from.Name, to.Name)
+            var outcomes = planForLegs.Results
+                .Select(result =>
+                {
+                    var outcome = result.Legs.Single(item => item.LegId == leg.Id);
+                    return $"{ModelShortName(result.Model)} {OutcomeStatusName(outcome)}";
+                })
+                .ToArray();
+            Legs.Add(new RouteLegEditorItemViewModel(
+                this,
+                leg.Id,
+                leg.Index,
+                from.Name,
+                to.Name,
+                outcomes.Length == 0 ? "not calculated" : string.Join(" · ", outcomes))
             {
                 IsSailed = planForLegs.SailedLegIds.Contains(leg.Id),
                 IsActive = leg.Index == activeIndex
             });
         }
+
     }
+
+    private static string ModelShortName(ForecastModel model) =>
+        model == ForecastModel.NoaaGfs ? "NOAA" : "ECMWF";
+
+    private static string OutcomeStatusName(RouteLegResult outcome) => outcome.State switch
+    {
+        RouteLegOutcomeState.Succeeded
+            when outcome.Reason == RouteLegOutcomeReason.ForecastExhausted => "forecast-limited",
+        RouteLegOutcomeState.Succeeded => "complete",
+        RouteLegOutcomeState.Failed => "failed",
+        RouteLegOutcomeState.Cancelled => "cancelled",
+        RouteLegOutcomeState.Blocked => "blocked",
+        RouteLegOutcomeState.OutsideForecastWindow => "outside window",
+        RouteLegOutcomeState.Invalidated => "stale",
+        _ => "not calculated"
+    };
 
     private void NotifyCurrentPositionChanged()
     {

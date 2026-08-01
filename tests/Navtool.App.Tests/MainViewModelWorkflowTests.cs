@@ -191,6 +191,7 @@ public sealed class MainViewModelWorkflowTests
         await viewModel.CalculateRoutesAsync();
 
         Assert.Equal(0, viewModel.SuccessfulRouteCount);
+        Assert.Null(viewModel.SelectedLeg?.Route);
         Assert.Null(viewModel.LandAvoidanceWarning);
     }
 
@@ -305,10 +306,14 @@ public sealed class MainViewModelWorkflowTests
             (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
         var engine = new DelegateRouteEngine((request, forecast, _) =>
             ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        ForecastAcquisition? sampledAcquisition = null;
         var viewModel = CreateViewModel(
             new RoutingWorkflow(new[] { noaa }, engine),
-            new DelegateWeatherSampler((_, _, _, _, _, _) =>
-                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            new DelegateWeatherSampler((acquisition, _, _, _, _, _) =>
+            {
+                sampledAcquisition = acquisition;
+                return ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty);
+            }),
             routePlanRepository: repository);
         viewModel.Itinerary.AddWaypointCommand.Execute(null);
         var waypoint = viewModel.Itinerary.Waypoints[1];
@@ -329,15 +334,42 @@ public sealed class MainViewModelWorkflowTests
         Assert.Equal(36, waypoint.Coordinate!.Value.Latitude, 10);
         Assert.Equal(-58, waypoint.Coordinate.Value.Longitude, 10);
         Assert.Equal(2, viewModel.SuccessfulRouteCount);
+        Assert.Equal(2, viewModel.VisualizedRouteLegs.Count);
+        Assert.All(
+            viewModel.VisualizedRouteLegs,
+            leg => Assert.Equal(viewModel.Itinerary.PlanId, leg.Key.PlanId));
+        Assert.Single(viewModel.VisualizedRouteLegs.Select(leg => leg.Key.SessionId).Distinct());
+        Assert.Equal(2, viewModel.VisualizedRouteLegs.Select(leg => leg.Key.LegId).Distinct().Count());
         Assert.Contains("leg 1 complete", viewModel.NoaaStatus, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("leg 2 complete", viewModel.NoaaStatus, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("All itinerary legs are complete.", viewModel.StatusMessage);
+        viewModel.TimelinePosition = 0.5;
+        Assert.Contains("Stopover at", viewModel.TimelineDisplay);
+        Assert.Contains("stationary hold", viewModel.SelectedRouteDetails);
+        viewModel.Itinerary.Legs[1].SelectCommand.Execute(null);
+        Assert.Equal(1, viewModel.SelectedLeg!.LegIndex);
+        await viewModel.RefreshWeatherAsync(noaa.Requests[1].Bounds, 2, 2);
+        Assert.Equal(noaa.Requests[1].From, sampledAcquisition!.Request.From);
 
         var loaded = await repository.OpenAsync(viewModel.Itinerary.PlanId);
         Assert.Equal(2, loaded.LatestResult(ForecastModel.NoaaGfs)!.Legs.Length);
         var json = await File.ReadAllTextAsync(
             Path.Combine(repository.RootDirectory, $"{loaded.Id}.route.json"));
         Assert.DoesNotContain("fake-forecast.grib2", json, StringComparison.OrdinalIgnoreCase);
+
+        var reopened = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            routePlanRepository: repository);
+        await reopened.Itinerary.RefreshSavedPlansCommand.ExecuteAsync(null);
+        reopened.Itinerary.SelectedSavedPlan = reopened.Itinerary.SavedPlans.Single();
+        await reopened.Itinerary.OpenCommand.ExecuteAsync(null);
+        Assert.Equal(2, reopened.SuccessfulRouteCount);
+        Assert.True(reopened.HasTimeline);
+        Assert.Null(reopened.ActiveWeatherModel);
+        Assert.Contains("unavailable", reopened.WeatherLayerError, StringComparison.OrdinalIgnoreCase);
+        Assert.All(reopened.Itinerary.Legs, leg => Assert.Contains("complete", leg.OutcomeStatus));
         Directory.Delete(root, recursive: true);
     }
 
@@ -393,6 +425,13 @@ public sealed class MainViewModelWorkflowTests
         Assert.Equal(firstLegRoute.RouteId, retainedFirstLeg.Route!.Request.RouteId);
         Assert.Equal(RouteLegOutcomeState.Succeeded, retainedFirstLeg.State);
         Assert.Equal(RouteLegOutcomeState.Succeeded, recalculatedResult.Legs[1].State);
+        Assert.True(viewModel.Itinerary.PlaceCurrentPosition(
+            new Coordinate(36.5, -57.5),
+            firstLegRoute.DepartureTime.AddHours(10),
+            out var placementError));
+        Assert.Null(placementError);
+        var sailedHistory = Assert.Single(viewModel.SuccessfulRoutes);
+        Assert.Equal(firstLegRoute.RouteId, sailedHistory.Request.RouteId);
         Directory.Delete(root, recursive: true);
     }
 
@@ -931,7 +970,7 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
-    public async Task TimelineCommandsAndRouteSelectionShareUtcState()
+    public async Task TimelineCommandsAndRouteSelectionUseOneActiveModel()
     {
         var providers = new[]
         {
@@ -956,12 +995,13 @@ public sealed class MainViewModelWorkflowTests
 
         var start = viewModel.SelectedTimelineUtc;
         viewModel.NextTimelineCommand.Execute(null);
-        Assert.Equal(start!.Value.AddHours(2), viewModel.SelectedTimelineUtc);
+        Assert.Equal(start!.Value.AddHours(3), viewModel.SelectedTimelineUtc);
 
-        var ecmwf = viewModel.SuccessfulRoutes.Single(
-            route => route.Model == ForecastModel.EcmwfIfs);
+        var ecmwfLeg = viewModel.VisualizedRouteLegs.Single(
+            leg => leg.Key.Model == ForecastModel.EcmwfIfs);
+        var ecmwf = ecmwfLeg.Route!;
         var selection = new RouteMapSelection(
-            ecmwf,
+            ecmwfLeg,
             2,
             ecmwf.Points[2],
             RouteHitKind.RoutePoint,
@@ -970,10 +1010,54 @@ public sealed class MainViewModelWorkflowTests
 
         Assert.Equal(ecmwf.Points[2].Timestamp, viewModel.SelectedTimelineUtc);
         Assert.Equal(ForecastModel.EcmwfIfs, viewModel.SelectedRoutePoint!.Route.Model);
+        Assert.Equal(ForecastModel.EcmwfIfs, viewModel.ActiveRouteModel);
         Assert.Equal(ForecastModel.EcmwfIfs, viewModel.ActiveWeatherModel);
 
         viewModel.PreviousTimelineCommand.Execute(null);
         Assert.True(viewModel.SelectedTimelineUtc < ecmwf.Points[2].Timestamp);
+    }
+
+    [Fact]
+    public async Task Switching_models_preserves_the_selected_stable_leg()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"navtool-model-leg-{Guid.NewGuid():N}");
+        var repository = new RoutePlanJsonRepository(root);
+        var providers = new[]
+        {
+            new DelegateForecastProvider(
+                ForecastModel.NoaaGfs,
+                (request, _) => ValueTask.FromResult(CreateAcquisition(request))),
+            new DelegateForecastProvider(
+                ForecastModel.EcmwfIfs,
+                (request, _) => ValueTask.FromResult(CreateAcquisition(request)))
+        };
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(
+                request,
+                forecast.Request.Model,
+                forecast.Request.Model == ForecastModel.NoaaGfs ? 3 : 2)));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(providers, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            routePlanRepository: repository);
+        viewModel.Itinerary.AddWaypointCommand.Execute(null);
+        viewModel.Itinerary.Waypoints[1].SetOnMapCommand.Execute(null);
+        viewModel.HandleMapClick(
+            MapProjection.ToMapPoint(new Coordinate(36, -58)),
+            default);
+        viewModel.UseEcmwf = true;
+        await viewModel.CalculateRoutesAsync();
+
+        var secondLegId = viewModel.Itinerary.Legs[1].Id;
+        viewModel.Itinerary.Legs[1].SelectCommand.Execute(null);
+        Assert.Equal(ForecastModel.NoaaGfs, viewModel.SelectedLeg!.Key.Model);
+
+        viewModel.ActivateEcmwfRouteCommand.Execute(null);
+
+        Assert.Equal(secondLegId, viewModel.SelectedLeg!.Key.LegId);
+        Assert.Equal(ForecastModel.EcmwfIfs, viewModel.SelectedLeg.Key.Model);
+        Directory.Delete(root, recursive: true);
     }
 
     [Fact]
