@@ -66,7 +66,7 @@ On Windows:
 
 Raw `dotnet run`, `dotnet exec`, and direct `Navtool.App.dll` execution are not
 supported for functional source checkout launches. Native build outputs are
-gitignored and local to each worktree, so a managed build alone does not provide
+git-ignored and local to each worktree, so a managed build alone does not provide
 the bridge and a bridge from another checkout must not be reused.
 
 In GitHub Copilot App or VS Code, select the **Navtool** run configuration and
