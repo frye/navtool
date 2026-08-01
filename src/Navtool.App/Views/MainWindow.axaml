@@ -215,6 +215,74 @@
                         <Border Classes="card">
                             <StackPanel Spacing="8">
                                 <TextBlock Classes="section-title"
+                                           Text="CURRENT POSITION &amp; PROGRESS" />
+                                <TextBlock Classes="muted"
+                                           Text="Mark completed legs as sailed, choose the active leg to resume from, and place the vessel's current position for a mid-leg reroute."
+                                           TextWrapping="Wrap" />
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                    <ToggleButton x:Name="SetCurrentPositionButton"
+                                                  Classes="map-tool"
+                                                  Content="Set current position"
+                                                  IsChecked="{Binding IsSettingCurrentPosition, Mode=OneWay}"
+                                                  Command="{Binding SetCurrentPositionCommand}"
+                                                  ToolTip.Tip="Arm current-position placement, then select the map" />
+                                    <Button Grid.Column="1"
+                                            Content="Clear"
+                                            Command="{Binding ClearCurrentPositionCommand}"
+                                            ToolTip.Tip="Remove the placed current position" />
+                                </Grid>
+                                <Grid ColumnDefinitions="*,104"
+                                      ColumnSpacing="7">
+                                    <DatePicker SelectedDate="{Binding Itinerary.CurrentPositionDepartureDate}" />
+                                    <TimePicker Grid.Column="1"
+                                                SelectedTime="{Binding Itinerary.CurrentPositionDepartureTimeOfDay}"
+                                                ClockIdentifier="24HourClock" />
+                                </Grid>
+                                <TextBlock Classes="muted"
+                                           Text="{Binding Itinerary.CurrentPositionDisplay}"
+                                           TextWrapping="Wrap" />
+                                <ItemsControl ItemsSource="{Binding Itinerary.Legs}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:RouteLegEditorItemViewModel">
+                                            <Border Classes="subtle" Margin="0,0,0,6">
+                                                <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="5">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Label}" />
+                                                        <TextBlock Text="{Binding StatusLabel}"
+                                                                   Classes="muted" />
+                                                        <TextBlock Text="{Binding OutcomeStatus}"
+                                                                   Classes="muted"
+                                                                   TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                    <RadioButton Grid.Column="1"
+                                                                 Content="View"
+                                                                 Command="{Binding SelectCommand}"
+                                                                 GroupName="RouteLegSelection"
+                                                                 IsChecked="{Binding IsSelected, Mode=OneWay}"
+                                                                 ToolTip.Tip="Select this leg on the full-route map" />
+                                                    <Button Grid.Column="2"
+                                                            Content="Sailed"
+                                                            Command="{Binding MarkSailedCommand}"
+                                                            ToolTip.Tip="Mark this leg as sailed/completed" />
+                                                    <Button Grid.Column="3"
+                                                            Content="Unmark"
+                                                            Command="{Binding UnmarkSailedCommand}"
+                                                            ToolTip.Tip="Unmark this leg as sailed" />
+                                                    <Button Grid.Column="4"
+                                                            Content="Active"
+                                                            Command="{Binding MakeActiveCommand}"
+                                                            ToolTip.Tip="Explicitly resume from this leg" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card">
+                            <StackPanel Spacing="9">
+                                <TextBlock Classes="section-title"
                                            Text="DEPARTURE &amp; DURATION" />
                                 <Grid x:Name="DepartureFields"
                                       ColumnDefinitions="*,104"
@@ -585,7 +653,7 @@
                                        FontSize="20"
                                        FontWeight="SemiBold" />
                             <TextBlock Classes="muted"
-                                       Text="Selected point and shared UTC timeline." />
+                                       Text="Full-route context with a model-specific UTC timeline." />
                         </StackPanel>
 
                         <Border Classes="card">
@@ -596,10 +664,17 @@
                                 <TextBlock Text="{Binding SelectedRouteDetails}"
                                            Classes="muted"
                                            TextWrapping="Wrap" />
-                                <Button Command="{Binding FocusSelectedRoutePointCommand}"
-                                        Content="Focus on map"
-                                        HorizontalAlignment="Stretch"
-                                        ToolTip.Tip="Center the selected route point" />
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="7">
+                                    <Button Command="{Binding FocusSelectedLegCommand}"
+                                            Content="Fit selected leg"
+                                            HorizontalAlignment="Stretch"
+                                            ToolTip.Tip="Fit the selected leg without hiding route-wide context" />
+                                    <Button Grid.Column="1"
+                                            Command="{Binding FocusSelectedRoutePointCommand}"
+                                            Content="Focus point"
+                                            HorizontalAlignment="Stretch"
+                                            ToolTip.Tip="Center the selected route point" />
+                                </Grid>
                             </StackPanel>
                         </Border>
 
@@ -607,6 +682,16 @@
                             <StackPanel Spacing="8">
                                 <TextBlock Classes="section-title"
                                            Text="TIMELINE" />
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <RadioButton Content="NOAA GFS"
+                                                 Command="{Binding ActivateNoaaRouteCommand}"
+                                                 IsChecked="{Binding IsNoaaRouteActive, Mode=OneWay}"
+                                                 IsVisible="{Binding HasNoaaRoutes}" />
+                                    <RadioButton Content="ECMWF experimental"
+                                                 Command="{Binding ActivateEcmwfRouteCommand}"
+                                                 IsChecked="{Binding IsEcmwfRouteActive, Mode=OneWay}"
+                                                 IsVisible="{Binding HasEcmwfRoutes}" />
+                                </StackPanel>
                                 <Grid x:Name="TimelineControls"
                                       ColumnDefinitions="44,44,*"
                                       ColumnSpacing="8">

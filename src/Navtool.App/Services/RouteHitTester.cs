@@ -6,6 +6,28 @@ namespace Navtool.App.Services;
 public static class RouteHitTester
 {
     public static RouteMapSelection? FindNearest(
+        IEnumerable<RouteLegVisualization> legs,
+        Func<RouteLegVisualization, IReadOnlyList<ScreenPoint>> projectToScreen,
+        ScreenPoint click,
+        double routeTolerancePixels = 10,
+        double pointTolerancePixels = 14)
+    {
+        ArgumentNullException.ThrowIfNull(legs);
+        ArgumentNullException.ThrowIfNull(projectToScreen);
+        ValidateTolerance(routeTolerancePixels, nameof(routeTolerancePixels));
+        ValidateTolerance(pointTolerancePixels, nameof(pointTolerancePixels));
+
+        var projected = legs
+            .Where(leg => leg.HasOptimizedGeometry)
+            .Select(leg => new ProjectedLeg(
+                leg,
+                ValidateProjectedPoints(leg.Route!, projectToScreen(leg))))
+            .ToArray();
+        var pointHit = FindNearestLegPoint(projected, click, pointTolerancePixels);
+        return pointHit ?? FindNearestLegSegment(projected, click, routeTolerancePixels);
+    }
+
+    public static RouteMapSelection? FindNearest(
         IEnumerable<RouteResult> routes,
         Func<Coordinate, ScreenPoint> projectToScreen,
         ScreenPoint click,
@@ -140,6 +162,85 @@ public static class RouteHitTester
         return nearest;
     }
 
+    private static RouteMapSelection? FindNearestLegPoint(
+        IEnumerable<ProjectedLeg> legs,
+        ScreenPoint click,
+        double tolerance)
+    {
+        if (!IsFinite(click))
+        {
+            return null;
+        }
+
+        RouteMapSelection? nearest = null;
+        foreach (var leg in legs)
+        {
+            for (var index = 0; index < leg.Points.Length; index++)
+            {
+                if (!IsFinite(leg.Points[index]))
+                {
+                    continue;
+                }
+
+                var distance = click.DistanceTo(leg.Points[index]);
+                if (distance <= tolerance && (nearest is null || distance < nearest.DistancePixels))
+                {
+                    nearest = new RouteMapSelection(
+                        leg.Leg,
+                        index,
+                        leg.Leg.Route!.Points[index],
+                        RouteHitKind.RoutePoint,
+                        distance);
+                }
+            }
+        }
+
+        return nearest;
+    }
+
+    private static RouteMapSelection? FindNearestLegSegment(
+        IEnumerable<ProjectedLeg> legs,
+        ScreenPoint click,
+        double tolerance)
+    {
+        if (!IsFinite(click))
+        {
+            return null;
+        }
+
+        RouteMapSelection? nearest = null;
+        foreach (var leg in legs)
+        {
+            for (var index = 1; index < leg.Points.Length; index++)
+            {
+                if (!IsFinite(leg.Points[index - 1]) || !IsFinite(leg.Points[index]))
+                {
+                    continue;
+                }
+
+                var distance = DistanceToSegment(click, leg.Points[index - 1], leg.Points[index]);
+                if (!double.IsFinite(distance) ||
+                    distance > tolerance ||
+                    (nearest is not null && distance >= nearest.DistancePixels))
+                {
+                    continue;
+                }
+
+                var pointIndex = click.DistanceTo(leg.Points[index - 1]) <= click.DistanceTo(leg.Points[index])
+                    ? index - 1
+                    : index;
+                nearest = new RouteMapSelection(
+                    leg.Leg,
+                    pointIndex,
+                    leg.Leg.Route!.Points[pointIndex],
+                    RouteHitKind.Route,
+                    distance);
+            }
+        }
+
+        return nearest;
+    }
+
     private static RouteMapSelection CreateSelection(
         RouteResult route,
         int pointIndex,
@@ -177,4 +278,6 @@ public static class RouteHitTester
         double.IsFinite(point.X) && double.IsFinite(point.Y);
 
     private sealed record ProjectedRoute(RouteResult Route, ScreenPoint[] Points);
+
+    private sealed record ProjectedLeg(RouteLegVisualization Leg, ScreenPoint[] Points);
 }

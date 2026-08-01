@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Navtool.App.Services;
 using Navtool.Core;
 
 namespace Navtool.App.ViewModels;
@@ -104,6 +105,77 @@ public sealed partial class WaypointEditorItemViewModel : ViewModelBase
     }
 }
 
+/// <summary>
+/// Displays a single itinerary leg's sailed/active state and exposes the mark/unmark-sailed and
+/// explicit-active-leg commands. Sailed is real-world itinerary progress: it is model-independent
+/// and never validates or depends on forecast data.
+/// </summary>
+public sealed partial class RouteLegEditorItemViewModel : ViewModelBase
+{
+    private readonly ItineraryEditorViewModel _owner;
+
+    internal RouteLegEditorItemViewModel(
+        ItineraryEditorViewModel owner,
+        RouteLegId id,
+        int index,
+        string fromName,
+        string toName,
+        string outcomeStatus)
+    {
+        _owner = owner;
+        Id = id;
+        Index = index;
+        FromName = fromName;
+        ToName = toName;
+        OutcomeStatus = outcomeStatus;
+    }
+
+    public RouteLegId Id { get; }
+
+    public int Index { get; }
+
+    public string FromName { get; }
+
+    public string ToName { get; }
+
+    public string Label => $"Leg {Index + 1}: {FromName} \u2192 {ToName}";
+
+    public string OutcomeStatus { get; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(MarkSailedCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UnmarkSailedCommand))]
+    [NotifyCanExecuteChangedFor(nameof(MakeActiveCommand))]
+    private bool _isSailed;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(MakeActiveCommand))]
+    private bool _isActive;
+
+    [ObservableProperty]
+    private bool _isSelected;
+
+    public string StatusLabel => IsSailed ? "Sailed" : IsActive ? "Active" : "Upcoming";
+
+    [RelayCommand]
+    private void Select() => _owner.SelectLeg(Id);
+
+    [RelayCommand(CanExecute = nameof(CanMarkSailed))]
+    private void MarkSailed() => _owner.MarkLegSailed(Id);
+
+    private bool CanMarkSailed() => !IsSailed;
+
+    [RelayCommand(CanExecute = nameof(CanUnmarkSailed))]
+    private void UnmarkSailed() => _owner.UnmarkLegSailed(Id);
+
+    private bool CanUnmarkSailed() => IsSailed;
+
+    [RelayCommand(CanExecute = nameof(CanMakeActive))]
+    private void MakeActive() => _owner.SetActiveLeg(Id);
+
+    private bool CanMakeActive() => !IsSailed && !IsActive;
+}
+
 public sealed partial class ItineraryEditorViewModel : ViewModelBase
 {
     private readonly IRoutePlanRepository? _repository;
@@ -144,6 +216,15 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     [ObservableProperty]
     private WaypointEditorItemViewModel? _activeWaypoint;
 
+    [ObservableProperty]
+    private bool _isAwaitingCurrentPositionPlacement;
+
+    [ObservableProperty]
+    private DateTimeOffset? _currentPositionDepartureDate = DateTimeOffset.Now.Date;
+
+    [ObservableProperty]
+    private TimeSpan? _currentPositionDepartureTimeOfDay = DateTimeOffset.Now.TimeOfDay;
+
     public RoutePlanId PlanId { get; private set; }
 
     public long CalculationRevision { get; private set; }
@@ -154,11 +235,36 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
 
     public event EventHandler<WaypointEditorItemViewModel>? MapPlacementStarted;
 
+    public event EventHandler? CurrentPositionPlacementStarted;
+
+    public event EventHandler<RouteLegId>? LegSelected;
+
+    public ObservableCollection<RouteLegEditorItemViewModel> Legs { get; } = [];
+
+    public RoutePlan? CurrentPlan => _plan;
+
     public Coordinate? Start => Waypoints.FirstOrDefault()?.Coordinate;
 
     public Coordinate? Finish => Waypoints.LastOrDefault()?.Coordinate;
 
     public bool HasPendingWaypoint => Waypoints.Any(waypoint => waypoint.Coordinate is null);
+
+    /// <summary>
+    /// The user-placed current position, distinct from any itinerary waypoint. Null when the
+    /// itinerary should be routed from its start (no session in progress).
+    /// </summary>
+    public Coordinate? CurrentPositionCoordinate => _plan?.CurrentPosition?.Coordinate;
+
+    public DateTimeOffset? CurrentPositionDepartureTimeUtc => _plan?.CurrentPosition?.DepartureTime;
+
+    public bool HasCurrentPosition => _plan?.CurrentPosition is not null;
+
+    public string CurrentPositionDisplay => CurrentPositionCoordinate is not { } coordinate
+        ? "Not set"
+        : $"{Math.Abs(coordinate.Latitude):0.000}\u00b0 " +
+          $"{(coordinate.Latitude >= 0 ? "N" : "S")}, " +
+          $"{Math.Abs(coordinate.Longitude):0.000}\u00b0 " +
+          $"{(coordinate.Longitude >= 0 ? "E" : "W")}";
 
     public void SetEndpoints(Coordinate start, Coordinate finish)
     {
@@ -174,6 +280,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             throw new ArgumentException("The waypoint does not belong to this itinerary.", nameof(waypoint));
         }
 
+        IsAwaitingCurrentPositionPlacement = false;
         ActiveWaypoint = waypoint;
         MapPlacementStarted?.Invoke(this, waypoint);
     }
@@ -191,6 +298,132 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     }
 
     public void CancelMapPlacement() => ActiveWaypoint = null;
+
+    /// <summary>
+    /// Arms the distinct current-position map placement mode. This is never confused with
+    /// itinerary waypoint placement: it records a session-scoped "where the vessel is now"
+    /// marker, not a permanent route point.
+    /// </summary>
+    public void BeginCurrentPositionPlacement()
+    {
+        ActiveWaypoint = null;
+        IsAwaitingCurrentPositionPlacement = true;
+        CurrentPositionPlacementStarted?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void CancelCurrentPositionPlacement() => IsAwaitingCurrentPositionPlacement = false;
+
+    /// <summary>
+    /// Places the current position at the given coordinate with an explicit departure time (UTC).
+    /// Never derived from wall-clock or GPS; always the user-supplied session values.
+    /// </summary>
+    public bool PlaceCurrentPosition(Coordinate coordinate, DateTimeOffset departureTimeUtc, out string? error)
+    {
+        IsAwaitingCurrentPositionPlacement = false;
+        var applied = TryUpdatePlanEnsuringBuilt(
+            plan => plan.SetCurrentPosition(coordinate, departureTimeUtc),
+            out error);
+        if (applied)
+        {
+            NotifyCurrentPositionChanged();
+            CalculationRevision++;
+            MarkChanged();
+        }
+
+        return applied;
+    }
+
+    /// <summary>
+    /// Places the current position using the local <see cref="CurrentPositionDepartureDate"/>/
+    /// <see cref="CurrentPositionDepartureTimeOfDay"/> fields, converted to UTC via
+    /// <paramref name="localTimeZone"/>. This is the explicit, user-supplied departure time for
+    /// the current position; it is never derived from wall clock or GPS.
+    /// </summary>
+    public bool TryPlaceCurrentPosition(Coordinate coordinate, TimeZoneInfo localTimeZone, out string? error)
+    {
+        if (!LocalDepartureConverter.TryConvertToUtc(
+                CurrentPositionDepartureDate,
+                CurrentPositionDepartureTimeOfDay,
+                localTimeZone,
+                out var departureUtc,
+                out error))
+        {
+            IsAwaitingCurrentPositionPlacement = false;
+            return false;
+        }
+
+        return PlaceCurrentPosition(coordinate, departureUtc, out error);
+    }
+
+    public void ClearCurrentPosition()
+    {
+        if (_plan?.CurrentPosition is null)
+        {
+            return;
+        }
+
+        if (TryUpdatePlan(plan => plan.ClearCurrentPosition()))
+        {
+            NotifyCurrentPositionChanged();
+            CalculationRevision++;
+            MarkChanged();
+        }
+    }
+
+    internal void MarkLegSailed(RouteLegId legId)
+    {
+        if (TryUpdatePlanEnsuringBuilt(plan => plan.MarkSailed(legId), out _))
+        {
+            CalculationRevision++;
+            MarkChanged();
+        }
+    }
+
+    internal void UnmarkLegSailed(RouteLegId legId)
+    {
+        if (TryUpdatePlanEnsuringBuilt(plan => plan.UnmarkSailed(legId), out _))
+        {
+            CalculationRevision++;
+            MarkChanged();
+        }
+    }
+
+    /// <summary>
+    /// Explicitly selects the active leg to resume from, overriding the default (first
+    /// unfinished/unsailed leg). The leg must exist and must not already be sailed.
+    /// </summary>
+    internal void SetActiveLeg(RouteLegId legId)
+    {
+        if (TryUpdatePlanEnsuringBuilt(plan => plan.SetActiveLeg(legId), out _))
+        {
+            CalculationRevision++;
+            MarkChanged();
+        }
+    }
+
+    internal void ClearActiveLeg()
+    {
+        if (_plan?.ActiveLegId is null)
+        {
+            return;
+        }
+
+        if (TryUpdatePlan(plan => plan.ClearActiveLeg()))
+        {
+            CalculationRevision++;
+            MarkChanged();
+        }
+    }
+
+    internal void SelectLeg(RouteLegId legId) => LegSelected?.Invoke(this, legId);
+
+    public void SetSelectedLeg(RouteLegId? legId)
+    {
+        foreach (var leg in Legs)
+        {
+            leg.IsSelected = leg.Id == legId;
+        }
+    }
 
     [RelayCommand]
     private void New() => NewDraft();
@@ -293,6 +526,8 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             {
                 _plan = plan;
                 IsDirty = false;
+                RefreshLegs();
+                NotifyCurrentPositionChanged();
             }
 
             await RefreshSavedPlans();
@@ -368,7 +603,9 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
                         RouteName,
                         waypoints,
                         _plan.Results,
-                        _plan.SailedLegIds);
+                        _plan.SailedLegIds,
+                        _plan.CurrentPosition,
+                        _plan.ActiveLegId);
             }
 
             ValidationMessage = null;
@@ -443,6 +680,8 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         ResultsInvalidated = plan.HasInvalidatedResults;
         IsDirty = false;
         StorageError = null;
+        RefreshLegs();
+        NotifyCurrentPositionChanged();
     }
 
     internal void Remove(WaypointEditorItemViewModel waypoint)
@@ -582,6 +821,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             StorageError = null;
             ValidationMessage = null;
             ActiveWaypoint = null;
+            IsAwaitingCurrentPositionPlacement = false;
         }
         finally
         {
@@ -619,6 +859,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             StorageError = null;
             ValidationMessage = null;
             ActiveWaypoint = null;
+            IsAwaitingCurrentPositionPlacement = false;
         }
         finally
         {
@@ -650,6 +891,34 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Like <see cref="TryUpdatePlan"/>, but builds the plan from the current waypoints first if
+    /// one does not exist yet. Used for state (current position, sailed legs, active leg) that
+    /// the user can set even before the itinerary has ever been calculated or saved.
+    /// </summary>
+    private bool TryUpdatePlanEnsuringBuilt(Func<RoutePlan, RoutePlan> update, out string? error)
+    {
+        if (_plan is null && !TryBuildPlan(out _plan, out error))
+        {
+            return false;
+        }
+
+        try
+        {
+            _plan = update(_plan!);
+            ResultsInvalidated = _plan.HasInvalidatedResults;
+            ValidationMessage = null;
+            error = null;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+            ValidationMessage = error;
+            return false;
+        }
+    }
+
     private void MarkChanged()
     {
         if (_suppressChanges)
@@ -670,8 +939,91 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Rebuilds the <see cref="Legs"/> collection from the current plan, reflecting each leg's
+    /// sailed/active state. Called whenever the plan's legs, sailed set, or active leg changes.
+    /// </summary>
+    private void RefreshLegs()
+    {
+        Legs.Clear();
+        var planForLegs = _plan;
+        if (planForLegs is null)
+        {
+            // Sailed/active-leg state is model-independent and must be settable even before the
+            // itinerary has ever been calculated or saved, so speculatively build a plan here
+            // (without persisting it to `_plan`) purely to enumerate legs. Restore
+            // ValidationMessage afterward so an incomplete itinerary in progress doesn't surface
+            // a spurious "set every waypoint" validation error.
+            var previousValidationMessage = ValidationMessage;
+            if (TryBuildPlan(out var built, out _))
+            {
+                planForLegs = built;
+            }
+
+            ValidationMessage = previousValidationMessage;
+        }
+
+        if (planForLegs is null)
+        {
+            return;
+        }
+
+        var activeIndex = planForLegs.ActiveLegIndex;
+        foreach (var leg in planForLegs.Legs)
+        {
+            var from = planForLegs.Waypoints.Single(waypoint => waypoint.Id == leg.FromWaypointId);
+            var to = planForLegs.Waypoints.Single(waypoint => waypoint.Id == leg.ToWaypointId);
+            var outcomes = planForLegs.Results
+                .Select(result =>
+                {
+                    var outcome = result.Legs.Single(item => item.LegId == leg.Id);
+                    return $"{ModelShortName(result.Model)} {OutcomeStatusName(outcome)}";
+                })
+                .ToArray();
+            Legs.Add(new RouteLegEditorItemViewModel(
+                this,
+                leg.Id,
+                leg.Index,
+                from.Name,
+                to.Name,
+                outcomes.Length == 0 ? "not calculated" : string.Join(" · ", outcomes))
+            {
+                IsSailed = planForLegs.SailedLegIds.Contains(leg.Id),
+                IsActive = leg.Index == activeIndex
+            });
+        }
+
+    }
+
+    private static string ModelShortName(ForecastModel model) =>
+        model == ForecastModel.NoaaGfs ? "NOAA" : "ECMWF";
+
+    private static string OutcomeStatusName(RouteLegResult outcome) => outcome.State switch
+    {
+        RouteLegOutcomeState.Succeeded
+            when outcome.Reason == RouteLegOutcomeReason.ForecastExhausted => "forecast-limited",
+        RouteLegOutcomeState.Succeeded => "complete",
+        RouteLegOutcomeState.Failed => "failed",
+        RouteLegOutcomeState.Cancelled => "cancelled",
+        RouteLegOutcomeState.Blocked => "blocked",
+        RouteLegOutcomeState.OutsideForecastWindow => "outside window",
+        RouteLegOutcomeState.Invalidated => "stale",
+        RouteLegOutcomeState.Pending => "pending",
+        _ => "not calculated"
+    };
+
+    private void NotifyCurrentPositionChanged()
+    {
+        OnPropertyChanged(nameof(CurrentPositionCoordinate));
+        OnPropertyChanged(nameof(CurrentPositionDepartureTimeUtc));
+        OnPropertyChanged(nameof(HasCurrentPosition));
+        OnPropertyChanged(nameof(CurrentPositionDisplay));
+    }
+
     private void NotifyItineraryChanged()
     {
+        RefreshLegs();
+        NotifyCurrentPositionChanged();
         OnPropertyChanged(nameof(Start));
         OnPropertyChanged(nameof(Finish));
         OnPropertyChanged(nameof(HasPendingWaypoint));
