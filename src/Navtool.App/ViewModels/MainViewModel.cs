@@ -993,9 +993,10 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void FocusSelectedLeg()
     {
-        if (SelectedRoutePoint?.Key is { } key)
+        var key = SelectedLeg?.Key ?? SelectedRoutePoint?.Key;
+        if (key is not null)
         {
-            _mapLayers.FitRouteLeg(key);
+            _mapLayers.FitRouteLeg(key.Value);
         }
     }
 
