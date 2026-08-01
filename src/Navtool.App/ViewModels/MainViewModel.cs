@@ -2199,6 +2199,7 @@ public partial class MainViewModel : ViewModelBase
         }
 
         SelectLegGeometry(target.Key);
+        _selectedStopoverLabel = null;
         if (target.Route is { } route)
         {
             SetTimelineUtc(route.Request.DepartureTime);
@@ -2212,8 +2213,9 @@ public partial class MainViewModel : ViewModelBase
         else
         {
             SelectedRoutePoint = null;
-            UpdateWeatherAvailability();
         }
+
+        UpdateWeatherAvailability();
     }
 
     private void OnItineraryChanged(object? sender, EventArgs e)

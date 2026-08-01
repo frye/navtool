@@ -349,6 +349,7 @@ public sealed class MainViewModelWorkflowTests
         viewModel.Itinerary.Legs[1].SelectCommand.Execute(null);
         Assert.Equal(1, viewModel.SelectedLeg!.LegIndex);
         Assert.True(viewModel.Itinerary.Legs[1].IsSelected);
+        Assert.DoesNotContain("Stopover at", viewModel.TimelineDisplay);
         await viewModel.RefreshWeatherAsync(noaa.Requests[1].Bounds, 2, 2);
         Assert.Equal(noaa.Requests[1].From, sampledAcquisition!.Request.From);
 
