@@ -233,6 +233,7 @@ public partial class MainWindow : Window
         }
 
         CloseRadialMenu();
+        e.Handled = true;
     }
 
     private bool IsRadialActionSource(object? source)
