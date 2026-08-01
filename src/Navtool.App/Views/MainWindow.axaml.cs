@@ -325,10 +325,18 @@ public partial class MainWindow : Window
             new ScreenSize(RadialActionWidth, RadialActionHeight),
             RadialRadius,
             RadialSafeMargin);
-        PositionRadialAction(_setStartRadialButton, placement.Actions[0].Bounds);
-        PositionRadialAction(_setDestinationRadialButton, placement.Actions[1].Bounds);
-        PositionRadialAction(_calculateRadialButton, placement.Actions[2].Bounds);
-        PositionRadialAction(_inspectRadialButton, placement.Actions[3].Bounds);
+        PositionRadialAction(
+            _setStartRadialButton,
+            GetActionBounds(placement, RadialMenuAction.SetStart));
+        PositionRadialAction(
+            _setDestinationRadialButton,
+            GetActionBounds(placement, RadialMenuAction.SetDestination));
+        PositionRadialAction(
+            _calculateRadialButton,
+            GetActionBounds(placement, RadialMenuAction.CalculateRoute));
+        PositionRadialAction(
+            _inspectRadialButton,
+            GetActionBounds(placement, RadialMenuAction.Inspect));
         ApplyConnector(placement);
         _radialMenuLayer.IsVisible = true;
         _setStartRadialButton.Focus();
@@ -361,6 +369,11 @@ public partial class MainWindow : Window
         Canvas.SetLeft(control, bounds.X);
         Canvas.SetTop(control, bounds.Y);
     }
+
+    private static ScreenRect GetActionBounds(
+        RadialMenuPlacementResult placement,
+        RadialMenuAction action) =>
+        placement.Actions.Single(candidate => candidate.Action == action).Bounds;
 
     private void OnSetStartRadialClicked(object? sender, RoutedEventArgs e)
     {
