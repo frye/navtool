@@ -27,9 +27,9 @@ public partial class MainWindow : Window
         Route
     }
 
-    internal const double DrawerBreakpoint = 1220;
+    internal const double DrawerBreakpoint = 1280;
     internal const double ClosedDrawerWidth = 44;
-    internal const double PlanningDrawerWidth = 320;
+    internal const double PlanningDrawerWidth = 380;
     internal const double RouteDrawerWidth = 340;
 
     private const double RadialActionWidth = 112;
@@ -55,6 +55,7 @@ public partial class MainWindow : Window
     private Canvas? _radialMenuLayer;
     private Button? _setStartRadialButton;
     private Button? _setDestinationRadialButton;
+    private Button? _calculateRadialButton;
     private Button? _inspectRadialButton;
     private Line? _radialConnector;
     private Ellipse? _radialAnchor;
@@ -116,6 +117,7 @@ public partial class MainWindow : Window
         _radialMenuLayer = this.FindControl<Canvas>("RadialMenuLayer")!;
         _setStartRadialButton = this.FindControl<Button>("SetStartRadialButton")!;
         _setDestinationRadialButton = this.FindControl<Button>("SetDestinationRadialButton")!;
+        _calculateRadialButton = this.FindControl<Button>("CalculateRadialButton")!;
         _inspectRadialButton = this.FindControl<Button>("InspectRadialButton")!;
         _radialConnector = this.FindControl<Line>("RadialConnector")!;
         _radialAnchor = this.FindControl<Ellipse>("RadialAnchor")!;
@@ -242,6 +244,7 @@ public partial class MainWindow : Window
         {
             return button == _setStartRadialButton ||
                    button == _setDestinationRadialButton ||
+                   button == _calculateRadialButton ||
                    button == _inspectRadialButton;
         }
 
@@ -249,6 +252,7 @@ public partial class MainWindow : Window
                visual.GetVisualAncestors().OfType<Button>().Any(button =>
                    button == _setStartRadialButton ||
                    button == _setDestinationRadialButton ||
+                   button == _calculateRadialButton ||
                    button == _inspectRadialButton);
     }
 
@@ -299,6 +303,7 @@ public partial class MainWindow : Window
             _radialMenuLayer is null ||
             _setStartRadialButton is null ||
             _setDestinationRadialButton is null ||
+            _calculateRadialButton is null ||
             _inspectRadialButton is null ||
             _radialConnector is null ||
             _radialAnchor is null ||
@@ -320,9 +325,18 @@ public partial class MainWindow : Window
             new ScreenSize(RadialActionWidth, RadialActionHeight),
             RadialRadius,
             RadialSafeMargin);
-        PositionRadialAction(_setStartRadialButton, placement.Actions[0].Bounds);
-        PositionRadialAction(_setDestinationRadialButton, placement.Actions[1].Bounds);
-        PositionRadialAction(_inspectRadialButton, placement.Actions[2].Bounds);
+        PositionRadialAction(
+            _setStartRadialButton,
+            GetActionBounds(placement, RadialMenuAction.SetStart));
+        PositionRadialAction(
+            _setDestinationRadialButton,
+            GetActionBounds(placement, RadialMenuAction.SetDestination));
+        PositionRadialAction(
+            _calculateRadialButton,
+            GetActionBounds(placement, RadialMenuAction.CalculateRoute));
+        PositionRadialAction(
+            _inspectRadialButton,
+            GetActionBounds(placement, RadialMenuAction.Inspect));
         ApplyConnector(placement);
         _radialMenuLayer.IsVisible = true;
         _setStartRadialButton.Focus();
@@ -336,7 +350,9 @@ public partial class MainWindow : Window
         }
 
         _radialConnector.IsVisible = placement.Connector is not null;
-        _radialAnchor.IsVisible = placement.Connector is not null;
+        _radialAnchor.IsVisible = true;
+        Canvas.SetLeft(_radialAnchor, placement.Anchor.X - (_radialAnchor.Width / 2));
+        Canvas.SetTop(_radialAnchor, placement.Anchor.Y - (_radialAnchor.Height / 2));
         if (placement.Connector is not { } connector)
         {
             return;
@@ -344,8 +360,6 @@ public partial class MainWindow : Window
 
         _radialConnector.StartPoint = new Point(connector.Start.X, connector.Start.Y);
         _radialConnector.EndPoint = new Point(connector.End.X, connector.End.Y);
-        Canvas.SetLeft(_radialAnchor, connector.Start.X - (_radialAnchor.Width / 2));
-        Canvas.SetTop(_radialAnchor, connector.Start.Y - (_radialAnchor.Height / 2));
     }
 
     private static void PositionRadialAction(Control control, ScreenRect bounds)
@@ -355,6 +369,11 @@ public partial class MainWindow : Window
         Canvas.SetLeft(control, bounds.X);
         Canvas.SetTop(control, bounds.Y);
     }
+
+    private static ScreenRect GetActionBounds(
+        RadialMenuPlacementResult placement,
+        RadialMenuAction action) =>
+        placement.Actions.Single(candidate => candidate.Action == action).Bounds;
 
     private void OnSetStartRadialClicked(object? sender, RoutedEventArgs e)
     {
@@ -389,6 +408,11 @@ public partial class MainWindow : Window
             viewModel.SelectRoutePoint(selection);
         }
 
+        CloseRadialMenu();
+    }
+
+    private void OnCalculateRadialClicked(object? sender, RoutedEventArgs e)
+    {
         CloseRadialMenu();
     }
 
