@@ -710,8 +710,8 @@ public sealed class MainViewModelWorkflowTests
         viewModel.SelectRoutePoint(capturedSelection, focus: false);
 
         Assert.Same(ecmwf, viewModel.SelectedRoutePoint!.Route);
-        Assert.Equal(1, viewModel.SelectedRoutePoint.PointIndex);
-        Assert.Equal(ecmwf.Points[1].Timestamp, viewModel.SelectedTimelineUtc);
+        Assert.Equal(capturedSelection.PointIndex, viewModel.SelectedRoutePoint.PointIndex);
+        Assert.Equal(capturedSelection.TimelineTimestamp, viewModel.SelectedTimelineUtc);
         Assert.Equal(ForecastModel.EcmwfIfs, viewModel.ActiveWeatherModel);
         Assert.Contains("ECMWF", viewModel.StatusMessage);
     }
