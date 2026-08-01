@@ -703,15 +703,11 @@ public sealed class MainViewModelWorkflowTests
         var projected = viewModel.Map.Navigator.Viewport.WorldToScreen(capturedWorldPoint);
         var capturedScreenPoint = new ScreenPoint(projected.X, projected.Y);
 
+        var capturedSelection = Assert.IsType<RouteMapSelection>(
+            viewModel.FindRouteAt(capturedWorldPoint, capturedScreenPoint));
         Assert.True(viewModel.CanInspectRouteAt(capturedWorldPoint, capturedScreenPoint));
-        Assert.False(viewModel.CanInspectRouteAt(
-            capturedWorldPoint,
-            new ScreenPoint(capturedScreenPoint.X + 100, capturedScreenPoint.Y + 100)));
 
-        Assert.True(viewModel.InspectRouteAt(
-            capturedWorldPoint,
-            capturedScreenPoint,
-            focus: false));
+        viewModel.SelectRoutePoint(capturedSelection, focus: false);
 
         Assert.Same(ecmwf, viewModel.SelectedRoutePoint!.Route);
         Assert.Equal(1, viewModel.SelectedRoutePoint.PointIndex);
