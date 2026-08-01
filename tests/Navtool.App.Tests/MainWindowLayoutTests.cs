@@ -6,6 +6,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
+using Avalonia.Layout;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Mapsui.Extensions;
@@ -39,6 +40,7 @@ public sealed class MainWindowLayoutTests
             Assert.NotNull(window.FindControl<ToggleButton>("SetStartButton"));
             Assert.NotNull(window.FindControl<ToggleButton>("SetDestinationButton"));
             Assert.NotNull(window.FindControl<Button>("CalculateRoutesButton"));
+            Assert.NotNull(window.FindControl<Button>("CalculateRadialButton"));
             Assert.NotNull(window.FindControl<NumericUpDown>("PassageDaysInput"));
             Assert.NotNull(window.FindControl<NumericUpDown>("PassageHoursInput"));
             Assert.NotNull(window.FindControl<RadioButton>("DownloadForecastSource"));
@@ -54,8 +56,9 @@ public sealed class MainWindowLayoutTests
     [Fact]
     public void SizingPolicyPreservesTheMapFloorAndUsesTheRequestedBreakpoint()
     {
+        Assert.False(MainWindow.AllowsBothDrawers(1279.99));
         Assert.False(MainWindow.AllowsBothDrawers(1219.99));
-        Assert.True(MainWindow.AllowsBothDrawers(1220));
+        Assert.True(MainWindow.AllowsBothDrawers(1280));
         Assert.Equal(
             560,
             MainWindow.DrawerBreakpoint -
@@ -94,7 +97,7 @@ public sealed class MainWindowLayoutTests
     public void WideWindowsCanKeepBothDrawersOpen()
     {
         var window = CreateWindow();
-        window.Width = 1220;
+        window.Width = 1280;
 
         try
         {
@@ -118,7 +121,7 @@ public sealed class MainWindowLayoutTests
     public void CrossingBelowTheBreakpointKeepsTheMostRecentlyOpenedDrawer()
     {
         var window = CreateWindow();
-        window.Width = 1220;
+        window.Width = 1280;
 
         try
         {
@@ -126,7 +129,7 @@ public sealed class MainWindowLayoutTests
             window.SetPlanningDrawerOpen(true);
             window.SetRouteDrawerOpen(true);
 
-            window.Width = 1219;
+            window.Width = 1279;
             Dispatcher.UIThread.RunJobs();
 
             Assert.False(window.IsPlanningDrawerOpen);
@@ -194,6 +197,7 @@ public sealed class MainWindowLayoutTests
             {
                 Assert.IsType<Button>(window.FindControl<Button>("SetStartRadialButton")),
                 Assert.IsType<Button>(window.FindControl<Button>("SetDestinationRadialButton")),
+                Assert.IsType<Button>(window.FindControl<Button>("CalculateRadialButton")),
                 Assert.IsType<Button>(window.FindControl<Button>("InspectRadialButton"))
             };
             Assert.Equal(buttons, layer.Children.OfType<Button>());
@@ -202,8 +206,32 @@ public sealed class MainWindowLayoutTests
                 Assert.True(button.Width >= 44);
                 Assert.True(button.Height >= 44);
                 Assert.NotNull(ToolTip.GetTip(button));
+                Assert.Equal(HorizontalAlignment.Center, button.HorizontalContentAlignment);
+                Assert.Equal(VerticalAlignment.Center, button.VerticalContentAlignment);
             });
-            Assert.False(buttons[2].IsEnabled);
+            var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
+            Assert.Same(viewModel.CalculateCommand, buttons[2].Command);
+            Assert.True(buttons[2].IsEffectivelyEnabled);
+            Assert.False(buttons[3].IsEnabled);
+            viewModel.ForecastInputMode = ForecastInputMode.LocalFile;
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(buttons[2].IsEffectivelyEnabled);
+            Assert.Equal(
+                HorizontalAlignment.Center,
+                Assert.IsType<ToggleButton>(
+                    window.FindControl<ToggleButton>("PlanningDrawerHandle"))
+                    .HorizontalContentAlignment);
+            Assert.Equal(
+                VerticalAlignment.Center,
+                Assert.IsType<ToggleButton>(
+                    window.FindControl<ToggleButton>("RouteDrawerHandle"))
+                    .VerticalContentAlignment);
+            var anchor = Assert.IsType<Avalonia.Controls.Shapes.Ellipse>(
+                window.FindControl<Avalonia.Controls.Shapes.Ellipse>("RadialAnchor"));
+            var connector = Assert.IsType<Avalonia.Controls.Shapes.Line>(
+                window.FindControl<Avalonia.Controls.Shapes.Line>("RadialConnector"));
+            Assert.True(anchor.IsVisible);
+            Assert.False(connector.IsVisible);
         }
         finally
         {
@@ -341,6 +369,91 @@ public sealed class MainWindowLayoutTests
         var window = CreateWindow();
         Assert.Equal(1040, window.MinWidth);
         Assert.Equal(680, window.MinHeight);
+    }
+
+    [AvaloniaFact]
+    public void PlanningDrawerUsesContentAndHandleColumnsWithoutDuplicateGutter()
+    {
+        var window = CreateWindow();
+        window.Width = 1040;
+        window.Height = 680;
+
+        try
+        {
+            window.Show();
+            window.SetPlanningDrawerOpen(true);
+            Assert.IsType<MainViewModel>(window.DataContext)
+                .Itinerary.AddWaypointCommand.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+
+            var shell = Assert.IsType<Grid>(window.FindControl<Grid>("ShellGrid"));
+            var drawer = Assert.IsType<Grid>(window.FindControl<Grid>("PlanningDrawer"));
+            var content = Assert.IsType<Border>(
+                window.FindControl<Border>("PlanningDrawerContent"));
+            var handle = Assert.IsType<ToggleButton>(
+                window.FindControl<ToggleButton>("PlanningDrawerHandle"));
+            var endpoints = Assert.IsType<Grid>(
+                window.FindControl<Grid>("EndpointActions"));
+
+            Assert.Equal(380, shell.ColumnDefinitions[0].Width.Value);
+            Assert.Equal(2, drawer.ColumnDefinitions.Count);
+            Assert.Equal(new GridLength(1, GridUnitType.Star), drawer.ColumnDefinitions[0].Width);
+            Assert.Equal(44, drawer.ColumnDefinitions[1].Width.Value);
+            Assert.Equal(0, Grid.GetColumn(content));
+            Assert.Equal(1, Grid.GetColumn(handle));
+            Assert.Equal(default, content.Padding);
+            Assert.Equal(2, endpoints.ColumnDefinitions.Count);
+            Assert.Equal(
+                endpoints.ColumnDefinitions[0].Width,
+                endpoints.ColumnDefinitions[1].Width);
+            Assert.True(shell.ColumnDefinitions[1].ActualWidth >= 560);
+            var stopoverHours = content
+                .GetVisualDescendants()
+                .OfType<NumericUpDown>()
+                .Single(input => input.Maximum == 240 && input.IsEffectivelyVisible);
+            Assert.True(stopoverHours.Bounds.Width >= 88);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void FieldLayoutsExposeLabelsAndAlignedActionRows()
+    {
+        var window = CreateWindow();
+
+        try
+        {
+            window.Show();
+            window.SetPlanningDrawerOpen(true);
+
+            var departure = Assert.IsType<Grid>(
+                window.FindControl<Grid>("DepartureFields"));
+            var saved = Assert.IsType<Grid>(
+                window.FindControl<Grid>("SavedRouteActions"));
+            var save = Assert.IsType<Grid>(
+                window.FindControl<Grid>("SaveRouteActions"));
+
+            Assert.Equal(2, departure.Children.OfType<StackPanel>().Count());
+            Assert.All(
+                departure.Children.OfType<StackPanel>(),
+                field => Assert.Contains(
+                    field.Children.OfType<TextBlock>(),
+                    label => label.Classes.Contains("field-label")));
+            Assert.Equal(8, departure.ColumnSpacing);
+            Assert.Equal(3, saved.ColumnDefinitions.Count);
+            Assert.Equal(8, saved.ColumnSpacing);
+            Assert.Contains("compact-action-row", saved.Classes);
+            Assert.Equal(3, save.ColumnDefinitions.Count);
+            Assert.Equal(8, save.ColumnSpacing);
+            Assert.Contains("compact-action-row", save.Classes);
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     private static MainWindow CreateWindow() =>
