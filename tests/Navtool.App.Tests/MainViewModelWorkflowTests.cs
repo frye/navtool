@@ -274,7 +274,7 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
-    public async Task Intermediate_waypoint_is_editable_but_sequential_calculation_is_deferred()
+    public async Task Initial_departure_beyond_five_day_lead_does_not_acquire_forecast()
     {
         var noaa = new DelegateForecastProvider(
             ForecastModel.NoaaGfs,
@@ -285,8 +285,35 @@ public sealed class MainViewModelWorkflowTests
             new RoutingWorkflow(new[] { noaa }, engine),
             new DelegateWeatherSampler((_, _, _, _, _, _) =>
                 ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        var departure = Now.AddDays(5).AddMinutes(1);
+        viewModel.DepartureDate = departure;
+        viewModel.DepartureTime = departure.TimeOfDay;
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Empty(noaa.Requests);
+        Assert.Contains("forecast horizon", viewModel.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Intermediate_waypoint_routes_sequentially_and_persists_results()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"navtool-multi-leg-{Guid.NewGuid():N}");
+        var repository = new RoutePlanJsonRepository(root);
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            routePlanRepository: repository);
         viewModel.Itinerary.AddWaypointCommand.Execute(null);
         var waypoint = viewModel.Itinerary.Waypoints[1];
+        waypoint.HasStopover = true;
+        waypoint.StopoverHours = 2;
         waypoint.SetOnMapCommand.Execute(null);
         viewModel.HandleMapClick(
             MapProjection.ToMapPoint(new Coordinate(36, -58)),
@@ -294,10 +321,24 @@ public sealed class MainViewModelWorkflowTests
 
         await viewModel.CalculateRoutesAsync();
 
-        Assert.Null(noaa.LastRequest);
+        Assert.Equal(2, noaa.Requests.Count);
+        Assert.Equal(noaa.Requests[0].Through, noaa.Requests[1].Through);
+        Assert.Equal(
+            noaa.Requests[0].From.AddHours(8),
+            noaa.Requests[1].From);
         Assert.Equal(36, waypoint.Coordinate!.Value.Latitude, 10);
         Assert.Equal(-58, waypoint.Coordinate.Value.Longitude, 10);
-        Assert.Contains("Sequential multi-leg", viewModel.ErrorMessage);
+        Assert.Equal(2, viewModel.SuccessfulRouteCount);
+        Assert.Contains("leg 1 complete", viewModel.NoaaStatus, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("leg 2 complete", viewModel.NoaaStatus, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("All itinerary legs are complete.", viewModel.StatusMessage);
+
+        var loaded = await repository.OpenAsync(viewModel.Itinerary.PlanId);
+        Assert.Equal(2, loaded.LatestResult(ForecastModel.NoaaGfs)!.Legs.Length);
+        var json = await File.ReadAllTextAsync(
+            Path.Combine(repository.RootDirectory, $"{loaded.Id}.route.json"));
+        Assert.DoesNotContain("fake-forecast.grib2", json, StringComparison.OrdinalIgnoreCase);
+        Directory.Delete(root, recursive: true);
     }
 
     [Fact]
@@ -881,7 +922,8 @@ public sealed class MainViewModelWorkflowTests
         RoutingWorkflow workflow,
         IWeatherSampler sampler,
         ILocalGribInspector? localGribInspector = null,
-        INativeRoutingPreflight? nativeRoutingPreflight = null)
+        INativeRoutingPreflight? nativeRoutingPreflight = null,
+        IRoutePlanRepository? routePlanRepository = null)
     {
         var viewModel = new MainViewModel(
             workflow,
@@ -890,7 +932,8 @@ public sealed class MainViewModelWorkflowTests
             TimeZoneInfo.Utc,
             new OsmTileOptions(Enabled: false),
             localGribInspector: localGribInspector,
-            nativeRoutingPreflight: nativeRoutingPreflight);
+            nativeRoutingPreflight: nativeRoutingPreflight,
+            routePlanRepository: routePlanRepository);
         viewModel.SetEndpoints(
             new Coordinate(34, -64),
             new Coordinate(39, -52));
@@ -1003,6 +1046,8 @@ public sealed class MainViewModelWorkflowTests
 
         public ForecastRequest? LastRequest { get; private set; }
 
+        public List<ForecastRequest> Requests { get; } = [];
+
         public int CallCount { get; private set; }
 
         public async ValueTask<ForecastAcquisition> AcquireAsync(
@@ -1012,6 +1057,7 @@ public sealed class MainViewModelWorkflowTests
         {
             CallCount++;
             LastRequest = request;
+            Requests.Add(request);
             progress?.Report(new ForecastProgress(
                 Provider,
                 Model,

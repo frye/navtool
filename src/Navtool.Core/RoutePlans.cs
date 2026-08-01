@@ -161,6 +161,9 @@ public enum RouteLegOutcomeState
     Pending,
     Succeeded,
     Failed,
+    Cancelled,
+    Blocked,
+    OutsideForecastWindow,
     Invalidated
 }
 
@@ -172,6 +175,9 @@ public enum RouteLegOutcomeReason
     ForecastAcquisitionFailed,
     RouteCalculationFailed,
     ResultValidationFailed,
+    CalculationCancelled,
+    BlockedByPriorFailure,
+    OutsideForecastWindow,
     WaypointCoordinateChanged,
     WaypointsReordered,
     StopoverChanged,

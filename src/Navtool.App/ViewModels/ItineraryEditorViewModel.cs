@@ -425,6 +425,26 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         return _plan.LatestResult(model)!.Legs[0].Route;
     }
 
+    public void AcceptCalculationResult(RoutePlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (!TryBuildPlan(out var current, out var error))
+        {
+            throw new InvalidOperationException(error);
+        }
+
+        if (plan.Id != PlanId || !plan.Waypoints.SequenceEqual(current!.Waypoints))
+        {
+            throw new InvalidOperationException(
+                "The calculation result does not match the current itinerary.");
+        }
+
+        _plan = plan;
+        ResultsInvalidated = plan.HasInvalidatedResults;
+        IsDirty = false;
+        StorageError = null;
+    }
+
     internal void Remove(WaypointEditorItemViewModel waypoint)
     {
         var index = Waypoints.IndexOf(waypoint);
