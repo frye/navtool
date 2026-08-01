@@ -45,6 +45,9 @@ public sealed record RoutePlanRoutingRequest
         ForecastCutoff = cutoffUtc;
         Selections = immutableSelections;
         Models = immutableSelections.Select(selection => selection.Model).ToImmutableArray();
+        StartLegIndex = plan.ActiveLegIndex;
+        StartOrigin = plan.CurrentPosition?.Coordinate ??
+            plan.Waypoints[StartLegIndex].Coordinate;
     }
 
     public RoutePlan Plan { get; }
@@ -56,6 +59,20 @@ public sealed record RoutePlanRoutingRequest
     public ImmutableArray<ForecastSelection> Selections { get; }
 
     public ImmutableArray<ForecastModel> Models { get; }
+
+    /// <summary>
+    /// The index of the leg routing should resume from: <see cref="RoutePlan.ActiveLegIndex"/> at
+    /// the time the request was built. Legs before this index are carried forward unchanged
+    /// (sailed history, or explicitly skipped legs) rather than recalculated.
+    /// </summary>
+    public int StartLegIndex { get; }
+
+    /// <summary>
+    /// The origin coordinate for <see cref="StartLegIndex"/>: the plan's user-placed current
+    /// position when set, otherwise that leg's own start waypoint. Never a synthetic/permanent
+    /// waypoint.
+    /// </summary>
+    public Coordinate StartOrigin { get; }
 }
 
 public enum RoutePlanRoutingUnitStatus
@@ -159,10 +176,7 @@ public sealed class RoutePlanRoutingWorkflow
                     request.Plan.Id,
                     selection.Model,
                     _timeProvider.GetUtcNow()),
-                request.Plan.Legs.Select(leg => new RouteLegResult(
-                    leg.Id,
-                    RouteLegOutcomeState.Pending,
-                    RouteLegOutcomeReason.None)).ToArray()));
+                BuildInitialLegs(request, selection.Model)));
 
         async Task<bool> PublishAsync(ModelExecutionState modelState, bool completeSession)
         {
@@ -195,7 +209,7 @@ public sealed class RoutePlanRoutingWorkflow
             var departure = request.DepartureTime;
             try
             {
-                for (var legIndex = 0; legIndex < request.Plan.Legs.Length; legIndex++)
+                for (var legIndex = request.StartLegIndex; legIndex < request.Plan.Legs.Length; legIndex++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     if (departure >= request.ForecastCutoff)
@@ -213,11 +227,13 @@ public sealed class RoutePlanRoutingWorkflow
                     }
 
                     var leg = request.Plan.Legs[legIndex];
-                    var from = request.Plan.Waypoints[legIndex];
+                    var origin = legIndex == request.StartLegIndex
+                        ? request.StartOrigin
+                        : request.Plan.Waypoints[legIndex].Coordinate;
                     var to = request.Plan.Waypoints[legIndex + 1];
                     var route = new RouteRequest(
                         $"{request.Plan.Id}-leg-{legIndex}-{modelState.Session.Id}",
-                        from.Coordinate,
+                        origin,
                         to.Coordinate,
                         departure,
                         request.ForecastCutoff);
@@ -331,7 +347,11 @@ public sealed class RoutePlanRoutingWorkflow
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                await MarkCancelledAsync(modelState, PublishAsync, progressState).ConfigureAwait(false);
+                await MarkCancelledAsync(
+                    modelState,
+                    request.StartLegIndex,
+                    PublishAsync,
+                    progressState).ConfigureAwait(false);
             }
         }
 
@@ -403,10 +423,11 @@ public sealed class RoutePlanRoutingWorkflow
 
     private static async Task MarkCancelledAsync(
         ModelExecutionState modelState,
+        int firstLegIndex,
         Func<ModelExecutionState, bool, Task<bool>> publish,
         ProgressState progress)
     {
-        var pending = Enumerable.Range(0, modelState.Legs.Length)
+        var pending = Enumerable.Range(firstLegIndex, modelState.Legs.Length - firstLegIndex)
             .Where(index => modelState.Legs[index].State == RouteLegOutcomeState.Pending)
             .ToArray();
         for (var pendingIndex = 0; pendingIndex < pending.Length; pendingIndex++)
@@ -429,6 +450,47 @@ public sealed class RoutePlanRoutingWorkflow
                 1,
                 "Calculation cancelled.");
         }
+    }
+
+    /// <summary>
+    /// Seeds the per-model leg outcomes before a routing pass: legs before
+    /// <see cref="RoutePlanRoutingRequest.StartLegIndex"/> are carried forward unchanged from the
+    /// plan's latest result for this model (sailed history, or legs explicitly skipped by an
+    /// active-leg selection) rather than recalculated. Legs from that index forward start Pending.
+    /// A carried, unsailed leg whose accepted route used a current-position origin that no longer
+    /// applies (because a later leg is now active) is invalidated rather than carried as-is.
+    /// </summary>
+    private static RouteLegResult[] BuildInitialLegs(RoutePlanRoutingRequest request, ForecastModel model)
+    {
+        var plan = request.Plan;
+        var existingByLeg = plan.LatestResult(model)?.Legs.ToDictionary(leg => leg.LegId);
+        return plan.Legs.Select(leg =>
+        {
+            if (leg.Index >= request.StartLegIndex)
+            {
+                return new RouteLegResult(leg.Id, RouteLegOutcomeState.Pending, RouteLegOutcomeReason.None);
+            }
+
+            if (existingByLeg is null ||
+                !existingByLeg.TryGetValue(leg.Id, out var carried))
+            {
+                return new RouteLegResult(
+                    leg.Id,
+                    RouteLegOutcomeState.NotCalculated,
+                    RouteLegOutcomeReason.BeforeActiveLeg,
+                    detail: "Not calculated because the leg is before the active leg.");
+            }
+
+            if (plan.SailedLegIds.Contains(leg.Id) || carried.Route is null)
+            {
+                return carried;
+            }
+
+            var from = plan.Waypoints[leg.Index];
+            return carried.Route.Request.Origin.IsSameLocation(from.Coordinate)
+                ? carried
+                : carried.Invalidate(RouteLegOutcomeReason.CurrentPositionChanged);
+        }).ToArray();
     }
 
     private static RouteLegOutcomeReason FailureReason(ModelRouteFailureStage stage) => stage switch

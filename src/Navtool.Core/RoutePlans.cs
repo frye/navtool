@@ -159,6 +159,7 @@ public sealed record RouteCalculationSession
 public enum RouteLegOutcomeState
 {
     Pending,
+    NotCalculated,
     Succeeded,
     Failed,
     Cancelled,
@@ -170,6 +171,7 @@ public enum RouteLegOutcomeState
 public enum RouteLegOutcomeReason
 {
     None,
+    BeforeActiveLeg,
     CalculationSucceeded,
     ForecastExhausted,
     ForecastAcquisitionFailed,
@@ -182,7 +184,8 @@ public enum RouteLegOutcomeReason
     WaypointsReordered,
     StopoverChanged,
     WaypointAdded,
-    WaypointRemoved
+    WaypointRemoved,
+    CurrentPositionChanged
 }
 
 public sealed record RouteLegResult
@@ -298,6 +301,23 @@ public sealed record RoutePlanResult
         leg.DeferredInvalidationReason is not null);
 }
 
+/// <summary>
+/// A user-placed current-start marker: an arbitrary position (not a permanent waypoint) plus
+/// the explicit departure time from that position. Never inferred from wall clock or GPS.
+/// </summary>
+public sealed record RouteCurrentPosition
+{
+    public RouteCurrentPosition(Coordinate coordinate, DateTimeOffset departureTime)
+    {
+        Coordinate = coordinate;
+        DepartureTime = departureTime.ToUniversalTime();
+    }
+
+    public Coordinate Coordinate { get; }
+
+    public DateTimeOffset DepartureTime { get; }
+}
+
 public sealed record RoutePlan
 {
     public RoutePlan(
@@ -305,7 +325,9 @@ public sealed record RoutePlan
         string name,
         IEnumerable<RouteWaypoint> waypoints,
         IEnumerable<RoutePlanResult>? results = null,
-        IEnumerable<RouteLegId>? sailedLegIds = null)
+        IEnumerable<RouteLegId>? sailedLegIds = null,
+        RouteCurrentPosition? currentPosition = null,
+        RouteLegId? activeLegId = null)
     {
         if (id.Value == Guid.Empty)
         {
@@ -319,7 +341,14 @@ public sealed record RoutePlan
         var legs = CreateLegs(immutableWaypoints);
         var immutableResults = (results ?? []).ToImmutableArray();
         var immutableSailed = (sailedLegIds ?? []).ToImmutableHashSet();
-        ValidateReferences(id, immutableWaypoints, legs, immutableResults, immutableSailed);
+        ValidateReferences(
+            id,
+            immutableWaypoints,
+            legs,
+            immutableResults,
+            immutableSailed,
+            currentPosition,
+            activeLegId);
 
         Id = id;
         Name = name.Trim();
@@ -327,6 +356,8 @@ public sealed record RoutePlan
         Legs = legs;
         Results = immutableResults;
         SailedLegIds = immutableSailed;
+        CurrentPosition = currentPosition;
+        ActiveLegId = activeLegId;
     }
 
     public RoutePlan(string name, IEnumerable<RouteWaypoint> waypoints)
@@ -346,13 +377,43 @@ public sealed record RoutePlan
 
     public ImmutableHashSet<RouteLegId> SailedLegIds { get; }
 
+    /// <summary>
+    /// The user-placed current position and explicit departure time, or <c>null</c> when routing
+    /// should begin from the itinerary start. Never inferred from wall clock or GPS.
+    /// </summary>
+    public RouteCurrentPosition? CurrentPosition { get; }
+
+    /// <summary>
+    /// An explicit override for the leg future routing should resume from. When <c>null</c>, the
+    /// active leg defaults to the first unsailed leg.
+    /// </summary>
+    public RouteLegId? ActiveLegId { get; }
+
+    /// <summary>
+    /// The index of the leg future routing should resume from: the explicit <see cref="ActiveLegId"/>
+    /// when set, otherwise the first leg that has not been marked sailed. Equal to <see cref="Legs"/>
+    /// length when every leg has been sailed.
+    /// </summary>
+    public int ActiveLegIndex => ResolveActiveLegIndex(Legs, SailedLegIds, ActiveLegId);
+
+    public RouteLeg? ActiveLeg
+    {
+        get
+        {
+            var index = ActiveLegIndex;
+            return index < Legs.Length ? Legs[index] : null;
+        }
+    }
+
+    public bool IsItineraryComplete => ActiveLegIndex >= Legs.Length;
+
     public bool HasInvalidatedResults => Results.Any(result => result.IsInvalidated);
 
     public RoutePlanResult? LatestResult(ForecastModel model) =>
         Results.SingleOrDefault(result => result.Model == model);
 
     public RoutePlan Rename(string name) =>
-        new(Id, name, Waypoints, Results, SailedLegIds);
+        new(Id, name, Waypoints, Results, SailedLegIds, CurrentPosition, ActiveLegId);
 
     public RoutePlan RenameWaypoint(RouteWaypointId waypointId, string name)
     {
@@ -463,13 +524,33 @@ public sealed record RoutePlan
         }
 
         var retained = Results.Where(existing => existing.Model != result.Model);
-        return new RoutePlan(Id, Name, Waypoints, retained.Append(result), SailedLegIds);
+        return new RoutePlan(
+            Id,
+            Name,
+            Waypoints,
+            retained.Append(result),
+            SailedLegIds,
+            CurrentPosition,
+            ActiveLegId);
     }
 
+    /// <summary>
+    /// Marks a leg as sailed (a real-world, model-independent itinerary fact). Sailed results are
+    /// retained as history and are never invalidated by forecast recalculation. Does not itself
+    /// invalidate any results.
+    /// </summary>
     public RoutePlan MarkSailed(RouteLegId legId)
     {
         EnsureLegExists(legId);
-        return new RoutePlan(Id, Name, Waypoints, Results, SailedLegIds.Add(legId));
+        var newActiveLegId = ActiveLegId == legId ? null : ActiveLegId;
+        return new RoutePlan(
+            Id,
+            Name,
+            Waypoints,
+            Results,
+            SailedLegIds.Add(legId),
+            CurrentPosition,
+            newActiveLegId);
     }
 
     public RoutePlan UnmarkSailed(RouteLegId legId)
@@ -478,6 +559,8 @@ public sealed record RoutePlan
         var leg = Legs.Single(item => item.Id == legId);
         var from = Waypoints.Single(item => item.Id == leg.FromWaypointId);
         var to = Waypoints.Single(item => item.Id == leg.ToWaypointId);
+        var newSailed = SailedLegIds.Remove(legId);
+        var newActiveIndex = ResolveActiveLegIndex(Legs, newSailed, ActiveLegId);
         var updatedResults = Results.Select(result => new RoutePlanResult(
             result.Session,
             result.Legs.Select(outcome =>
@@ -492,18 +575,167 @@ public sealed record RoutePlan
                     return outcome.Invalidate(deferredReason);
                 }
 
-                return outcome.Route is not null &&
-                       (!outcome.Route.Request.Origin.IsSameLocation(from.Coordinate) ||
-                        !outcome.Route.Request.Destination.IsSameLocation(to.Coordinate))
-                    ? outcome.Invalidate(RouteLegOutcomeReason.WaypointCoordinateChanged)
-                    : outcome;
+                if (outcome.Route is null)
+                {
+                    return outcome;
+                }
+
+                var originMatchesWaypoint = outcome.Route.Request.Origin.IsSameLocation(from.Coordinate);
+                var originMatchesCurrentPosition =
+                    CurrentPosition is not null &&
+                    leg.Index == newActiveIndex &&
+                    outcome.Route.Request.Origin.IsSameLocation(CurrentPosition.Coordinate);
+                var destinationMatches = outcome.Route.Request.Destination.IsSameLocation(to.Coordinate);
+                if ((originMatchesWaypoint || originMatchesCurrentPosition) && destinationMatches)
+                {
+                    return outcome;
+                }
+
+                var usedCurrentPosition =
+                    CurrentPosition is not null &&
+                    !originMatchesWaypoint &&
+                    outcome.Route.Request.Origin.IsSameLocation(CurrentPosition.Coordinate);
+                return outcome.Invalidate(usedCurrentPosition
+                    ? RouteLegOutcomeReason.CurrentPositionChanged
+                    : RouteLegOutcomeReason.WaypointCoordinateChanged);
             })));
         return new RoutePlan(
             Id,
             Name,
             Waypoints,
             updatedResults,
-            SailedLegIds.Remove(legId));
+            newSailed,
+            CurrentPosition,
+            ActiveLegId);
+    }
+
+    /// <summary>
+    /// Records the user-placed current position and its explicit departure time. Retains the
+    /// existing stable leg identity of the active leg and never inserts a permanent waypoint.
+    /// Invalidates only unsailed results from the active leg forward; sailed results and earlier
+    /// legs are untouched.
+    /// </summary>
+    public RoutePlan SetCurrentPosition(Coordinate coordinate, DateTimeOffset departureTime)
+    {
+        var updatedPosition = new RouteCurrentPosition(coordinate, departureTime);
+        if (CurrentPosition == updatedPosition)
+        {
+            return this;
+        }
+
+        var updatedResults = Results
+            .Select(result => RebuildResult(
+                result,
+                Legs,
+                ActiveLegIndex,
+                RouteLegOutcomeReason.CurrentPositionChanged))
+            .ToArray();
+        return new RoutePlan(
+            Id,
+            Name,
+            Waypoints,
+            updatedResults,
+            SailedLegIds,
+            updatedPosition,
+            ActiveLegId);
+    }
+
+    /// <summary>
+    /// Clears the current position so routing resumes from the itinerary start (or the active
+    /// leg's own start waypoint). Invalidates only unsailed results from the active leg forward
+    /// (mirroring <see cref="SetCurrentPosition"/>), since any accepted route for the active leg
+    /// may have used the now-removed current-position origin. Sailed results and earlier legs are
+    /// untouched.
+    /// </summary>
+    public RoutePlan ClearCurrentPosition()
+    {
+        if (CurrentPosition is null)
+        {
+            return this;
+        }
+
+        var updatedResults = Results
+            .Select(result => RebuildResult(
+                result,
+                Legs,
+                ActiveLegIndex,
+                RouteLegOutcomeReason.CurrentPositionChanged))
+            .ToArray();
+        return new RoutePlan(Id, Name, Waypoints, updatedResults, SailedLegIds, null, ActiveLegId);
+    }
+
+    /// <summary>
+    /// Explicitly selects the leg that future routing should resume from, overriding the default
+    /// first-unfinished-leg resolution. The leg must exist and must not already be sailed.
+    /// Invalidates any other unsailed leg's stored route whose origin depended on the current
+    /// position, since that origin is only valid for whichever leg is currently active.
+    /// </summary>
+    public RoutePlan SetActiveLeg(RouteLegId legId)
+    {
+        EnsureLegExists(legId);
+        if (SailedLegIds.Contains(legId))
+        {
+            throw new InvalidOperationException("A sailed leg cannot be selected as the active leg.");
+        }
+
+        return ActiveLegId == legId
+            ? this
+            : WithActiveLeg(legId);
+    }
+
+    /// <summary>
+    /// Clears any explicit active-leg selection, reverting to the default first-unfinished-leg
+    /// resolution. Invalidates any unsailed leg's stored route left stranded by the resulting
+    /// active-leg change, mirroring <see cref="SetActiveLeg"/>.
+    /// </summary>
+    public RoutePlan ClearActiveLeg() =>
+        ActiveLegId is null
+            ? this
+            : WithActiveLeg(null);
+
+    private RoutePlan WithActiveLeg(RouteLegId? activeLegId)
+    {
+        var newActiveIndex = ResolveActiveLegIndex(Legs, SailedLegIds, activeLegId);
+        var updatedResults = Results
+            .Select(result => InvalidateStaleCurrentPositionOrigin(result, newActiveIndex))
+            .ToArray();
+        return new RoutePlan(Id, Name, Waypoints, updatedResults, SailedLegIds, CurrentPosition, activeLegId);
+    }
+
+    /// <summary>
+    /// Invalidates any non-sailed leg outcome (other than <paramref name="newActiveIndex"/>) whose
+    /// accepted route origin matches <see cref="CurrentPosition"/>. Such an origin is only ever
+    /// valid for the current active leg (see <see cref="ValidateReferences"/>), so it becomes
+    /// stale the moment a different leg becomes active.
+    /// </summary>
+    private RoutePlanResult InvalidateStaleCurrentPositionOrigin(RoutePlanResult result, int newActiveIndex)
+    {
+        if (CurrentPosition is null)
+        {
+            return result;
+        }
+
+        var updated = result.Legs.Select(outcome =>
+        {
+            if (outcome.Route is null || SailedLegIds.Contains(outcome.LegId))
+            {
+                return outcome;
+            }
+
+            var leg = Legs.Single(item => item.Id == outcome.LegId);
+            if (leg.Index == newActiveIndex)
+            {
+                return outcome;
+            }
+
+            var from = Waypoints.Single(item => item.Id == leg.FromWaypointId);
+            var originIsCurrentPosition = outcome.Route.Request.Origin.IsSameLocation(CurrentPosition.Coordinate);
+            var originIsOwnWaypoint = outcome.Route.Request.Origin.IsSameLocation(from.Coordinate);
+            return originIsCurrentPosition && !originIsOwnWaypoint
+                ? outcome.Invalidate(RouteLegOutcomeReason.CurrentPositionChanged)
+                : outcome;
+        });
+        return new RoutePlanResult(result.Session, updated);
     }
 
     private RoutePlan ReplaceWaypoint(
@@ -514,7 +746,7 @@ public sealed record RoutePlan
     {
         var updated = Waypoints.SetItem(index, waypoint);
         return invalidFromLeg is null
-            ? new RoutePlan(Id, Name, updated, Results, SailedLegIds)
+            ? new RoutePlan(Id, Name, updated, Results, SailedLegIds, CurrentPosition, ActiveLegId)
             : Rebuild(updated, invalidFromLeg.Value, reason);
     }
 
@@ -532,10 +764,23 @@ public sealed record RoutePlan
             throw new InvalidOperationException("Unmark sailed legs before changing their waypoint boundaries.");
         }
 
+        if (ActiveLegId is { } activeId && !newLegIds.Contains(activeId))
+        {
+            throw new InvalidOperationException(
+                "Clear or reassign the active leg before changing its waypoint boundaries.");
+        }
+
         var updatedResults = Results
             .Select(result => RebuildResult(result, newLegs, invalidFromLeg, reason))
             .ToArray();
-        return new RoutePlan(Id, Name, waypoints, updatedResults, SailedLegIds);
+        return new RoutePlan(
+            Id,
+            Name,
+            waypoints,
+            updatedResults,
+            SailedLegIds,
+            CurrentPosition,
+            ActiveLegId);
     }
 
     private RoutePlanResult RebuildResult(
@@ -643,13 +888,35 @@ public sealed record RoutePlan
         ImmutableArray<RouteWaypoint> waypoints,
         ImmutableArray<RouteLeg> legs,
         ImmutableArray<RoutePlanResult> results,
-        ImmutableHashSet<RouteLegId> sailedLegIds)
+        ImmutableHashSet<RouteLegId> sailedLegIds,
+        RouteCurrentPosition? currentPosition,
+        RouteLegId? activeLegId)
     {
         if (results.Select(result => result.Model).Distinct().Count() != results.Length)
         {
             throw new ArgumentException("Only the latest result for each forecast model may be stored.", nameof(results));
         }
 
+        var legIds = legs.Select(leg => leg.Id).ToImmutableHashSet();
+        if (!sailedLegIds.IsSubsetOf(legIds))
+        {
+            throw new ArgumentException("A sailed-leg reference does not exist in the route plan.", nameof(sailedLegIds));
+        }
+
+        if (activeLegId is { } explicitActiveId)
+        {
+            if (!legIds.Contains(explicitActiveId))
+            {
+                throw new ArgumentException("The active-leg reference does not exist in the route plan.", nameof(activeLegId));
+            }
+
+            if (sailedLegIds.Contains(explicitActiveId))
+            {
+                throw new ArgumentException("The active leg cannot already be marked sailed.", nameof(activeLegId));
+            }
+        }
+
+        var activeIndex = ResolveActiveLegIndex(legs, sailedLegIds, activeLegId);
         foreach (var result in results)
         {
             if (result.Session.PlanId != planId)
@@ -668,19 +935,43 @@ public sealed record RoutePlan
                 var leg = legs.Single(item => item.Id == legResult.LegId);
                 var from = waypoints.Single(item => item.Id == leg.FromWaypointId);
                 var to = waypoints.Single(item => item.Id == leg.ToWaypointId);
-                if (!legResult.Route!.Request.Origin.IsSameLocation(from.Coordinate) ||
-                    !legResult.Route.Request.Destination.IsSameLocation(to.Coordinate))
+                if (!legResult.Route!.Request.Destination.IsSameLocation(to.Coordinate))
+                {
+                    throw new ArgumentException("A route result does not match its referenced leg endpoints.", nameof(results));
+                }
+
+                var originMatchesWaypoint = legResult.Route.Request.Origin.IsSameLocation(from.Coordinate);
+                var originMatchesCurrentPosition =
+                    currentPosition is not null &&
+                    leg.Index == activeIndex &&
+                    legResult.Route.Request.Origin.IsSameLocation(currentPosition.Coordinate);
+                if (!originMatchesWaypoint && !originMatchesCurrentPosition)
                 {
                     throw new ArgumentException("A route result does not match its referenced leg endpoints.", nameof(results));
                 }
             }
         }
+    }
 
-        var legIds = legs.Select(leg => leg.Id).ToImmutableHashSet();
-        if (!sailedLegIds.IsSubsetOf(legIds))
+    private static int ResolveActiveLegIndex(
+        ImmutableArray<RouteLeg> legs,
+        ImmutableHashSet<RouteLegId> sailedLegIds,
+        RouteLegId? activeLegId)
+    {
+        if (activeLegId is { } explicitId)
         {
-            throw new ArgumentException("A sailed-leg reference does not exist in the route plan.", nameof(sailedLegIds));
+            return legs.Single(leg => leg.Id == explicitId).Index;
         }
+
+        for (var index = 0; index < legs.Length; index++)
+        {
+            if (!sailedLegIds.Contains(legs[index].Id))
+            {
+                return index;
+            }
+        }
+
+        return legs.Length;
     }
 
     private static void ValidateResultLegs(RoutePlanResult result, ImmutableArray<RouteLeg> legs)

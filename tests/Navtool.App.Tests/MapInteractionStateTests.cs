@@ -61,4 +61,24 @@ public sealed class MapInteractionStateTests
         Assert.Equal(destination, state.Destination);
         Assert.Equal(MapInteractionMode.Browse, state.Mode);
     }
+
+    [Fact]
+    public void SetCurrentPositionModeConsumesClickAndResetsToBrowseWithoutTouchingEndpoints()
+    {
+        var state = new MapInteractionState();
+        var start = new Coordinate(41.2, -70.4);
+        state.Activate(MapInteractionMode.SetStart);
+        state.HandleMapClick(start);
+
+        state.Activate(MapInteractionMode.SetCurrentPosition);
+        var handled = state.HandleMapClick(new Coordinate(30, -60));
+
+        // The current-position marker is distinct, session-scoped state owned by the itinerary
+        // editor (not MapInteractionState's Start/Destination), so this click must not alter
+        // either fixed endpoint while still being consumed (not falling through to Browse).
+        Assert.True(handled);
+        Assert.Equal(MapInteractionMode.Browse, state.Mode);
+        Assert.Equal(start, state.Start);
+        Assert.Null(state.Destination);
+    }
 }

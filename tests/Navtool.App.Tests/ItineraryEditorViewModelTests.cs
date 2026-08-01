@@ -71,6 +71,7 @@ public sealed class ItineraryEditorViewModelTests
         var editor = new ItineraryEditorViewModel(repository);
         await editor.RefreshSavedPlansCommand.ExecuteAsync(null);
         await editor.OpenCommand.ExecuteAsync(null);
+        Assert.All(editor.Legs, leg => Assert.Equal("NOAA pending", leg.OutcomeStatus));
 
         editor.Waypoints[1].HasStopover = true;
 
@@ -149,6 +150,133 @@ public sealed class ItineraryEditorViewModelTests
 
         Assert.True(editor.IsDirty);
         Assert.Equal("Edited while saving", editor.RouteName);
+    }
+
+    [Fact]
+    public void Legs_populate_from_a_fresh_itinerary_and_mark_unmark_sailed_toggles_state()
+    {
+        var editor = new ItineraryEditorViewModel();
+        editor.SetEndpoints(new Coordinate(0, 0), new Coordinate(0, 1));
+
+        var leg = Assert.Single(editor.Legs);
+        Assert.False(leg.IsSailed);
+        Assert.True(leg.IsActive);
+        Assert.Equal("Active", leg.StatusLabel);
+
+        Assert.True(leg.MarkSailedCommand.CanExecute(null));
+        leg.MarkSailedCommand.Execute(null);
+
+        Assert.True(editor.Legs[0].IsSailed);
+        Assert.Equal("Sailed", editor.Legs[0].StatusLabel);
+        Assert.False(editor.Legs[0].MarkSailedCommand.CanExecute(null));
+        Assert.True(editor.Legs[0].UnmarkSailedCommand.CanExecute(null));
+
+        editor.Legs[0].UnmarkSailedCommand.Execute(null);
+
+        Assert.False(editor.Legs[0].IsSailed);
+        Assert.True(editor.Legs[0].IsActive);
+    }
+
+    [Fact]
+    public void Explicit_active_leg_selection_updates_legs_and_can_be_cleared()
+    {
+        var editor = new ItineraryEditorViewModel();
+        editor.SetEndpoints(new Coordinate(0, 0), new Coordinate(0, 3));
+        editor.AddWaypointCommand.Execute(null);
+        var middle = editor.Waypoints[1];
+        middle.SetOnMapCommand.Execute(null);
+        editor.PlaceActiveWaypoint(new Coordinate(0, 1.5));
+
+        Assert.Equal(2, editor.Legs.Count);
+        Assert.True(editor.Legs[0].IsActive);
+        Assert.False(editor.Legs[1].IsActive);
+
+        Assert.True(editor.Legs[1].MakeActiveCommand.CanExecute(null));
+        editor.Legs[1].MakeActiveCommand.Execute(null);
+
+        Assert.False(editor.Legs[0].IsActive);
+        Assert.True(editor.Legs[1].IsActive);
+
+        editor.ClearActiveLeg();
+
+        Assert.True(editor.Legs[0].IsActive);
+        Assert.False(editor.Legs[1].IsActive);
+    }
+
+    [Fact]
+    public void Place_current_position_records_coordinate_and_explicit_departure_time()
+    {
+        var editor = new ItineraryEditorViewModel();
+        editor.SetEndpoints(new Coordinate(0, 0), new Coordinate(0, 1));
+        var departure = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
+
+        editor.BeginCurrentPositionPlacement();
+        Assert.True(editor.IsAwaitingCurrentPositionPlacement);
+
+        var placed = editor.PlaceCurrentPosition(new Coordinate(0.2, 0.4), departure, out var error);
+
+        Assert.True(placed, error);
+        Assert.False(editor.IsAwaitingCurrentPositionPlacement);
+        Assert.True(editor.HasCurrentPosition);
+        Assert.Equal(new Coordinate(0.2, 0.4), editor.CurrentPositionCoordinate);
+        Assert.Equal(departure, editor.CurrentPositionDepartureTimeUtc);
+        Assert.NotEqual("Not set", editor.CurrentPositionDisplay);
+
+        editor.ClearCurrentPosition();
+
+        Assert.False(editor.HasCurrentPosition);
+        Assert.Null(editor.CurrentPositionCoordinate);
+        Assert.Equal("Not set", editor.CurrentPositionDisplay);
+    }
+
+    [Fact]
+    public void Cancel_current_position_placement_leaves_existing_current_position_untouched()
+    {
+        var editor = new ItineraryEditorViewModel();
+        editor.SetEndpoints(new Coordinate(0, 0), new Coordinate(0, 1));
+        editor.PlaceCurrentPosition(
+            new Coordinate(0.2, 0.4),
+            new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero),
+            out _);
+
+        editor.BeginCurrentPositionPlacement();
+        editor.CancelCurrentPositionPlacement();
+
+        Assert.False(editor.IsAwaitingCurrentPositionPlacement);
+        Assert.True(editor.HasCurrentPosition);
+        Assert.Equal(new Coordinate(0.2, 0.4), editor.CurrentPositionCoordinate);
+    }
+
+    [Fact]
+    public async Task Save_and_open_restore_sailed_active_leg_and_current_position_state()
+    {
+        var repository = new MemoryRepository();
+        var editor = new ItineraryEditorViewModel(repository);
+        editor.SetEndpoints(new Coordinate(0, 0), new Coordinate(0, 3));
+        editor.AddWaypointCommand.Execute(null);
+        var middle = editor.Waypoints[1];
+        middle.SetOnMapCommand.Execute(null);
+        editor.PlaceActiveWaypoint(new Coordinate(0, 1.5));
+
+        var firstLegId = editor.Legs[0].Id;
+        editor.Legs[0].MarkSailedCommand.Execute(null);
+        var departure = new DateTimeOffset(2026, 8, 1, 9, 0, 0, TimeSpan.Zero);
+        editor.PlaceCurrentPosition(new Coordinate(0.1, 0.9), departure, out var placeError);
+        Assert.Null(placeError);
+
+        await editor.SaveCommand.ExecuteAsync(null);
+        var reopened = new ItineraryEditorViewModel(repository);
+        await reopened.RefreshSavedPlansCommand.ExecuteAsync(null);
+        reopened.SelectedSavedPlan = reopened.SavedPlans.Single();
+        await reopened.OpenCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, reopened.Legs.Count);
+        Assert.Equal(firstLegId, reopened.Legs[0].Id);
+        Assert.True(reopened.Legs[0].IsSailed);
+        Assert.True(reopened.Legs[1].IsActive);
+        Assert.True(reopened.HasCurrentPosition);
+        Assert.Equal(new Coordinate(0.1, 0.9), reopened.CurrentPositionCoordinate);
+        Assert.Equal(departure, reopened.CurrentPositionDepartureTimeUtc);
     }
 
     private static RoutePlan CreatePlanWithPendingResult()

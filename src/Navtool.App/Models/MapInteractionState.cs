@@ -7,7 +7,8 @@ public enum MapInteractionMode
     Browse,
     SetStart,
     SetDestination,
-    SetWaypoint
+    SetWaypoint,
+    SetCurrentPosition
 }
 
 public sealed class MapInteractionState
@@ -46,6 +47,9 @@ public sealed class MapInteractionState
                 SetDestination(coordinate);
                 break;
             case MapInteractionMode.SetWaypoint:
+                Mode = MapInteractionMode.Browse;
+                break;
+            case MapInteractionMode.SetCurrentPosition:
                 Mode = MapInteractionMode.Browse;
                 break;
             default:

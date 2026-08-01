@@ -160,6 +160,69 @@ public sealed class RoutePlanJsonRepositoryTests
         Assert.Empty(Directory.EnumerateFiles(repository.RootDirectory, "*.tmp"));
     }
 
+    [Fact]
+    public async Task Version_one_documents_are_migrated_with_null_current_position_and_active_leg()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var id = new RoutePlanId();
+        var json = """
+            {"schemaVersion":1,"plan":{"id":"__ID__","name":"Legacy",
+            "waypoints":[{"id":"11111111-1111-1111-1111-111111111111","name":"Start",
+            "latitude":10,"longitude":20,"stopoverTicks":null},
+            {"id":"22222222-2222-2222-2222-222222222222","name":"Finish",
+            "latitude":11,"longitude":21,"stopoverTicks":null}],
+            "results":[],"sailedLegIds":[]}}
+            """.Replace("__ID__", id.Value.ToString());
+        await File.WriteAllTextAsync(
+            Path.Combine(repository.RootDirectory, $"{id}.route.json"),
+            json);
+
+        var loaded = await repository.OpenAsync(id);
+
+        Assert.Equal("Legacy", loaded.Name);
+        Assert.Null(loaded.CurrentPosition);
+        Assert.Null(loaded.ActiveLegId);
+        Assert.Equal(0, loaded.ActiveLegIndex);
+    }
+
+    [Fact]
+    public async Task Current_position_and_active_leg_round_trip_through_save_and_open()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreatePlan();
+        var activeLegId = plan.Legs[1].Id;
+        var withActiveLeg = plan.SetActiveLeg(activeLegId);
+        var departure = new DateTimeOffset(2026, 8, 2, 6, 0, 0, TimeSpan.Zero);
+        var withCurrentPosition = withActiveLeg.SetCurrentPosition(new Coordinate(36, -62), departure);
+
+        await repository.SaveAsync(withCurrentPosition);
+        var loaded = await repository.OpenAsync(withCurrentPosition.Id);
+
+        Assert.NotNull(loaded.CurrentPosition);
+        Assert.Equal(new Coordinate(36, -62), loaded.CurrentPosition!.Coordinate);
+        Assert.Equal(departure, loaded.CurrentPosition.DepartureTime);
+        Assert.Equal(activeLegId, loaded.ActiveLegId);
+    }
+
+    [Fact]
+    public async Task Unknown_active_leg_reference_is_rejected_on_load()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreatePlan();
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var node = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        node["plan"]!["activeLegId"] = "99999999-9999-9999-9999-999999999999";
+        await File.WriteAllTextAsync(path, node.ToJsonString());
+
+        var exception = await Assert.ThrowsAsync<RoutePlanRepositoryException>(async () =>
+            await repository.OpenAsync(plan.Id));
+        Assert.Contains("active-leg", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static RoutePlan CreatePlan()
     {
         var plan = new RoutePlan(
