@@ -9,6 +9,9 @@ It targets macOS, Windows, and Linux.
 - Build and save named, ordered itineraries with fixed start/finish waypoints,
   reorderable intermediate waypoints, optional stopovers, and numbered map
   markers connected by an antimeridian-safe planning guide.
+- Open on a Salish Sea chart view and use resizable edge drawers plus
+  right-click, long-press, or keyboard radial map actions to place endpoints,
+  inspect routes, and start calculation without obscuring the chart.
 - Choose a local departure date/time, converted to UTC with DST validation.
 - Set the expected passage duration so only the required forecast times are
   acquired, up to the ten-day planning limit.
