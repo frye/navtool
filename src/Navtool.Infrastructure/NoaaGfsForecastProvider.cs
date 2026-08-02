@@ -1251,7 +1251,28 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             "*.partial",
             SearchOption.TopDirectoryOnly))
         {
-            TryDeletePart(path, "orphaned NOAA temporary part");
+            try
+            {
+                using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                }
+
+                File.Delete(path);
+            }
+            catch (FileNotFoundException)
+            {
+            }
+            catch (DirectoryNotFoundException)
+            {
+            }
+            catch (IOException)
+            {
+                // A concurrent acquisition still owns this partial download.
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                _logger.LogWarning(exception, "Could not inspect orphaned NOAA partial {Path}", path);
+            }
         }
     }
 
@@ -1299,14 +1320,14 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
 
     private static void ValidateOptions(NoaaGfsOptions options)
     {
-        if (        options.FilterEndpoint is null ||
-        !options.FilterEndpoint.IsAbsoluteUri ||
-        options.PublicationDelay < TimeSpan.Zero ||
-        !double.IsFinite(options.CacheTileSizeDegrees) ||
-        options.CacheTileSizeDegrees < 0.25 ||
-        options.CacheTileSizeDegrees > 180 ||
-        options.CacheTileSizeDegrees % 0.25 != 0 ||
-        options.ForecastHorizon <= TimeSpan.Zero ||
+        if (options.FilterEndpoint is null ||
+            !options.FilterEndpoint.IsAbsoluteUri ||
+            options.PublicationDelay < TimeSpan.Zero ||
+            !double.IsFinite(options.CacheTileSizeDegrees) ||
+            options.CacheTileSizeDegrees < 0.25 ||
+            options.CacheTileSizeDegrees > 180 ||
+            options.CacheTileSizeDegrees % 0.25 != 0 ||
+            options.ForecastHorizon <= TimeSpan.Zero ||
             options.ForecastHorizon > TimeSpan.FromHours(384) ||
             options.MaximumRunLookbackCycles < 0 ||
             options.MaximumResponseBytes <= 0 ||

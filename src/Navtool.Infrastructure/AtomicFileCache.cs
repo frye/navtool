@@ -436,7 +436,28 @@ public sealed class AtomicFileCache
                      "*.partial",
                      SearchOption.TopDirectoryOnly))
         {
-            DeleteIfPresent(path);
+            try
+            {
+                using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                }
+
+                File.Delete(path);
+            }
+            catch (FileNotFoundException)
+            {
+            }
+            catch (DirectoryNotFoundException)
+            {
+            }
+            catch (IOException)
+            {
+                // Another process still owns this partial; its atomic promotion must finish.
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                _logger.LogWarning(exception, "Could not inspect orphaned cache partial {Path}", path);
+            }
         }
     }
 

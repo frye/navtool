@@ -108,4 +108,24 @@ public sealed class AtomicFileCacheTests
         Assert.Null(await restarted.TryGetAsync(second, now.AddHours(2)));
         Assert.NotNull(await restarted.TryGetAsync(third, now.AddHours(2)));
     }
+
+    [Fact]
+    public void Startup_sweep_does_not_delete_partial_owned_by_another_writer()
+    {
+        using var directory = new TestDirectory();
+        var partial = Path.Combine(directory.Path, ".cache.inflight.partial");
+        using (var writer = new FileStream(
+                   partial,
+                   FileMode.CreateNew,
+                   FileAccess.ReadWrite,
+                   FileShare.None))
+        {
+            writer.WriteByte(1);
+            _ = new AtomicFileCache(new AtomicFileCacheOptions(directory.Path));
+            Assert.True(File.Exists(partial));
+        }
+
+        _ = new AtomicFileCache(new AtomicFileCacheOptions(directory.Path));
+        Assert.False(File.Exists(partial));
+    }
 }
