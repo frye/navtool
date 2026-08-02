@@ -74,7 +74,7 @@ public sealed class NoaaGfsForecastProviderTests
         Assert.Equal(ForecastAcquisitionSource.Remote, acquired.Source);
         Assert.Equal(ForecastAcquisitionSource.Cache, cached.Source);
         Assert.Equal(new DateTimeOffset(2026, 7, 14, 6, 0, 0, TimeSpan.Zero), acquired.Run.InitializedAt);
-        Assert.Equal(3, handler.RequestCount);
+        Assert.Equal(6, handler.RequestCount);
         Assert.Equal(1, handler.MaximumConcurrency);
         Assert.All(handler.Requests, uri =>
         {
@@ -82,14 +82,80 @@ public sealed class NoaaGfsForecastProviderTests
             Assert.Contains("lev_10_m_above_ground=on", query);
             Assert.Contains("var_UGRD=on", query);
             Assert.Contains("var_VGRD=on", query);
-            Assert.Contains("leftlon=170", query);
-            Assert.Contains("rightlon=190", query);
-            Assert.Contains("toplat=45", query);
+            Assert.True(
+                query.Contains("leftlon=170", StringComparison.Ordinal) ||
+                query.Contains("leftlon=180", StringComparison.Ordinal));
+            Assert.True(
+                query.Contains("rightlon=180", StringComparison.Ordinal) ||
+                query.Contains("rightlon=190", StringComparison.Ordinal));
+            Assert.Contains("toplat=50", query);
             Assert.Contains("bottomlat=40", query);
         });
-        Assert.Equal(3 * "GRIBpayload7777"u8.Length, new FileInfo(acquired.Artifact.Path).Length);
+        Assert.Equal(6 * "GRIBpayload7777"u8.Length, new FileInfo(acquired.Artifact.Path).Length);
         Assert.Contains(progress, item => item.Stage == ForecastProgressStage.Downloading);
         Assert.Equal(ForecastProgressStage.Completed, progress[^1].Stage);
+    }
+
+    [Fact]
+    public async Task Shifted_window_reuses_overlapping_tiles_and_downloads_only_new_edge_hour()
+    {
+        using var directory = new TestDirectory();
+        var handler = new RecordingHttpHandler((_, _, _) =>
+            Task.FromResult(RecordingHttpHandler.GribResponse()));
+        using var client = new HttpClient(handler);
+        var provider = CreateProvider(directory.Path, client);
+        var first = CreateRequest();
+        var shifted = new ForecastRequest(
+            ForecastModel.NoaaGfs,
+            first.Bounds,
+            first.From.AddMinutes(10),
+            first.Through.AddMinutes(10));
+
+        await provider.AcquireAsync(first, null, CancellationToken.None);
+        var originalRequestCount = handler.RequestCount;
+        var acquisition = await provider.AcquireAsync(shifted, null, CancellationToken.None);
+
+        Assert.Equal(1, handler.RequestCount - originalRequestCount);
+        Assert.Equal(3, acquisition.CacheUsage!.ReusedPartCount);
+        Assert.Equal(1, acquisition.CacheUsage.DownloadedPartCount);
+    }
+
+    [Fact]
+    public async Task Prefer_cache_uses_covering_older_run_until_latest_is_forced()
+    {
+        using var directory = new TestDirectory();
+        var handler = new RecordingHttpHandler((_, _, _) =>
+            Task.FromResult(RecordingHttpHandler.GribResponse()));
+        using var client = new HttpClient(handler);
+        var clock = new MutableTimeProvider(Now);
+        var provider = new NoaaGfsForecastProvider(
+            client,
+            new AtomicFileCache(new AtomicFileCacheOptions(directory.Path)),
+            clock,
+            TestOptions());
+        var cachedRequest = new ForecastRequest(
+            ForecastModel.NoaaGfs,
+            new GeographicBounds(40, 45, -70, -60),
+            new DateTimeOffset(2026, 7, 14, 14, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 7, 14, 16, 0, 0, TimeSpan.Zero));
+
+        var initial = await provider.AcquireAsync(cachedRequest, null, CancellationToken.None);
+        var initialRequests = handler.RequestCount;
+        clock.UtcNow = Now.AddHours(6);
+        var reused = await provider.AcquireAsync(cachedRequest, null, CancellationToken.None);
+        var forcedRequest = new ForecastRequest(
+            cachedRequest.Model,
+            cachedRequest.Bounds,
+            cachedRequest.From,
+            cachedRequest.Through,
+            ForecastRefreshPolicy.LatestAvailable);
+        var forced = await provider.AcquireAsync(forcedRequest, null, CancellationToken.None);
+
+        Assert.Equal(initial.Run.InitializedAt, reused.Run.InitializedAt);
+        Assert.True(reused.CacheUsage!.IsNewerRunAvailable);
+        Assert.Equal(initialRequests, handler.RequestCount - forced.CacheUsage!.DownloadedPartCount);
+        Assert.Equal(new DateTimeOffset(2026, 7, 14, 12, 0, 0, TimeSpan.Zero), forced.Run.InitializedAt);
+        Assert.False(forced.CacheUsage.IsNewerRunAvailable);
     }
 
     [Fact]
@@ -354,8 +420,7 @@ public sealed class NoaaGfsForecastProviderTests
     {
         using var directory = new TestDirectory();
 
-        // A first attempt fails mid-run, leaving this cache key's isolated parts
-        // subdirectory behind.
+        // A first attempt fails mid-run, leaving a completed shared tile behind.
         var failingHandler = new RecordingHttpHandler((_, count, _) =>
             count == 1
                 ? Task.FromResult(RecordingHttpHandler.GribResponse())
@@ -365,11 +430,10 @@ public sealed class NoaaGfsForecastProviderTests
             await CreateProvider(directory.Path, failingClient)
                 .AcquireAsync(CreateRequest(), null, CancellationToken.None));
 
-        // Simulate a process killed mid-download by dropping a stray ".partial" into that
-        // subdirectory.
-        var partsSubdirectory = Directory.EnumerateDirectories(
-            Path.Combine(directory.Path, "noaa-gfs-parts")).Single();
-        var orphan = Path.Combine(partsSubdirectory, "f000-r0.grib2.deadbeefcafe.partial");
+        // Simulate a process killed mid-download by dropping a stray ".partial" into the
+        // shared tile directory.
+        var partsDirectory = Path.Combine(directory.Path, "noaa-gfs-parts");
+        var orphan = Path.Combine(partsDirectory, "f000-r0.grib2.deadbeefcafe.partial");
         await File.WriteAllTextAsync(orphan, "incomplete download from a killed process");
 
         // Resuming the same request sweeps the orphan before assembling.
@@ -474,8 +538,7 @@ public sealed class NoaaGfsForecastProviderTests
         });
         using var client = new HttpClient(handler);
         var provider = CreateProvider(directory.Path, client);
-        // 2 steps (f002, f003) × 2 regions (straddles Greenwich) = 4 parts.
-        // Expected manifest order: (f002, r0), (f002, r1), (f003, r0), (f003, r1).
+        // 2 steps (f002, f003) × 4 stable tiles = 8 parts.
         var request = new ForecastRequest(
             ForecastModel.NoaaGfs,
             new GeographicBounds(-5.11, 5.11, -5.11, 5.11),
@@ -484,16 +547,19 @@ public sealed class NoaaGfsForecastProviderTests
 
         var acquisition = await provider.AcquireAsync(request, null, CancellationToken.None);
 
-        Assert.Equal(4, handler.RequestCount);
+        Assert.Equal(8, handler.RequestCount);
         var expected = System.Text.Encoding.ASCII
-            .GetBytes("GRIB00017777GRIB00027777GRIB00037777GRIB00047777");
+            .GetBytes(
+                "GRIB00017777GRIB00027777GRIB00037777GRIB00047777" +
+                "GRIB00057777GRIB00067777GRIB00077777GRIB00087777");
         var actual = await File.ReadAllBytesAsync(acquisition.Artifact.Path);
         Assert.Equal(expected, actual);
-        Assert.Empty(
+        Assert.Equal(
+            8,
             Directory.EnumerateFiles(
                 Path.Combine(directory.Path, "noaa-gfs-parts"),
                 "*.grib2",
-                SearchOption.AllDirectories));
+                SearchOption.AllDirectories).Count());
     }
 
     [Fact]
@@ -574,8 +640,7 @@ public sealed class NoaaGfsForecastProviderTests
     {
         using var directory = new TestDirectory();
 
-        // A first attempt fails mid-run so this cache key's isolated parts subdirectory
-        // exists with one completed part.
+        // A first attempt fails mid-run so the shared tile directory exists with one part.
         var seedHandler = new RecordingHttpHandler((_, count, _) =>
             count == 1
                 ? Task.FromResult(RecordingHttpHandler.GribResponse())
@@ -584,10 +649,9 @@ public sealed class NoaaGfsForecastProviderTests
         await Assert.ThrowsAsync<ForecastDownloadException>(async () =>
             await CreateProvider(directory.Path, seedClient)
                 .AcquireAsync(CreateRequest(), null, CancellationToken.None));
-        var partsDirectory = Directory.EnumerateDirectories(
-            Path.Combine(directory.Path, "noaa-gfs-parts")).Single();
+        var partsDirectory = Path.Combine(directory.Path, "noaa-gfs-parts");
 
-        // Seed abandoned parts beyond the cache bounds into that subdirectory.
+        // Seed abandoned parts beyond the cache bounds into the shared directory.
         for (var index = 0; index < 8; index++)
         {
             await File.WriteAllBytesAsync(
@@ -617,7 +681,7 @@ public sealed class NoaaGfsForecastProviderTests
     }
 
     [Fact]
-    public async Task Acquire_does_not_prune_parts_belonging_to_a_different_cache_key()
+    public async Task Acquire_retains_recent_tiles_for_a_different_route_within_cache_bounds()
     {
         using var directory = new TestDirectory();
 
@@ -631,13 +695,11 @@ public sealed class NoaaGfsForecastProviderTests
         await Assert.ThrowsAsync<ForecastDownloadException>(async () =>
             await CreateProvider(directory.Path, failingClient)
                 .AcquireAsync(requestA, null, CancellationToken.None));
-        var subdirectoryA = Directory.EnumerateDirectories(
-            Path.Combine(directory.Path, "noaa-gfs-parts")).Single();
-        var partsA = Directory.EnumerateFiles(subdirectoryA, "*.grib2").ToList();
+        var partsDirectory = Path.Combine(directory.Path, "noaa-gfs-parts");
+        var partsA = Directory.EnumerateFiles(partsDirectory, "*.grib2").ToList();
         Assert.NotEmpty(partsA);
 
-        // A full acquisition for a different cache key B, under cache bounds its parts
-        // exceed, must not touch key A's isolated subdirectory.
+        // A full acquisition for route B remains within the shared cache bounds and keeps A.
         var requestB = CreateRequest(new GeographicBounds(10, 15, 20, 30));
         var handler = new RecordingHttpHandler((_, _, _) =>
             Task.FromResult(RecordingHttpHandler.GribResponse()));
@@ -648,7 +710,7 @@ public sealed class NoaaGfsForecastProviderTests
             cacheOptions: new AtomicFileCacheOptions(
                 directory.Path,
                 maximumBytes: 1_024,
-                maximumEntries: 1));
+                maximumEntries: 16));
 
         await provider.AcquireAsync(requestB, null, CancellationToken.None);
 

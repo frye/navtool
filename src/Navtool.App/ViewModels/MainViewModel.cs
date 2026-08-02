@@ -109,6 +109,9 @@ public partial class MainViewModel : ViewModelBase
     private bool _useEcmwf;
 
     [ObservableProperty]
+    private bool _useNewestWeatherData;
+
+    [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CalculateCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
     private bool _isCalculating;
@@ -697,7 +700,8 @@ public partial class MainViewModel : ViewModelBase
                 sequentialPlan,
                 departureTime,
                 request!.Route.LatestArrivalTime,
-                request.Selections);
+                request.Selections,
+                request.RefreshPolicy);
         }
 
         try
@@ -1196,6 +1200,8 @@ public partial class MainViewModel : ViewModelBase
                 _acquisitions[outcome.Model] = outcome.Acquisitions;
             }
 
+            AddNewerRunWarning(warnings, outcome.Model, outcome.Acquisitions);
+
             var legStatuses = outcome.Legs.Select((leg, index) =>
                 $"leg {index + 1} {LegStatusName(leg, result.Plan.SailedLegIds.Contains(leg.LegId))}");
             var modelStatus =
@@ -1378,7 +1384,10 @@ public partial class MainViewModel : ViewModelBase
         request = new RoutingWorkflowRequest(
             route,
             selections,
-            ForecastCorridor.Create(route.Origin, route.Destination));
+            ForecastCorridor.Create(route.Origin, route.Destination),
+            UseNewestWeatherData
+                ? ForecastRefreshPolicy.LatestAvailable
+                : ForecastRefreshPolicy.PreferCache);
         error = null;
         return true;
     }
@@ -1394,6 +1403,7 @@ public partial class MainViewModel : ViewModelBase
             if (outcome.Acquisition is not null)
             {
                 _acquisitions[outcome.Model] = [outcome.Acquisition];
+                AddNewerRunWarning(warnings, outcome.Model, [outcome.Acquisition]);
             }
 
             if (outcome.Route is not null)
@@ -2219,6 +2229,27 @@ public partial class MainViewModel : ViewModelBase
             RouteLegOutcomeState.Invalidated => "invalidated",
             _ => "not calculated"
         };
+    }
+
+    private static void AddNewerRunWarning(
+        ICollection<string> warnings,
+        ForecastModel model,
+        IEnumerable<ForecastAcquisition> acquisitions)
+    {
+        var usage = acquisitions
+            .Select(acquisition => acquisition.CacheUsage)
+            .Where(item => item?.IsNewerRunAvailable == true)
+            .OrderByDescending(item => item!.LatestPublishedRun)
+            .FirstOrDefault();
+        if (usage is null)
+        {
+            return;
+        }
+
+        warnings.Add(
+            $"{ModelName(model)} cached run {usage.SelectedRun:yyyy-MM-dd HH:mm} UTC was used. " +
+            $"Run {usage.LatestPublishedRun:yyyy-MM-dd HH:mm} UTC is available; enable " +
+            "Use newest weather data before calculating to update it.");
     }
 
     private static string ProgressStageName(RoutingProgressStage stage) => stage switch

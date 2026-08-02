@@ -27,6 +27,12 @@ public enum ForecastSelectionKind
     LocalFile
 }
 
+public enum ForecastRefreshPolicy
+{
+    PreferCache,
+    LatestAvailable
+}
+
 public enum ForecastProgressStage
 {
     Queued,
@@ -77,9 +83,15 @@ public sealed record ForecastRequest
         ForecastModel model,
         GeographicBounds bounds,
         DateTimeOffset from,
-        DateTimeOffset through)
+        DateTimeOffset through,
+        ForecastRefreshPolicy refreshPolicy = ForecastRefreshPolicy.PreferCache)
     {
         _ = model.Provider();
+        if (!Enum.IsDefined(refreshPolicy))
+        {
+            throw new ArgumentOutOfRangeException(nameof(refreshPolicy));
+        }
+
         var utcFrom = from.ToUniversalTime();
         var utcThrough = through.ToUniversalTime();
         if (utcThrough < utcFrom)
@@ -91,6 +103,7 @@ public sealed record ForecastRequest
         Bounds = bounds;
         From = utcFrom;
         Through = utcThrough;
+        RefreshPolicy = refreshPolicy;
     }
 
     public ForecastProvider Provider => Model.Provider();
@@ -102,6 +115,8 @@ public sealed record ForecastRequest
     public DateTimeOffset From { get; }
 
     public DateTimeOffset Through { get; }
+
+    public ForecastRefreshPolicy RefreshPolicy { get; }
 }
 
 public sealed record ForecastProgress
@@ -359,7 +374,8 @@ public sealed record ForecastAcquisition
         ForecastRun run,
         LocalGribArtifact artifact,
         ForecastAcquisitionSource source,
-        CacheMetadata? cache = null)
+        CacheMetadata? cache = null,
+        ForecastCacheUsage? cacheUsage = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(run);
@@ -374,6 +390,7 @@ public sealed record ForecastAcquisition
         Artifact = artifact;
         Source = source;
         Cache = cache;
+        CacheUsage = cacheUsage;
     }
 
     public ForecastRequest Request { get; }
@@ -387,6 +404,43 @@ public sealed record ForecastAcquisition
     public ForecastAcquisitionSource Source { get; }
 
     public CacheMetadata? Cache { get; }
+
+    public ForecastCacheUsage? CacheUsage { get; }
+}
+
+public sealed record ForecastCacheUsage
+{
+    public ForecastCacheUsage(
+        int reusedPartCount,
+        int downloadedPartCount,
+        DateTimeOffset selectedRun,
+        DateTimeOffset latestPublishedRun)
+    {
+        if (reusedPartCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(reusedPartCount));
+        }
+
+        if (downloadedPartCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(downloadedPartCount));
+        }
+
+        ReusedPartCount = reusedPartCount;
+        DownloadedPartCount = downloadedPartCount;
+        SelectedRun = selectedRun.ToUniversalTime();
+        LatestPublishedRun = latestPublishedRun.ToUniversalTime();
+    }
+
+    public int ReusedPartCount { get; }
+
+    public int DownloadedPartCount { get; }
+
+    public DateTimeOffset SelectedRun { get; }
+
+    public DateTimeOffset LatestPublishedRun { get; }
+
+    public bool IsNewerRunAvailable => LatestPublishedRun > SelectedRun;
 }
 
 public interface IForecastProvider

@@ -218,12 +218,25 @@ status, and the model-specific timeline. Weather overlays are not restored from
 route JSON.
 
 NOAA data is downloaded from the operational NOMADS GFS filter. Navtool derives
-an antimeridian-safe buffered passage area, requests every available forecast
-step needed for the selected duration, and shows the expected part count before
-calculation. Requests remain sequential and include only 10 m U/V wind.
-Completed parts are cached atomically, so cancellation or a transient NOMADS
-failure can resume without downloading valid parts again. NOMADS is not a
-bulk-download service and may be unavailable or throttle excessive usage.
+an antimeridian-safe buffered passage area, divides it into stable 10-degree
+cache tiles, requests every available forecast step needed for the selected
+duration, and shows the expected part count before calculation. Requests remain
+sequential and include only 10 m U/V wind.
+
+Each immutable run/hour/tile is promoted atomically beneath the persistent
+forecast cache. Route-specific GRIB files are assembled locally from those
+tiles, so restarting Navtool or shifting a departure by a few minutes reuses
+overlapping data and downloads only newly required edge hours or tiles. Cache
+entries do not expire by age; least-recently-used data is removed only when the
+configured size or entry limits require space. Interrupted downloads leave
+completed tiles available for the next attempt.
+
+By default, route calculation uses the newest cached GFS run that fully covers
+the requested area and time window. If NOAA has published a newer covering run,
+Navtool displays a warning. Enable **Use newest weather data** before calculating
+to select that newest run; tiles already cached for it are still reused rather
+than downloaded again. NOMADS is not a bulk-download service and may be
+unavailable or throttle excessive usage.
 
 ## Existing GRIB files
 
