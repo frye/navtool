@@ -3,9 +3,10 @@
 ## Week of July 27-August 1, 2026 (Draft)
 
 This week adds land-aware routing, persistent multi-point voyage plans,
-sequential per-model calculation, rolling route resume, and full-route
-visualization. It also modernizes the chart controls and strengthens native
-bridge launch guidance and automated validation.
+sequential per-model calculation, rolling route resume, full-route
+visualization, and reusable NOAA forecast caching. It also modernizes the chart
+controls and strengthens native bridge launch guidance and automated
+validation.
 
 > **Release status:** Unreleased draft for editorial review.
 
@@ -56,6 +57,10 @@ bridge launch guidance and automated validation.
 - Changed the initial chart extent from the North Atlantic to a buffered Salish
   Sea view covering Port Townsend, Friday Harbor, Anacortes, and Ucluelet.
   ([#33](https://github.com/frye/navtool/pull/33))
+- Reused immutable NOAA forecast tiles across restarts and overlapping route
+  windows, with persistent bounded cache metadata and an explicit option to
+  refresh from the newest published run.
+  ([#45](https://github.com/frye/navtool/pull/45))
 
 ### Fixed
 
