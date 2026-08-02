@@ -1,5 +1,92 @@
 # Navtool release notes
 
+## Week of July 27-August 1, 2026 (Draft)
+
+This week adds land-aware routing, persistent multi-point voyage plans,
+sequential per-model calculation, rolling route resume, full-route
+visualization, and reusable NOAA forecast caching. It also modernizes the chart
+controls and strengthens native bridge launch guidance and automated
+validation.
+
+> **Release status:** Unreleased draft for editorial review.
+
+### Highlights
+
+- **Land-aware routing by default:** Candidate route segments are checked
+  against bundled Natural Earth coastline data before retention. An optional
+  OSM-derived GeoJSON service can provide higher-detail geometry, and degraded
+  results are identified rather than silently presented as checked.
+  ([#23](https://github.com/frye/navtool/pull/23),
+  [#24](https://github.com/frye/navtool/pull/24))
+- **Persistent multi-point voyages:** Named itineraries now support ordered
+  intermediate waypoints, stopovers, sequential per-model leg calculation,
+  partial outcomes, sailed history, rolling resume from an explicit current
+  position, and schema-versioned persistence.
+  ([#38](https://github.com/frye/navtool/pull/38),
+  [#39](https://github.com/frye/navtool/pull/39),
+  [#41](https://github.com/frye/navtool/pull/41))
+- **Full-route visualization:** Every saved successful leg can be shown
+  together, selected from the list or map, and inspected on a route-wide
+  active-model timeline with explicit stopover holds.
+  ([#43](https://github.com/frye/navtool/pull/43))
+
+### Added
+
+- Added persistent Light, Dark, and **Kind of Blue** themes with a compact
+  runtime selector and distinct interactive states.
+  ([#22](https://github.com/frye/navtool/pull/22))
+- Added resizable planning and route/weather edge drawers plus right-click,
+  touch long-press, and keyboard radial map actions for endpoint placement,
+  route inspection, and calculation.
+  ([#34](https://github.com/frye/navtool/pull/34),
+  [#36](https://github.com/frye/navtool/pull/36),
+  [#40](https://github.com/frye/navtool/pull/40))
+- Added editor play-button and task-based launch configurations that build the
+  worktree-local native bridge before starting the managed application.
+  ([#25](https://github.com/frye/navtool/pull/25))
+
+### Improved
+
+- Restored one open, destination-facing isochrone front per routing step,
+  retained forecast-limited estimates, softened display-only corners, widened
+  the useful destination aperture, and suppressed misleading singleton marks.
+  ([#21](https://github.com/frye/navtool/pull/21),
+  [#26](https://github.com/frye/navtool/pull/26),
+  [#27](https://github.com/frye/navtool/pull/27),
+  [#29](https://github.com/frye/navtool/pull/29))
+- Changed the initial chart extent from the North Atlantic to a buffered Salish
+  Sea view covering Port Townsend, Friday Harbor, Anacortes, and Ucluelet.
+  ([#33](https://github.com/frye/navtool/pull/33))
+- Reused immutable NOAA forecast tiles across restarts and overlapping route
+  windows, with persistent bounded cache metadata and an explicit option to
+  refresh from the newest published run.
+  ([#45](https://github.com/frye/navtool/pull/45))
+
+### Fixed
+
+- Fixed historical isochrone styles inheriting an opaque fill in CI and
+  restored .NET 9 compatibility for radial-action placement.
+  ([#35](https://github.com/frye/navtool/pull/35),
+  [#37](https://github.com/frye/navtool/pull/37))
+- Added actionable recovery guidance when the native routing bridge is missing
+  and documented the mandatory worktree-safe launch path.
+  ([#44](https://github.com/frye/navtool/pull/44))
+
+### Maintenance
+
+- Added GitHub Actions coverage that builds and tests the native bridge and
+  runs every managed test project for pushes and pull requests.
+  ([#28](https://github.com/frye/navtool/pull/28))
+
+### Known limitations
+
+- Navtool is planning software, not navigation-certified guidance. Bundled
+  coastline data is generalized and can omit small or recent hazards; routing
+  still does not model currents, waves, traffic, restricted areas, depths, or
+  safety limits.
+- Online ECMWF acquisition remains experimental and unavailable. Compatible
+  existing ECMWF IFS GRIB files can still be selected locally.
+
 ## Week of July 13-17, 2026 (Draft)
 
 This week establishes Navtool as a cross-platform desktop application for
