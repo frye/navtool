@@ -23,6 +23,14 @@ public enum ForecastInputMode
 
 public partial class MainViewModel : ViewModelBase
 {
+    private enum CalculationActivity
+    {
+        Queued,
+        AcquiringForecast,
+        CalculatingRoute,
+        Terminal
+    }
+
     private const double DefaultChartBufferNauticalMiles = 10;
     private const double RouteHitTolerancePixels = 10;
     private const double RoutePointHitTolerancePixels = 14;
@@ -48,6 +56,8 @@ public partial class MainViewModel : ViewModelBase
     private readonly TimeZoneInfo _localTimeZone;
     private readonly ILogger<MainViewModel> _logger;
     private readonly Dictionary<ForecastModel, double> _modelProgress = new();
+    private readonly Dictionary<(ForecastModel Model, int LegIndex), CalculationActivity>
+        _calculationActivities = new();
     private readonly Dictionary<ForecastModel, ImmutableArray<ForecastAcquisition>> _acquisitions = new();
     private readonly object _progressGate = new();
     private CancellationTokenSource? _calculationCancellation;
@@ -108,6 +118,12 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     private double _progressFraction;
+
+    [ObservableProperty]
+    private string _calculationRouteTitle = "Route calculation";
+
+    [ObservableProperty]
+    private string _calculationModelLabel = string.Empty;
 
     [ObservableProperty]
     private string _statusMessage = "Set a start and destination to prepare a route.";
@@ -347,6 +363,31 @@ public partial class MainViewModel : ViewModelBase
         : (SelectedLeg ?? SelectedRoutePoint!.Leg) is { } leg
             ? $"Leg {leg.LegIndex + 1}: {leg.From.Name} → {leg.To.Name} · {ModelName(leg.Key.Model)}"
             : $"{ModelName(SelectedRoutePoint!.Route.Model)} · point {SelectedRoutePoint.PointIndex + 1}";
+
+    public string CalculationStageLabel
+    {
+        get
+        {
+            lock (_progressGate)
+            {
+                var hasAcquisition = _calculationActivities.Values.Contains(
+                    CalculationActivity.AcquiringForecast);
+                var hasRouting = _calculationActivities.Values.Contains(
+                    CalculationActivity.CalculatingRoute);
+                return (hasAcquisition, hasRouting) switch
+                {
+                    (true, true) => "Downloading weather and calculating routes",
+                    (true, false) => "Downloading weather data",
+                    (false, true) => "Calculating routes",
+                    _ when _calculationActivities.Count > 0 &&
+                        _calculationActivities.Values.All(
+                            activity => activity == CalculationActivity.Terminal) =>
+                        "Finalizing routes",
+                    _ => "Preparing route calculation"
+                };
+            }
+        }
+    }
 
     public string SelectedRouteDetails
     {
@@ -714,6 +755,7 @@ public partial class MainViewModel : ViewModelBase
         previous?.Dispose();
         CancelWeather();
 
+        InitializeCalculationPresentation(request, planRequest);
         IsCalculating = true;
         ProgressFraction = 0;
         StatusMessage = "Starting forecast acquisition and route calculations…";
@@ -739,6 +781,14 @@ public partial class MainViewModel : ViewModelBase
                 _modelProgress[value.Model] = value.Fraction;
                 ProgressFraction = _modelProgress.Values.Average();
             }
+            UpdateCalculationActivity(
+                (value.Model, 0),
+                value.Stage switch
+                {
+                    RoutingProgressStage.AcquiringForecast => CalculationActivity.AcquiringForecast,
+                    RoutingProgressStage.CalculatingRoute => CalculationActivity.CalculatingRoute,
+                    _ => CalculationActivity.Terminal
+                });
             SetModelStatus(
                 value.Model,
                 $"{(IsExperimentalDownload(request, value.Model) ? "Experimental · " : string.Empty)}" +
@@ -761,6 +811,16 @@ public partial class MainViewModel : ViewModelBase
             }
 
             ProgressFraction = value.OverallFraction;
+            UpdateCalculationActivity(
+                (value.Model, value.LegIndex),
+                value.Status switch
+                {
+                    RoutePlanRoutingUnitStatus.AcquiringForecast =>
+                        CalculationActivity.AcquiringForecast,
+                    RoutePlanRoutingUnitStatus.CalculatingRoute =>
+                        CalculationActivity.CalculatingRoute,
+                    _ => CalculationActivity.Terminal
+                });
             SetModelStatus(
                 value.Model,
                 $"{(IsExperimentalDownload(request, value.Model) ? "Experimental · " : string.Empty)}" +
@@ -1931,6 +1991,57 @@ public partial class MainViewModel : ViewModelBase
 
     private bool IsCurrentCalculation(long generation) =>
         generation == Volatile.Read(ref _calculationGeneration);
+
+    private void InitializeCalculationPresentation(
+        RoutingWorkflowRequest request,
+        RoutePlanRoutingRequest? planRequest)
+    {
+        CalculationRouteTitle = string.IsNullOrWhiteSpace(Itinerary.RouteName)
+            ? "Route calculation"
+            : Itinerary.RouteName;
+        CalculationModelLabel = string.Join(" + ", request.Models.Select(ModelShortName));
+
+        lock (_progressGate)
+        {
+            _calculationActivities.Clear();
+            if (planRequest is null)
+            {
+                foreach (var model in request.Models)
+                {
+                    _calculationActivities[(model, 0)] = CalculationActivity.Queued;
+                }
+            }
+            else
+            {
+                foreach (var model in request.Models)
+                {
+                    for (var legIndex = planRequest.StartLegIndex;
+                         legIndex < planRequest.Plan.Legs.Length;
+                         legIndex++)
+                    {
+                        _calculationActivities[(model, legIndex)] = CalculationActivity.Queued;
+                    }
+                }
+            }
+        }
+
+        OnPropertyChanged(nameof(CalculationStageLabel));
+    }
+
+    private void UpdateCalculationActivity(
+        (ForecastModel Model, int LegIndex) key,
+        CalculationActivity activity)
+    {
+        lock (_progressGate)
+        {
+            if (_calculationActivities.ContainsKey(key))
+            {
+                _calculationActivities[key] = activity;
+            }
+        }
+
+        OnPropertyChanged(nameof(CalculationStageLabel));
+    }
 
     private void SetModelStatus(ForecastModel model, string status)
     {

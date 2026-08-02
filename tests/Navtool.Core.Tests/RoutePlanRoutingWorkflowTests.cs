@@ -96,6 +96,11 @@ public sealed class RoutePlanRoutingWorkflowTests
         Assert.True(repository.SaveCount >= 4);
         Assert.Equal(1, reports.Last().OverallFraction);
         AssertProgressAverages(reports, request.Models.Length * plan.Legs.Length);
+        Assert.All(
+            reports.Zip(reports.Skip(1)),
+            pair => Assert.True(
+                pair.First.OverallFraction <= pair.Second.OverallFraction,
+                "Concurrent route-plan progress must be published monotonically."));
         Assert.All(result.Models.SelectMany(model => model.Acquisitions), acquisition =>
             Assert.Equal(ForecastAcquisitionSource.Cache, acquisition.Source));
     }
@@ -326,9 +331,11 @@ public sealed class RoutePlanRoutingWorkflowTests
             provider,
             new DelegateRouteEngine((request, forecast, _) =>
                 ValueTask.FromResult(Route(request, forecast.Request.Model, TimeSpan.FromHours(2)))));
+        var reports = new List<RoutePlanRoutingProgress>();
 
         var result = await workflow.ExecuteAsync(
-            Request(plan, plan.CurrentPosition!.DepartureTime, Now.AddDays(8)));
+            Request(plan, plan.CurrentPosition!.DepartureTime, Now.AddDays(8)),
+            new InlineProgress<RoutePlanRoutingProgress>(reports.Add));
 
         var model = Assert.Single(result.Models);
         // Leg 0 (sailed) is carried forward untouched; only legs 1 and 2 are recalculated.
@@ -339,6 +346,13 @@ public sealed class RoutePlanRoutingWorkflowTests
         Assert.Equal(currentPosition, model.Legs[1].Route!.Request.Origin);
         Assert.Equal(RouteLegOutcomeState.Succeeded, model.Legs[2].State);
         Assert.Equal(plan.Waypoints[2].Coordinate, model.Legs[2].Route!.Request.Origin);
+        Assert.Equal(1d / 3d, reports.First().OverallFraction, 10);
+        Assert.Equal(1, reports.Last().OverallFraction);
+        Assert.All(
+            reports.Zip(reports.Skip(1)),
+            pair => Assert.True(
+                pair.First.OverallFraction <= pair.Second.OverallFraction,
+                "Resumed route-plan progress must be monotonic."));
     }
 
     [Fact]
