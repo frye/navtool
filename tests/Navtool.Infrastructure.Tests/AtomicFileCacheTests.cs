@@ -85,4 +85,47 @@ public sealed class AtomicFileCacheTests
         Assert.NotNull(await cache.TryGetFreshAsync(third, now.AddMinutes(3)));
         Assert.Equal(2, Directory.EnumerateFiles(directory.Path, "*.grib2").Count());
     }
+
+    [Fact]
+    public async Task Nonexpiring_lookup_survives_restart_and_touches_entry_for_lru()
+    {
+        using var directory = new TestDirectory();
+        var now = new DateTimeOffset(2026, 7, 14, 12, 0, 0, TimeSpan.Zero);
+        var first = AtomicFileCache.CreateKey("test", "first");
+        var second = AtomicFileCache.CreateKey("test", "second");
+        var third = AtomicFileCache.CreateKey("test", "third");
+        var options = new AtomicFileCacheOptions(directory.Path, maximumBytes: 32, maximumEntries: 2);
+
+        var writer = new AtomicFileCache(options);
+        await writer.StoreAsync(first, now, now.AddMinutes(1), "first"u8.ToArray());
+        await writer.StoreAsync(second, now.AddMinutes(1), now.AddMinutes(2), "second"u8.ToArray());
+
+        var restarted = new AtomicFileCache(options);
+        Assert.NotNull(await restarted.TryGetAsync(first, now.AddHours(2)));
+        await restarted.StoreAsync(third, now.AddHours(2), DateTimeOffset.MaxValue, "third"u8.ToArray());
+
+        Assert.NotNull(await restarted.TryGetAsync(first, now.AddHours(2)));
+        Assert.Null(await restarted.TryGetAsync(second, now.AddHours(2)));
+        Assert.NotNull(await restarted.TryGetAsync(third, now.AddHours(2)));
+    }
+
+    [Fact]
+    public void Startup_sweep_does_not_delete_partial_owned_by_another_writer()
+    {
+        using var directory = new TestDirectory();
+        var partial = Path.Combine(directory.Path, ".cache.inflight.partial");
+        using (var writer = new FileStream(
+                   partial,
+                   FileMode.CreateNew,
+                   FileAccess.ReadWrite,
+                   FileShare.None))
+        {
+            writer.WriteByte(1);
+            _ = new AtomicFileCache(new AtomicFileCacheOptions(directory.Path));
+            Assert.True(File.Exists(partial));
+        }
+
+        _ = new AtomicFileCache(new AtomicFileCacheOptions(directory.Path));
+        Assert.False(File.Exists(partial));
+    }
 }

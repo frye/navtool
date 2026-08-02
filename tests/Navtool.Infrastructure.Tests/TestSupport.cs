@@ -29,6 +29,13 @@ internal sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
     public override DateTimeOffset GetUtcNow() => utcNow;
 }
 
+internal sealed class MutableTimeProvider(DateTimeOffset utcNow) : TimeProvider
+{
+    public DateTimeOffset UtcNow { get; set; } = utcNow;
+
+    public override DateTimeOffset GetUtcNow() => UtcNow;
+}
+
 // Returns a strictly increasing "now" on every read and records how many reads
 // happened. Used to prove AcquireAsync captures the clock exactly once, so its gate
 // key and the stored artifact key cannot diverge across a run-publish boundary.
