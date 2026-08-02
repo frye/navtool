@@ -933,6 +933,108 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task CalculationProgressSummarizesForecastAndRoutingWithoutASelectedResult()
+    {
+        var forecastStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseForecast = new TaskCompletionSource<ForecastAcquisition>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var routingStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRoute = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var provider = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            async (_, cancellationToken) =>
+            {
+                forecastStarted.SetResult();
+                return await releaseForecast.Task.WaitAsync(cancellationToken);
+            });
+        var engine = new StreamingRouteEngine(async (request, forecast, progress, cancellationToken) =>
+        {
+            progress?.Report(new RouteCalculationProgress(0.4, "frontier"));
+            routingStarted.SetResult();
+            await releaseRoute.Task.WaitAsync(cancellationToken);
+            return CreateRoute(request, forecast.Request.Model);
+        });
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow([provider], engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        viewModel.Itinerary.RouteName = "Atlantic delivery";
+
+        var calculation = viewModel.CalculateRoutesAsync();
+        await forecastStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await WaitForAsync(() =>
+            viewModel.CalculationStageLabel == "Downloading weather data");
+
+        Assert.True(viewModel.IsCalculating);
+        Assert.Equal("Atlantic delivery", viewModel.CalculationRouteTitle);
+        Assert.Equal("NOAA", viewModel.CalculationModelLabel);
+        Assert.Equal("No route point selected", viewModel.SelectedRouteTitle);
+        Assert.Equal(0.25, viewModel.ProgressFraction, 10);
+
+        releaseForecast.SetResult(CreateAcquisition(provider.LastRequest!));
+        await routingStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await WaitForAsync(() => viewModel.CalculationStageLabel == "Calculating routes");
+
+        Assert.Equal(0.7, viewModel.ProgressFraction, 10);
+
+        releaseRoute.SetResult();
+        await calculation;
+        Assert.False(viewModel.IsCalculating);
+    }
+
+    [Fact]
+    public async Task CalculationProgressCombinesConcurrentModelStages()
+    {
+        var ecmwfForecastStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var noaaRoutingStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var ecmwf = new DelegateForecastProvider(
+            ForecastModel.EcmwfIfs,
+            async (_, cancellationToken) =>
+            {
+                ecmwfForecastStarted.SetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                throw new InvalidOperationException("Unreachable.");
+            });
+        var engine = new StreamingRouteEngine(async (request, forecast, progress, cancellationToken) =>
+        {
+            progress?.Report(new RouteCalculationProgress(0.25, "frontier"));
+            if (forecast.Request.Model == ForecastModel.NoaaGfs)
+            {
+                noaaRoutingStarted.SetResult();
+            }
+
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new InvalidOperationException("Unreachable.");
+        });
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow([noaa, ecmwf], engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        viewModel.UseEcmwf = true;
+
+        var calculation = viewModel.CalculateRoutesAsync();
+        await ecmwfForecastStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await noaaRoutingStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await WaitForAsync(() =>
+            viewModel.CalculationStageLabel ==
+            "Downloading weather and calculating routes");
+
+        Assert.Equal("NOAA + ECMWF", viewModel.CalculationModelLabel);
+
+        viewModel.CancelCommand.Execute(null);
+        await calculation;
+        Assert.False(viewModel.IsCalculating);
+    }
+
+    [Fact]
     public async Task CancelledGenerationCannotReplaceNewerCalculation()
     {
         var firstStarted = new TaskCompletionSource(
@@ -958,6 +1060,7 @@ public sealed class MainViewModelWorkflowTests
             new RoutingWorkflow(new[] { provider }, engine),
             new DelegateWeatherSampler((_, _, _, _, _, _) =>
                 ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        viewModel.Itinerary.RouteName = "Stale route";
 
         var cancelledCalculation = viewModel.CalculateRoutesAsync();
         await firstStarted.Task;
@@ -965,6 +1068,7 @@ public sealed class MainViewModelWorkflowTests
         Assert.False(viewModel.IsCalculating);
         Assert.Equal("Calculation cancelled.", viewModel.StatusMessage);
 
+        viewModel.Itinerary.RouteName = "Current route";
         await viewModel.CalculateRoutesAsync();
         var acceptedRouteId = viewModel.SelectedRoutePoint!.Route.Request.RouteId;
         releaseFirst.SetResult(CreateAcquisition(provider.LastRequest!));
@@ -973,6 +1077,7 @@ public sealed class MainViewModelWorkflowTests
 
         Assert.Equal(1, viewModel.SuccessfulRouteCount);
         Assert.Equal(acceptedRouteId, viewModel.SelectedRoutePoint!.Route.Request.RouteId);
+        Assert.Equal("Current route", viewModel.CalculationRouteTitle);
     }
 
     [Fact]
@@ -1243,6 +1348,17 @@ public sealed class MainViewModelWorkflowTests
         viewModel.DepartureDate = Now.AddHours(1);
         viewModel.DepartureTime = Now.AddHours(1).TimeOfDay;
         return viewModel;
+    }
+
+    private static async Task WaitForAsync(Func<bool> predicate)
+    {
+        var timeout = DateTime.UtcNow.AddSeconds(2);
+        while (!predicate() && DateTime.UtcNow < timeout)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.True(predicate());
     }
 
     private static ForecastAcquisition CreateAcquisition(ForecastRequest request) =>

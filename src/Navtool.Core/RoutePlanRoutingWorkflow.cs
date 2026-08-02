@@ -582,7 +582,7 @@ public sealed class RoutePlanRoutingWorkflow
                 .SelectMany(model => Enumerable.Range(0, request.Plan.Legs.Length)
                     .Select(index => new KeyValuePair<(ForecastModel, int), double>(
                         (model, index),
-                        0)))
+                        index < request.StartLegIndex ? 1 : 0)))
                 .ToDictionary();
         }
 
@@ -594,11 +594,10 @@ public sealed class RoutePlanRoutingWorkflow
             string? message = null,
             RouteCalculationSnapshot? snapshot = null)
         {
-            RoutePlanRoutingProgress report;
             lock (_gate)
             {
                 _fractions[(model, legIndex)] = fraction;
-                report = new RoutePlanRoutingProgress(
+                var report = new RoutePlanRoutingProgress(
                     model.Provider(),
                     model,
                     legIndex,
@@ -608,9 +607,8 @@ public sealed class RoutePlanRoutingWorkflow
                     _fractions.Values.Average(),
                     message,
                     snapshot);
+                _progress?.Report(report);
             }
-
-            _progress?.Report(report);
         }
     }
 

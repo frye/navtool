@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
@@ -371,6 +372,70 @@ public sealed class MainWindowLayoutTests
         var window = CreateWindow();
         Assert.Equal(1040, window.MinWidth);
         Assert.Equal(680, window.MinHeight);
+    }
+
+    [AvaloniaFact]
+    public void InstrumentRailShowsProgressWithoutOpeningDrawersOrCoveringMapInstructions()
+    {
+        var window = CreateWindow();
+        var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
+
+        try
+        {
+            window.Show();
+            viewModel.SetStartCommand.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+
+            var mapShell = Assert.IsType<Grid>(window.FindControl<Grid>("MapShell"));
+            var rail = Assert.IsType<Border>(window.FindControl<Border>("InstrumentRail"));
+            var idleRow = Assert.IsType<StackPanel>(
+                window.FindControl<StackPanel>("InstrumentRailIdleRow"));
+            var progressRow = Assert.IsType<StackPanel>(
+                window.FindControl<StackPanel>("InstrumentRailProgressRow"));
+            var progress = Assert.IsType<ProgressBar>(
+                window.FindControl<ProgressBar>("InstrumentRailProgressBar"));
+
+            Assert.True(idleRow.IsVisible);
+            Assert.False(progressRow.IsVisible);
+            Assert.False(progress.IsVisible);
+            Assert.Contains(mapShell, rail.GetLogicalAncestors());
+
+            viewModel.ProgressFraction = 0.64;
+            viewModel.IsCalculating = true;
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(idleRow.IsVisible);
+            Assert.True(progressRow.IsVisible);
+            Assert.True(progress.IsVisible);
+            Assert.Equal(0.64, progress.Value);
+            Assert.Equal("Route calculation progress", AutomationProperties.GetName(progress));
+            Assert.Equal(
+                "Preparing route calculation",
+                AutomationProperties.GetHelpText(progress));
+            Assert.False(window.IsPlanningDrawerOpen);
+            Assert.False(window.IsRouteDrawerOpen);
+
+            var instruction = Assert.IsType<Border>(
+                window.FindControl<Border>("MapInstructionOverlay"));
+            Assert.True(instruction.IsVisible);
+            var railBottom = rail.TranslatePoint(
+                new Point(0, rail.Bounds.Height),
+                window);
+            var instructionTop = instruction.TranslatePoint(default, window);
+            Assert.NotNull(railBottom);
+            Assert.NotNull(instructionTop);
+            Assert.True(railBottom.Value.Y <= instructionTop.Value.Y);
+
+            viewModel.IsCalculating = false;
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(idleRow.IsVisible);
+            Assert.False(progressRow.IsVisible);
+            Assert.False(progress.IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     [AvaloniaFact]
