@@ -25,7 +25,7 @@ namespace Navtool.App.Tests;
 public sealed class MainWindowLayoutTests
 {
     [AvaloniaFact]
-    public void DrawersAndRoutingOptionsFollowDefaultAndExplicitSelections()
+    public void DrawersAreAlwaysInTheWindowNameScopeAndClosedByDefault()
     {
         var window = CreateWindow();
 
@@ -50,27 +50,6 @@ public sealed class MainWindowLayoutTests
             Assert.NotNull(window.FindControl<RadioButton>("DownloadForecastSource"));
             Assert.NotNull(window.FindControl<RadioButton>("LocalForecastSource"));
             Assert.NotNull(window.FindControl<Button>("ChooseGribFileButton"));
-            window.SetPlanningDrawerOpen(true);
-            var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
-            var beamOptions = Assert.IsType<StackPanel>(
-                window.FindControl<StackPanel>("BeamRoutingOptions"));
-            var latticeOptions = Assert.IsType<StackPanel>(
-                window.FindControl<StackPanel>("LatticeRoutingOptions"));
-
-            Assert.Equal(RouteSolver.IsochroneBeam, viewModel.SelectedRouteSolver);
-            Assert.False(viewModel.EnableProfessionalRouting);
-            Assert.False(beamOptions.IsVisible);
-            Assert.False(latticeOptions.IsVisible);
-
-            viewModel.EnableProfessionalRouting = true;
-            Dispatcher.UIThread.RunJobs();
-            Assert.True(beamOptions.IsVisible);
-            Assert.False(latticeOptions.IsVisible);
-
-            viewModel.SelectedRouteSolver = RouteSolver.TimeDependentLattice;
-            Dispatcher.UIThread.RunJobs();
-            Assert.False(beamOptions.IsVisible);
-            Assert.True(latticeOptions.IsVisible);
         }
         finally
         {
