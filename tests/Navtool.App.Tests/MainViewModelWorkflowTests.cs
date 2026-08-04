@@ -61,6 +61,126 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task Placing_final_endpoint_starts_route_calculation_automatically()
+    {
+        var routeRequests = new List<RouteRequest>();
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+        {
+            routeRequests.Add(request);
+            return ValueTask.FromResult(CreateRoute(request, forecast.Request.Model));
+        });
+        var viewModel = new MainViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            new FixedTimeProvider(Now),
+            TimeZoneInfo.Utc,
+            new OsmTileOptions(Enabled: false));
+        var departure = Now.AddHours(1);
+        viewModel.DepartureDate = departure;
+        viewModel.DepartureTime = departure.TimeOfDay;
+
+        viewModel.SetStartAt(new Coordinate(34, -64));
+        await Task.Yield();
+        Assert.Empty(routeRequests);
+
+        viewModel.SetDestinationAt(new Coordinate(39, -52));
+        await WaitForAsync(() => viewModel.SuccessfulRouteCount == 1);
+
+        var request = Assert.Single(routeRequests);
+        Assert.Equal(new Coordinate(34, -64), request.Origin);
+        Assert.Equal(new Coordinate(39, -52), request.Destination);
+    }
+
+    [Fact]
+    public async Task Replacing_endpoint_cancels_stale_calculation_and_routes_new_coordinate()
+    {
+        var firstStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstCancelled = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var callCount = 0;
+        Coordinate? completedDestination = null;
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new StreamingRouteEngine(async (request, forecast, _, cancellationToken) =>
+        {
+            if (Interlocked.Increment(ref callCount) == 1)
+            {
+                firstStarted.SetResult();
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    firstCancelled.SetResult();
+                    throw;
+                }
+            }
+
+            completedDestination = request.Destination;
+            return CreateRoute(request, forecast.Request.Model);
+        });
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+
+        viewModel.SetDestinationAt(new Coordinate(40, -51));
+        await firstStarted.Task;
+
+        var replacement = new Coordinate(41, -49);
+        viewModel.SetDestinationAt(replacement);
+        await firstCancelled.Task;
+        await WaitForAsync(() => viewModel.SuccessfulRouteCount == 1);
+
+        Assert.Equal(2, callCount);
+        Assert.Equal(replacement, completedDestination);
+    }
+
+    [Fact]
+    public async Task Forced_recalculation_refreshes_only_expired_normal_departure()
+    {
+        var routeRequests = new List<RouteRequest>();
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+        {
+            routeRequests.Add(request);
+            return ValueTask.FromResult(CreateRoute(request, forecast.Request.Model));
+        });
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        var expired = Now.AddHours(-1);
+        viewModel.DepartureDate = expired;
+        viewModel.DepartureTime = expired.TimeOfDay;
+
+        await viewModel.ForceRecalculateCommand.ExecuteAsync(null);
+
+        Assert.Equal(Now, routeRequests[0].DepartureTime);
+        Assert.Equal(Now.Date, viewModel.DepartureDate!.Value.Date);
+        Assert.Equal(Now.TimeOfDay, viewModel.DepartureTime);
+
+        var future = Now.AddHours(3);
+        viewModel.DepartureDate = future;
+        viewModel.DepartureTime = future.TimeOfDay;
+
+        await viewModel.ForceRecalculateCommand.ExecuteAsync(null);
+
+        Assert.Equal(future, routeRequests[1].DepartureTime);
+        Assert.Equal(future.Date, viewModel.DepartureDate!.Value.Date);
+        Assert.Equal(future.TimeOfDay, viewModel.DepartureTime);
+    }
+
+    [Fact]
     public void Forecast_area_summary_reports_selected_provider_estimates()
     {
         var viewModel = new MainViewModel(
@@ -1262,18 +1382,24 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
-    public async Task Itinerary_change_discards_late_result_and_clears_displayed_route()
+    public async Task Itinerary_change_discards_late_result_and_recalculates_updated_route()
     {
         var started = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource<ForecastAcquisition>(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
         var provider = new DelegateForecastProvider(
             ForecastModel.NoaaGfs,
-            async (_, _) =>
+            async (request, _) =>
             {
-                started.SetResult();
-                return await release.Task;
+                if (Interlocked.Increment(ref calls) == 1)
+                {
+                    started.SetResult();
+                    return await release.Task;
+                }
+
+                return CreateAcquisition(request);
             });
         var engine = new DelegateRouteEngine((request, forecast, _) =>
             ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
@@ -1284,12 +1410,16 @@ public sealed class MainViewModelWorkflowTests
 
         var calculation = viewModel.CalculateRoutesAsync();
         await started.Task;
-        viewModel.SetDestinationAt(new Coordinate(40, -50));
+        var replacement = new Coordinate(40, -50);
+        viewModel.SetDestinationAt(replacement);
         release.SetResult(CreateAcquisition(provider.LastRequest!));
         await calculation;
+        await WaitForAsync(() => !viewModel.IsCalculating);
 
-        Assert.Equal(0, viewModel.SuccessfulRouteCount);
-        Assert.False(viewModel.HasTimeline);
+        Assert.Equal(2, calls);
+        Assert.Equal(1, viewModel.SuccessfulRouteCount);
+        Assert.Equal(replacement, viewModel.SelectedRoutePoint!.Route.Request.Destination);
+        Assert.True(viewModel.HasTimeline);
         Assert.False(viewModel.IsCalculating);
     }
 

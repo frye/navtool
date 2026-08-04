@@ -97,6 +97,12 @@
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryColor}" />
     </Style>
+    <Style Selector="Button.instrument-cancel">
+        <Setter Property="Width" Value="58" />
+        <Setter Property="MinHeight" Value="26" />
+        <Setter Property="Padding" Value="9,2" />
+        <Setter Property="FontSize" Value="11" />
+    </Style>
     <Style Selector="Grid.compact-action-row">
         <Setter Property="ColumnSpacing" Value="8" />
     </Style>
