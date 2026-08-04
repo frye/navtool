@@ -15,7 +15,7 @@ set(
     "router-lib release repository used when SAILROUTE_SOURCE_DIR is unset")
 set(
     NAVTOOL_ROUTER_LIB_RELEASE_TAG
-    "v0.3.0"
+    "f41fdd7352763b0173a47aae9b938da6dc5854b6"
     CACHE STRING
     "Immutable router-lib revision used when SAILROUTE_SOURCE_DIR is unset")
 set(_navtool_router_effective_source_dir "")

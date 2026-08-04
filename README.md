@@ -98,7 +98,8 @@ validation, and use `scripts/publish.sh` or `scripts/publish.ps1` for
 distributable artifacts. For a custom bridge location, set
 `NAVTOOL_ROUTER_BRIDGE_PATH` to the shared library or its directory. Packaged
 applications discover their bridge under `runtimes/<RID>/native`. Native builds
-fetch and compile the immutable `router-lib` revision `v0.3.0` by default. Set
+fetch and compile the immutable `router-lib` revision
+`f41fdd7352763b0173a47aae9b938da6dc5854b6` by default. Set
 `SAILROUTE_SOURCE_DIR` to a local `router-lib` checkout when testing other
 revisions.
 
@@ -202,7 +203,7 @@ also be installed or packaged according to the target platform.
 | --- | --- |
 | `NAVTOOL_ROUTER_BRIDGE_PATH` | Native bridge file or directory |
 | `SAILROUTE_SOURCE_DIR` | Optional `router-lib` checkout override for native build/run scripts |
-| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default `v0.3.0`) |
+| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default `f41fdd7352763b0173a47aae9b938da6dc5854b6`) |
 | `NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY` | `router-lib` Git repository used when `SAILROUTE_SOURCE_DIR` is unset |
 | `NAVTOOL_NATIVE_BUILD_DIR` | Optional native bridge build directory |
 | `NAVTOOL_APP_DATA_ROOT` | Application data root |

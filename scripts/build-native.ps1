@@ -10,7 +10,7 @@ if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
     $BuildDirectory = Join-Path $Root "native\Navtool.RouterBridge\build"
 }
 if ([string]::IsNullOrWhiteSpace($RouterRevision)) {
-    $RouterRevision = "v0.3.0"
+    $RouterRevision = "f41fdd7352763b0173a47aae9b938da6dc5854b6"
 }
 
 if ([string]::IsNullOrWhiteSpace($RouterSource)) {
