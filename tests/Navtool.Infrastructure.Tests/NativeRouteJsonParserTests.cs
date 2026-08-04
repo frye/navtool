@@ -107,6 +107,38 @@ public sealed class NativeRouteJsonParserTests
         Assert.Equal(100, result.LatticeDiagnostics!.SettledLabels);
         Assert.Equal(4, result.LatticeDiagnostics.WaitTransitions);
         Assert.True(result.LatticeDiagnostics.RefinementFallback);
+        // Stage 2.5 fields absent from v0.4.0 JSON → default to zero/None.
+        Assert.Equal(0L, result.LatticeDiagnostics.ReRelaxedLabels);
+        Assert.Equal(LatticeRefinementFallbackReason.None, result.LatticeDiagnostics.FallbackReason);
+    }
+
+    [Fact]
+    public void Parse_preserves_stage25_lattice_diagnostics_from_candidate_json()
+    {
+        var request = CreateRequest(TimeSpan.FromHours(10));
+        var json = AddStage25LatticeDiagnostics(BuildJson(
+            (Departure, 40, -60, 0),
+            (Departure.AddHours(8), 44, -56, 35)));
+
+        var result = NativeRouteJsonParser.Parse(
+            json,
+            request,
+            ForecastModel.NoaaGfs,
+            TimeSpan.FromSeconds(1),
+            RouteSolver.TimeDependentLattice);
+
+        Assert.Equal(RouteSolver.TimeDependentLattice, result.Solver);
+        var d = result.LatticeDiagnostics!;
+        Assert.Equal(100, d.SettledLabels);
+        Assert.True(d.RefinementFallback);
+        Assert.Equal(15L, d.ReRelaxedLabels);
+        Assert.Equal(5L, d.StaleQueueEntries);
+        Assert.Equal(12L, d.ActiveCells);
+        Assert.Equal(24L, d.ActiveFaces);
+        Assert.Equal(450.0, d.AcceptedCorridorWidthNauticalMiles);
+        Assert.Equal(1, d.DisconnectedRefinements);
+        Assert.Equal(2, d.RegressedRefinements);
+        Assert.Equal(LatticeRefinementFallbackReason.Disconnected, d.FallbackReason);
     }
 
     [Fact]
@@ -291,6 +323,32 @@ public sealed class NativeRouteJsonParserTests
               "acceptedRefinements": 1,
               "subdivisionLevel": 5,
               "refinementFallback": true
+            },
+            "points":
+            """,
+            StringComparison.Ordinal);
+
+    private static string AddStage25LatticeDiagnostics(string json) =>
+        json.Replace(
+            "\"points\":",
+            """
+            "latticeDiagnostics": {
+              "settledLabels": 100,
+              "queuedLabels": 20,
+              "relaxedLabels": 250,
+              "waitTransitions": 4,
+              "refinementRuns": 2,
+              "acceptedRefinements": 1,
+              "subdivisionLevel": 5,
+              "refinementFallback": true,
+              "reRelaxedLabels": 15,
+              "staleQueueEntries": 5,
+              "activeCells": 12,
+              "activeFaces": 24,
+              "acceptedCorridorWidthNauticalMiles": 450.0,
+              "disconnectedRefinements": 1,
+              "regressedRefinements": 2,
+              "fallbackReason": "disconnected"
             },
             "points":
             """,
