@@ -13,6 +13,7 @@ using Navtool.App.ViewModels;
 using Navtool.Core;
 using Navtool.App.Views;
 using AvaloniaColor = Avalonia.Media.Color;
+using BruTile.Web;
 using LineString = NetTopologySuite.Geometries.LineString;
 using MultiLineString = NetTopologySuite.Geometries.MultiLineString;
 using Point = NetTopologySuite.Geometries.Point;
@@ -148,6 +149,13 @@ public sealed class MapRenderingTests
         Assert.Equal("OpenStreetMap", baseLayer.Name);
         Assert.Equal("© OpenStreetMap contributors", baseLayer.Attribution.Text);
         Assert.Equal(
+            "https://www.openstreetmap.org/copyright",
+            baseLayer.Attribution.Url);
+        Assert.True(baseLayer.Attribution.Enabled);
+        Assert.Contains(
+            baseLayer.Attribution,
+            viewModel.Map.GetWidgetsOfMapAndLayers());
+        Assert.Equal(
             [
                 "Wind speed",
                 "Wind direction",
@@ -164,6 +172,41 @@ public sealed class MapRenderingTests
                 "Current position"
             ],
             layers.Skip(1).Select(layer => layer.Name));
+    }
+
+    [Fact]
+    public void MapCompositionUsesConfiguredPersistentCacheAndUserAgent()
+    {
+        var cacheDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"navtool-map-cache-{Guid.NewGuid():N}");
+        var options = new OsmTileOptions(
+            UserAgent: "Navtool.Tests/1.0 (+https://github.com/frye/navtool)",
+            CacheDirectory: cacheDirectory);
+
+        try
+        {
+            var viewModel = new MainViewModel(
+                null,
+                null,
+                TimeProvider.System,
+                TimeZoneInfo.Utc,
+                options);
+            var layer = Assert.IsType<TileLayer>(viewModel.Map.Layers.First());
+            var source = Assert.IsType<HttpTileSource>(layer.TileSource);
+            Assert.IsType<BruTile.Cache.FileCache>(source.PersistentCache);
+
+            using var request = new HttpRequestMessage();
+            source.ConfigureHttpRequestMessage!(request);
+            Assert.Equal(options.UserAgent, request.Headers.UserAgent.ToString());
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDirectory))
+            {
+                Directory.Delete(cacheDirectory, recursive: true);
+            }
+        }
     }
 
     [Fact]

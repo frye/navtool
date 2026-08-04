@@ -28,9 +28,11 @@ public static class AppComposition
             provider.GetRequiredService<ILogger<AppThemeService>>()));
         services.AddHttpClient(ForecastHttpClientName, client =>
         {
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("Navtool/1.0");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(OsmTileOptions.DefaultUserAgent);
             client.Timeout = TimeSpan.FromMinutes(10);
         });
+        services.AddSingleton(new OsmTileOptions(
+            CacheDirectory: Path.Combine(ResolveAppDataRoot(), "map-tile-cache")));
 
         services.AddSingleton(provider => new AtomicFileCache(
             new AtomicFileCacheOptions(ResolveCacheRoot()),

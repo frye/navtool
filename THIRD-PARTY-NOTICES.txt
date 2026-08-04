@@ -1,0 +1,66 @@
+NAVTOOL MAPPING THIRD-PARTY NOTICES
+
+This file covers the mapping data, services, and software distributed with or
+used by Navtool. Full license texts and upstream notices are in the licenses
+directory distributed beside this file.
+
+DATA AND SERVICES
+
+OpenStreetMap
+Copyright OpenStreetMap contributors.
+OpenStreetMap data is available under the Open Data Commons Open Database
+License 1.0:
+https://www.openstreetmap.org/copyright
+https://opendatacommons.org/licenses/odbl/1-0/
+
+Navtool's interactive raster basemap uses the OpenStreetMap standard tile
+service under its Tile Usage Policy:
+https://operations.osmfoundation.org/policies/tiles/
+
+Natural Earth 1:10m land polygons
+Natural Earth vector and raster map data is in the public domain. No permission
+or attribution is required. Navtool retains the recommended credit:
+"Made with Natural Earth."
+https://www.naturalearthdata.com/about/terms-of-use/
+
+SOFTWARE
+
+Mapsui 5.1.0
+Includes Mapsui, Mapsui.Avalonia, Mapsui.Nts, Mapsui.Rendering.Skia, and
+Mapsui.Tiling.
+Copyright (c) 2022 The Mapsui authors.
+License: MIT. See licenses/Mapsui-MIT.txt.
+
+BruTile 6.0.0
+Copyright (c) 2008-2018 BruTile developers team. All rights reserved.
+License: Apache License 2.0. See licenses/BruTile-Apache-2.0.txt.
+
+NetTopologySuite 2.6.0, NetTopologySuite.Features 2.1.0, and
+NetTopologySuite.IO.GeoJSON4STJ 4.0.0
+Copyright (c) 2006-2025 NetTopologySuite Team and contributors.
+License: BSD 3-Clause. See licenses/NetTopologySuite-BSD-3-Clause.txt.
+
+SkiaSharp 3.119.2, SkiaSharp.HarfBuzz 3.119.2, HarfBuzzSharp 8.3.1.3,
+and their native asset packages
+Copyright (c) 2015-2016 Xamarin, Inc.
+Copyright (c) 2017-2018 Microsoft Corporation.
+License: MIT. See licenses/SkiaSharp-MIT.txt.
+These packages incorporate additional third-party material. See
+licenses/SkiaSharp-THIRD-PARTY-NOTICES.txt.
+
+Svg.Skia 3.2.1, Svg.Model 3.2.1, and ShimSkiaSharp 3.2.1
+Copyright (c) 2020 Wiesław Šoltés.
+License: MIT. See licenses/Svg-Skia-MIT.txt.
+
+Svg.Custom 3.2.1
+Copyright (c) 2025 Wiesław Šoltés.
+License: Microsoft Public License. See licenses/Svg-Custom-MS-PL.txt.
+
+ExCSS 4.3.1
+Copyright (c) 2024 Tyler Brinks.
+License: MIT. See licenses/ExCSS-MIT.txt.
+
+Topten.RichTextKit 0.4.167
+Copyright (c) 2019 Topten Software. All rights reserved.
+License: Apache License 2.0. See licenses/RichTextKit-NOTICE.txt and
+licenses/BruTile-Apache-2.0.txt for the Apache License 2.0 terms.

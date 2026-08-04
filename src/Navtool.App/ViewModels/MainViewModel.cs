@@ -44,6 +44,7 @@ public partial class MainViewModel : ViewModelBase
     private static readonly TimeSpan MaximumRouteWindow = TimeSpan.FromDays(10);
     private static readonly TimeSpan MaximumDepartureLeadTime = TimeSpan.FromDays(5);
     private static readonly TimeSpan WeatherDebounce = TimeSpan.FromMilliseconds(220);
+    private static readonly object OsmLayerCreationGate = new();
     private readonly MapInteractionState _interaction = new();
     private readonly RouteMapLayers _mapLayers;
     private readonly RoutingWorkflow? _workflow;
@@ -242,9 +243,32 @@ public partial class MainViewModel : ViewModelBase
         : this(
             workflow,
             weatherSampler,
+            localGribInspector,
+            nativeRoutingPreflight,
+            noaaProvider,
+            logger,
+            routePlanRepository,
+            routePlanWorkflow,
+            new OsmTileOptions())
+    {
+    }
+
+    public MainViewModel(
+        RoutingWorkflow workflow,
+        IWeatherSampler weatherSampler,
+        ILocalGribInspector localGribInspector,
+        INativeRoutingPreflight nativeRoutingPreflight,
+        NoaaGfsForecastProvider noaaProvider,
+        ILogger<MainViewModel> logger,
+        IRoutePlanRepository routePlanRepository,
+        RoutePlanRoutingWorkflow routePlanWorkflow,
+        OsmTileOptions tileOptions)
+        : this(
+            workflow,
+            weatherSampler,
             TimeProvider.System,
             TimeZoneInfo.Local,
-            new OsmTileOptions(),
+            tileOptions,
             logger,
             localGribInspector,
             nativeRoutingPreflight,
@@ -293,7 +317,7 @@ public partial class MainViewModel : ViewModelBase
             BackColor = Color.FromString("#DDE7EC")
         };
         Map.Navigator.MouseWheelAnimation.UseContinuousMouseWheelZoom = true;
-        var osmLayer = OpenStreetMap.CreateTileLayer(tileOptions.UserAgent);
+        var osmLayer = CreateOpenStreetMapLayer(tileOptions);
         osmLayer.Enabled = tileOptions.Enabled;
         osmLayer.Name = "OpenStreetMap";
         Map.Layers.Add(osmLayer);
@@ -303,6 +327,25 @@ public partial class MainViewModel : ViewModelBase
         UtcOffsetDisplay = FormatUtcOffset(localTimeZone.GetUtcOffset(timeProvider.GetLocalNow()));
         Map.Navigator.ZoomToBox(CreateDefaultChartExtent());
         UpdateForecastAreaSummary();
+    }
+
+    private static Mapsui.Tiling.Layers.TileLayer CreateOpenStreetMapLayer(
+        OsmTileOptions tileOptions)
+    {
+        lock (OsmLayerCreationGate)
+        {
+            var previousCache = OpenStreetMap.DefaultCache;
+            try
+            {
+                OpenStreetMap.DefaultCache =
+                    tileOptions.CreatePersistentCache() ?? previousCache;
+                return OpenStreetMap.CreateTileLayer(tileOptions.UserAgent);
+            }
+            finally
+            {
+                OpenStreetMap.DefaultCache = previousCache;
+            }
+        }
     }
 
     public event EventHandler<RouteMapSelection?>? RouteSelectionChanged;
