@@ -21,9 +21,9 @@ public sealed class RadialMenuPlacementTests
         Assert.Equal(
             [
                 RadialMenuAction.SetStart,
-                RadialMenuAction.SetDestination,
                 RadialMenuAction.CalculateRoute,
-                RadialMenuAction.Inspect
+                RadialMenuAction.SetDestination,
+                RadialMenuAction.RefreshWeather
             ],
             result.Actions.Select(action => action.Action));
         Assert.True(result.Actions[0].Center.Y < result.Center.Y);

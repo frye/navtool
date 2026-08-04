@@ -8,6 +8,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Mapsui.Extensions;
@@ -201,7 +202,8 @@ public sealed class MainWindowLayoutTests
                 Assert.IsType<Button>(window.FindControl<Button>("SetStartRadialButton")),
                 Assert.IsType<Button>(window.FindControl<Button>("SetDestinationRadialButton")),
                 Assert.IsType<Button>(window.FindControl<Button>("CalculateRadialButton")),
-                Assert.IsType<Button>(window.FindControl<Button>("InspectRadialButton"))
+                Assert.IsType<ToggleButton>(
+                    window.FindControl<ToggleButton>("RefreshWeatherRadialToggle"))
             };
             Assert.Equal(buttons, layer.Children.OfType<Button>());
             Assert.All(buttons, button =>
@@ -215,10 +217,30 @@ public sealed class MainWindowLayoutTests
             var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
             Assert.Same(viewModel.ForceRecalculateCommand, buttons[2].Command);
             Assert.True(buttons[2].IsEffectivelyEnabled);
-            Assert.False(buttons[3].IsEnabled);
+            var refreshWeather = Assert.IsType<ToggleButton>(buttons[3]);
+            Assert.True(refreshWeather.IsEffectivelyEnabled);
+            Assert.False(refreshWeather.IsChecked);
+            var refreshPoint = refreshWeather.TranslatePoint(
+                new Point(refreshWeather.Bounds.Width / 2, refreshWeather.Bounds.Height / 2),
+                window);
+            Assert.NotNull(refreshPoint);
+            window.MouseDown(refreshPoint.Value, MouseButton.Left, RawInputModifiers.None);
+            window.MouseUp(refreshPoint.Value, MouseButton.Left, RawInputModifiers.None);
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(window.IsRadialMenuOpen);
+            refreshWeather.IsChecked = true;
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(refreshWeather.IsChecked);
+            Assert.True(viewModel.UseNewestWeatherData);
+            viewModel.UseNewestWeatherData = false;
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(refreshWeather.IsChecked);
+            Assert.True(Canvas.GetLeft(buttons[2]) > Canvas.GetLeft(buttons[0]));
+            Assert.True(Canvas.GetTop(buttons[1]) > Canvas.GetTop(buttons[2]));
             viewModel.ForecastInputMode = ForecastInputMode.LocalFile;
             Dispatcher.UIThread.RunJobs();
             Assert.False(buttons[2].IsEffectivelyEnabled);
+            Assert.False(refreshWeather.IsEffectivelyEnabled);
             Assert.Equal(
                 HorizontalAlignment.Center,
                 Assert.IsType<ToggleButton>(
@@ -727,6 +749,15 @@ public sealed class MainWindowLayoutTests
                 timePicker,
                 "PART_HourTextBlock",
                 "PART_MinuteTextBlock");
+            AssertPickerTextIsCentered(
+                datePicker,
+                "PART_DayTextBlock",
+                "PART_MonthTextBlock",
+                "PART_YearTextBlock");
+            AssertPickerTextIsCentered(
+                timePicker,
+                "PART_HourTextBlock",
+                "PART_MinuteTextBlock");
         }
         finally
         {
@@ -805,6 +836,36 @@ public sealed class MainWindowLayoutTests
             Assert.True(
                 origin.Value.X + part.Bounds.Width <= flyoutButton.Bounds.Width + 0.5,
                 $"{part.Name} must end inside the picker.");
+        }
+    }
+
+    private static void AssertPickerTextIsCentered(
+        TemplatedControl picker,
+        params string[] partNames)
+    {
+        var descendants = picker.GetVisualDescendants().ToArray();
+        var flyoutButton = descendants
+            .OfType<Button>()
+            .Single(control => control.Name == "PART_FlyoutButton");
+        var textParts = descendants
+            .OfType<TextBlock>()
+            .Where(part => partNames.Contains(part.Name))
+            .ToArray();
+
+        Assert.Equal(partNames.Length, textParts.Length);
+        foreach (var part in textParts)
+        {
+            Assert.Equal(HorizontalAlignment.Center, part.HorizontalAlignment);
+            Assert.Equal(VerticalAlignment.Center, part.VerticalAlignment);
+            if (picker is TimePicker)
+            {
+                Assert.Equal(TextAlignment.Center, part.TextAlignment);
+            }
+            Assert.Equal(default, part.Padding);
+            var origin = part.TranslatePoint(default, flyoutButton);
+            Assert.NotNull(origin);
+            var center = origin.Value.Y + (part.Bounds.Height / 2);
+            Assert.InRange(Math.Abs(center - (flyoutButton.Bounds.Height / 2)), 0, 0.5);
         }
     }
 

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Avalonia.Headless.XUnit;
 using Mapsui.Extensions;
 using Mapsui.Layers;
 using Navtool.App.Models;
@@ -332,7 +333,7 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
-    public async Task Newest_weather_control_propagates_refresh_policy()
+    public async Task Newest_weather_control_is_consumed_by_the_next_calculation()
     {
         ForecastRefreshPolicy? observedPolicy = null;
         var noaa = new DelegateForecastProvider(
@@ -353,6 +354,7 @@ public sealed class MainViewModelWorkflowTests
         await viewModel.CalculateRoutesAsync();
 
         Assert.Equal(ForecastRefreshPolicy.LatestAvailable, observedPolicy);
+        Assert.False(viewModel.UseNewestWeatherData);
     }
 
     [Fact]
@@ -1354,7 +1356,7 @@ public sealed class MainViewModelWorkflowTests
         Assert.False(viewModel.IsCalculating);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public async Task CalculationProgressCombinesConcurrentModelStages()
     {
         var ecmwfForecastStarted = new TaskCompletionSource(
