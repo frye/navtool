@@ -1450,7 +1450,7 @@ public partial class MainViewModel : ViewModelBase
             effectiveDepartureUtc = utcNow;
             rollCurrentPositionDeparture = departureWasCurrentPosition;
             warning =
-                $"The current leg start time was in the past and was rolled forward to " +
+                $"The active leg departure was in the past and was rolled forward to " +
                 $"{effectiveDepartureUtc:yyyy-MM-dd HH:mm:ss} UTC. Calculation started anyway.";
         }
 
