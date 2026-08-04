@@ -36,6 +36,10 @@ public partial class MainWindow : Window
     private const double RadialActionHeight = 48;
     private const double RadialRadius = 82;
     private const double RadialSafeMargin = 16;
+    private const double RouteTelemetryWidth = 252;
+    private const double RouteTelemetryHeight = 132;
+    private const double RouteTelemetryGap = 18;
+    private const double RouteTelemetrySafeMargin = 12;
     private static AppThemeService? _defaultThemeService;
     private static readonly FilePickerFileType GribFileType = new("GRIB forecasts")
     {
@@ -59,6 +63,12 @@ public partial class MainWindow : Window
     private Button? _inspectRadialButton;
     private Line? _radialConnector;
     private Ellipse? _radialAnchor;
+    private Canvas? _routeTelemetryLayer;
+    private Button? _routeTelemetryCard;
+    private Line? _routeTelemetryConnector;
+    private Ellipse? _routeTelemetryAnchor;
+    private MainViewModel? _subscribedViewModel;
+    private RouteMapSelection? _routeTelemetrySelection;
     private ScreenPoint? _lastPointerPosition;
     private MPoint? _capturedWorldPoint;
     private RouteMapSelection? _capturedRouteSelection;
@@ -121,6 +131,10 @@ public partial class MainWindow : Window
         _inspectRadialButton = this.FindControl<Button>("InspectRadialButton")!;
         _radialConnector = this.FindControl<Line>("RadialConnector")!;
         _radialAnchor = this.FindControl<Ellipse>("RadialAnchor")!;
+        _routeTelemetryLayer = this.FindControl<Canvas>("RouteTelemetryLayer")!;
+        _routeTelemetryCard = this.FindControl<Button>("RouteTelemetryCard")!;
+        _routeTelemetryConnector = this.FindControl<Line>("RouteTelemetryConnector")!;
+        _routeTelemetryAnchor = this.FindControl<Ellipse>("RouteTelemetryAnchor")!;
         ApplyDrawerState();
     }
 
@@ -131,8 +145,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        _subscribedViewModel = viewModel;
+        _subscribedViewModel.RouteSelectionChanged += OnRouteSelectionChanged;
+        _subscribedViewModel.RoutePointInspectionRequested += OnRoutePointInspectionRequested;
         _subscribedNavigator = viewModel.Map.Navigator;
         _subscribedNavigator.ViewportChanged += OnViewportChanged;
+        ScheduleRouteTelemetryRefresh();
         ScheduleWeatherRefresh();
     }
 
@@ -149,6 +167,12 @@ public partial class MainWindow : Window
         if (_subscribedNavigator is not null)
         {
             _subscribedNavigator.ViewportChanged -= OnViewportChanged;
+        }
+
+        if (_subscribedViewModel is not null)
+        {
+            _subscribedViewModel.RouteSelectionChanged -= OnRouteSelectionChanged;
+            _subscribedViewModel.RoutePointInspectionRequested -= OnRoutePointInspectionRequested;
         }
 
         Loaded -= OnLoaded;
@@ -170,6 +194,7 @@ public partial class MainWindow : Window
     private void OnViewportChanged(object? sender, ViewportChangedEventArgs e)
     {
         CloseRadialMenu();
+        ScheduleRouteTelemetryRefresh();
         if (DataContext is MainViewModel viewModel)
         {
             viewModel.RequestWeatherRefreshFromViewport();
@@ -262,6 +287,13 @@ public partial class MainWindow : Window
         {
             e.Handled = true;
             CloseRadialMenu();
+            return;
+        }
+
+        if (e.Key == Key.Escape && _routeTelemetrySelection is not null)
+        {
+            e.Handled = true;
+            _subscribedViewModel?.ClearRoutePointSelection();
             return;
         }
 
@@ -429,6 +461,98 @@ public partial class MainWindow : Window
         _mapControl?.Focus();
     }
 
+    private void OnRouteSelectionChanged(object? sender, RouteMapSelection? selection)
+    {
+        if (selection is null)
+        {
+            _routeTelemetrySelection = null;
+        }
+        else if (_routeTelemetrySelection is not null)
+        {
+            _routeTelemetrySelection = selection;
+        }
+
+        ScheduleRouteTelemetryRefresh();
+    }
+
+    private void OnRoutePointInspectionRequested(object? sender, RouteMapSelection selection)
+    {
+        _routeTelemetrySelection = selection;
+        ScheduleRouteTelemetryRefresh();
+    }
+
+    private void OnRouteTelemetryCardClicked(object? sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        _subscribedViewModel?.ClearRoutePointSelection();
+        _mapControl?.Focus();
+    }
+
+    private void ScheduleRouteTelemetryRefresh()
+    {
+        Dispatcher.UIThread.Post(UpdateRouteTelemetryOverlay, DispatcherPriority.Loaded);
+    }
+
+    private void UpdateRouteTelemetryOverlay()
+    {
+        if (_mapControl is null ||
+            _routeTelemetryLayer is null ||
+            _routeTelemetryCard is null ||
+            _routeTelemetryConnector is null ||
+            _routeTelemetryAnchor is null ||
+            _subscribedViewModel is null ||
+            _routeTelemetrySelection is not { } selection ||
+            _mapControl.Bounds.Width <= 0 ||
+            _mapControl.Bounds.Height <= 0)
+        {
+            HideRouteTelemetryOverlay();
+            return;
+        }
+
+        var projected = _subscribedViewModel.GetProjectedRoutePoint(selection);
+        var screen = _mapControl.Map.Navigator.Viewport.WorldToScreen(projected);
+        var anchor = new ScreenPoint(screen.X, screen.Y);
+        var visibleBounds = new ScreenRect(
+            0,
+            0,
+            _mapControl.Bounds.Width,
+            _mapControl.Bounds.Height);
+        if (anchor.X < visibleBounds.X ||
+            anchor.Y < visibleBounds.Y ||
+            anchor.X > visibleBounds.Right ||
+            anchor.Y > visibleBounds.Bottom)
+        {
+            HideRouteTelemetryOverlay();
+            return;
+        }
+
+        var placement = RouteTelemetryPlacement.Calculate(
+            visibleBounds,
+            anchor,
+            new ScreenSize(RouteTelemetryWidth, RouteTelemetryHeight),
+            RouteTelemetryGap,
+            RouteTelemetrySafeMargin);
+        Canvas.SetLeft(_routeTelemetryAnchor, anchor.X - (_routeTelemetryAnchor.Width / 2));
+        Canvas.SetTop(_routeTelemetryAnchor, anchor.Y - (_routeTelemetryAnchor.Height / 2));
+        Canvas.SetLeft(_routeTelemetryCard, placement.PopupBounds.X);
+        Canvas.SetTop(_routeTelemetryCard, placement.PopupBounds.Y);
+        _routeTelemetryConnector.StartPoint = new Point(
+            placement.Connector.Start.X,
+            placement.Connector.Start.Y);
+        _routeTelemetryConnector.EndPoint = new Point(
+            placement.Connector.End.X,
+            placement.Connector.End.Y);
+        _routeTelemetryLayer.IsVisible = true;
+    }
+
+    private void HideRouteTelemetryOverlay()
+    {
+        if (_routeTelemetryLayer is not null)
+        {
+            _routeTelemetryLayer.IsVisible = false;
+        }
+    }
+
     private void OnPlanningDrawerClicked(object? sender, RoutedEventArgs e)
     {
         SetPlanningDrawerOpen(!IsPlanningDrawerOpen);
@@ -494,6 +618,7 @@ public partial class MainWindow : Window
         _routeDrawerHandle.IsChecked = IsRouteDrawerOpen;
         _planningDrawerHandle.Content = IsPlanningDrawerOpen ? "‹" : "›";
         _routeDrawerHandle.Content = IsRouteDrawerOpen ? "›" : "‹";
+        ScheduleRouteTelemetryRefresh();
         ScheduleWeatherRefresh();
     }
 
@@ -516,6 +641,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        ScheduleRouteTelemetryRefresh();
         ScheduleWeatherRefresh();
     }
 

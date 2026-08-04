@@ -200,12 +200,7 @@ public sealed record RoutePoint
     {
         get
         {
-            var (trueWindEast, trueWindNorth) = ToVectorToward(
-                TrueWindSpeedKnots,
-                NormalizeDirection(TrueWindDirectionDegrees + 180d));
-            var (boatEast, boatNorth) = ToVectorToward(BoatSpeedKnots, HeadingDegrees);
-            var apparentEast = trueWindEast - boatEast;
-            var apparentNorth = trueWindNorth - boatNorth;
+            var (apparentEast, apparentNorth) = GetApparentWindVector();
             if (Math.Abs(apparentEast) < 1e-9 && Math.Abs(apparentNorth) < 1e-9)
             {
                 return 0d;
@@ -218,6 +213,26 @@ public sealed record RoutePoint
     }
 
     public double ApparentWindAngleDegrees => Math.Abs(ApparentWindAngleSignedDegrees);
+
+    public double ApparentWindSpeedKnots
+    {
+        get
+        {
+            var (apparentEast, apparentNorth) = GetApparentWindVector();
+            return Math.Sqrt(
+                (apparentEast * apparentEast) +
+                (apparentNorth * apparentNorth));
+        }
+    }
+
+    private (double East, double North) GetApparentWindVector()
+    {
+        var (trueWindEast, trueWindNorth) = ToVectorToward(
+            TrueWindSpeedKnots,
+            NormalizeDirection(TrueWindDirectionDegrees + 180d));
+        var (boatEast, boatNorth) = ToVectorToward(BoatSpeedKnots, HeadingDegrees);
+        return (trueWindEast - boatEast, trueWindNorth - boatNorth);
+    }
 
     private static (double East, double North) ToVectorToward(double speed, double directionDegrees)
     {
