@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
@@ -132,9 +133,11 @@ public sealed class AppThemeTests
             foreach (var option in AppThemeService.AvailableThemes)
             {
                 service.SelectTheme(option.Theme);
-                var expectedForeground = FindColorResource("TextPrimaryColor");
-                var expectedBackground = FindColorResource("SurfaceRaisedColor");
-                var inputs = window.GetVisualDescendants()
+                var enabledForeground = FindColorResource("TextPrimaryColor");
+                var enabledBackground = FindColorResource("SurfaceRaisedColor");
+                var disabledForeground = FindColorResource("DisabledTextColor");
+                var disabledBackground = FindColorResource("DisabledBackgroundColor");
+                var inputs = window.GetLogicalDescendants()
                     .OfType<TemplatedControl>()
                     .Where(control =>
                         control is TextBox or ComboBox or DatePicker or TimePicker or NumericUpDown)
@@ -148,6 +151,12 @@ public sealed class AppThemeTests
                 Assert.Contains(inputs, control => control is NumericUpDown);
                 Assert.All(inputs, input =>
                 {
+                    var expectedForeground = input.IsEffectivelyEnabled
+                        ? enabledForeground
+                        : disabledForeground;
+                    var expectedBackground = input.IsEffectivelyEnabled
+                        ? enabledBackground
+                        : disabledBackground;
                     Assert.Equal(
                         expectedForeground,
                         Assert.IsAssignableFrom<ISolidColorBrush>(input.Foreground).Color);
