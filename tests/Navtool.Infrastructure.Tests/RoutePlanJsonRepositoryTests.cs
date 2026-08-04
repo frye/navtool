@@ -242,6 +242,42 @@ public sealed class RoutePlanJsonRepositoryTests
     }
 
     [Fact]
+    public async Task Lattice_stage25_diagnostics_round_trip()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var diagnostics = new RouteLatticeDiagnostics(
+            settledLabels: 200,
+            queuedLabels: 40,
+            relaxedLabels: 600,
+            waitTransitions: 8,
+            refinementRuns: 3,
+            acceptedRefinements: 2,
+            subdivisionLevel: 8,
+            refinementFallback: true,
+            reRelaxedLabels: 15,
+            staleQueueEntries: 5,
+            activeCells: 12,
+            activeFaces: 24,
+            acceptedCorridorWidthNauticalMiles: 450.0,
+            disconnectedRefinements: 1,
+            regressedRefinements: 1,
+            fallbackReason: LatticeRefinementFallbackReason.Disconnected);
+        var plan = WithResult(CreatePlan(), RouteSolver.TimeDependentLattice, diagnostics);
+
+        await repository.SaveAsync(plan);
+        var loaded = await repository.OpenAsync(plan.Id);
+
+        Assert.All(
+            loaded.Results.SelectMany(result => result.Legs),
+            leg =>
+            {
+                Assert.Equal(RouteSolver.TimeDependentLattice, leg.Route!.Solver);
+                Assert.Equal(diagnostics, leg.Route.LatticeDiagnostics);
+            });
+    }
+
+    [Fact]
     public async Task Current_position_and_active_leg_round_trip_through_save_and_open()
     {
         using var directory = new TestDirectory();

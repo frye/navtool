@@ -366,6 +366,15 @@ public sealed record RouteLatticeSearchProgress
     public int SubdivisionLevel { get; }
 }
 
+/// <summary>Why the accepted coarse incumbent was retained after lattice refinement.</summary>
+public enum LatticeRefinementFallbackReason
+{
+    None,
+    Disconnected,
+    Regressed,
+    RetryExhausted
+}
+
 public sealed record RouteLatticeDiagnostics
 {
     public RouteLatticeDiagnostics(
@@ -376,15 +385,25 @@ public sealed record RouteLatticeDiagnostics
         int refinementRuns,
         int acceptedRefinements,
         int subdivisionLevel,
-        bool refinementFallback)
+        bool refinementFallback,
+        long reRelaxedLabels = 0,
+        long staleQueueEntries = 0,
+        long activeCells = 0,
+        long activeFaces = 0,
+        double acceptedCorridorWidthNauticalMiles = 0,
+        int disconnectedRefinements = 0,
+        int regressedRefinements = 0,
+        LatticeRefinementFallbackReason fallbackReason = LatticeRefinementFallbackReason.None)
     {
         if (settledLabels < 0 || queuedLabels < 0 || relaxedLabels < 0 ||
-            waitTransitions < 0)
+            waitTransitions < 0 || reRelaxedLabels < 0 || staleQueueEntries < 0 ||
+            activeCells < 0 || activeFaces < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(settledLabels));
         }
 
-        if (refinementRuns < 0 || acceptedRefinements < 0 || subdivisionLevel < 0)
+        if (refinementRuns < 0 || acceptedRefinements < 0 || subdivisionLevel < 0 ||
+            disconnectedRefinements < 0 || regressedRefinements < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(refinementRuns));
         }
@@ -397,6 +416,14 @@ public sealed record RouteLatticeDiagnostics
         AcceptedRefinements = acceptedRefinements;
         SubdivisionLevel = subdivisionLevel;
         RefinementFallback = refinementFallback;
+        ReRelaxedLabels = reRelaxedLabels;
+        StaleQueueEntries = staleQueueEntries;
+        ActiveCells = activeCells;
+        ActiveFaces = activeFaces;
+        AcceptedCorridorWidthNauticalMiles = acceptedCorridorWidthNauticalMiles;
+        DisconnectedRefinements = disconnectedRefinements;
+        RegressedRefinements = regressedRefinements;
+        FallbackReason = fallbackReason;
     }
 
     public long SettledLabels { get; }
@@ -414,6 +441,30 @@ public sealed record RouteLatticeDiagnostics
     public int SubdivisionLevel { get; }
 
     public bool RefinementFallback { get; }
+
+    /// <summary>Labels re-relaxed during mixed-refinement passes (Stage 2.5).</summary>
+    public long ReRelaxedLabels { get; }
+
+    /// <summary>Stale priority-queue entries discarded during search (Stage 2.5).</summary>
+    public long StaleQueueEntries { get; }
+
+    /// <summary>Active lattice cells at completion (Stage 2.5).</summary>
+    public long ActiveCells { get; }
+
+    /// <summary>Active lattice faces at completion (Stage 2.5).</summary>
+    public long ActiveFaces { get; }
+
+    /// <summary>Corridor width used by the accepted refined route (Stage 2.5).</summary>
+    public double AcceptedCorridorWidthNauticalMiles { get; }
+
+    /// <summary>Refinement attempts that failed due to a disconnected graph (Stage 2.5).</summary>
+    public int DisconnectedRefinements { get; }
+
+    /// <summary>Refinement attempts that regressed the incumbent (Stage 2.5).</summary>
+    public int RegressedRefinements { get; }
+
+    /// <summary>Why the coarse incumbent was kept after refinement (Stage 2.5).</summary>
+    public LatticeRefinementFallbackReason FallbackReason { get; }
 }
 
 public sealed record RouteCalculationFrontSegment

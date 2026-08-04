@@ -502,7 +502,15 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
                     route.LatticeDiagnostics.RefinementRuns,
                     route.LatticeDiagnostics.AcceptedRefinements,
                     route.LatticeDiagnostics.SubdivisionLevel,
-                    route.LatticeDiagnostics.RefinementFallback));
+                    route.LatticeDiagnostics.RefinementFallback,
+                    route.LatticeDiagnostics.ReRelaxedLabels,
+                    route.LatticeDiagnostics.StaleQueueEntries,
+                    route.LatticeDiagnostics.ActiveCells,
+                    route.LatticeDiagnostics.ActiveFaces,
+                    route.LatticeDiagnostics.AcceptedCorridorWidthNauticalMiles,
+                    route.LatticeDiagnostics.DisconnectedRefinements,
+                    route.LatticeDiagnostics.RegressedRefinements,
+                    route.LatticeDiagnostics.FallbackReason));
 
     private static RoutePlan FromDto(RoutePlanDto dto)
     {
@@ -640,7 +648,15 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
                 dto.LatticeDiagnostics.RefinementRuns,
                 dto.LatticeDiagnostics.AcceptedRefinements,
                 dto.LatticeDiagnostics.SubdivisionLevel,
-                dto.LatticeDiagnostics.RefinementFallback);
+                dto.LatticeDiagnostics.RefinementFallback,
+                dto.LatticeDiagnostics.ReRelaxedLabels ?? 0L,
+                dto.LatticeDiagnostics.StaleQueueEntries ?? 0L,
+                dto.LatticeDiagnostics.ActiveCells ?? 0L,
+                dto.LatticeDiagnostics.ActiveFaces ?? 0L,
+                dto.LatticeDiagnostics.AcceptedCorridorWidthNauticalMiles ?? 0.0,
+                dto.LatticeDiagnostics.DisconnectedRefinements ?? 0,
+                dto.LatticeDiagnostics.RegressedRefinements ?? 0,
+                dto.LatticeDiagnostics.FallbackReason ?? LatticeRefinementFallbackReason.None);
 
         return new RouteResult(
             request,
@@ -761,5 +777,13 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
         int RefinementRuns,
         int AcceptedRefinements,
         int SubdivisionLevel,
-        bool RefinementFallback);
+        bool RefinementFallback,
+        long? ReRelaxedLabels = null,
+        long? StaleQueueEntries = null,
+        long? ActiveCells = null,
+        long? ActiveFaces = null,
+        double? AcceptedCorridorWidthNauticalMiles = null,
+        int? DisconnectedRefinements = null,
+        int? RegressedRefinements = null,
+        LatticeRefinementFallbackReason? FallbackReason = null);
 }
