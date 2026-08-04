@@ -1,5 +1,208 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Styles.Resources>
+        <SolidColorBrush x:Key="AppControlForegroundBrush"
+                         Color="{DynamicResource TextPrimaryColor}" />
+        <SolidColorBrush x:Key="AppControlSecondaryForegroundBrush"
+                         Color="{DynamicResource TextSecondaryColor}" />
+        <SolidColorBrush x:Key="AppControlMutedForegroundBrush"
+                         Color="{DynamicResource TextMutedColor}" />
+        <SolidColorBrush x:Key="AppControlBackgroundBrush"
+                         Color="{DynamicResource SurfaceRaisedColor}" />
+        <SolidColorBrush x:Key="AppControlHoverBackgroundBrush"
+                         Color="{DynamicResource ControlHoverColor}" />
+        <SolidColorBrush x:Key="AppControlPressedBackgroundBrush"
+                         Color="{DynamicResource ControlPressedColor}" />
+        <SolidColorBrush x:Key="AppControlBorderBrush"
+                         Color="{DynamicResource StrongBorderColor}" />
+        <SolidColorBrush x:Key="AppDisabledForegroundBrush"
+                         Color="{DynamicResource DisabledTextColor}" />
+        <SolidColorBrush x:Key="AppDisabledBackgroundBrush"
+                         Color="{DynamicResource DisabledBackgroundColor}" />
+        <SolidColorBrush x:Key="AppSelectedForegroundBrush"
+                         Color="{DynamicResource ActiveToolTextColor}" />
+        <SolidColorBrush x:Key="AppSelectedBackgroundBrush"
+                         Color="{DynamicResource ActiveToolBackgroundColor}" />
+        <SolidColorBrush x:Key="AppAccentForegroundBrush"
+                         Color="{DynamicResource AccentTextColor}" />
+        <SolidColorBrush x:Key="AppAccentBackgroundBrush"
+                         Color="{DynamicResource AccentColor}" />
+        <SolidColorBrush x:Key="AppAccentHoverBackgroundBrush"
+                         Color="{DynamicResource AccentHoverColor}" />
+        <SolidColorBrush x:Key="AppAccentPressedBackgroundBrush"
+                         Color="{DynamicResource AccentPressedColor}" />
+        <SolidColorBrush x:Key="AppPopupBackgroundBrush"
+                         Color="{DynamicResource SurfaceColor}" />
+
+        <x:Double x:Key="DatePickerThemeMinWidth">0</x:Double>
+        <x:Double x:Key="TimePickerThemeMinWidth">0</x:Double>
+
+        <StaticResource x:Key="ButtonForeground" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ButtonForegroundPointerOver" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ButtonForegroundPressed" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ButtonForegroundDisabled" ResourceKey="AppDisabledForegroundBrush" />
+        <StaticResource x:Key="ButtonBackground" ResourceKey="AppControlBackgroundBrush" />
+        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="AppControlHoverBackgroundBrush" />
+        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="AppControlPressedBackgroundBrush" />
+        <StaticResource x:Key="ButtonBackgroundDisabled" ResourceKey="AppDisabledBackgroundBrush" />
+        <StaticResource x:Key="ButtonBorderBrush" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="ButtonBorderBrushDisabled" ResourceKey="AppControlBorderBrush" />
+
+        <StaticResource x:Key="RepeatButtonForeground" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="RepeatButtonForegroundPointerOver" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="RepeatButtonForegroundPressed" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="RepeatButtonForegroundDisabled" ResourceKey="AppDisabledForegroundBrush" />
+        <StaticResource x:Key="RepeatButtonBackground" ResourceKey="AppControlBackgroundBrush" />
+        <StaticResource x:Key="RepeatButtonBackgroundPointerOver" ResourceKey="AppControlHoverBackgroundBrush" />
+        <StaticResource x:Key="RepeatButtonBackgroundPressed" ResourceKey="AppControlPressedBackgroundBrush" />
+        <StaticResource x:Key="RepeatButtonBackgroundDisabled" ResourceKey="AppDisabledBackgroundBrush" />
+        <StaticResource x:Key="RepeatButtonBorderBrush" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="RepeatButtonBorderBrushPointerOver" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="RepeatButtonBorderBrushPressed" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="RepeatButtonBorderBrushDisabled" ResourceKey="AppControlBorderBrush" />
+
+        <StaticResource x:Key="ToggleButtonForeground" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundPointerOver" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundPressed" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundDisabled" ResourceKey="AppDisabledForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="AppSelectedForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="AppSelectedForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="AppSelectedForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundCheckedDisabled" ResourceKey="AppDisabledForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundIndeterminate" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundIndeterminatePointerOver" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundIndeterminatePressed" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundIndeterminateDisabled" ResourceKey="AppDisabledForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonBackground" ResourceKey="AppControlBackgroundBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundPointerOver" ResourceKey="AppControlHoverBackgroundBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundPressed" ResourceKey="AppControlPressedBackgroundBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundDisabled" ResourceKey="AppDisabledBackgroundBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="AppSelectedBackgroundBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="AppSelectedBackgroundBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="AppSelectedBackgroundBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundCheckedDisabled" ResourceKey="AppDisabledBackgroundBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundIndeterminate" ResourceKey="AppControlBackgroundBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundIndeterminatePointerOver" ResourceKey="AppControlHoverBackgroundBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundIndeterminatePressed" ResourceKey="AppControlPressedBackgroundBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundIndeterminateDisabled" ResourceKey="AppDisabledBackgroundBrush" />
+
+        <StaticResource x:Key="TextControlForeground" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="TextControlForegroundPointerOver" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="TextControlForegroundFocused" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="TextControlForegroundDisabled" ResourceKey="AppDisabledForegroundBrush" />
+        <StaticResource x:Key="TextControlPlaceholderForeground" ResourceKey="AppControlMutedForegroundBrush" />
+        <StaticResource x:Key="TextControlPlaceholderForegroundPointerOver" ResourceKey="AppControlMutedForegroundBrush" />
+        <StaticResource x:Key="TextControlPlaceholderForegroundFocused" ResourceKey="AppControlMutedForegroundBrush" />
+        <StaticResource x:Key="TextControlPlaceholderForegroundDisabled" ResourceKey="AppDisabledForegroundBrush" />
+        <StaticResource x:Key="TextControlBackground" ResourceKey="AppControlBackgroundBrush" />
+        <StaticResource x:Key="TextControlBackgroundPointerOver" ResourceKey="AppControlHoverBackgroundBrush" />
+        <StaticResource x:Key="TextControlBackgroundFocused" ResourceKey="AppControlBackgroundBrush" />
+        <StaticResource x:Key="TextControlBackgroundDisabled" ResourceKey="AppDisabledBackgroundBrush" />
+        <StaticResource x:Key="TextControlBorderBrush" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="TextControlBorderBrushPointerOver" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="TextControlBorderBrushFocused" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="TextControlBorderBrushDisabled" ResourceKey="AppControlBorderBrush" />
+
+        <StaticResource x:Key="ComboBoxForeground" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ComboBoxForegroundDisabled" ResourceKey="AppDisabledForegroundBrush" />
+        <StaticResource x:Key="ComboBoxForegroundFocused" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ComboBoxForegroundFocusedPressed" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ComboBoxPlaceHolderForeground" ResourceKey="AppControlMutedForegroundBrush" />
+        <StaticResource x:Key="ComboBoxPlaceHolderForegroundFocusedPressed" ResourceKey="AppControlMutedForegroundBrush" />
+        <StaticResource x:Key="ComboBoxDropDownGlyphForeground" ResourceKey="AppControlSecondaryForegroundBrush" />
+        <StaticResource x:Key="ComboBoxDropDownGlyphForegroundDisabled" ResourceKey="AppDisabledForegroundBrush" />
+        <StaticResource x:Key="ComboBoxDropDownGlyphForegroundFocused" ResourceKey="AppControlSecondaryForegroundBrush" />
+        <StaticResource x:Key="ComboBoxDropDownGlyphForegroundFocusedPressed" ResourceKey="AppControlSecondaryForegroundBrush" />
+        <StaticResource x:Key="ComboBoxBackground" ResourceKey="AppControlBackgroundBrush" />
+        <StaticResource x:Key="ComboBoxBackgroundPointerOver" ResourceKey="AppControlHoverBackgroundBrush" />
+        <StaticResource x:Key="ComboBoxBackgroundPressed" ResourceKey="AppControlPressedBackgroundBrush" />
+        <StaticResource x:Key="ComboBoxBackgroundDisabled" ResourceKey="AppDisabledBackgroundBrush" />
+        <StaticResource x:Key="ComboBoxBackgroundUnfocused" ResourceKey="AppSelectedBackgroundBrush" />
+        <StaticResource x:Key="ComboBoxBorderBrush" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="ComboBoxBorderBrushPointerOver" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="ComboBoxBorderBrushPressed" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="ComboBoxBorderBrushDisabled" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="ComboBoxDropDownBackground" ResourceKey="AppPopupBackgroundBrush" />
+        <StaticResource x:Key="ComboBoxDropDownBorderBrush" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="ComboBoxItemForeground" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ComboBoxItemForegroundPressed" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ComboBoxItemForegroundPointerOver" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ComboBoxItemForegroundDisabled" ResourceKey="AppDisabledForegroundBrush" />
+        <StaticResource x:Key="ComboBoxItemForegroundSelected" ResourceKey="AppSelectedForegroundBrush" />
+        <StaticResource x:Key="ComboBoxItemForegroundSelectedPressed" ResourceKey="AppSelectedForegroundBrush" />
+        <StaticResource x:Key="ComboBoxItemForegroundSelectedPointerOver" ResourceKey="AppSelectedForegroundBrush" />
+        <StaticResource x:Key="ComboBoxItemForegroundSelectedDisabled" ResourceKey="AppDisabledForegroundBrush" />
+        <StaticResource x:Key="ComboBoxItemBackgroundPointerOver" ResourceKey="AppControlHoverBackgroundBrush" />
+        <StaticResource x:Key="ComboBoxItemBackgroundPressed" ResourceKey="AppControlPressedBackgroundBrush" />
+        <StaticResource x:Key="ComboBoxItemBackgroundSelected" ResourceKey="AppSelectedBackgroundBrush" />
+        <StaticResource x:Key="ComboBoxItemBackgroundSelectedPointerOver" ResourceKey="AppSelectedBackgroundBrush" />
+        <StaticResource x:Key="ComboBoxItemBackgroundSelectedPressed" ResourceKey="AppSelectedBackgroundBrush" />
+
+        <StaticResource x:Key="DatePickerButtonForeground" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="DatePickerButtonForegroundPressed" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="DatePickerButtonForegroundDisabled" ResourceKey="AppDisabledForegroundBrush" />
+        <StaticResource x:Key="DatePickerButtonBackground" ResourceKey="AppControlBackgroundBrush" />
+        <StaticResource x:Key="DatePickerButtonBackgroundPressed" ResourceKey="AppControlPressedBackgroundBrush" />
+        <StaticResource x:Key="DatePickerButtonBackgroundDisabled" ResourceKey="AppDisabledBackgroundBrush" />
+        <StaticResource x:Key="DatePickerButtonBorderBrush" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="DatePickerButtonBorderBrushDisabled" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="DatePickerFlyoutPresenterBackground" ResourceKey="AppPopupBackgroundBrush" />
+        <StaticResource x:Key="DatePickerFlyoutPresenterBorderBrush" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="DatePickerFlyoutPresenterHighlightFill" ResourceKey="AppSelectedBackgroundBrush" />
+        <StaticResource x:Key="DatePickerFlyoutPresenterSpacerFill" ResourceKey="AppControlBorderBrush" />
+
+        <StaticResource x:Key="TimePickerButtonForeground" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="TimePickerButtonForegroundPressed" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="TimePickerButtonForegroundDisabled" ResourceKey="AppDisabledForegroundBrush" />
+        <StaticResource x:Key="TimePickerButtonBackground" ResourceKey="AppControlBackgroundBrush" />
+        <StaticResource x:Key="TimePickerButtonBackgroundPressed" ResourceKey="AppControlPressedBackgroundBrush" />
+        <StaticResource x:Key="TimePickerButtonBackgroundDisabled" ResourceKey="AppDisabledBackgroundBrush" />
+        <StaticResource x:Key="TimePickerButtonBorderBrush" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="TimePickerButtonBorderBrushDisabled" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="TimePickerFlyoutPresenterBackground" ResourceKey="AppPopupBackgroundBrush" />
+        <StaticResource x:Key="TimePickerFlyoutPresenterBorderBrush" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="TimePickerFlyoutPresenterHighlightFill" ResourceKey="AppSelectedBackgroundBrush" />
+        <StaticResource x:Key="TimePickerFlyoutPresenterSpacerFill" ResourceKey="AppControlBorderBrush" />
+
+        <StaticResource x:Key="DateTimePickerFlyoutButtonBackground" ResourceKey="AppPopupBackgroundBrush" />
+        <StaticResource x:Key="DateTimePickerFlyoutButtonBackgroundPointerOver" ResourceKey="AppControlHoverBackgroundBrush" />
+        <StaticResource x:Key="DateTimePickerFlyoutButtonBackgroundPressed" ResourceKey="AppControlPressedBackgroundBrush" />
+        <StaticResource x:Key="DateTimePickerFlyoutButtonBorderBrush" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="DateTimePickerFlyoutButtonBorderBrushPointerOver" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="DateTimePickerFlyoutButtonBorderBrushPressed" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="DateTimePickerFlyoutButtonForegroundPointerOver" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="DateTimePickerFlyoutButtonForegroundPressed" ResourceKey="AppControlForegroundBrush" />
+
+        <StaticResource x:Key="ExpanderHeaderForeground" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ExpanderHeaderForegroundPointerOver" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ExpanderHeaderForegroundPressed" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ExpanderHeaderForegroundDisabled" ResourceKey="AppDisabledForegroundBrush" />
+        <StaticResource x:Key="ExpanderHeaderBackground" ResourceKey="AppControlBackgroundBrush" />
+        <StaticResource x:Key="ExpanderHeaderBackgroundPointerOver" ResourceKey="AppControlHoverBackgroundBrush" />
+        <StaticResource x:Key="ExpanderHeaderBackgroundPressed" ResourceKey="AppControlPressedBackgroundBrush" />
+        <StaticResource x:Key="ExpanderHeaderBackgroundDisabled" ResourceKey="AppDisabledBackgroundBrush" />
+        <StaticResource x:Key="ExpanderHeaderBorderBrush" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="ExpanderHeaderBorderBrushPointerOver" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="ExpanderHeaderBorderBrushPressed" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="ExpanderHeaderBorderBrushDisabled" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="ExpanderChevronForeground" ResourceKey="AppControlSecondaryForegroundBrush" />
+        <StaticResource x:Key="ExpanderChevronForegroundPointerOver" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ExpanderChevronForegroundPressed" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ExpanderChevronForegroundDisabled" ResourceKey="AppDisabledForegroundBrush" />
+
+        <StaticResource x:Key="ToolTipForeground" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="ToolTipBackground" ResourceKey="AppPopupBackgroundBrush" />
+        <StaticResource x:Key="ToolTipBorderBrush" ResourceKey="AppControlBorderBrush" />
+        <StaticResource x:Key="MenuFlyoutItemForeground" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="MenuFlyoutItemForegroundPointerOver" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="MenuFlyoutItemForegroundPressed" ResourceKey="AppControlForegroundBrush" />
+        <StaticResource x:Key="MenuFlyoutItemForegroundDisabled" ResourceKey="AppDisabledForegroundBrush" />
+        <StaticResource x:Key="MenuFlyoutItemBackgroundPointerOver" ResourceKey="AppControlHoverBackgroundBrush" />
+        <StaticResource x:Key="MenuFlyoutItemBackgroundPressed" ResourceKey="AppControlPressedBackgroundBrush" />
+    </Styles.Resources>
+
     <Style Selector="Window">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
     </Style>
@@ -66,7 +269,7 @@
     </Style>
     <Style Selector="TextBlock.telemetry-label">
         <Setter Property="Foreground" Value="{DynamicResource TextMutedColor}" />
-        <Setter Property="FontSize" Value="9" />
+        <Setter Property="FontSize" Value="10" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="LetterSpacing" Value="0.8" />
     </Style>
@@ -77,10 +280,27 @@
     </Style>
     <Style Selector="TextBlock.telemetry-hint">
         <Setter Property="Foreground" Value="{DynamicResource TextMutedColor}" />
-        <Setter Property="FontSize" Value="9" />
+        <Setter Property="FontSize" Value="10" />
     </Style>
     <Style Selector="Button">
         <Setter Property="MinHeight" Value="44" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceRaisedColor}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderColor}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource ControlHoverColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource ControlPressedColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="Button:disabled /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource DisabledBackgroundColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource DisabledTextColor}" />
     </Style>
     <Style Selector="Button.primary">
         <Setter Property="Background" Value="{DynamicResource AccentColor}" />
@@ -132,6 +352,8 @@
         <Setter Property="Background" Value="{DynamicResource SurfaceRaisedColor}" />
         <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderColor}" />
         <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryColor}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource AccentColor}" />
+        <Setter Property="SelectionForegroundBrush" Value="{DynamicResource AccentTextColor}" />
     </Style>
     <Style Selector="TextBox:disabled">
         <Setter Property="Foreground" Value="{DynamicResource DisabledTextColor}" />
@@ -141,6 +363,7 @@
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
         <Setter Property="Background" Value="{DynamicResource SurfaceRaisedColor}" />
         <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderColor}" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
     </Style>
     <Style Selector="ComboBox:disabled">
         <Setter Property="Foreground" Value="{DynamicResource DisabledTextColor}" />
@@ -150,6 +373,8 @@
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
         <Setter Property="Background" Value="{DynamicResource SurfaceRaisedColor}" />
         <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderColor}" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="MinWidth" Value="0" />
     </Style>
     <Style Selector="DatePicker:disabled">
         <Setter Property="Foreground" Value="{DynamicResource DisabledTextColor}" />
@@ -159,6 +384,8 @@
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
         <Setter Property="Background" Value="{DynamicResource SurfaceRaisedColor}" />
         <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderColor}" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="MinWidth" Value="0" />
     </Style>
     <Style Selector="TimePicker:disabled">
         <Setter Property="Foreground" Value="{DynamicResource DisabledTextColor}" />
@@ -168,10 +395,62 @@
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
         <Setter Property="Background" Value="{DynamicResource SurfaceRaisedColor}" />
         <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderColor}" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
     </Style>
     <Style Selector="NumericUpDown:disabled">
         <Setter Property="Foreground" Value="{DynamicResource DisabledTextColor}" />
         <Setter Property="Background" Value="{DynamicResource DisabledBackgroundColor}" />
+    </Style>
+    <Style Selector="CheckBox">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="CheckBox:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="CheckBox:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="CheckBox:disabled /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource DisabledTextColor}" />
+    </Style>
+    <Style Selector="RadioButton">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="RadioButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="RadioButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="RadioButton:disabled /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource DisabledTextColor}" />
+    </Style>
+    <Style Selector="DatePicker /template/ Button#PART_FlyoutButton TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="DatePicker:disabled /template/ Button#PART_FlyoutButton TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource DisabledTextColor}" />
+    </Style>
+    <Style Selector="TimePicker /template/ Button#PART_FlyoutButton TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="TimePicker:disabled /template/ Button#PART_FlyoutButton TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource DisabledTextColor}" />
+    </Style>
+    <Style Selector="DatePickerPresenter, TimePickerPresenter">
+        <Setter Property="Background" Value="{DynamicResource SurfaceColor}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderColor}" />
+    </Style>
+    <Style Selector="DatePickerPresenter ListBoxItem, TimePickerPresenter ListBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="DatePickerPresenter ListBoxItem:selected /template/ ContentPresenter, TimePickerPresenter ListBoxItem:selected /template/ ContentPresenter">
+        <Setter Property="Foreground" Value="{DynamicResource ActiveToolTextColor}" />
+    </Style>
+    <Style Selector="ToolTip">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceColor}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderColor}" />
     </Style>
     <Style Selector="ToggleButton.map-tool">
         <Setter Property="MinHeight" Value="44" />

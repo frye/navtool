@@ -693,6 +693,46 @@ public sealed class MainWindowLayoutTests
     }
 
     [AvaloniaFact]
+    public void CompactPickersKeepEveryValueSegmentInsideTheDrawerFields()
+    {
+        var window = CreateWindow();
+
+        try
+        {
+            window.Show();
+            window.SetPlanningDrawerOpen(true);
+            var datePicker = Assert.IsType<DatePicker>(
+                window.FindControl<DatePicker>("DepartureDatePicker"));
+            var timePicker = Assert.IsType<TimePicker>(
+                window.FindControl<TimePicker>("DepartureTimePicker"));
+            datePicker.SelectedDate = new DateTimeOffset(
+                2026,
+                8,
+                4,
+                0,
+                0,
+                0,
+                TimeSpan.Zero);
+            timePicker.SelectedTime = new TimeSpan(8, 22, 0);
+            Dispatcher.UIThread.RunJobs();
+
+            AssertPickerFits(
+                datePicker,
+                "PART_DayTextBlock",
+                "PART_MonthTextBlock",
+                "PART_YearTextBlock");
+            AssertPickerFits(
+                timePicker,
+                "PART_HourTextBlock",
+                "PART_MinuteTextBlock");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void FieldLayoutsExposeLabelsAndAlignedActionRows()
     {
         var window = CreateWindow();
@@ -731,6 +771,38 @@ public sealed class MainWindowLayoutTests
 
     private static MainWindow CreateWindow() =>
         new() { DataContext = CreateViewModel() };
+
+    private static void AssertPickerFits(
+        TemplatedControl picker,
+        params string[] partNames)
+    {
+        picker.ApplyTemplate();
+        var descendants = picker.GetVisualDescendants().ToArray();
+        var flyoutButton = descendants
+            .OfType<Button>()
+            .Single(control => control.Name == "PART_FlyoutButton");
+        var textParts = descendants
+            .OfType<TextBlock>()
+            .Where(part => partNames.Contains(part.Name))
+            .ToArray();
+
+        Assert.True(
+            flyoutButton.Bounds.Width <= picker.Bounds.Width + 0.5,
+            $"{picker.Name} flyout content must not exceed its allocated width.");
+        Assert.Equal(partNames.Length, textParts.Length);
+
+        foreach (var part in textParts)
+        {
+            Assert.True(part.IsEffectivelyVisible, $"{part.Name} must be visible.");
+            Assert.False(string.IsNullOrWhiteSpace(part.Text), $"{part.Name} must display a value.");
+            var origin = part.TranslatePoint(default, flyoutButton);
+            Assert.NotNull(origin);
+            Assert.True(origin.Value.X >= -0.5, $"{part.Name} must start inside the picker.");
+            Assert.True(
+                origin.Value.X + part.Bounds.Width <= flyoutButton.Bounds.Width + 0.5,
+                $"{part.Name} must end inside the picker.");
+        }
+    }
 
     private static RouteMapSelection CreateRouteSelection(Coordinate coordinate)
     {

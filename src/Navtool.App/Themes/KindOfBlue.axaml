@@ -25,7 +25,7 @@
     <Color x:Key="ControlHoverColor">#1A3A51</Color>
     <Color x:Key="ControlPressedColor">#244B64</Color>
     <Color x:Key="DisabledBackgroundColor">#172A38</Color>
-    <Color x:Key="DisabledTextColor">#708898</Color>
+    <Color x:Key="DisabledTextColor">#849BA8</Color>
     <Color x:Key="FocusColor">#E0C783</Color>
     <Color x:Key="OverlayBackgroundColor">#F20D2233</Color>
     <Color x:Key="OverlayBorderColor">#3F6176</Color>
