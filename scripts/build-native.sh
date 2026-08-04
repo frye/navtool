@@ -3,7 +3,7 @@ set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 build_dir=${NAVTOOL_NATIVE_BUILD_DIR:-"$root/native/Navtool.RouterBridge/build"}
-router_revision=${NAVTOOL_ROUTER_LIB_RELEASE_TAG:-"v0.4.0"}
+router_revision=${NAVTOOL_ROUTER_LIB_RELEASE_TAG:-"v0.4.1"}
 
 if [ -n "${SAILROUTE_SOURCE_DIR:-}" ]; then
   router_source=$SAILROUTE_SOURCE_DIR

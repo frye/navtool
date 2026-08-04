@@ -102,7 +102,8 @@ validation, and use `scripts/publish.sh` or `scripts/publish.ps1` for
 distributable artifacts. For a custom bridge location, set
 `NAVTOOL_ROUTER_BRIDGE_PATH` to the shared library or its directory. Packaged
 applications discover their bridge under `runtimes/<RID>/native`. Native builds
-fetch and compile the immutable `router-lib` release `v0.4.0` by default. Set
+fetch and compile the immutable `router-lib` Stage 2.5 release `v0.4.1` by
+default. Set
 `SAILROUTE_SOURCE_DIR` to a local `router-lib` checkout when testing other
 revisions.
 
@@ -127,7 +128,7 @@ interpolation. It intentionally adds no tack or gybe delay, no hard maximum-wind
 cutoff, and clamps wind above the polar's tabulated range.
 
 Enable **Professional routing features** in the planning drawer to reveal the
-temporary router-lib v0.4 controls. Professional mode can select either the
+temporary `router-lib` Stage 2.5 controls. Professional mode can select either the
 isochrone beam or deterministic time-dependent lattice solver and configure
 maneuver penalties, heading augmentation, wind sampling, polar interpolation,
 wind limits, pruning, and solver-specific settings. The toggle and edited values
@@ -224,7 +225,7 @@ also be installed or packaged according to the target platform.
 | --- | --- |
 | `NAVTOOL_ROUTER_BRIDGE_PATH` | Native bridge file or directory |
 | `SAILROUTE_SOURCE_DIR` | Optional `router-lib` checkout override for native build/run scripts |
-| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default `v0.4.0`) |
+| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default `v0.4.1`) |
 | `NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY` | `router-lib` Git repository used when `SAILROUTE_SOURCE_DIR` is unset |
 | `NAVTOOL_NATIVE_BUILD_DIR` | Optional native bridge build directory |
 | `NAVTOOL_APP_DATA_ROOT` | Application data root |

@@ -342,30 +342,21 @@ uint8_t cancel_v6_progress(
 }
 
 navtool_router_options_v6 balanced_options_v6() {
-    return {
-        NAVTOOL_ROUTER_SOLVER_ISOCHRONE_BEAM_V6,
-        3,
-        1,
-        1,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        30,
-        150.0,
-        0.0,
-        2.0,
-        120.0,
-        450.0,
-        3,
-        4,
-        1,
-        2,
-        250,
-        0};
+    navtool_router_options_v6 options{};
+    options.heading_augmentation = 3;
+    options.wind_sampling = 1;
+    options.polar_angle_interpolation = 1;
+    options.lattice_time_bucket_minutes = 30;
+    options.downwind_true_wind_angle_degrees = 150.0;
+    options.pruning_sector_degrees = 2.0;
+    options.destination_front_half_angle_degrees = 120.0;
+    options.lattice_corridor_width_nautical_miles = 450.0;
+    options.destination_front_minimum_secondary_segment_points = 3;
+    options.lattice_subdivision_level = 4;
+    options.lattice_refinement_levels = 1;
+    options.lattice_corridor_widening_retries = 2;
+    options.lattice_progress_every_n_expansions = 250;
+    return options;
 }
 
 std::filesystem::path create_grib_with_missing_v_step() {
@@ -912,7 +903,7 @@ int main() {
         require(
             std::string{route_json}.find("\"latticeDiagnostics\"") ==
                 std::string::npos,
-            "beam route unexpectedly included lattice diagnostics");
+            "defaulted solver unexpectedly selected lattice routing");
         navtool_router_bridge_free_v1(route_json);
 
         route_json = nullptr;
@@ -983,6 +974,12 @@ int main() {
             std::string{route_json}.find("\"latticeDiagnostics\"") !=
                 std::string::npos,
             "lattice route omitted lattice diagnostics");
+        require(
+            std::string{route_json}.find("\"reRelaxedLabels\"") !=
+                std::string::npos &&
+                std::string{route_json}.find("\"fallbackReason\"") !=
+                    std::string::npos,
+            "lattice route omitted Stage 2.5 diagnostics");
         navtool_router_bridge_free_v1(route_json);
         route_json = nullptr;
         route_json_length = 0U;

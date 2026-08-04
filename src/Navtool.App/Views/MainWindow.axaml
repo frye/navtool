@@ -231,6 +231,9 @@
                                         <ComboBox x:Name="RouteSolverSelector"
                                                   ItemsSource="{Binding RouteSolverOptions}"
                                                   SelectedItem="{Binding SelectedRouteSolver}" />
+                                        <TextBlock Classes="muted"
+                                                  Text="The lattice solver is opt-in; standard routing always remains on the isochrone beam."
+                                                  TextWrapping="Wrap" />
                                     </StackPanel>
                                     <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                                         <StackPanel Spacing="4">
@@ -295,7 +298,8 @@
                                                            Value="{Binding PruningSectorDegrees}" />
                                         </StackPanel>
                                     </Grid>
-                                    <StackPanel IsVisible="{Binding IsProfessionalBeamRouting}"
+                                    <StackPanel x:Name="BeamRoutingOptions"
+                                                IsVisible="{Binding IsProfessionalBeamRouting}"
                                                 Spacing="8">
                                         <TextBlock Classes="field-label" Text="Destination front" />
                                         <ComboBox ItemsSource="{Binding DestinationFrontPolicyOptions}"
@@ -307,7 +311,8 @@
                                                            Value="{Binding DestinationFrontMinimumSecondarySegmentPoints}" />
                                         </Grid>
                                     </StackPanel>
-                                    <StackPanel IsVisible="{Binding IsProfessionalLatticeRouting}"
+                                    <StackPanel x:Name="LatticeRoutingOptions"
+                                                IsVisible="{Binding IsProfessionalLatticeRouting}"
                                                 Spacing="8">
                                         <TextBlock Classes="field-label" Text="Lattice search" />
                                         <ComboBox ItemsSource="{Binding LatticeSearchAlgorithmOptions}"

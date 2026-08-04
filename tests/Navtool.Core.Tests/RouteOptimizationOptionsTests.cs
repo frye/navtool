@@ -8,6 +8,7 @@ public sealed class RouteOptimizationOptionsTests
         var options = RouteOptimizationOptions.Balanced;
 
         Assert.Equal(RouteSolver.IsochroneBeam, options.Solver);
+        Assert.Equal(RouteSolver.IsochroneBeam, new RouteOptimizationOptions().Solver);
         Assert.Equal(
             RouteHeadingAugmentation.DestinationBearingAndVelocityMadeGood,
             options.HeadingAugmentation);

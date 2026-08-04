@@ -62,6 +62,8 @@ public sealed class NativeRouterBridgeIntegrationTests
             snapshots.Add);
         Assert.NotEmpty(route.Points);
         Assert.True(route.Diagnostics.GeneratedCandidates > 0);
+        Assert.Equal(RouteSolver.IsochroneBeam, route.Solver);
+        Assert.Null(route.LatticeDiagnostics);
         Assert.Equal(LandAvoidanceStatus.NotEvaluated, route.LandAvoidance.Status);
         var eligibilityCalls = 0;
         var rejected = Assert.Throws<NativeRouterException>(() =>
@@ -127,6 +129,14 @@ public sealed class NativeRouterBridgeIntegrationTests
             null);
         Assert.Equal(RouteSolver.TimeDependentLattice, latticeRoute.Solver);
         Assert.NotNull(latticeRoute.LatticeDiagnostics);
+        Assert.True(latticeRoute.LatticeDiagnostics.ActiveCells > 0);
+        Assert.True(latticeRoute.LatticeDiagnostics.ActiveFaces > 0);
+        Assert.Equal(
+            0,
+            latticeRoute.LatticeDiagnostics.AcceptedCorridorWidthNauticalMiles);
+        Assert.Equal(
+            LatticeRefinementFallbackReason.None,
+            latticeRoute.LatticeDiagnostics.FallbackReason);
         Assert.NotEmpty(latticeSnapshots);
         Assert.All(latticeSnapshots, snapshot =>
         {
