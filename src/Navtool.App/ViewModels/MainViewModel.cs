@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Mapsui;
@@ -738,11 +739,11 @@ public partial class MainViewModel : ViewModelBase
 
             // The explicit current-position departure time (never wall clock/GPS) takes priority
             // over the itinerary-start departure fields once a current position has been placed.
-            var departureTime = sequentialPlan!.CurrentPosition?.DepartureTime ?? request!.Route.DepartureTime;
+            var departureTime = sequentialPlan!.CurrentPosition?.DepartureTime ?? request.Route.DepartureTime;
             planRequest = new RoutePlanRoutingRequest(
                 sequentialPlan,
                 departureTime,
-                request!.Route.LatestArrivalTime,
+                request.Route.LatestArrivalTime,
                 request.Selections,
                 request.RefreshPolicy);
         }
@@ -804,7 +805,7 @@ public partial class MainViewModel : ViewModelBase
         StatusMessage = "Starting forecast acquisition and route calculations…";
         _mapLayers.ClearCalculationOverlays();
         _modelProgress.Clear();
-        foreach (var model in request!.Models)
+        foreach (var model in request.Models)
         {
             _modelProgress[model] = 0;
             SetModelStatus(model, IsExperimentalDownload(request, model)
@@ -905,7 +906,7 @@ public partial class MainViewModel : ViewModelBase
                 return;
             }
 
-            var result = await _workflow.ExecuteAsync(request!, progress, cancellation.Token);
+            var result = await _workflow.ExecuteAsync(request, progress, cancellation.Token);
             if (!IsCurrentCalculation(generation) || cancellation.IsCancellationRequested)
             {
                 return;
@@ -1345,7 +1346,7 @@ public partial class MainViewModel : ViewModelBase
     }
 
     private bool TryCreateWorkflowRequest(
-        out RoutingWorkflowRequest? request,
+        [NotNullWhen(true)] out RoutingWorkflowRequest? request,
         out string? error)
     {
         request = null;
