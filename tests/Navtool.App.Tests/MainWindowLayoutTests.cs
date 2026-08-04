@@ -213,7 +213,7 @@ public sealed class MainWindowLayoutTests
                 Assert.Equal(VerticalAlignment.Center, button.VerticalContentAlignment);
             });
             var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
-            Assert.Same(viewModel.CalculateCommand, buttons[2].Command);
+            Assert.Same(viewModel.ForceRecalculateCommand, buttons[2].Command);
             Assert.True(buttons[2].IsEffectivelyEnabled);
             Assert.False(buttons[3].IsEnabled);
             viewModel.ForecastInputMode = ForecastInputMode.LocalFile;
@@ -400,7 +400,7 @@ public sealed class MainWindowLayoutTests
             Assert.True(idleRow.IsVisible);
             Assert.False(progressRow.IsVisible);
             Assert.False(progress.IsVisible);
-            Assert.False(cancel.IsVisible);
+            Assert.False(cancel.IsEffectivelyVisible);
             Assert.Contains(mapShell, rail.GetLogicalAncestors());
 
             viewModel.ProgressFraction = 0.64;
@@ -410,7 +410,7 @@ public sealed class MainWindowLayoutTests
             Assert.False(idleRow.IsVisible);
             Assert.True(progressRow.IsVisible);
             Assert.True(progress.IsVisible);
-            Assert.True(cancel.IsVisible);
+            Assert.True(cancel.IsEffectivelyVisible);
             Assert.True(cancel.IsEnabled);
             Assert.Same(viewModel.CancelCommand, cancel.Command);
             Assert.Equal(0.64, progress.Value);
