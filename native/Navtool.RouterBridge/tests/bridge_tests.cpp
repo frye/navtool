@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <cstddef>
 #include <cstring>
 #include <iostream>
 #include <fstream>
@@ -17,6 +18,26 @@
 namespace {
 
 static_assert(sizeof(navtool_router_options_v6) == 152U);
+
+// The managed side pins these same literals in
+// tests/Navtool.Infrastructure.Tests/NativeRouterInteropLayoutTests.cs. Both
+// sides assert against fixed numbers rather than each other, so a layout change
+// on either side fails loudly instead of silently corrupting memory.
+static_assert(sizeof(navtool_router_provider_metadata_v7) == 24U);
+static_assert(sizeof(navtool_router_grid_spec_v7) == 56U);
+static_assert(sizeof(navtool_router_current_settings_v7) == 120U);
+static_assert(sizeof(navtool_router_wave_derating_v7) == 64U);
+static_assert(sizeof(navtool_router_wave_settings_v7) == 224U);
+static_assert(sizeof(navtool_router_landmask_settings_v7) == 128U);
+static_assert(sizeof(navtool_router_exclusion_ring_v7) == 16U);
+static_assert(sizeof(navtool_router_exclusion_polygon_v7) == 32U);
+static_assert(sizeof(navtool_router_exclusion_zone_v7) == 64U);
+static_assert(sizeof(navtool_router_exclusion_settings_v7) == 96U);
+static_assert(sizeof(navtool_router_environment_v7) == 576U);
+static_assert(offsetof(navtool_router_environment_v7, currents) == 8U);
+static_assert(offsetof(navtool_router_environment_v7, waves) == 128U);
+static_assert(offsetof(navtool_router_environment_v7, land) == 352U);
+static_assert(offsetof(navtool_router_environment_v7, exclusions) == 480U);
 
 void require(bool condition, const char* message) {
     if (!condition) {

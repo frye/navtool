@@ -1588,12 +1588,36 @@ internal static class NativeRouteJsonParser
             OptionalDouble(element, "landInterpolationErrorNauticalMiles"),
             OptionalDouble(element, "landClearanceNauticalMiles"),
             ParseBoundaryPolicy(element),
-            OptionalInt64(element, "exclusionZoneCount") is { } zoneCount
+            NullableInt64(element, "exclusionZoneCount") is { } zoneCount
                 ? checked((int)zoneCount)
                 : null,
-            OptionalInt64(element, "exclusionRevision") is { } revision
+            NullableInt64(element, "exclusionRevision") is { } revision
                 ? checked((ulong)revision)
                 : null);
+    }
+
+    /// <summary>
+    /// Reads an optional nonnegative integer, returning null when the key is
+    /// absent. router-lib omits <c>exclusionZoneCount</c> and
+    /// <c>exclusionRevision</c> entirely when exclusions are not configured, and
+    /// "not configured" must never read back as a configured set of zero zones.
+    /// </summary>
+    private static long? NullableInt64(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var value) ||
+            value.ValueKind != JsonValueKind.Number ||
+            !value.TryGetInt64(out var result))
+        {
+            return null;
+        }
+
+        if (result < 0)
+        {
+            throw new NativeRouteFormatException(
+                $"Native route JSON field '{name}' must be nonnegative.");
+        }
+
+        return result;
     }
 
     private static RouteEnvironmentSampling ParseSampling(JsonElement element)
