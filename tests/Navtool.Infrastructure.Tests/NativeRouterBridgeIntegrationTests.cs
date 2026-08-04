@@ -13,10 +13,7 @@ public sealed class NativeRouterBridgeIntegrationTests
         var repository = FindAncestor(AppContext.BaseDirectory, "Navtool.sln");
         var sample = !string.IsNullOrWhiteSpace(configuredSample)
             ? Path.GetFullPath(configuredSample)
-            : repository is null
-                ? string.Empty
-                : Path.GetFullPath(
-                    Path.Combine(repository, "..", "router-lib", "samples", "sample.grib"));
+            : ResolveSampleGrib(repository);
         if (!File.Exists(sample))
         {
             return;
@@ -33,8 +30,11 @@ public sealed class NativeRouterBridgeIntegrationTests
         }
 
         using var forecast = bridge.LoadForecast(sample);
-        Assert.Equal(6u, bridge.AbiVersion);
+        Assert.Equal(7u, bridge.AbiVersion);
         Assert.True(bridge.LandConstraintAvailable);
+        Assert.True(bridge.EnvironmentAvailable);
+        Assert.True(bridge.SignedDistanceLandmaskAvailable);
+        Assert.True(bridge.ExclusionZonesAvailable);
         Assert.True(forecast.Metadata.LatitudeCount > 0);
         Assert.True(forecast.Metadata.FirstValidAt < forecast.Metadata.LastValidAt);
 
@@ -203,6 +203,199 @@ public sealed class NativeRouterBridgeIntegrationTests
             limitedRoute.Points.Select(point => point.Timestamp));
         Assert.Equal(limitedSnapshots[^1].FrontierTime, limitedRoute.ArrivalTime);
         Assert.True(limitedRoute.ArrivalTime <= forecast.Metadata.LastValidAt);
+    }
+
+    /// <summary>
+    /// Locates router-lib's sample GRIB. It normally lives in the copy CMake
+    /// fetches into the native build tree; a sibling router-lib checkout is
+    /// accepted as a fallback for developers who keep one.
+    /// </summary>
+
+    /// <summary>
+    /// Exercises the real ABI v7 environment payload end to end. A uniform
+    /// current must change ground-frame motion while leaving heading and boat
+    /// speed water relative, and an unconfigured environment must leave the
+    /// route byte-identical to the no-environment path. That equality is the
+    /// whole compatibility promise of this work, so it is asserted against the
+    /// real native library rather than a stub.
+    /// </summary>
+    [Fact]
+    public void Environment_payload_round_trips_through_the_real_native_bridge()
+    {
+        var configuredSample = Environment.GetEnvironmentVariable("NAVTOOL_ROUTER_SAMPLE_GRIB");
+        var repository = FindAncestor(AppContext.BaseDirectory, "Navtool.sln");
+        var sample = !string.IsNullOrWhiteSpace(configuredSample)
+            ? Path.GetFullPath(configuredSample)
+            : ResolveSampleGrib(repository);
+        if (!File.Exists(sample))
+        {
+            return;
+        }
+
+        NativeRouterBridge bridge;
+        try
+        {
+            bridge = new NativeRouterBridge();
+        }
+        catch (NativeBridgeUnavailableException)
+        {
+            return;
+        }
+
+        using var forecast = bridge.LoadForecast(sample);
+        var request = new RouteRequest(
+            "native-environment-integration",
+            new Coordinate(48.25, -123.65),
+            new Coordinate(48.25, -123.35),
+            forecast.Metadata.FirstValidAt,
+            forecast.Metadata.FirstValidAt.AddHours(10));
+
+        var baseline = bridge.CalculateRoute(
+            forecast,
+            request,
+            ForecastModel.NoaaGfs,
+            RouteOptimizationOptions.Balanced,
+            onProgress: null,
+            isSegmentEligible: null);
+        Assert.Null(baseline.Environment);
+        Assert.Null(baseline.EnvironmentDiagnostics);
+        Assert.All(baseline.Points, point => Assert.Null(point.Environment));
+
+        // An environment object that configures nothing must take the same code
+        // path as passing none at all.
+        var inert = bridge.CalculateRoute(
+            forecast,
+            request,
+            ForecastModel.NoaaGfs,
+            RouteOptimizationOptions.Balanced.WithEnvironment(RouteEnvironmentOptions.None),
+            onProgress: null,
+            isSegmentEligible: null);
+        Assert.Null(inert.Environment);
+        Assert.Equal(
+            baseline.Points.Select(point => (point.Location, point.Timestamp, point.BoatSpeedKnots)),
+            inert.Points.Select(point => (point.Location, point.Timestamp, point.BoatSpeedKnots)));
+
+        var metadata = new RouteProviderMetadata("integration-current", "test", "1");
+        var withCurrent = bridge.CalculateRoute(
+            forecast,
+            request,
+            ForecastModel.NoaaGfs,
+            RouteOptimizationOptions.Balanced.WithEnvironment(
+                new RouteEnvironmentOptions(
+                    currents: RouteCurrentOptions.Uniform(1.5, 0, metadata))),
+            onProgress: null,
+            isSegmentEligible: null);
+
+        Assert.NotNull(withCurrent.Environment);
+        Assert.Equal("integration-current", withCurrent.Environment!.CurrentProvider?.Name);
+        Assert.Equal("test", withCurrent.Environment.CurrentProvider?.Source);
+        Assert.Null(withCurrent.Environment.Landmask);
+        Assert.Null(withCurrent.Environment.ExclusionZoneCount);
+        Assert.NotNull(withCurrent.EnvironmentDiagnostics);
+        Assert.True(withCurrent.EnvironmentDiagnostics!.CurrentSamples > 0);
+
+        var sampled = withCurrent.Points.FirstOrDefault(point => point.Environment is not null);
+        Assert.NotNull(sampled);
+        var pointEnvironment = sampled!.Environment!;
+        Assert.True(pointEnvironment.CurrentApplied);
+        Assert.False(pointEnvironment.WaveApplied);
+        Assert.Equal(1.5, pointEnvironment.CurrentEastKnots!.Value, 6);
+        Assert.Equal(0, pointEnvironment.CurrentNorthKnots!.Value, 6);
+
+        // Water-relative values must stay water relative; only the environment
+        // block reports ground motion.
+        Assert.Equal(sampled.BoatSpeedKnots, pointEnvironment.FlatWaterSpeedKnots, 6);
+        Assert.NotEqual(
+            pointEnvironment.SpeedOverGroundKnots,
+            pointEnvironment.FlatWaterSpeedKnots);
+    }
+
+    /// <summary>
+    /// A landmask that reports the whole corridor as land must produce no route
+    /// at all, rather than quietly routing across it.
+    /// </summary>
+    [Fact]
+    public void An_all_land_signed_distance_mask_refuses_to_produce_a_route()
+    {
+        var configuredSample = Environment.GetEnvironmentVariable("NAVTOOL_ROUTER_SAMPLE_GRIB");
+        var repository = FindAncestor(AppContext.BaseDirectory, "Navtool.sln");
+        var sample = !string.IsNullOrWhiteSpace(configuredSample)
+            ? Path.GetFullPath(configuredSample)
+            : ResolveSampleGrib(repository);
+        if (!File.Exists(sample))
+        {
+            return;
+        }
+
+        NativeRouterBridge bridge;
+        try
+        {
+            bridge = new NativeRouterBridge();
+        }
+        catch (NativeBridgeUnavailableException)
+        {
+            return;
+        }
+
+        using var forecast = bridge.LoadForecast(sample);
+        var request = new RouteRequest(
+            "native-landmask-integration",
+            new Coordinate(48.25, -123.65),
+            new Coordinate(48.25, -123.35),
+            forecast.Metadata.FirstValidAt,
+            forecast.Metadata.FirstValidAt.AddHours(10));
+
+        var grid = new RouteEnvironmentGrid(
+            southLatitudeDegrees: 47,
+            westLongitudeDegrees: -125,
+            latitudeStepDegrees: 1,
+            longitudeStepDegrees: 1,
+            latitudeCount: 4,
+            longitudeCount: 4);
+        var allLand = Enumerable.Repeat(-10.0, 16).ToArray();
+        var landmask = new RouteLandmaskOptions(
+            grid,
+            allLand,
+            resolutionNauticalMiles: 60,
+            interpolationErrorNauticalMiles: 30,
+            new RouteProviderMetadata("all-land", "test", "1"));
+
+        var failure = Assert.Throws<NativeRouterException>(() => bridge.CalculateRoute(
+            forecast,
+            request,
+            ForecastModel.NoaaGfs,
+            RouteOptimizationOptions.Balanced.WithEnvironment(
+                new RouteEnvironmentOptions(land: landmask)),
+            onProgress: null,
+            isSegmentEligible: null));
+
+        Assert.Equal(NativeRouterStatus.NoRoute, failure.Status);
+    }
+
+    private static string ResolveSampleGrib(string? repository)
+    {
+        if (repository is null)
+        {
+            return string.Empty;
+        }
+
+        string[] candidates =
+        [
+            Path.Combine(
+                repository,
+                "native",
+                "Navtool.RouterBridge",
+                "build",
+                "_deps",
+                "sailroute-src",
+                "samples",
+                "sample.grib"),
+            Path.Combine(repository, "..", "router-lib", "samples", "sample.grib")
+        ];
+
+        return candidates
+            .Select(Path.GetFullPath)
+            .FirstOrDefault(File.Exists) ?? string.Empty;
     }
 
     private static string? FindAncestor(string start, string marker)
