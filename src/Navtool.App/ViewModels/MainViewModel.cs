@@ -72,6 +72,7 @@ public partial class MainViewModel : ViewModelBase
     private RoutePlanId? _activeCalculationPlanId;
     private long _activeCalculationRevision;
     private long _weatherGeneration;
+    private bool _applyingRoutePointSelection;
     private bool _updatingTimelinePosition;
     private ImmutableArray<RouteLegVisualization> _visualizationLegs = [];
     private string? _selectedStopoverLabel;
@@ -785,19 +786,29 @@ public partial class MainViewModel : ViewModelBase
     public void SelectRoutePoint(RouteMapSelection selection, bool focus = true)
     {
         ArgumentNullException.ThrowIfNull(selection);
-        if (selection.Leg is { } leg)
+        _applyingRoutePointSelection = true;
+        try
         {
-            ActiveRouteModel = leg.Key.Model;
-            SelectLegGeometry(leg.Key);
+            _selectedStopoverLabel = null;
+            ActiveRouteModel = selection.Route.Model;
+            if (selection.Leg is { } leg)
+            {
+                SelectLegGeometry(leg.Key);
+            }
+
+            if (_timeline is not null && _timeline.Model == selection.Route.Model)
+            {
+                SetTimelineUtc(selection.TimelineTimestamp);
+            }
+
+            SelectedRoutePoint = selection;
+        }
+        finally
+        {
+            _applyingRoutePointSelection = false;
         }
 
-        if (_timeline is not null && _timeline.Model == selection.Route.Model)
-        {
-            SetTimelineUtc(selection.TimelineTimestamp);
-        }
-
-        SelectedRoutePoint = selection;
-        _selectedStopoverLabel = null;
+        OnPropertyChanged(nameof(TimelineDisplay));
         UpdateWeatherAvailability();
         if (focus)
         {
@@ -1408,8 +1419,8 @@ public partial class MainViewModel : ViewModelBase
         var selectedLegId = SelectedLeg?.Key.LegId;
         OnPropertyChanged(nameof(IsNoaaRouteActive));
         OnPropertyChanged(nameof(IsEcmwfRouteActive));
-        BuildTimeline(value);
-        if (value is { } model)
+        BuildTimeline(value, initializeSelection: !_applyingRoutePointSelection);
+        if (!_applyingRoutePointSelection && value is { } model)
         {
             var sameLeg = selectedLegId is { } legId
                 ? _visualizationLegs.FirstOrDefault(leg =>
@@ -1427,7 +1438,10 @@ public partial class MainViewModel : ViewModelBase
             }
         }
 
-        UpdateWeatherAvailability();
+        if (!_applyingRoutePointSelection)
+        {
+            UpdateWeatherAvailability();
+        }
     }
 
     private void ApplyPlanWorkflowResult(
@@ -2049,7 +2063,7 @@ public partial class MainViewModel : ViewModelBase
             : string.Join(Environment.NewLine, warnings);
     }
 
-    private void BuildTimeline(ForecastModel? model)
+    private void BuildTimeline(ForecastModel? model, bool initializeSelection = true)
     {
         var legs = model is null
             ? []
@@ -2074,6 +2088,11 @@ public partial class MainViewModel : ViewModelBase
 
         _timeline = SharedRouteTimeline.Create(model!.Value, legs);
         HasTimeline = true;
+        if (!initializeSelection)
+        {
+            return;
+        }
+
         SetTimelineUtc(_timeline.Start);
         ApplyTimelineSelection();
     }

@@ -1643,6 +1643,113 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task RouteClicksSynchronizePopupAndWindOverlayToTheSelectedForecast()
+    {
+        var providers = new[]
+        {
+            new DelegateForecastProvider(
+                ForecastModel.NoaaGfs,
+                (request, _) => ValueTask.FromResult(CreateAcquisition(request))),
+            new DelegateForecastProvider(
+                ForecastModel.EcmwfIfs,
+                (request, _) => ValueTask.FromResult(CreateAcquisition(request)))
+        };
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(
+                request,
+                forecast.Request.Model,
+                midpointLatitudeOffset: forecast.Request.Model == ForecastModel.EcmwfIfs ? 4 : -4,
+                trueWindSpeedKnots: forecast.Request.Model == ForecastModel.EcmwfIfs ? 24 : 12,
+                trueWindDirectionDegrees: forecast.Request.Model == ForecastModel.EcmwfIfs ? 210 : 60)));
+        var weatherCalls = new List<(ForecastModel Model, DateTimeOffset ValidAt)>();
+        var weatherCallsGate = new object();
+        var sampler = new DelegateWeatherSampler(
+            (forecast, bounds, _, _, validAt, _) =>
+            {
+                lock (weatherCallsGate)
+                {
+                    weatherCalls.Add((forecast.Request.Model, validAt));
+                }
+
+                return ValueTask.FromResult(
+                    ImmutableArray.Create(CreateWind(bounds, validAt, 8)));
+            });
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(providers, engine),
+            sampler);
+        var initialViewportCenter = MapProjection.ToMapPoint(new Coordinate(36.5, -56));
+        viewModel.Map.Navigator.SetViewport(new Mapsui.Viewport(
+            initialViewportCenter.X,
+            initialViewportCenter.Y,
+            10_000,
+            0,
+            1280,
+            800));
+        viewModel.UseEcmwf = true;
+        await viewModel.CalculateRoutesAsync();
+        await WaitForAsync(() =>
+        {
+            lock (weatherCallsGate)
+            {
+                return weatherCalls.Count > 0;
+            }
+        });
+
+        foreach (var expectedModel in new[] { ForecastModel.EcmwfIfs, ForecastModel.NoaaGfs })
+        {
+            lock (weatherCallsGate)
+            {
+                weatherCalls.Clear();
+            }
+
+            var route = viewModel.SuccessfulRoutes.Single(candidate => candidate.Model == expectedModel);
+            var clickedPoint = route.Points[1];
+            var worldPoint = MapProjection.ToMapPoint(clickedPoint.Location);
+            viewModel.Map.Navigator.SetViewport(new Mapsui.Viewport(
+                worldPoint.X,
+                worldPoint.Y,
+                10_000,
+                0,
+                1280,
+                800));
+            var screenPoint = viewModel.Map.Navigator.Viewport.WorldToScreen(worldPoint);
+
+            Assert.True(viewModel.InspectRouteAt(
+                worldPoint,
+                new ScreenPoint(screenPoint.X, screenPoint.Y),
+                focus: false));
+            await WaitForAsync(() =>
+            {
+                lock (weatherCallsGate)
+                {
+                    return weatherCalls.Count > 0;
+                }
+            });
+
+            (ForecastModel Model, DateTimeOffset ValidAt)[] calls;
+            lock (weatherCallsGate)
+            {
+                calls = weatherCalls.ToArray();
+            }
+
+            Assert.All(calls, call =>
+            {
+                Assert.Equal(expectedModel, call.Model);
+                Assert.Equal(clickedPoint.Timestamp, call.ValidAt);
+            });
+            Assert.Same(route, viewModel.SelectedRoutePoint!.Route);
+            Assert.Same(clickedPoint, viewModel.SelectedRoutePoint.Point);
+            Assert.Equal(clickedPoint.Timestamp, viewModel.SelectedTimelineUtc);
+            Assert.Equal(expectedModel, viewModel.ActiveRouteModel);
+            Assert.Equal(expectedModel, viewModel.ActiveWeatherModel);
+            Assert.Contains(
+                $"{clickedPoint.TrueWindSpeedKnots:0.0} kt @ " +
+                $"{clickedPoint.TrueWindDirectionDegrees:0}°",
+                viewModel.SelectedRouteDetails);
+        }
+    }
+
+    [Fact]
     public async Task WeatherRefreshSuppressesStaleSamples()
     {
         var provider = new DelegateForecastProvider(
@@ -1789,7 +1896,9 @@ public sealed class MainViewModelWorkflowTests
         ForecastModel model,
         int stepHours = 3,
         RouteLandAvoidance? landAvoidance = null,
-        double midpointLatitudeOffset = 0)
+        double midpointLatitudeOffset = 0,
+        double trueWindSpeedKnots = 16,
+        double trueWindDirectionDegrees = 120)
     {
         var midpoint = new Coordinate(
             ((request.Origin.Latitude + request.Destination.Latitude) / 2) +
@@ -1800,9 +1909,24 @@ public sealed class MainViewModelWorkflowTests
             model,
             new[]
             {
-                CreatePoint(request.Origin, request.DepartureTime, 0),
-                CreatePoint(midpoint, request.DepartureTime.AddHours(stepHours), 50),
-                CreatePoint(request.Destination, request.DepartureTime.AddHours(stepHours * 2), 100)
+                CreatePoint(
+                    request.Origin,
+                    request.DepartureTime,
+                    0,
+                    trueWindSpeedKnots,
+                    trueWindDirectionDegrees),
+                CreatePoint(
+                    midpoint,
+                    request.DepartureTime.AddHours(stepHours),
+                    50,
+                    trueWindSpeedKnots,
+                    trueWindDirectionDegrees),
+                CreatePoint(
+                    request.Destination,
+                    request.DepartureTime.AddHours(stepHours * 2),
+                    100,
+                    trueWindSpeedKnots,
+                    trueWindDirectionDegrees)
             },
             new RouteDiagnostics(1, 2, 1, 3),
             landAvoidance);
@@ -1812,14 +1936,16 @@ public sealed class MainViewModelWorkflowTests
     private static RoutePoint CreatePoint(
         Coordinate coordinate,
         DateTimeOffset timestamp,
-        double distance) =>
+        double distance,
+        double trueWindSpeedKnots = 16,
+        double trueWindDirectionDegrees = 120) =>
         new(
             coordinate,
             timestamp,
             headingDegrees: 75,
             boatSpeedKnots: 7.5,
-            trueWindSpeedKnots: 16,
-            trueWindDirectionDegrees: 120,
+            trueWindSpeedKnots,
+            trueWindDirectionDegrees,
             cumulativeDistanceNauticalMiles: distance);
 
     private static ViewportWindSample CreateWind(
