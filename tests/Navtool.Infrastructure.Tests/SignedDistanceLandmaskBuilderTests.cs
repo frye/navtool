@@ -152,6 +152,41 @@ public sealed class SignedDistanceLandmaskBuilderTests
             value => Assert.True(value > 0, "Empty geometry must read as open water."));
     }
 
+    [Fact]
+    public void BuildSeesLandBeyondTheLatitudePadAtHighLatitude()
+    {
+        // Longitude degrees shrink by cos(lat), so at 70N a 13 degree gap is
+        // only ~267nm - well inside the 600nm reporting range. Padding the
+        // candidate query by the latitude figure on both axes would drop this
+        // island and report the 600nm clamp instead, telling the router there
+        // is far more sea room to the east than there really is.
+        var island = new LandGeometryIndex([
+            Factory.CreatePolygon(
+            [
+                new NtsCoordinate(15, 69.5),
+                new NtsCoordinate(16, 69.5),
+                new NtsCoordinate(16, 70.5),
+                new NtsCoordinate(15, 70.5),
+                new NtsCoordinate(15, 69.5)
+            ])
+        ]);
+
+        var mask = SignedDistanceLandmaskBuilder.Build(
+            island,
+            new GeographicBounds(69, 71, 0, 2),
+            resolutionNauticalMiles: 30,
+            Metadata);
+
+        var eastEdge = SampleAt(mask, 70, 2);
+        Assert.True(
+            eastEdge < 600,
+            $"Distance {eastEdge} is the open-ocean clamp, so the island was " +
+            "excluded from the candidate query.");
+        Assert.True(
+            eastEdge > 100,
+            $"Distance {eastEdge} is implausibly small for a 13 degree gap.");
+    }
+
     /// <summary>Nearest-node lookup, which is enough to assert sign and scale.</summary>
     private static double SampleAt(
         RouteLandmaskOptions mask,

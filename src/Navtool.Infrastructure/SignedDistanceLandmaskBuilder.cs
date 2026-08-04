@@ -161,16 +161,18 @@ public static class SignedDistanceLandmaskBuilder
             .CreateGeometryFactory(srid: 4326);
 
         // Pad the candidate window so a node near the corridor edge still sees
-        // the coastline just outside it.
-        var padDegrees = Math.Min(
-            MaximumReportedDistanceNauticalMiles / NauticalMilesPerDegree,
-            (MaximumReportedDistanceNauticalMiles / NauticalMilesPerDegree) /
-                latitudeCosine);
+        // the coastline just outside it. Longitude degrees shrink by cos(lat),
+        // so the same distance spans a wider longitude window; padding both
+        // axes by the latitude figure would drop coastline that is still within
+        // reporting range and report the clamp instead, overstating sea room.
+        var latitudePadDegrees =
+            MaximumReportedDistanceNauticalMiles / NauticalMilesPerDegree;
+        var longitudePadDegrees = latitudePadDegrees / latitudeCosine;
         var window = new Envelope(
-            grid.WestLongitudeDegrees - padDegrees,
-            grid.EastLongitudeDegrees + padDegrees,
-            grid.SouthLatitudeDegrees - padDegrees,
-            grid.NorthLatitudeDegrees + padDegrees);
+            grid.WestLongitudeDegrees - longitudePadDegrees,
+            grid.EastLongitudeDegrees + longitudePadDegrees,
+            grid.SouthLatitudeDegrees - latitudePadDegrees,
+            grid.NorthLatitudeDegrees + latitudePadDegrees);
 
         var scaled = new STRtree<Geometry>();
         var candidates = geometry.QueryGeometries(window);

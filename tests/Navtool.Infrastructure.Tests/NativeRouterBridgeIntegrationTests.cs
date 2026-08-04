@@ -206,12 +206,6 @@ public sealed class NativeRouterBridgeIntegrationTests
     }
 
     /// <summary>
-    /// Locates router-lib's sample GRIB. It normally lives in the copy CMake
-    /// fetches into the native build tree; a sibling router-lib checkout is
-    /// accepted as a fallback for developers who keep one.
-    /// </summary>
-
-    /// <summary>
     /// Exercises the real ABI v7 environment payload end to end. A uniform
     /// current must change ground-frame motion while leaving heading and boat
     /// speed water relative, and an unconfigured environment must leave the
@@ -372,6 +366,11 @@ public sealed class NativeRouterBridgeIntegrationTests
         Assert.Equal(NativeRouterStatus.NoRoute, failure.Status);
     }
 
+    /// <summary>
+    /// Locates router-lib's sample GRIB. It normally lives in the copy CMake
+    /// fetches into the native build tree; a sibling router-lib checkout is
+    /// accepted as a fallback for developers who keep one.
+    /// </summary>
     private static string ResolveSampleGrib(string? repository)
     {
         if (repository is null)

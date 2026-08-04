@@ -506,10 +506,6 @@ public sealed record RouteWaveOptions
 }
 
 /// <summary>
-/// A signed-distance landmask sampled on a regular grid. Distances are nautical
-/// miles, positive over water and negative over land.
-/// </summary>
-/// <summary>
 /// A request to derive a signed-distance landmask from whatever land geometry
 /// the route engine acquires. The grid itself cannot be built until the route
 /// corridor and coastline are known, so callers that want the built-in landmask
@@ -559,6 +555,10 @@ public sealed record RouteLandmaskRequest
     public RouteMissingDataPolicy MissingDataPolicy { get; }
 }
 
+/// <summary>
+/// A signed-distance landmask sampled on a regular grid. Distances are nautical
+/// miles, positive over water and negative over land.
+/// </summary>
 public sealed record RouteLandmaskOptions
 {
     public RouteLandmaskOptions(
