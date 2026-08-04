@@ -60,7 +60,7 @@ public partial class MainWindow : Window
     private Button? _setStartRadialButton;
     private Button? _setDestinationRadialButton;
     private Button? _calculateRadialButton;
-    private Button? _inspectRadialButton;
+    private ToggleButton? _refreshWeatherRadialToggle;
     private Line? _radialConnector;
     private Ellipse? _radialAnchor;
     private Canvas? _routeTelemetryLayer;
@@ -72,7 +72,6 @@ public partial class MainWindow : Window
     private MPoint? _routeTelemetryProjection;
     private ScreenPoint? _lastPointerPosition;
     private MPoint? _capturedWorldPoint;
-    private RouteMapSelection? _capturedRouteSelection;
     private DrawerSide? _lastOpenedDrawer;
 
     public MainWindow() : this(GetDefaultThemeService())
@@ -129,7 +128,8 @@ public partial class MainWindow : Window
         _setStartRadialButton = this.FindControl<Button>("SetStartRadialButton")!;
         _setDestinationRadialButton = this.FindControl<Button>("SetDestinationRadialButton")!;
         _calculateRadialButton = this.FindControl<Button>("CalculateRadialButton")!;
-        _inspectRadialButton = this.FindControl<Button>("InspectRadialButton")!;
+        _refreshWeatherRadialToggle =
+            this.FindControl<ToggleButton>("RefreshWeatherRadialToggle")!;
         _radialConnector = this.FindControl<Line>("RadialConnector")!;
         _radialAnchor = this.FindControl<Ellipse>("RadialAnchor")!;
         _routeTelemetryLayer = this.FindControl<Canvas>("RouteTelemetryLayer")!;
@@ -255,7 +255,9 @@ public partial class MainWindow : Window
 
     private void OnWindowPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (!IsRadialMenuOpen || IsRadialActionSource(e.Source))
+        if (!IsRadialMenuOpen ||
+            IsRadialActionSource(e.Source) ||
+            IsRadialActionPointer(e))
         {
             return;
         }
@@ -266,20 +268,36 @@ public partial class MainWindow : Window
 
     private bool IsRadialActionSource(object? source)
     {
-        if (source is Button button)
+        if (source is not Visual visual)
         {
-            return button == _setStartRadialButton ||
-                   button == _setDestinationRadialButton ||
-                   button == _calculateRadialButton ||
-                   button == _inspectRadialButton;
+            return false;
         }
 
-        return source is Visual visual &&
-               visual.GetVisualAncestors().OfType<Button>().Any(button =>
-                   button == _setStartRadialButton ||
-                   button == _setDestinationRadialButton ||
-                   button == _calculateRadialButton ||
-                   button == _inspectRadialButton);
+        return IsRadialAction(visual) ||
+               visual.GetVisualAncestors().Any(IsRadialAction);
+    }
+
+    private bool IsRadialAction(Visual visual) =>
+        visual == _setStartRadialButton ||
+        visual == _setDestinationRadialButton ||
+        visual == _calculateRadialButton ||
+        visual == _refreshWeatherRadialToggle;
+
+    private bool IsRadialActionPointer(PointerEventArgs e)
+    {
+        if (_radialMenuLayer is null)
+        {
+            return false;
+        }
+
+        var position = e.GetPosition(_radialMenuLayer);
+        return new Control?[]
+        {
+            _setStartRadialButton,
+            _setDestinationRadialButton,
+            _calculateRadialButton,
+            _refreshWeatherRadialToggle
+        }.Any(control => control?.Bounds.Contains(position) is true);
     }
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
@@ -337,7 +355,7 @@ public partial class MainWindow : Window
             _setStartRadialButton is null ||
             _setDestinationRadialButton is null ||
             _calculateRadialButton is null ||
-            _inspectRadialButton is null ||
+            _refreshWeatherRadialToggle is null ||
             _radialConnector is null ||
             _radialAnchor is null ||
             DataContext is not MainViewModel viewModel ||
@@ -349,8 +367,6 @@ public partial class MainWindow : Window
 
         _lastPointerPosition = screenPoint;
         _capturedWorldPoint = worldPoint;
-        _capturedRouteSelection = viewModel.FindRouteAt(worldPoint, screenPoint);
-        _inspectRadialButton.IsEnabled = _capturedRouteSelection is not null;
 
         var placement = RadialMenuPlacement.Calculate(
             new ScreenRect(0, 0, _mapControl.Bounds.Width, _mapControl.Bounds.Height),
@@ -368,8 +384,8 @@ public partial class MainWindow : Window
             _calculateRadialButton,
             GetActionBounds(placement, RadialMenuAction.CalculateRoute));
         PositionRadialAction(
-            _inspectRadialButton,
-            GetActionBounds(placement, RadialMenuAction.Inspect));
+            _refreshWeatherRadialToggle,
+            GetActionBounds(placement, RadialMenuAction.RefreshWeather));
         ApplyConnector(placement);
         _radialMenuLayer.IsVisible = true;
         _setStartRadialButton.Focus();
@@ -432,18 +448,6 @@ public partial class MainWindow : Window
         CloseRadialMenu();
     }
 
-    private void OnInspectRadialClicked(object? sender, RoutedEventArgs e)
-    {
-        e.Handled = true;
-        if (_capturedRouteSelection is { } selection &&
-            DataContext is MainViewModel viewModel)
-        {
-            viewModel.SelectRoutePoint(selection);
-        }
-
-        CloseRadialMenu();
-    }
-
     private void OnCalculateRadialClicked(object? sender, RoutedEventArgs e)
     {
         CloseRadialMenu();
@@ -458,7 +462,6 @@ public partial class MainWindow : Window
 
         _radialMenuLayer.IsVisible = false;
         _capturedWorldPoint = null;
-        _capturedRouteSelection = null;
         _mapControl?.Focus();
     }
 

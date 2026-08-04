@@ -985,6 +985,10 @@ public partial class MainViewModel : ViewModelBase
         InitializeCalculationPresentation(request, planRequest);
         WarningMessage = departureWarning;
         IsCalculating = true;
+        if (request.RefreshPolicy == ForecastRefreshPolicy.LatestAvailable)
+        {
+            UseNewestWeatherData = false;
+        }
         ProgressFraction = 0;
         StatusMessage = "Starting forecast acquisition and route calculations…";
         _mapLayers.ClearCalculationOverlays();

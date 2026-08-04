@@ -36,6 +36,9 @@
 
         <x:Double x:Key="DatePickerThemeMinWidth">0</x:Double>
         <x:Double x:Key="TimePickerThemeMinWidth">0</x:Double>
+        <Thickness x:Key="DatePickerHostPadding">0</Thickness>
+        <Thickness x:Key="DatePickerHostMonthPadding">0</Thickness>
+        <Thickness x:Key="TimePickerHostPadding">0</Thickness>
 
         <StaticResource x:Key="ButtonForeground" ResourceKey="AppControlForegroundBrush" />
         <StaticResource x:Key="ButtonForegroundPointerOver" ResourceKey="AppControlForegroundBrush" />
@@ -427,12 +430,18 @@
     </Style>
     <Style Selector="DatePicker /template/ Button#PART_FlyoutButton TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextAlignment" Value="Center" />
     </Style>
     <Style Selector="DatePicker:disabled /template/ Button#PART_FlyoutButton TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource DisabledTextColor}" />
     </Style>
     <Style Selector="TimePicker /template/ Button#PART_FlyoutButton TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextAlignment" Value="Center" />
     </Style>
     <Style Selector="TimePicker:disabled /template/ Button#PART_FlyoutButton TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource DisabledTextColor}" />
