@@ -44,6 +44,11 @@ public sealed class AppCompositionTests
                 services.GetRequiredService<IRoutePlanRepository>());
             Assert.Equal(Path.Combine(root, "routes"), repository.RootDirectory);
             Assert.NotNull(services.GetRequiredService<RoutePlanRoutingWorkflow>());
+            Assert.NotNull(services.GetRequiredService<EcmwfOpenDataForecastProvider>());
+            Assert.Equal(
+                [ForecastModel.NoaaGfs, ForecastModel.EcmwfIfs],
+                services.GetServices<IForecastDownloadEstimator>()
+                    .Select(estimator => estimator.Model));
             Assert.NotNull(services.GetRequiredService<MainViewModel>().Itinerary);
             var tileOptions = services.GetRequiredService<OsmTileOptions>();
             Assert.Equal(

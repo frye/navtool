@@ -443,6 +443,20 @@ public sealed record ForecastCacheUsage
     public bool IsNewerRunAvailable => LatestPublishedRun > SelectedRun;
 }
 
+public sealed record ForecastDownloadEstimate(
+    ForecastModel Model,
+    int ForecastStepCount,
+    int PartCount,
+    long? EstimatedBytes,
+    string Warning);
+
+public interface IForecastDownloadEstimator
+{
+    ForecastModel Model { get; }
+
+    ForecastDownloadEstimate EstimateDownload(ForecastRequest request);
+}
+
 public interface IForecastProvider
 {
     ForecastProvider Provider { get; }

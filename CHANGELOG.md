@@ -5,8 +5,8 @@
 This week adds land-aware routing, persistent multi-point voyage plans,
 sequential per-model calculation, rolling route resume, full-route
 visualization, and reusable NOAA forecast caching. It also modernizes the chart
-controls and strengthens native bridge launch guidance and automated
-validation.
+controls, adds production ECMWF IFS wind acquisition, and strengthens native
+bridge launch guidance and automated validation.
 
 > **Release status:** Unreleased draft for editorial review.
 
@@ -32,6 +32,10 @@ validation.
 
 ### Added
 
+- Added production ECMWF IFS 0.25-degree wind acquisition from ECMWF Open Data,
+  including rolling-cycle discovery, indexed 10u/10v byte-range downloads,
+  resumable persistent caching, native route-corridor loading, and normal
+  multi-model routing and weather overlays.
 - Added persistent Light, Dark, and **Kind of Blue** themes with a compact
   runtime selector and distinct interactive states.
   ([#22](https://github.com/frye/navtool/pull/22))
@@ -88,8 +92,8 @@ validation.
   coastline data is generalized and can omit small or recent hazards; routing
   still does not model currents, waves, traffic, restricted areas, depths, or
   safety limits.
-- Online ECMWF acquisition remains experimental and unavailable. Compatible
-  existing ECMWF IFS GRIB files can still be selected locally.
+- Online ECMWF support is wind-only. Routing still does not model waves or
+  currents, and ECMWF global field downloads can be larger than NOAA subsets.
 
 ## Week of July 13-17, 2026 (Draft)
 

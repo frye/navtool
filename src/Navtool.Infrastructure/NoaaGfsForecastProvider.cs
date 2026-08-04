@@ -64,7 +64,7 @@ internal sealed record GribPartDescriptor(
     string PartKey,
     Uri RequestUri);
 
-public sealed class NoaaGfsForecastProvider : IForecastProvider
+public sealed class NoaaGfsForecastProvider : IForecastProvider, IForecastDownloadEstimator
 {
     private static readonly ImmutableArray<int> AvailableForecastHours = BuildAvailableHours();
     private readonly HttpClient _httpClient;
@@ -73,12 +73,7 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
     private readonly NoaaGfsOptions _options;
     private readonly ILogger<NoaaGfsForecastProvider> _logger;
 
-    // Ref-counted keyed gates: a gate exists only while one or more acquisitions target
-    // its cache key. The last acquisition to release the key removes and disposes the
-    // entry, so this dictionary cannot grow unbounded over a long-lived singleton session.
-    private readonly Dictionary<string, AcquisitionGate> _acquisitionGates =
-        new(StringComparer.Ordinal);
-    private readonly object _acquisitionGatesLock = new();
+    private readonly KeyedAsyncGate _acquisitionGates = new();
     private readonly Dictionary<string, int> _activePartPaths;
     private readonly object _activePartPathsLock = new();
 
@@ -107,16 +102,7 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
 
     // Number of live acquisition gates. Exposed for tests to assert gates are released
     // (and not leaked) once acquisitions complete.
-    internal int ActiveAcquisitionGateCount
-    {
-        get
-        {
-            lock (_acquisitionGatesLock)
-            {
-                return _acquisitionGates.Count;
-            }
-        }
-    }
+    internal int ActiveAcquisitionGateCount => _acquisitionGates.ActiveKeyCount;
 
     public NoaaGfsDownloadEstimate Estimate(ForecastRequest request)
     {
@@ -131,6 +117,17 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         var bounds = AlignBoundsToGrid(request.Bounds);
         var tiles = GetCacheTiles(bounds, _options.CacheTileSizeDegrees);
         return new NoaaGfsDownloadEstimate(runTime, bounds, steps.Length, tiles.Length);
+    }
+
+    public ForecastDownloadEstimate EstimateDownload(ForecastRequest request)
+    {
+        var estimate = Estimate(request);
+        return new ForecastDownloadEstimate(
+            Model,
+            estimate.ForecastStepCount,
+            estimate.PartCount,
+            null,
+            "NOAA downloads geographically subsetted 10 m wind fields.");
     }
 
     public async ValueTask<ForecastAcquisition> AcquireAsync(
@@ -150,62 +147,9 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         // core so the gate and the download/store always agree on the same key, even if
         // the clock advances across a run-publish boundary while queued behind the gate.
         var plan = await SelectAcquisitionPlanAsync(request, cancellationToken).ConfigureAwait(false);
-        var gate = RentGate(plan.CacheKey);
-
-        try
-        {
-            await gate.Semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch
-        {
-            ReturnGate(plan.CacheKey, gate);
-            throw;
-        }
-
-        try
-        {
-            return await AcquireCoreAsync(request, plan, progress, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            gate.Semaphore.Release();
-            ReturnGate(plan.CacheKey, gate);
-        }
-    }
-
-    // A single-permit gate plus the count of acquisitions currently referencing its key.
-    private sealed class AcquisitionGate
-    {
-        public SemaphoreSlim Semaphore { get; } = new(1, 1);
-
-        public int RefCount { get; set; }
-    }
-
-    private AcquisitionGate RentGate(string cacheKey)
-    {
-        lock (_acquisitionGatesLock)
-        {
-            if (!_acquisitionGates.TryGetValue(cacheKey, out var gate))
-            {
-                gate = new AcquisitionGate();
-                _acquisitionGates[cacheKey] = gate;
-            }
-
-            gate.RefCount++;
-            return gate;
-        }
-    }
-
-    private void ReturnGate(string cacheKey, AcquisitionGate gate)
-    {
-        lock (_acquisitionGatesLock)
-        {
-            if (--gate.RefCount == 0)
-            {
-                _acquisitionGates.Remove(cacheKey);
-                gate.Semaphore.Dispose();
-            }
-        }
+        using var lease = await _acquisitionGates.EnterAsync(plan.CacheKey, cancellationToken)
+            .ConfigureAwait(false);
+        return await AcquireCoreAsync(request, plan, progress, cancellationToken).ConfigureAwait(false);
     }
 
     // Resolves the definitive run selection, step set, grid-aligned bounds, and cache key
@@ -357,56 +301,44 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             var part = manifest[index];
             var partFile = Path.Combine(partsDirectory, part.PartKey + ".grib2");
 
-            var partGate = RentGate(part.PartKey);
-            var partGateAcquired = false;
-            try
+            using var partLease = await _acquisitionGates.EnterAsync(
+                    part.PartKey,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (File.Exists(partFile))
             {
-                await partGate.Semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-                partGateAcquired = true;
-                if (File.Exists(partFile))
-                {
-                    File.SetLastWriteTimeUtc(partFile, now.UtcDateTime);
-                    _logger.LogInformation(
-                        "Reusing cached tile {PartIndex}/{Total} f{ForecastHour:000} tile {RegionIndex}",
-                        index + 1, totalParts, part.ForecastHour, part.RegionIndex);
-                    Report(
-                        progress,
-                        ForecastProgressStage.Downloading,
-                        (index + 1) / (double)totalParts,
-                        $"Resumed cached f{part.ForecastHour:000} tile {index + 1}/{totalParts}");
-                    continue;
-                }
-
-                if (downloadedParts > 0 && _options.MinimumRequestInterval > TimeSpan.Zero)
-                {
-                    await Task.Delay(_options.MinimumRequestInterval, cancellationToken).ConfigureAwait(false);
-                }
-
-                Report(
-                    progress,
-                    ForecastProgressStage.Downloading,
-                    index / (double)totalParts,
-                    $"Downloading GFS f{part.ForecastHour:000} tile {index + 1}/{totalParts}");
-
-                await DownloadPartAsync(part, partFile, cancellationToken).ConfigureAwait(false);
-                downloadedParts++;
-                PrunePartCache(partsDirectory, manifest);
-
+                File.SetLastWriteTimeUtc(partFile, now.UtcDateTime);
+                _logger.LogInformation(
+                    "Reusing cached tile {PartIndex}/{Total} f{ForecastHour:000} tile {RegionIndex}",
+                    index + 1, totalParts, part.ForecastHour, part.RegionIndex);
                 Report(
                     progress,
                     ForecastProgressStage.Downloading,
                     (index + 1) / (double)totalParts,
-                    $"Downloaded {index + 1}/{totalParts} GFS tiles ({downloadedParts} new this run)");
+                    $"Resumed cached f{part.ForecastHour:000} tile {index + 1}/{totalParts}");
+                continue;
             }
-            finally
-            {
-                if (partGateAcquired)
-                {
-                    partGate.Semaphore.Release();
-                }
 
-                ReturnGate(part.PartKey, partGate);
+            if (downloadedParts > 0 && _options.MinimumRequestInterval > TimeSpan.Zero)
+            {
+                await Task.Delay(_options.MinimumRequestInterval, cancellationToken).ConfigureAwait(false);
             }
+
+            Report(
+                progress,
+                ForecastProgressStage.Downloading,
+                index / (double)totalParts,
+                $"Downloading GFS f{part.ForecastHour:000} tile {index + 1}/{totalParts}");
+
+            await DownloadPartAsync(part, partFile, cancellationToken).ConfigureAwait(false);
+            downloadedParts++;
+            PrunePartCache(partsDirectory, manifest);
+
+            Report(
+                progress,
+                ForecastProgressStage.Downloading,
+                (index + 1) / (double)totalParts,
+                $"Downloaded {index + 1}/{totalParts} GFS tiles ({downloadedParts} new this run)");
         }
 
         // Concatenate all parts in manifest order into the final cached artifact.
@@ -849,11 +781,11 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
                 : $" Redirect location: '{response.Headers.Location}'.";
             var message =
                 $"NOAA NOMADS returned {(int)response.StatusCode} ({response.ReasonPhrase}) for '{uri}'.{location}";
-            if (IsTransientStatus(response.StatusCode))
+            if (ForecastHttpSupport.IsTransientStatus(response.StatusCode))
             {
                 throw new TransientForecastDownloadException(
                     message,
-                    GetRetryAfter(response));
+                    ForecastHttpSupport.GetRetryAfter(response));
             }
 
             throw new ForecastDownloadException(message);
@@ -871,11 +803,7 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
         }
 
         var mediaType = response.Content.Headers.ContentType?.MediaType;
-        if (mediaType is not null &&
-            (mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ||
-             mediaType.Contains("html", StringComparison.OrdinalIgnoreCase) ||
-             mediaType.Contains("json", StringComparison.OrdinalIgnoreCase) ||
-             mediaType.Contains("xml", StringComparison.OrdinalIgnoreCase)))
+        if (mediaType is not null && ForecastHttpSupport.IsTextMediaType(mediaType))
         {
             throw new ForecastDownloadException(
                 $"NOAA NOMADS returned unexpected content type '{mediaType}' for '{uri}'.");
@@ -945,33 +873,11 @@ public sealed class NoaaGfsForecastProvider : IForecastProvider
             Math.Min(jitteredMilliseconds, _options.MaximumRetryDelay.TotalMilliseconds));
     }
 
-    private static TimeSpan? GetRetryAfter(HttpResponseMessage response)
-    {
-        var retryAfter = response.Headers.RetryAfter;
-        if (retryAfter?.Delta is { } delta && delta >= TimeSpan.Zero)
-        {
-            return delta;
-        }
-
-        if (retryAfter?.Date is { } date)
-        {
-            var delay = date - DateTimeOffset.UtcNow;
-            return delay > TimeSpan.Zero ? delay : TimeSpan.Zero;
-        }
-
-        return null;
-    }
-
     private static bool IsTransientFailure(Exception exception) =>
         exception is HttpRequestException or
             HttpIOException or
             OperationCanceledException or
             TransientForecastDownloadException;
-
-    private static bool IsTransientStatus(HttpStatusCode statusCode) =>
-        statusCode is HttpStatusCode.RequestTimeout or
-            HttpStatusCode.TooManyRequests ||
-        (int)statusCode is 425 or >= 300 and <= 399 or >= 500 and <= 599;
 
     private static void EnsureRollbackDestination(Stream destination)
     {

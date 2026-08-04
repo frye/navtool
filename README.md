@@ -17,17 +17,15 @@ It targets macOS, Windows, and Linux.
   without changing sailed-leg history.
 - Set the expected passage duration so only the required forecast times are
   acquired, up to the ten-day planning limit.
-- Download geographically subsetted NOAA GFS 0.25-degree 10 m wind fields, or
-  choose an existing GRIB through the operating system's native file picker.
+- Download NOAA GFS or ECMWF IFS 0.25-degree 10 m wind fields, or choose an
+  existing GRIB through the operating system's native file picker.
 - Calculate routes through the native `router-lib` bridge.
 - Apply bundled Natural Earth land geometry by default, with an optional
   higher-detail OSM-derived service override.
 - Watch historical destination-facing isochrone fronts, the emphasized latest
   front, and the closest provisional route stream onto the map while each model
   calculates.
-- Compare model routes with distinct map colors. ECMWF is shown as an
-  experimental option and currently fails explicitly because official indexed
-  retrieval is not implemented.
+- Compare NOAA GFS and ECMWF IFS routes with distinct map colors.
 - Render every saved successful itinerary leg together on one full-route map,
   including sailed history, while retaining waypoint guides for blocked,
   uncalculated, and out-of-window legs.
@@ -210,7 +208,6 @@ also be installed or packaged according to the target platform.
 | `NAVTOOL_APP_DATA_ROOT` | Application data root |
 | `NAVTOOL_CACHE_ROOT` | Forecast cache directory |
 | `NAVTOOL_LAND_DATA_ENDPOINT` | Optional OSM-derived GeoJSON land service override; Navtool appends `south`, `west`, `north`, and `east` query parameters. When unset, bundled Natural Earth 1:10m land polygons are used. |
-| `NAVTOOL_ECMWF_EXPERIMENTAL` | `1` or `true` enables the experimental ECMWF path; acquisition still reports unsupported |
 
 The selected display theme is stored in `preferences/theme.txt` beneath
 `NAVTOOL_APP_DATA_ROOT` (or Navtool's default local application-data directory).
@@ -242,6 +239,20 @@ Navtool displays a warning. Enable **Use newest weather data** before calculatin
 to select that newest run; tiles already cached for it are still reused rather
 than downloaded again. NOMADS is not a bulk-download service and may be
 unavailable or throttle excessive usage.
+
+ECMWF data is downloaded from the official Open Data object store. Navtool reads
+the per-step JSON-lines indexes, retrieves only the global 10 m U/V wind messages
+with strict HTTP byte-range requests, and assembles them in an immutable GRIB2
+artifact. The native loader limits in-memory decoding to the buffered passage
+area. Global field downloads can be substantially larger than NOAA's geographic
+subsets; completed ranges are cached and reused across routes and restarts.
+
+Navtool considers the four deterministic IFS cycles each day. The 00/12 UTC
+cycles provide 3-hour steps through 144 hours and 6-hour steps through 240 hours;
+the 06/18 UTC cycles provide 3-hour steps through 90 hours. Publication is
+progressive and the rolling archive is short, so Navtool verifies every required
+index and falls back to an older covering cycle when a newer one is incomplete.
+Online ECMWF support currently acquires wind only.
 
 ## Existing GRIB files
 
@@ -306,11 +317,6 @@ independently. The routing engine does not model currents, waves, traffic,
 restricted areas, depths, or safety limits. The built-in vessel polar is an
 approximate demonstration model.
 
-ECMWF Open Data remains an explicit experimental option. Official data supports
-field/step selection but not server-side geographic cropping, and indexed
-10u/10v retrieval has not yet been implemented in this application. No fallback
-or other model is presented as ECMWF data.
-
 Multi-point results depend on the forecast available when each leg was
 calculated. A sailed line is historical planning context, not a recorded vessel
 track, and a stationary stopover is a schedule representation rather than
@@ -319,8 +325,11 @@ out-of-window legs intentionally show only itinerary guides and status.
 
 Saildocs is not used as an application API: it is an asynchronous email service
 for bandwidth-constrained users rather than a reliable regional download
-endpoint. ECMWF's official object store likewise does not provide server-side
-geographic cropping, so online ECMWF acquisition remains separate future work.
+endpoint.
+
+ECMWF forecast data is provided under the ECMWF Open Data terms. Users remain
+responsible for complying with the applicable licence and attribution
+requirements; see <https://www.ecmwf.int/en/forecasts/datasets/open-data>.
 
 ## Mapping licenses and attribution
 

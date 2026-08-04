@@ -11,7 +11,6 @@ public static class AppComposition
     public const string ForecastHttpClientName = "Navtool.Forecasts";
     public const string AppDataRootEnvironmentVariable = "NAVTOOL_APP_DATA_ROOT";
     public const string CacheRootEnvironmentVariable = "NAVTOOL_CACHE_ROOT";
-    public const string EcmwfOptInEnvironmentVariable = "NAVTOOL_ECMWF_EXPERIMENTAL";
     public const string LandDataEndpointEnvironmentVariable = "NAVTOOL_LAND_DATA_ENDPOINT";
 
     public static ServiceProvider CreateServices()
@@ -62,8 +61,15 @@ public static class AppComposition
                 provider.GetRequiredService<IHttpClientFactory>().CreateClient(ForecastHttpClientName),
                 provider.GetRequiredService<AtomicFileCache>(),
                 logger: provider.GetRequiredService<ILogger<NoaaGfsForecastProvider>>()));
-        services.AddSingleton(_ => new EcmwfOpenDataForecastProvider(
-            new EcmwfOpenDataOptions { Enabled = IsExperimentalEcmwfEnabled() }));
+        services.AddSingleton<EcmwfOpenDataForecastProvider>(provider =>
+            new EcmwfOpenDataForecastProvider(
+                provider.GetRequiredService<IHttpClientFactory>().CreateClient(ForecastHttpClientName),
+                provider.GetRequiredService<AtomicFileCache>(),
+                logger: provider.GetRequiredService<ILogger<EcmwfOpenDataForecastProvider>>()));
+        services.AddSingleton<IForecastDownloadEstimator>(provider =>
+            provider.GetRequiredService<NoaaGfsForecastProvider>());
+        services.AddSingleton<IForecastDownloadEstimator>(provider =>
+            provider.GetRequiredService<EcmwfOpenDataForecastProvider>());
         services.AddSingleton<DeferredNativeRouteEngine>();
         services.AddSingleton<IRouteEngine>(provider =>
             provider.GetRequiredService<DeferredNativeRouteEngine>());
@@ -109,13 +115,6 @@ public static class AppComposition
         return !string.IsNullOrWhiteSpace(configured)
             ? Path.GetFullPath(configured)
             : Path.Combine(ResolveAppDataRoot(), "forecast-cache");
-    }
-
-    public static bool IsExperimentalEcmwfEnabled()
-    {
-        var value = Environment.GetEnvironmentVariable(EcmwfOptInEnvironmentVariable);
-        return string.Equals(value, "1", StringComparison.Ordinal) ||
-               string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
     }
 
     public static Uri? ResolveLandDataEndpoint()
