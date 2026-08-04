@@ -788,6 +788,8 @@ public sealed class MainWindowLayoutTests
             .Where(part => partNames.Contains(part.Name))
             .ToArray();
 
+        Assert.True(picker.Bounds.Width > 1, $"{picker.Name} must be arranged.");
+        Assert.True(flyoutButton.Bounds.Width > 1, $"{picker.Name} flyout must be arranged.");
         Assert.True(
             flyoutButton.Bounds.Width <= picker.Bounds.Width + 0.5,
             $"{picker.Name} flyout content must not exceed its allocated width.");
