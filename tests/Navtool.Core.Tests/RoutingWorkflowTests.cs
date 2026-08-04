@@ -89,8 +89,6 @@ public sealed class RoutingWorkflowTests
             engine);
         var reports = new ConcurrentQueue<RoutingProgress>();
         var request = CreateWorkflowRequest();
-        Assert.Same(RouteOptimizationOptions.Balanced, request.Optimization);
-        Assert.Equal(RouteSolver.IsochroneBeam, request.Optimization.Solver);
 
         var execution = workflow.ExecuteAsync(
             request,
@@ -122,6 +120,15 @@ public sealed class RoutingWorkflowTests
         Assert.Contains(reports, report =>
             report.Model == ForecastModel.EcmwfIfs &&
             report.Stage == RoutingProgressStage.Failed);
+    }
+
+    [Fact]
+    public void Workflow_request_without_solver_selection_uses_balanced_beam()
+    {
+        var request = CreateWorkflowRequest();
+
+        Assert.Same(RouteOptimizationOptions.Balanced, request.Optimization);
+        Assert.Equal(RouteSolver.IsochroneBeam, request.Optimization.Solver);
     }
 
     [Fact]

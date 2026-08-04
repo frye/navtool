@@ -50,6 +50,21 @@ public sealed class MainWindowLayoutTests
             Assert.NotNull(window.FindControl<RadioButton>("DownloadForecastSource"));
             Assert.NotNull(window.FindControl<RadioButton>("LocalForecastSource"));
             Assert.NotNull(window.FindControl<Button>("ChooseGribFileButton"));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Lattice_controls_require_explicit_professional_solver_selection()
+    {
+        var window = CreateWindow();
+
+        try
+        {
+            window.Show();
             window.SetPlanningDrawerOpen(true);
             var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
             var beamOptions = Assert.IsType<StackPanel>(
