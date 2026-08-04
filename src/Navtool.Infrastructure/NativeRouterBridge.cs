@@ -1225,6 +1225,36 @@ internal static class NativeRouteJsonParser
             if (root.TryGetProperty("latticeDiagnostics", out var latticeElement))
             {
                 RequireKind(latticeElement, JsonValueKind.Object, "latticeDiagnostics");
+                // Stage 2.5 fields are optional; absent in pre-Stage-2.5 JSON from v0.4.0.
+                var reRelaxedLabels = latticeElement.TryGetProperty("reRelaxedLabels", out var p0)
+                    ? p0.GetInt64() : 0L;
+                var staleQueueEntries = latticeElement.TryGetProperty("staleQueueEntries", out var p1)
+                    ? p1.GetInt64() : 0L;
+                var activeCells = latticeElement.TryGetProperty("activeCells", out var p2)
+                    ? p2.GetInt64() : 0L;
+                var activeFaces = latticeElement.TryGetProperty("activeFaces", out var p3)
+                    ? p3.GetInt64() : 0L;
+                var acceptedCorridorWidth =
+                    latticeElement.TryGetProperty("acceptedCorridorWidthNauticalMiles", out var p4)
+                        ? p4.GetDouble() : 0.0;
+                var disconnectedRefinements =
+                    latticeElement.TryGetProperty("disconnectedRefinements", out var p5)
+                        ? p5.GetInt32() : 0;
+                var regressedRefinements =
+                    latticeElement.TryGetProperty("regressedRefinements", out var p6)
+                        ? p6.GetInt32() : 0;
+                var fallbackReason = LatticeRefinementFallbackReason.None;
+                if (latticeElement.TryGetProperty("fallbackReason", out var p7))
+                {
+                    fallbackReason = p7.GetString() switch
+                    {
+                        "disconnected" => LatticeRefinementFallbackReason.Disconnected,
+                        "regressed" => LatticeRefinementFallbackReason.Regressed,
+                        "retry_exhausted" => LatticeRefinementFallbackReason.RetryExhausted,
+                        _ => LatticeRefinementFallbackReason.None
+                    };
+                }
+
                 latticeDiagnostics = new RouteLatticeDiagnostics(
                     RequiredInt64(latticeElement, "settledLabels"),
                     RequiredInt64(latticeElement, "queuedLabels"),
@@ -1233,7 +1263,15 @@ internal static class NativeRouteJsonParser
                     RequiredInt32(latticeElement, "refinementRuns"),
                     RequiredInt32(latticeElement, "acceptedRefinements"),
                     RequiredInt32(latticeElement, "subdivisionLevel"),
-                    RequiredBoolean(latticeElement, "refinementFallback"));
+                    RequiredBoolean(latticeElement, "refinementFallback"),
+                    reRelaxedLabels,
+                    staleQueueEntries,
+                    activeCells,
+                    activeFaces,
+                    acceptedCorridorWidth,
+                    disconnectedRefinements,
+                    regressedRefinements,
+                    fallbackReason);
             }
             if (solver == RouteSolver.IsochroneBeam && latticeDiagnostics is not null)
             {

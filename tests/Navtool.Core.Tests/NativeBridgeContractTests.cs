@@ -438,4 +438,64 @@ public sealed class NativeBridgeContractTests
             },
             new RouteDiagnostics(1, 2, 1, 2)));
     }
+
+    [Fact]
+    public void Lattice_diagnostics_stage25_fields_default_to_zero_and_none()
+    {
+        var d = new RouteLatticeDiagnostics(10, 2, 8, 1, 3, 2, 4, false);
+
+        Assert.Equal(0L, d.ReRelaxedLabels);
+        Assert.Equal(0L, d.StaleQueueEntries);
+        Assert.Equal(0L, d.ActiveCells);
+        Assert.Equal(0L, d.ActiveFaces);
+        Assert.Equal(0.0, d.AcceptedCorridorWidthNauticalMiles);
+        Assert.Equal(0, d.DisconnectedRefinements);
+        Assert.Equal(0, d.RegressedRefinements);
+        Assert.Equal(LatticeRefinementFallbackReason.None, d.FallbackReason);
+    }
+
+    [Fact]
+    public void Lattice_diagnostics_stage25_fields_are_stored_and_exposed()
+    {
+        var d = new RouteLatticeDiagnostics(
+            settledLabels: 100,
+            queuedLabels: 20,
+            relaxedLabels: 300,
+            waitTransitions: 4,
+            refinementRuns: 2,
+            acceptedRefinements: 1,
+            subdivisionLevel: 4,
+            refinementFallback: true,
+            reRelaxedLabels: 50,
+            staleQueueEntries: 10,
+            activeCells: 7,
+            activeFaces: 14,
+            acceptedCorridorWidthNauticalMiles: 225.5,
+            disconnectedRefinements: 1,
+            regressedRefinements: 2,
+            fallbackReason: LatticeRefinementFallbackReason.Regressed);
+
+        Assert.Equal(50L, d.ReRelaxedLabels);
+        Assert.Equal(10L, d.StaleQueueEntries);
+        Assert.Equal(7L, d.ActiveCells);
+        Assert.Equal(14L, d.ActiveFaces);
+        Assert.Equal(225.5, d.AcceptedCorridorWidthNauticalMiles);
+        Assert.Equal(1, d.DisconnectedRefinements);
+        Assert.Equal(2, d.RegressedRefinements);
+        Assert.Equal(LatticeRefinementFallbackReason.Regressed, d.FallbackReason);
+    }
+
+    [Fact]
+    public void Lattice_refinement_fallback_reason_covers_all_candidate_values()
+    {
+        Assert.Equal(4, Enum.GetValues<LatticeRefinementFallbackReason>().Length);
+        Assert.Contains(LatticeRefinementFallbackReason.None,
+            Enum.GetValues<LatticeRefinementFallbackReason>());
+        Assert.Contains(LatticeRefinementFallbackReason.Disconnected,
+            Enum.GetValues<LatticeRefinementFallbackReason>());
+        Assert.Contains(LatticeRefinementFallbackReason.Regressed,
+            Enum.GetValues<LatticeRefinementFallbackReason>());
+        Assert.Contains(LatticeRefinementFallbackReason.RetryExhausted,
+            Enum.GetValues<LatticeRefinementFallbackReason>());
+    }
 }
