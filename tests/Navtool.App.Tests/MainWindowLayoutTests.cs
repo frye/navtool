@@ -78,6 +78,42 @@ public sealed class MainWindowLayoutTests
         }
     }
 
+    [AvaloniaFact]
+    public void Lattice_controls_require_explicit_professional_solver_selection()
+    {
+        var window = CreateWindow();
+
+        try
+        {
+            window.Show();
+            window.SetPlanningDrawerOpen(true);
+            var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
+            var beamOptions = Assert.IsType<StackPanel>(
+                window.FindControl<StackPanel>("BeamRoutingOptions"));
+            var latticeOptions = Assert.IsType<StackPanel>(
+                window.FindControl<StackPanel>("LatticeRoutingOptions"));
+
+            Assert.Equal(RouteSolver.IsochroneBeam, viewModel.SelectedRouteSolver);
+            Assert.False(viewModel.EnableProfessionalRouting);
+            Assert.False(beamOptions.IsVisible);
+            Assert.False(latticeOptions.IsVisible);
+
+            viewModel.EnableProfessionalRouting = true;
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(beamOptions.IsVisible);
+            Assert.False(latticeOptions.IsVisible);
+
+            viewModel.SelectedRouteSolver = RouteSolver.TimeDependentLattice;
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(beamOptions.IsVisible);
+            Assert.True(latticeOptions.IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [Fact]
     public void SizingPolicyPreservesTheMapFloorAndUsesTheRequestedBreakpoint()
     {
