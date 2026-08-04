@@ -26,6 +26,7 @@ public sealed class MainViewModelWorkflowTests
             new OsmTileOptions(Enabled: false));
 
         Assert.False(viewModel.EnableProfessionalRouting);
+        Assert.Equal(RouteSolver.IsochroneBeam, viewModel.SelectedRouteSolver);
         Assert.False(viewModel.IsProfessionalBeamRouting);
         Assert.False(viewModel.IsProfessionalLatticeRouting);
 

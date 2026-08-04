@@ -33,5 +33,26 @@ public sealed class NativeRouterInteropLayoutTests
             maximumTrueWindSpeedKnots: 35));
         Assert.Equal(1UL, limited.Flags);
         Assert.Equal(35, limited.MaximumTrueWindSpeedKnots);
+
+        var lattice = NativeRoutingOptions.From(new RouteOptimizationOptions(
+            solver: RouteSolver.TimeDependentLattice,
+            lattice: new RouteLatticeOptions(
+                subdivisionLevel: 5,
+                timeBucket: TimeSpan.FromMinutes(45),
+                refinementLevels: 2,
+                corridorWidthNauticalMiles: 600,
+                corridorWideningRetries: 3,
+                progressEveryExpansions: 75,
+                searchAlgorithm: RouteLatticeSearchAlgorithm.Dijkstra)));
+        Assert.Equal((int)RouteSolver.TimeDependentLattice, lattice.Solver);
+        Assert.Equal(5UL, lattice.LatticeSubdivisionLevel);
+        Assert.Equal(45, lattice.LatticeTimeBucketMinutes);
+        Assert.Equal(2UL, lattice.LatticeRefinementLevels);
+        Assert.Equal(600, lattice.LatticeCorridorWidthNauticalMiles);
+        Assert.Equal(3UL, lattice.LatticeCorridorWideningRetries);
+        Assert.Equal(75UL, lattice.LatticeProgressEveryExpansions);
+        Assert.Equal(
+            (int)RouteLatticeSearchAlgorithm.Dijkstra,
+            lattice.LatticeSearchAlgorithm);
     }
 }

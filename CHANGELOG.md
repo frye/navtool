@@ -33,6 +33,9 @@ bridge launch guidance and automated validation.
   augmentation, midpoint wind sampling, and monotone-cubic polar interpolation
   by default. A temporary professional panel exposes the time-dependent lattice
   solver and advanced routing controls.
+- **Stage 2.5 lattice integration:** Native builds now use the released
+  router-lib `v0.4.1`, keep the isochrone beam as the standard/default route,
+  and expose lattice routing only after explicit professional solver selection.
 
 ### Added
 
