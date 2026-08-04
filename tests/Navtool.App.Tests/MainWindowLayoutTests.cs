@@ -394,10 +394,13 @@ public sealed class MainWindowLayoutTests
                 window.FindControl<StackPanel>("InstrumentRailProgressRow"));
             var progress = Assert.IsType<ProgressBar>(
                 window.FindControl<ProgressBar>("InstrumentRailProgressBar"));
+            var cancel = Assert.IsType<Button>(
+                window.FindControl<Button>("InstrumentRailCancelButton"));
 
             Assert.True(idleRow.IsVisible);
             Assert.False(progressRow.IsVisible);
             Assert.False(progress.IsVisible);
+            Assert.False(cancel.IsVisible);
             Assert.Contains(mapShell, rail.GetLogicalAncestors());
 
             viewModel.ProgressFraction = 0.64;
@@ -407,6 +410,9 @@ public sealed class MainWindowLayoutTests
             Assert.False(idleRow.IsVisible);
             Assert.True(progressRow.IsVisible);
             Assert.True(progress.IsVisible);
+            Assert.True(cancel.IsVisible);
+            Assert.True(cancel.IsEnabled);
+            Assert.Same(viewModel.CancelCommand, cancel.Command);
             Assert.Equal(0.64, progress.Value);
             Assert.Equal("Route calculation progress", AutomationProperties.GetName(progress));
             Assert.Equal(
@@ -426,8 +432,9 @@ public sealed class MainWindowLayoutTests
             Assert.NotNull(instructionTop);
             Assert.True(railBottom.Value.Y <= instructionTop.Value.Y);
 
-            viewModel.IsCalculating = false;
+            cancel.Command!.Execute(null);
             Dispatcher.UIThread.RunJobs();
+            Assert.False(viewModel.IsCalculating);
             Assert.True(idleRow.IsVisible);
             Assert.False(progressRow.IsVisible);
             Assert.False(progress.IsVisible);

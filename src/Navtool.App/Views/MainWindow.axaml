@@ -613,6 +613,11 @@
                                    FontWeight="SemiBold"
                                    TextAlignment="Center"
                                    VerticalAlignment="Center" />
+                        <Button x:Name="InstrumentRailCancelButton"
+                                Classes="instrument-cancel"
+                                Command="{Binding CancelCommand}"
+                                Content="Cancel"
+                                AutomationProperties.Name="Cancel route calculation" />
                     </StackPanel>
 
                     <ProgressBar x:Name="InstrumentRailProgressBar"
@@ -677,9 +682,9 @@
                 </Button>
                 <Button x:Name="CalculateRadialButton"
                         Classes="radial-action primary-radial"
-                        Command="{Binding CalculateCommand}"
+                        Command="{Binding ForceRecalculateCommand}"
                         Click="OnCalculateRadialClicked"
-                        ToolTip.Tip="Calculate route using the current passage plan"
+                        ToolTip.Tip="Recalculate route using the current passage plan"
                         AutomationProperties.Name="Calculate route">
                     <TextBlock Text="Calculate&#x0a;route"
                                TextAlignment="Center"

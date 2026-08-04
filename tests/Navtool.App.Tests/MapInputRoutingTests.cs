@@ -128,7 +128,7 @@ public sealed class MapInputRoutingTests
             window.MouseUp(mapPoint.Value, MouseButton.Right, RawInputModifiers.None);
             var calculate = Assert.IsType<Button>(
                 window.FindControl<Button>("CalculateRadialButton"));
-            Assert.Same(viewModel.CalculateCommand, calculate.Command);
+            Assert.Same(viewModel.ForceRecalculateCommand, calculate.Command);
             calculate.Focus();
             window.KeyPress(
                 Key.Enter,

@@ -181,6 +181,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     private readonly IRoutePlanRepository? _repository;
     private RoutePlan? _plan;
     private bool _suppressChanges;
+    private bool _suppressEndpointChanged;
 
     public ItineraryEditorViewModel(IRoutePlanRepository? repository = null)
     {
@@ -233,6 +234,8 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
 
     public event EventHandler? ItineraryChanged;
 
+    public event EventHandler? EndpointChanged;
+
     public event EventHandler<WaypointEditorItemViewModel>? MapPlacementStarted;
 
     public event EventHandler? CurrentPositionPlacementStarted;
@@ -268,8 +271,16 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
 
     public void SetEndpoints(Coordinate start, Coordinate finish)
     {
-        Waypoints[0].Coordinate = start;
-        Waypoints[^1].Coordinate = finish;
+        _suppressEndpointChanged = true;
+        try
+        {
+            Waypoints[0].Coordinate = start;
+            Waypoints[^1].Coordinate = finish;
+        }
+        finally
+        {
+            _suppressEndpointChanged = false;
+        }
     }
 
     public void BeginMapPlacement(WaypointEditorItemViewModel waypoint)
@@ -748,6 +759,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             return;
         }
 
+        var isEndpoint = waypoint.IsStart || waypoint.IsFinish;
         if (coordinate is not null && _plan is not null)
         {
             if (_plan.Waypoints.Any(existing => existing.Id == waypoint.Id))
@@ -774,6 +786,10 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         CalculationRevision++;
         MarkChanged();
         AddWaypointCommand.NotifyCanExecuteChanged();
+        if (isEndpoint && !_suppressEndpointChanged)
+        {
+            EndpointChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     internal void ChangeStopover(WaypointEditorItemViewModel waypoint)

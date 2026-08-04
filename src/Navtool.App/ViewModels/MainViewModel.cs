@@ -92,6 +92,7 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CalculateCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ForceRecalculateCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
     private bool _isInspectingLocalGrib;
 
@@ -115,6 +116,7 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CalculateCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ForceRecalculateCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
     private bool _isCalculating;
 
@@ -306,8 +308,12 @@ public partial class MainViewModel : ViewModelBase
         _timeProvider = timeProvider;
         _localTimeZone = localTimeZone;
         _logger = logger ?? NullLogger<MainViewModel>.Instance;
+        var localNow = TimeZoneInfo.ConvertTime(_timeProvider.GetUtcNow(), _localTimeZone);
+        _departureDate = new DateTimeOffset(localNow.Date, localNow.Offset);
+        _departureTime = localNow.TimeOfDay;
         Itinerary = new ItineraryEditorViewModel(routePlanRepository);
         Itinerary.ItineraryChanged += OnItineraryChanged;
+        Itinerary.EndpointChanged += OnEndpointChanged;
         Itinerary.MapPlacementStarted += OnMapPlacementStarted;
         Itinerary.CurrentPositionPlacementStarted += OnCurrentPositionPlacementStarted;
         Itinerary.LegSelected += OnLegSelected;
@@ -1064,10 +1070,41 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanCalculate))]
     private Task Calculate() => CalculateRoutesAsync();
 
+    [RelayCommand(CanExecute = nameof(CanCalculate))]
+    private Task ForceRecalculate()
+    {
+        RefreshExpiredDeparture();
+        return CalculateRoutesAsync();
+    }
+
     private bool CanCalculate() =>
         !IsCalculating &&
         !IsInspectingLocalGrib &&
         (ForecastInputMode == ForecastInputMode.Download || LocalForecast is not null);
+
+    private void RefreshExpiredDeparture()
+    {
+        if (Itinerary.HasCurrentPosition ||
+            !LocalDepartureConverter.TryConvertToUtc(
+                DepartureDate,
+                DepartureTime,
+                _localTimeZone,
+                out var departureUtc,
+                out _))
+        {
+            return;
+        }
+
+        var nowUtc = _timeProvider.GetUtcNow();
+        if (departureUtc >= nowUtc)
+        {
+            return;
+        }
+
+        var localNow = TimeZoneInfo.ConvertTime(nowUtc, _localTimeZone);
+        DepartureDate = new DateTimeOffset(localNow.Date, localNow.Offset);
+        DepartureTime = localNow.TimeOfDay;
+    }
 
     [RelayCommand]
     private void SelectDownloadSource() => ForecastInputMode = ForecastInputMode.Download;
@@ -1311,6 +1348,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsDownloadForecast));
         OnPropertyChanged(nameof(IsLocalForecast));
         CalculateCommand.NotifyCanExecuteChanged();
+        ForceRecalculateCommand.NotifyCanExecuteChanged();
         UpdateForecastAreaSummary();
     }
 
@@ -1318,6 +1356,7 @@ public partial class MainViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(LocalGribDisplay));
         CalculateCommand.NotifyCanExecuteChanged();
+        ForceRecalculateCommand.NotifyCanExecuteChanged();
         UpdateForecastAreaSummary();
     }
 
@@ -2486,6 +2525,29 @@ public partial class MainViewModel : ViewModelBase
         }
 
         NotifyInteractionChanged();
+    }
+
+    private async void OnEndpointChanged(object? sender, EventArgs e)
+    {
+        var revision = Itinerary.CalculationRevision;
+        await Task.Yield();
+        if (_workflow is null ||
+            revision != Itinerary.CalculationRevision ||
+            Itinerary.HasPendingWaypoint ||
+            !CanCalculate())
+        {
+            return;
+        }
+
+        try
+        {
+            await CalculateRoutesAsync();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Automatic route calculation failed");
+            ErrorMessage = $"Automatic route calculation failed: {exception.Message}";
+        }
     }
 
     private void UpdateWaypointLayers() =>
