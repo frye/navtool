@@ -20,10 +20,16 @@
 extern "C" {
 #endif
 
-#define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 6u
+#define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 7u
 
 enum {
-    NAVTOOL_ROUTER_CAPABILITY_LAND_SEGMENT_CONSTRAINT_V1 = 1ull << 0
+    NAVTOOL_ROUTER_CAPABILITY_LAND_SEGMENT_CONSTRAINT_V1 = 1ull << 0,
+    /* Stage 3 environment payload and navtool_router_calculate_route_streaming_v7. */
+    NAVTOOL_ROUTER_CAPABILITY_ENVIRONMENT_V7 = 1ull << 1,
+    NAVTOOL_ROUTER_CAPABILITY_CURRENT_PROVIDER_V7 = 1ull << 2,
+    NAVTOOL_ROUTER_CAPABILITY_SEA_STATE_V7 = 1ull << 3,
+    NAVTOOL_ROUTER_CAPABILITY_SIGNED_DISTANCE_LAND_V7 = 1ull << 4,
+    NAVTOOL_ROUTER_CAPABILITY_EXCLUSION_ZONES_V7 = 1ull << 5
 };
 
 typedef int32_t navtool_router_status_v1;
@@ -40,7 +46,19 @@ enum {
     NAVTOOL_ROUTER_STATUS_NO_ROUTE_V1 = 8,
     NAVTOOL_ROUTER_STATUS_OUTPUT_ERROR_V1 = 9,
     NAVTOOL_ROUTER_STATUS_INTERNAL_ERROR_V1 = 10,
-    NAVTOOL_ROUTER_STATUS_FORECAST_EXHAUSTED_V2 = 11
+    NAVTOOL_ROUTER_STATUS_FORECAST_EXHAUSTED_V2 = 11,
+    /*
+     * The environment payload is internally contradictory, for example a wave
+     * field with no sea-state model or a clearance with no landmask. Reported
+     * before any search begins.
+     */
+    NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7 = 12,
+    /*
+     * A configured provider had no usable sample and its missing-data policy
+     * fails the route. Never reinterpreted as zero current, calm sea, or open
+     * water.
+     */
+    NAVTOOL_ROUTER_STATUS_ENVIRONMENT_DATA_UNAVAILABLE_V7 = 13
 };
 
 typedef struct navtool_router_forecast_v1 navtool_router_forecast_v1;
@@ -395,6 +413,235 @@ navtool_router_calculate_route_streaming_v6(
     double destination_longitude_degrees,
     const int64_t* departure_utc_epoch_seconds,
     const navtool_router_options_v6* options,
+    navtool_router_progress_callback_v6 on_progress,
+    void* progress_user_data,
+    navtool_router_segment_eligibility_callback_v1 is_segment_eligible,
+    void* segment_eligibility_user_data,
+    char** out_route_json_utf8,
+    size_t* out_route_json_length);
+
+/* ---- Stage 3 environment payload (ABI v7) ---- */
+
+/*
+ * The environment payload is plain data, never a callback, so router-lib's
+ * worker threads never re-enter the caller while sampling. Every pointer below
+ * is borrowed for the duration of the calculate call only; the bridge copies
+ * whatever it needs into immutable router-lib providers before searching.
+ *
+ * Units and reference frames match router-lib exactly:
+ *   - Positions are canonical degrees, longitude in [-180, 180].
+ *   - Times are UTC whole seconds.
+ *   - Current is an east/north vector in knots pointing the way the water
+ *     flows (oceanographic set), the opposite of the meteorological wind
+ *     convention.
+ *   - Significant wave height is metres, period is seconds, and wave direction
+ *     is the meteorological direction waves come *from*, degrees true.
+ *   - Signed land distance is nautical miles, positive over water and negative
+ *     over land.
+ *
+ * Every string is NUL-terminated UTF-8 and may be null, which is read as empty.
+ */
+
+enum {
+    NAVTOOL_ROUTER_MISSING_DATA_FAIL_ROUTE_V7 = 0,
+    NAVTOOL_ROUTER_MISSING_DATA_REJECT_TRANSITION_V7 = 1
+};
+
+enum {
+    NAVTOOL_ROUTER_EXCLUSION_BOUNDARY_EXCLUDED_V7 = 0,
+    NAVTOOL_ROUTER_EXCLUSION_BOUNDARY_ALLOWED_V7 = 1
+};
+
+enum {
+    NAVTOOL_ROUTER_ENVIRONMENT_SAMPLING_SEGMENT_START_V7 = 0,
+    NAVTOOL_ROUTER_ENVIRONMENT_SAMPLING_MIDPOINT_V7 = 1
+};
+
+enum {
+    NAVTOOL_ROUTER_FIELD_MODE_NONE_V7 = 0,
+    NAVTOOL_ROUTER_FIELD_MODE_UNIFORM_V7 = 1,
+    NAVTOOL_ROUTER_FIELD_MODE_GRID_V7 = 2
+};
+
+typedef struct navtool_router_provider_metadata_v7 {
+    const char* name_utf8;
+    const char* source_utf8;
+    const char* revision_utf8;
+} navtool_router_provider_metadata_v7;
+
+/*
+ * Regular latitude/longitude sample grid. Values are row-major from the
+ * south-west corner at index row * longitude_count + column, with row
+ * increasing north and column increasing east.
+ */
+typedef struct navtool_router_grid_spec_v7 {
+    double south_latitude_degrees;
+    double west_longitude_degrees;
+    double latitude_step_degrees;
+    double longitude_step_degrees;
+    uint64_t latitude_count;
+    uint64_t longitude_count;
+    uint8_t global_longitude_coverage;
+    uint8_t reserved[7];
+} navtool_router_grid_spec_v7;
+
+/*
+ * mode selects which members are read. Uniform mode uses the two knots values;
+ * grid mode uses grid plus both arrays, each holding
+ * latitude_count * longitude_count finite values.
+ */
+typedef struct navtool_router_current_settings_v7 {
+    int32_t mode;
+    int32_t missing_data_policy;
+    double uniform_east_knots;
+    double uniform_north_knots;
+    navtool_router_grid_spec_v7 grid;
+    const double* east_knots;
+    const double* north_knots;
+    navtool_router_provider_metadata_v7 metadata;
+} navtool_router_current_settings_v7;
+
+/*
+ * Coefficients of router-lib's built-in significant-wave-height derating
+ * model. The retained speed fraction is
+ *
+ *   1 - min(maximum_loss_fraction,
+ *           height_coefficient * Hs^height_exponent * directional_factor)
+ *
+ * where the directional factor interpolates between following_sea_factor,
+ * one at a beam sea, and head_sea_factor.
+ */
+typedef struct navtool_router_wave_derating_v7 {
+    double height_coefficient;
+    double height_exponent;
+    double head_sea_factor;
+    double following_sea_factor;
+    double maximum_loss_fraction;
+    double period_sensitivity;
+    double reference_period_seconds;
+    double minimum_period_seconds;
+} navtool_router_wave_derating_v7;
+
+typedef struct navtool_router_wave_settings_v7 {
+    int32_t mode;
+    int32_t missing_data_policy;
+    double uniform_significant_height_metres;
+    double uniform_peak_period_seconds;
+    double uniform_direction_from_degrees;
+    navtool_router_grid_spec_v7 grid;
+    const double* significant_height_metres;
+    const double* peak_period_seconds;
+    const double* direction_from_degrees;
+    navtool_router_wave_derating_v7 derating;
+    navtool_router_provider_metadata_v7 provider_metadata;
+    navtool_router_provider_metadata_v7 model_metadata;
+} navtool_router_wave_settings_v7;
+
+/*
+ * signed_distance_nautical_miles holds latitude_count * longitude_count finite
+ * values. interpolation_error_nautical_miles is added to the clearance before
+ * any segment is certified, so a mask that under-reports its own error can
+ * never round a decision toward accepting land.
+ */
+typedef struct navtool_router_landmask_settings_v7 {
+    uint8_t configured;
+    uint8_t reserved[3];
+    int32_t missing_data_policy;
+    navtool_router_grid_spec_v7 grid;
+    const double* signed_distance_nautical_miles;
+    double resolution_nautical_miles;
+    double interpolation_error_nautical_miles;
+    double clearance_nautical_miles;
+    uint64_t maximum_subdivision_depth;
+    navtool_router_provider_metadata_v7 metadata;
+} navtool_router_landmask_settings_v7;
+
+/*
+ * One closed ring, referencing a contiguous range of the flattened vertex
+ * array. The ring is implicitly closed and edges are great-circle arcs, so a
+ * ring may cross the antimeridian without special encoding.
+ */
+typedef struct navtool_router_exclusion_ring_v7 {
+    uint64_t vertex_offset;
+    uint64_t vertex_count;
+} navtool_router_exclusion_ring_v7;
+
+/* One simple polygon: an outer ring plus a contiguous range of hole rings. */
+typedef struct navtool_router_exclusion_polygon_v7 {
+    navtool_router_exclusion_ring_v7 outer;
+    uint64_t hole_offset;
+    uint64_t hole_count;
+} navtool_router_exclusion_polygon_v7;
+
+/*
+ * A versioned, optionally time-limited zone. active_from/active_until bound a
+ * half-open UTC interval; the has_* flags select whether each bound applies.
+ * Identifier must be unique within the set and determines canonical ordering,
+ * so input order can never change routing or diagnostics.
+ */
+typedef struct navtool_router_exclusion_zone_v7 {
+    const char* identifier_utf8;
+    const char* source_utf8;
+    uint64_t revision;
+    int64_t active_from_utc_epoch_seconds;
+    int64_t active_until_utc_epoch_seconds;
+    uint8_t has_active_from;
+    uint8_t has_active_until;
+    uint8_t reserved[6];
+    uint64_t polygon_offset;
+    uint64_t polygon_count;
+} navtool_router_exclusion_zone_v7;
+
+typedef struct navtool_router_exclusion_settings_v7 {
+    uint8_t configured;
+    uint8_t reserved[3];
+    int32_t boundary_policy;
+    const navtool_router_exclusion_zone_v7* zones;
+    uint64_t zone_count;
+    const navtool_router_exclusion_polygon_v7* polygons;
+    uint64_t polygon_count;
+    const navtool_router_exclusion_ring_v7* holes;
+    uint64_t hole_count;
+    const navtool_router_coordinate_v1* vertices;
+    uint64_t vertex_count;
+    navtool_router_provider_metadata_v7 metadata;
+} navtool_router_exclusion_settings_v7;
+
+/*
+ * The complete opt-in Stage 3 environment. A null pointer, or a payload with
+ * every provider unconfigured, reproduces the ABI-v6 arithmetic exactly.
+ */
+typedef struct navtool_router_environment_v7 {
+    int32_t sampling;
+    int32_t reserved;
+    navtool_router_current_settings_v7 currents;
+    navtool_router_wave_settings_v7 waves;
+    navtool_router_landmask_settings_v7 land;
+    navtool_router_exclusion_settings_v7 exclusions;
+} navtool_router_environment_v7;
+
+/*
+ * Adds the optional Stage 3 environment to the v6 configuration-driven entry
+ * point. Passing a null environment is equivalent to calling
+ * navtool_router_calculate_route_streaming_v6 with the same arguments, and
+ * produces byte-identical route JSON.
+ *
+ * Environment pointers are borrowed for the duration of the call only.
+ * Contradictory configuration returns
+ * NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7 before any search begins, and
+ * unusable provider data under a fail-route policy returns
+ * NAVTOOL_ROUTER_STATUS_ENVIRONMENT_DATA_UNAVAILABLE_V7.
+ */
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_calculate_route_streaming_v7(
+    const navtool_router_forecast_v1* forecast,
+    double start_latitude_degrees,
+    double start_longitude_degrees,
+    double destination_latitude_degrees,
+    double destination_longitude_degrees,
+    const int64_t* departure_utc_epoch_seconds,
+    const navtool_router_options_v6* options,
+    const navtool_router_environment_v7* environment,
     navtool_router_progress_callback_v6 on_progress,
     void* progress_user_data,
     navtool_router_segment_eligibility_callback_v1 is_segment_eligible,
