@@ -705,7 +705,11 @@ public partial class MainViewModel : ViewModelBase
             }
         }
 
-        if (!TryCreateWorkflowRequest(out var request, out var validationError))
+        if (!TryCreateWorkflowRequest(
+                out var request,
+                out var validationError,
+                out var departureWarning,
+                out var rollCurrentPositionDeparture))
         {
             ErrorMessage = validationError;
             return;
@@ -738,16 +742,6 @@ public partial class MainViewModel : ViewModelBase
                 ErrorMessage = validationError;
                 return;
             }
-
-            // The explicit current-position departure time (never wall clock/GPS) takes priority
-            // over the itinerary-start departure fields once a current position has been placed.
-            var departureTime = sequentialPlan!.CurrentPosition?.DepartureTime ?? request.Route.DepartureTime;
-            planRequest = new RoutePlanRoutingRequest(
-                sequentialPlan,
-                departureTime,
-                request.Route.LatestArrivalTime,
-                request.Selections,
-                request.RefreshPolicy);
         }
 
         try
@@ -790,6 +784,40 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        if (departureWarning is not null)
+        {
+            if (rollCurrentPositionDeparture)
+            {
+                if (!Itinerary.UpdateCurrentPositionDeparture(
+                        request.Route.DepartureTime,
+                        _localTimeZone,
+                        out validationError) ||
+                    !Itinerary.TryBuildPlan(out sequentialPlan, out validationError))
+                {
+                    ErrorMessage = validationError;
+                    return;
+                }
+            }
+            else
+            {
+                var localDeparture = TimeZoneInfo.ConvertTime(
+                    request.Route.DepartureTime,
+                    _localTimeZone);
+                DepartureDate = localDeparture;
+                DepartureTime = localDeparture.TimeOfDay;
+            }
+        }
+
+        if (useSequentialWorkflow)
+        {
+            planRequest = new RoutePlanRoutingRequest(
+                sequentialPlan!,
+                request.Route.DepartureTime,
+                request.Route.LatestArrivalTime,
+                request.Selections,
+                request.RefreshPolicy);
+        }
+
         var generation = Interlocked.Increment(ref _calculationGeneration);
         var calculationPlanId = Itinerary.PlanId;
         var calculationRevision = Itinerary.CalculationRevision;
@@ -802,6 +830,7 @@ public partial class MainViewModel : ViewModelBase
         CancelWeather();
 
         InitializeCalculationPresentation(request, planRequest);
+        WarningMessage = departureWarning;
         IsCalculating = true;
         ProgressFraction = 0;
         StatusMessage = "Starting forecast acquisition and route calculations…";
@@ -900,7 +929,7 @@ public partial class MainViewModel : ViewModelBase
                     return;
                 }
 
-                ApplyPlanWorkflowResult(planResult);
+                ApplyPlanWorkflowResult(planResult, departureWarning);
                 return;
             }
 
@@ -917,7 +946,7 @@ public partial class MainViewModel : ViewModelBase
                 return;
             }
 
-            ApplyWorkflowResult(result);
+            ApplyWorkflowResult(result, departureWarning);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -1229,12 +1258,15 @@ public partial class MainViewModel : ViewModelBase
         UpdateWeatherAvailability();
     }
 
-    private void ApplyPlanWorkflowResult(RoutePlanRoutingResult result)
+    private void ApplyPlanWorkflowResult(
+        RoutePlanRoutingResult result,
+        string? calculationWarning)
     {
         Itinerary.AcceptCalculationResult(result.Plan);
         _acquisitions.Clear();
         var failures = new List<string>();
         var warnings = new List<string>();
+        AddCalculationWarning(warnings, calculationWarning);
         foreach (var outcome in result.Models)
         {
             if (!outcome.Acquisitions.IsEmpty)
@@ -1345,16 +1377,20 @@ public partial class MainViewModel : ViewModelBase
 
     private bool TryCreateWorkflowRequest(
         [NotNullWhen(true)] out RoutingWorkflowRequest? request,
-        out string? error)
+        out string? error,
+        out string? warning,
+        out bool rollCurrentPositionDeparture)
     {
         request = null;
+        warning = null;
+        rollCurrentPositionDeparture = false;
         if (Start is null || Destination is null)
         {
             error = "Set both endpoints before calculating.";
             return false;
         }
 
-        if (!Itinerary.TryBuildPlan(out _, out error))
+        if (!Itinerary.TryBuildPlan(out var plan, out error))
         {
             return false;
         }
@@ -1404,15 +1440,27 @@ public partial class MainViewModel : ViewModelBase
             return false;
         }
 
+        var utcNow = _timeProvider.GetUtcNow();
+        var departureWasCurrentPosition = plan!.CurrentPosition is not null;
+        var effectiveDepartureUtc = plan.CurrentPosition?.DepartureTime ?? departureUtc;
+        if (effectiveDepartureUtc < utcNow)
+        {
+            effectiveDepartureUtc = utcNow;
+            rollCurrentPositionDeparture = departureWasCurrentPosition;
+            warning =
+                $"The active leg departure was in the past and was rolled forward to " +
+                $"{effectiveDepartureUtc:yyyy-MM-dd HH:mm:ss} UTC. Calculation started anyway.";
+        }
+
         var route = new RouteRequest(
             $"route-{Guid.NewGuid():N}",
             Start.Value,
             Destination.Value,
-            departureUtc,
-            departureUtc + passageDuration);
+            effectiveDepartureUtc,
+            effectiveDepartureUtc + passageDuration);
         var validation = new RouteRequestValidator().Validate(
             route,
-            _timeProvider.GetUtcNow(),
+            utcNow,
             new RouteValidationOptions(
                 maximumDepartureLeadTime: MaximumDepartureLeadTime,
                 maximumRouteDuration: MaximumRouteWindow,
@@ -1434,11 +1482,14 @@ public partial class MainViewModel : ViewModelBase
         return true;
     }
 
-    private void ApplyWorkflowResult(RoutingWorkflowResult result)
+    private void ApplyWorkflowResult(
+        RoutingWorkflowResult result,
+        string? calculationWarning)
     {
         _acquisitions.Clear();
         var failures = new List<string>();
         var warnings = new List<string>();
+        AddCalculationWarning(warnings, calculationWarning);
         var recordedRoutes = new List<RouteResult>();
         foreach (var outcome in result.Outcomes)
         {
@@ -1560,6 +1611,14 @@ public partial class MainViewModel : ViewModelBase
         };
         OnPropertyChanged(nameof(SelectedRouteDetails));
         UpdateWeatherAvailability();
+    }
+
+    private static void AddCalculationWarning(List<string> warnings, string? warning)
+    {
+        if (!string.IsNullOrWhiteSpace(warning))
+        {
+            warnings.Add(warning);
+        }
     }
 
     private void DisplayPlanVisualization(RoutePlan plan, bool fit)

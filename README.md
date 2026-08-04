@@ -12,7 +12,9 @@ It targets macOS, Windows, and Linux.
 - Open on a Salish Sea chart view and use resizable edge drawers plus
   right-click, long-press, or keyboard radial map actions to place endpoints,
   inspect routes, and start calculation without obscuring the chart.
-- Choose a local departure date/time, converted to UTC with DST validation.
+- Choose a local departure date/time, converted to UTC with DST validation; when calculation
+  starts with a past active-leg departure, Navtool rolls it forward to the current time and warns
+  without changing sailed-leg history.
 - Set the expected passage duration so only the required forecast times are
   acquired, up to the ten-day planning limit.
 - Download NOAA GFS or ECMWF IFS 0.25-degree 10 m wind fields, or choose an
@@ -96,7 +98,7 @@ validation, and use `scripts/publish.sh` or `scripts/publish.ps1` for
 distributable artifacts. For a custom bridge location, set
 `NAVTOOL_ROUTER_BRIDGE_PATH` to the shared library or its directory. Packaged
 applications discover their bridge under `runtimes/<RID>/native`. Native builds
-fetch and compile the immutable `router-lib` release `v0.3.1` by default. Set
+fetch and compile the immutable `router-lib` release `v0.3.2` by default. Set
 `SAILROUTE_SOURCE_DIR` to a local `router-lib` checkout when testing other
 revisions.
 
@@ -200,7 +202,7 @@ also be installed or packaged according to the target platform.
 | --- | --- |
 | `NAVTOOL_ROUTER_BRIDGE_PATH` | Native bridge file or directory |
 | `SAILROUTE_SOURCE_DIR` | Optional `router-lib` checkout override for native build/run scripts |
-| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default `v0.3.1`) |
+| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default `v0.3.2`) |
 | `NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY` | `router-lib` Git repository used when `SAILROUTE_SOURCE_DIR` is unset |
 | `NAVTOOL_NATIVE_BUILD_DIR` | Optional native bridge build directory |
 | `NAVTOOL_APP_DATA_ROOT` | Application data root |
