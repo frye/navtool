@@ -30,6 +30,13 @@ void require_ok(navtool_router_status_v1 status, const char* operation) {
     }
 }
 
+void require_codes_ok(int status, const char* operation) {
+    if (status != CODES_SUCCESS) {
+        throw std::runtime_error(
+            std::string{operation} + ": " + codes_get_error_message(status));
+    }
+}
+
 struct ProgressCapture {
     size_t count{};
     int64_t previous_time{};
@@ -372,6 +379,143 @@ std::filesystem::path create_grib_through_step(long maximum_step) {
         std::filesystem::remove(output_path);
         throw std::runtime_error("could not create short GRIB fixture");
     }
+    return output_path;
+}
+
+std::filesystem::path create_tiled_grib() {
+    const auto output_path =
+        std::filesystem::temp_directory_path() /
+        ("navtool-tiled-" +
+         std::to_string(
+             std::chrono::steady_clock::now().time_since_epoch().count()) +
+         ".grib");
+    constexpr long tile_point_count = 41L;
+    constexpr double grid_step = 0.25;
+    const double latitude_bands[][2] = {
+        {50.0, 40.0},
+        {60.0, 50.0},
+    };
+    const double longitude_bands[][2] = {
+        {220.0, 230.0},
+        {230.0, 240.0},
+        {240.0, 250.0},
+    };
+    bool first_message = true;
+
+    try {
+        for (const auto& latitude_band : latitude_bands) {
+            for (const auto& longitude_band : longitude_bands) {
+                for (const auto* short_name : {"10u", "10v"}) {
+                    codes_handle* handle =
+                        codes_grib_handle_new_from_samples(
+                            nullptr,
+                            "regular_ll_sfc_grib2");
+                    if (handle == nullptr) {
+                        throw std::runtime_error(
+                            "unable to create tiled ecCodes GRIB sample");
+                    }
+
+                    try {
+                        require_codes_ok(
+                            codes_set_long(handle, "Ni", tile_point_count),
+                            "set tiled Ni");
+                        require_codes_ok(
+                            codes_set_long(handle, "Nj", tile_point_count),
+                            "set tiled Nj");
+                        require_codes_ok(
+                            codes_set_double(
+                                handle,
+                                "latitudeOfFirstGridPointInDegrees",
+                                latitude_band[0]),
+                            "set tiled first latitude");
+                        require_codes_ok(
+                            codes_set_double(
+                                handle,
+                                "latitudeOfLastGridPointInDegrees",
+                                latitude_band[1]),
+                            "set tiled last latitude");
+                        require_codes_ok(
+                            codes_set_double(
+                                handle,
+                                "longitudeOfFirstGridPointInDegrees",
+                                longitude_band[0]),
+                            "set tiled first longitude");
+                        require_codes_ok(
+                            codes_set_double(
+                                handle,
+                                "longitudeOfLastGridPointInDegrees",
+                                longitude_band[1]),
+                            "set tiled last longitude");
+                        require_codes_ok(
+                            codes_set_double(
+                                handle,
+                                "iDirectionIncrementInDegrees",
+                                grid_step),
+                            "set tiled longitude increment");
+                        require_codes_ok(
+                            codes_set_double(
+                                handle,
+                                "jDirectionIncrementInDegrees",
+                                grid_step),
+                            "set tiled latitude increment");
+                        require_codes_ok(
+                            codes_set_long(handle, "iScansNegatively", 0),
+                            "set tiled i scan");
+                        require_codes_ok(
+                            codes_set_long(handle, "jScansPositively", 0),
+                            "set tiled j scan");
+                        require_codes_ok(
+                            codes_set_long(handle, "dataDate", 20260803),
+                            "set tiled date");
+                        require_codes_ok(
+                            codes_set_long(handle, "dataTime", 1800),
+                            "set tiled time");
+                        require_codes_ok(
+                            codes_set_long(handle, "forecastTime", 7),
+                            "set tiled forecast time");
+                        std::size_t short_name_size =
+                            std::char_traits<char>::length(short_name);
+                        require_codes_ok(
+                            codes_set_string(
+                                handle,
+                                "shortName",
+                                short_name,
+                                &short_name_size),
+                            "set tiled wind component");
+                        require_codes_ok(
+                            codes_set_long(handle, "level", 10),
+                            "set tiled wind level");
+                        const std::vector<double> values(
+                            static_cast<std::size_t>(
+                                tile_point_count * tile_point_count),
+                            std::string{short_name} == "10u" ? 12.0 : 4.0);
+                        require_codes_ok(
+                            codes_set_double_array(
+                                handle,
+                                "values",
+                                values.data(),
+                                values.size()),
+                            "set tiled values");
+                        require_codes_ok(
+                            codes_write_message(
+                                handle,
+                                output_path.string().c_str(),
+                                first_message ? "w" : "a"),
+                            "write tiled GRIB message");
+                        first_message = false;
+                    } catch (...) {
+                        codes_handle_delete(handle);
+                        throw;
+                    }
+                    codes_handle_delete(handle);
+                }
+            }
+        }
+    } catch (...) {
+        std::filesystem::remove(output_path);
+        throw;
+    }
+
     return output_path;
 }
 
@@ -795,6 +939,61 @@ int main() {
         require_ok(
             navtool_router_forecast_destroy_v1(&forecast),
             "destroy bounded forecast");
+
+        const auto tiled_grib = create_tiled_grib();
+        try {
+            require_ok(
+                navtool_router_forecast_load_bounded_v1(
+                    tiled_grib.string().c_str(),
+                    43.0,
+                    -134.0,
+                    54.0,
+                    -114.25,
+                    &forecast),
+                "load Port Townsend-Ucluelet tiled forecast");
+            require_ok(
+                navtool_router_forecast_get_metadata_v1(
+                    forecast,
+                    &metadata,
+                    &source,
+                    &source_length),
+                "read tiled forecast metadata");
+            require(
+                metadata.latitude_count == 45U,
+                "tiled latitude mosaic was not cropped to the requested bounds");
+            require(
+                metadata.longitude_count == 80U,
+                "tiled longitude mosaic was not cropped to the requested bounds");
+            navtool_router_bridge_free_v1(source);
+
+            navtool_router_wind_sample_v1 tiled_sample{};
+            require_ok(
+                navtool_router_sample_grid_v1(
+                    forecast,
+                    48.5,
+                    -123.0,
+                    48.5,
+                    -123.0,
+                    1U,
+                    1U,
+                    metadata.first_valid_utc_epoch_seconds,
+                    &tiled_sample,
+                    1U),
+                "sample tiled forecast");
+            require(
+                tiled_sample.valid == 1U &&
+                    std::abs(tiled_sample.east_mps - 12.0) < 1e-9 &&
+                    std::abs(tiled_sample.north_mps - 4.0) < 1e-9,
+                "tiled forecast interpolation returned unexpected wind");
+            require_ok(
+                navtool_router_forecast_destroy_v1(&forecast),
+                "destroy tiled forecast");
+            std::filesystem::remove(tiled_grib);
+        } catch (...) {
+            navtool_router_forecast_destroy_v1(&forecast);
+            std::filesystem::remove(tiled_grib);
+            throw;
+        }
 
         // ---- GRIB inspection API ----
 
