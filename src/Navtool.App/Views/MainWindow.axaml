@@ -52,12 +52,12 @@
                             </StackPanel>
                             <TextBlock Grid.Column="1"
                                       Text="NAVTOOL"
-                                      FontSize="9"
+                                      FontSize="10"
                                       FontWeight="SemiBold"
                                       Foreground="{DynamicResource TextSecondaryColor}"
                                       TextAlignment="Center"
                                       VerticalAlignment="Center"
-                                      Opacity="0.75" />
+                                      Opacity="0.9" />
                         </Grid>
 
                         <Border Classes="card">
@@ -356,8 +356,10 @@
                                 </Grid>
                                 <Grid ColumnDefinitions="*,104"
                                       ColumnSpacing="7">
-                                    <DatePicker SelectedDate="{Binding Itinerary.CurrentPositionDepartureDate}" />
-                                    <TimePicker Grid.Column="1"
+                                    <DatePicker x:Name="CurrentPositionDatePicker"
+                                                SelectedDate="{Binding Itinerary.CurrentPositionDepartureDate}" />
+                                    <TimePicker x:Name="CurrentPositionTimePicker"
+                                                Grid.Column="1"
                                                 SelectedTime="{Binding Itinerary.CurrentPositionDepartureTimeOfDay}"
                                                 ClockIdentifier="24HourClock" />
                                 </Grid>
@@ -413,13 +415,15 @@
                                     <StackPanel Spacing="4">
                                         <TextBlock Classes="field-label"
                                                    Text="Departure date" />
-                                        <DatePicker SelectedDate="{Binding DepartureDate}" />
+                                        <DatePicker x:Name="DepartureDatePicker"
+                                                    SelectedDate="{Binding DepartureDate}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1"
                                                 Spacing="4">
                                         <TextBlock Classes="field-label"
                                                    Text="Departure time" />
-                                        <TimePicker SelectedTime="{Binding DepartureTime}"
+                                        <TimePicker x:Name="DepartureTimePicker"
+                                                    SelectedTime="{Binding DepartureTime}"
                                                     ClockIdentifier="24HourClock" />
                                     </StackPanel>
                                 </Grid>
@@ -628,9 +632,9 @@
                                TextAlignment="Center" />
                     <TextBlock Text="WEATHER ROUTING"
                                Classes="muted"
-                               FontSize="8"
+                               FontSize="9"
                                TextAlignment="Center"
-                               Opacity="0.8" />
+                               Opacity="0.9" />
                 </StackPanel>
             </Border>
 

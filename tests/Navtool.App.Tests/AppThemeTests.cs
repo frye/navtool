@@ -40,11 +40,19 @@ public sealed class AppThemeTests
                 window.FindControl<ToggleButton>("SetDestinationButton"));
             var calculateButton = Assert.IsType<Button>(
                 window.FindControl<Button>("CalculateRoutesButton"));
+            var cancelButton = Assert.IsType<Button>(
+                window.FindControl<Button>("CancelButton"));
 
             Assert.Equal("Light", Assert.IsType<AppThemeOption>(selector.SelectedItem).DisplayName);
             Assert.IsAssignableFrom<ISolidColorBrush>(window.Background);
             Assert.False(viewModel.CalculateCommand.CanExecute(null));
             Assert.False(calculateButton.IsEffectivelyEnabled);
+            Assert.Equal(
+                Avalonia.Layout.HorizontalAlignment.Center,
+                cancelButton.HorizontalContentAlignment);
+            Assert.Equal(
+                Avalonia.Layout.VerticalAlignment.Center,
+                cancelButton.VerticalContentAlignment);
 
             foreach (var option in AppThemeService.AvailableThemes)
             {
@@ -97,6 +105,9 @@ public sealed class AppThemeTests
             AssertContrast("AccentTextColor", "AccentPressedColor", 4.5);
             AssertContrast("ActiveToolTextColor", "ActiveToolBackgroundColor", 4.5);
             AssertContrast("TextPrimaryColor", "SurfaceRaisedColor", 4.5);
+            AssertContrast("TextPrimaryColor", "ControlHoverColor", 4.5);
+            AssertContrast("TextPrimaryColor", "ControlPressedColor", 4.5);
+            AssertContrast("DisabledTextColor", "DisabledBackgroundColor", 4.5);
 
             foreach (var key in new[]
                      {
@@ -164,6 +175,126 @@ public sealed class AppThemeTests
                         expectedBackground,
                         Assert.IsAssignableFrom<ISolidColorBrush>(input.Background).Color);
                 });
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void FluentControlStatesUseSemanticColorsInEveryTheme()
+    {
+        var service = AppThemeService.CreateTransient();
+        service.Initialize(Application.Current!);
+        var window = new MainWindow(service)
+        {
+            DataContext = CreateViewModel()
+        };
+        var mappings = new (string ResourceKey, string ColorKey)[]
+        {
+            ("ButtonForeground", "TextPrimaryColor"),
+            ("ButtonForegroundPointerOver", "TextPrimaryColor"),
+            ("ButtonForegroundPressed", "TextPrimaryColor"),
+            ("ButtonForegroundDisabled", "DisabledTextColor"),
+            ("ButtonBackground", "SurfaceRaisedColor"),
+            ("ButtonBackgroundPointerOver", "ControlHoverColor"),
+            ("ButtonBackgroundPressed", "ControlPressedColor"),
+            ("ButtonBackgroundDisabled", "DisabledBackgroundColor"),
+            ("ToggleButtonForegroundChecked", "ActiveToolTextColor"),
+            ("ToggleButtonBackgroundChecked", "ActiveToolBackgroundColor"),
+            ("TextControlForeground", "TextPrimaryColor"),
+            ("TextControlForegroundDisabled", "DisabledTextColor"),
+            ("TextControlPlaceholderForeground", "TextMutedColor"),
+            ("ComboBoxForegroundFocused", "TextPrimaryColor"),
+            ("ComboBoxForegroundDisabled", "DisabledTextColor"),
+            ("ComboBoxItemForegroundSelected", "ActiveToolTextColor"),
+            ("ComboBoxItemBackgroundSelected", "ActiveToolBackgroundColor"),
+            ("DatePickerButtonForeground", "TextPrimaryColor"),
+            ("DatePickerButtonForegroundDisabled", "DisabledTextColor"),
+            ("TimePickerButtonForeground", "TextPrimaryColor"),
+            ("TimePickerButtonForegroundDisabled", "DisabledTextColor"),
+            ("ExpanderHeaderForeground", "TextPrimaryColor"),
+            ("ExpanderHeaderForegroundDisabled", "DisabledTextColor"),
+            ("ToolTipForeground", "TextPrimaryColor"),
+            ("ToolTipBackground", "SurfaceColor"),
+            ("MenuFlyoutItemForeground", "TextPrimaryColor"),
+            ("MenuFlyoutItemForegroundDisabled", "DisabledTextColor")
+        };
+
+        try
+        {
+            window.Show();
+
+            foreach (var option in AppThemeService.AvailableThemes)
+            {
+                service.SelectTheme(option.Theme);
+                Dispatcher.UIThread.RunJobs();
+
+                foreach (var (resourceKey, colorKey) in mappings)
+                {
+                    Assert.True(
+                        window.TryFindResource(resourceKey, out var value),
+                        $"{resourceKey} must be available in {option.DisplayName}.");
+                    Assert.Equal(
+                        FindColorResource(colorKey),
+                        Assert.IsAssignableFrom<ISolidColorBrush>(value).Color);
+                }
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void CompactPickerTemplateTextUsesSemanticColorsInEveryTheme()
+    {
+        var service = AppThemeService.CreateTransient();
+        service.Initialize(Application.Current!);
+        var window = new MainWindow(service)
+        {
+            DataContext = CreateViewModel()
+        };
+
+        try
+        {
+            window.Show();
+            window.SetPlanningDrawerOpen(true);
+            var datePicker = Assert.IsType<DatePicker>(
+                window.FindControl<DatePicker>("DepartureDatePicker"));
+            var timePicker = Assert.IsType<TimePicker>(
+                window.FindControl<TimePicker>("DepartureTimePicker"));
+            datePicker.SelectedDate = new DateTimeOffset(
+                2026,
+                8,
+                4,
+                0,
+                0,
+                0,
+                TimeSpan.Zero);
+            timePicker.SelectedTime = new TimeSpan(8, 22, 0);
+            Dispatcher.UIThread.RunJobs();
+
+            foreach (var option in AppThemeService.AvailableThemes)
+            {
+                service.SelectTheme(option.Theme);
+                Dispatcher.UIThread.RunJobs();
+                var expectedForeground = FindColorResource("TextPrimaryColor");
+
+                AssertTemplateTextForeground(
+                    datePicker,
+                    expectedForeground,
+                    "PART_DayTextBlock",
+                    "PART_MonthTextBlock",
+                    "PART_YearTextBlock");
+                AssertTemplateTextForeground(
+                    timePicker,
+                    expectedForeground,
+                    "PART_HourTextBlock",
+                    "PART_MinuteTextBlock");
             }
         }
         finally
@@ -286,5 +417,27 @@ public sealed class AppThemeTests
             .OfType<ContentPresenter>()
             .Single(candidate => candidate.Name == "PART_ContentPresenter");
         return Assert.IsAssignableFrom<ISolidColorBrush>(presenter.Background).Color;
+    }
+
+    private static void AssertTemplateTextForeground(
+        TemplatedControl control,
+        Color expectedForeground,
+        params string[] partNames)
+    {
+        control.ApplyTemplate();
+        var textParts = control.GetVisualDescendants()
+            .OfType<TextBlock>()
+            .Where(part => partNames.Contains(part.Name))
+            .ToArray();
+
+        Assert.Equal(partNames.Length, textParts.Length);
+        Assert.All(textParts, part =>
+        {
+            Assert.True(part.IsEffectivelyVisible, $"{part.Name} must be visible.");
+            Assert.False(string.IsNullOrWhiteSpace(part.Text), $"{part.Name} must display a value.");
+            Assert.Equal(
+                expectedForeground,
+                Assert.IsAssignableFrom<ISolidColorBrush>(part.Foreground).Color);
+        });
     }
 }
