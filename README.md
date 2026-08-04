@@ -262,9 +262,10 @@ clears the overlay before a compatible acquisition is selected. Saved route
 geometry and details remain available after restart, but the UI explicitly
 reports weather unavailable until a compatible forecast is acquired again.
 
-The default map uses standard OpenStreetMap tiles with attribution. Those tiles
-are intended for normal interactive use, not bulk/offline prefetching. A
-production distribution should configure a tile service whose policy and
+The default map uses standard OpenStreetMap tiles with linked attribution,
+an application-specific User-Agent, and a persistent seven-day cache. Those
+tiles are intended for normal interactive use, not bulk/offline prefetching.
+A production distribution should configure a tile service whose policy and
 capacity match its expected traffic.
 
 ## Land data and compatibility
@@ -318,3 +319,15 @@ Saildocs is not used as an application API: it is an asynchronous email service
 for bandwidth-constrained users rather than a reliable regional download
 endpoint. ECMWF's official object store likewise does not provide server-side
 geographic cropping, so online ECMWF acquisition remains separate future work.
+
+## Mapping licenses and attribution
+
+OpenStreetMap tiles and optional OSM-derived land data remain subject to the
+Open Database License and OpenStreetMap service policies. The map displays the
+required contributor attribution and links to the OpenStreetMap copyright page.
+The bundled Natural Earth land dataset is public domain; Navtool retains the
+recommended "Made with Natural Earth" credit.
+
+Mapping library copyright notices, license terms, data provenance, and native
+renderer notices are distributed in `THIRD-PARTY-NOTICES.txt` and `licenses/`.
+The application project copies these files into build and publish outputs.

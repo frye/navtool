@@ -1,3 +1,4 @@
+using BruTile.Cache;
 using Microsoft.Extensions.DependencyInjection;
 using Navtool.App.Services;
 using Navtool.App.ViewModels;
@@ -44,6 +45,12 @@ public sealed class AppCompositionTests
             Assert.Equal(Path.Combine(root, "routes"), repository.RootDirectory);
             Assert.NotNull(services.GetRequiredService<RoutePlanRoutingWorkflow>());
             Assert.NotNull(services.GetRequiredService<MainViewModel>().Itinerary);
+            var tileOptions = services.GetRequiredService<OsmTileOptions>();
+            Assert.Equal(
+                Path.Combine(root, "map-tile-cache"),
+                tileOptions.CacheDirectory);
+            Assert.Equal(TimeSpan.FromDays(7), OsmTileOptions.CacheRetention);
+            Assert.IsType<FileCache>(tileOptions.CreatePersistentCache());
         }
         finally
         {

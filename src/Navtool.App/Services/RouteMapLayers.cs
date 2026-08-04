@@ -1,3 +1,4 @@
+using BruTile.Cache;
 using Mapsui;
 using Mapsui.Layers;
 using Mapsui.Nts;
@@ -14,7 +15,19 @@ namespace Navtool.App.Services;
 
 public sealed record OsmTileOptions(
     bool Enabled = true,
-    string UserAgent = "Navtool/1.0");
+    string UserAgent = "Navtool/1.0 (+https://github.com/frye/navtool)",
+    string? CacheDirectory = null)
+{
+    public const string DefaultUserAgent =
+        "Navtool/1.0 (+https://github.com/frye/navtool)";
+
+    public static readonly TimeSpan CacheRetention = TimeSpan.FromDays(7);
+
+    public IPersistentCache<byte[]>? CreatePersistentCache() =>
+        string.IsNullOrWhiteSpace(CacheDirectory)
+            ? null
+            : new FileCache(CacheDirectory, "png", CacheRetention);
+}
 
 public sealed record WaypointMapMarker(int Number, string Name, CoreCoordinate? Coordinate);
 

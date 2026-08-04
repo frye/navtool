@@ -130,7 +130,7 @@ public sealed record OsmLandDataOptions
 public sealed class OsmLandDataProvider : ILandDataProvider
 {
     public const string OpenStreetMapAttribution =
-        "© OpenStreetMap contributors, ODbL 1.0";
+        "© OpenStreetMap contributors (https://www.openstreetmap.org/copyright)";
 
     private readonly HttpClient _httpClient;
     private readonly OsmLandDataOptions _options;
