@@ -5,6 +5,17 @@ namespace Navtool.Core.Tests;
 public sealed class RoutingWorkflowTests
 {
     [Fact]
+    public void Workflow_request_without_solver_selection_uses_balanced_beam()
+    {
+        var request = new RoutingWorkflowRequest(
+            CreateRouteRequest(),
+            new[] { ForecastModel.NoaaGfs });
+
+        Assert.Same(RouteOptimizationOptions.Balanced, request.Optimization);
+        Assert.Equal(RouteSolver.IsochroneBeam, request.Optimization.Solver);
+    }
+
+    [Fact]
     public async Task Workflow_runs_models_concurrently_and_keeps_success_and_failure_separate()
     {
         var entered = 0;
