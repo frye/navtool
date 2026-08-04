@@ -353,6 +353,8 @@ public partial class MainViewModel : ViewModelBase
 
     public event EventHandler<RouteMapSelection?>? RouteSelectionChanged;
 
+    public event EventHandler<RouteMapSelection>? RoutePointInspectionRequested;
+
     public Map Map { get; }
 
     public ItineraryEditorViewModel Itinerary { get; }
@@ -681,6 +683,25 @@ public partial class MainViewModel : ViewModelBase
         {
             FocusSelectedRoutePoint();
         }
+
+        RoutePointInspectionRequested?.Invoke(this, selection);
+    }
+
+    public void ClearRoutePointSelection()
+    {
+        SelectedRoutePoint = null;
+        _selectedStopoverLabel = null;
+        UpdateWeatherAvailability();
+    }
+
+    public MPoint GetProjectedRoutePoint(RouteMapSelection selection)
+    {
+        ArgumentNullException.ThrowIfNull(selection);
+        var projected = selection.Key is { } key
+            ? _mapLayers.GetProjectedRoutePoint(key, selection.PointIndex)
+            : null;
+        return projected ?? MapProjection.ToContinuousMapPoints(
+            selection.Route.Points.Select(point => point.Location))[selection.PointIndex];
     }
 
     public async Task CalculateRoutesAsync()
@@ -1138,12 +1159,7 @@ public partial class MainViewModel : ViewModelBase
             resolution = 10_000;
         }
 
-        var projected = SelectedRoutePoint.Key is { } key
-            ? _mapLayers.GetProjectedRoutePoint(key, SelectedRoutePoint.PointIndex)
-            : null;
-        projected ??= MapProjection.ToContinuousMapPoints(
-            SelectedRoutePoint.Route.Points.Select(point => point.Location))[
-            SelectedRoutePoint.PointIndex];
+        var projected = GetProjectedRoutePoint(SelectedRoutePoint);
         Map.Navigator.CenterOnAndZoomTo(projected, Math.Min(resolution, 10_000));
     }
 

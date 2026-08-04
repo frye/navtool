@@ -61,17 +61,19 @@ public sealed class NativeBridgeContractTests
     }
 
     [Theory]
-    [InlineData(90, 6, 15, 180, 68.19859051364824)]
-    [InlineData(90, 6, 15, 0, -68.19859051364818)]
-    [InlineData(90, 6, 0, 0, 0)]
-    [InlineData(90, 6, 15, 270, 180)]
-    [InlineData(350, 5, 20, 20, 24.133261210456055)]
-    public void Route_point_derives_apparent_wind_angle(
+    [InlineData(90, 6, 15, 180, 68.19859051364824, 16.15549442140351)]
+    [InlineData(90, 6, 15, 0, -68.19859051364818, 16.15549442140351)]
+    [InlineData(90, 6, 0, 0, 0, 6)]
+    [InlineData(90, 6, 15, 270, 180, 9)]
+    [InlineData(90, 6, 6, 270, 0, 0)]
+    [InlineData(350, 5, 20, 20, 24.133261210456055, 24.458231349729438)]
+    public void Route_point_derives_apparent_wind(
         double headingDegrees,
         double boatSpeedKnots,
         double trueWindSpeedKnots,
         double trueWindDirectionDegrees,
-        double expectedSignedAngle)
+        double expectedSignedAngle,
+        double expectedSpeed)
     {
         var point = new RoutePoint(
             new Coordinate(42, -60),
@@ -84,6 +86,7 @@ public sealed class NativeBridgeContractTests
 
         Assert.Equal(expectedSignedAngle, point.ApparentWindAngleSignedDegrees, 6);
         Assert.Equal(Math.Abs(expectedSignedAngle), point.ApparentWindAngleDegrees, 6);
+        Assert.Equal(expectedSpeed, point.ApparentWindSpeedKnots, 6);
     }
 
     [Fact]

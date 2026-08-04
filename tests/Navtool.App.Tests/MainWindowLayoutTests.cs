@@ -439,6 +439,120 @@ public sealed class MainWindowLayoutTests
     }
 
     [AvaloniaFact]
+    public void RouteTelemetryShowsRequestedFieldsAndSupportsTouchAndEscapeDismissal()
+    {
+        var window = CreateWindow();
+        var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
+
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var map = Assert.IsType<MapControl>(window.FindControl<MapControl>("MapView"));
+            var center = map.Bounds.Center;
+            var coordinate = MapProjection.ToCoordinate(
+                map.Map.Navigator.Viewport.ScreenToWorld(center.X, center.Y));
+            var selection = CreateRouteSelection(coordinate);
+            var projected = viewModel.GetProjectedRoutePoint(selection);
+            viewModel.Map.Navigator.SetViewport(new Mapsui.Viewport(
+                projected.X,
+                projected.Y,
+                10_000,
+                0,
+                map.Bounds.Width,
+                map.Bounds.Height));
+
+            viewModel.SelectRoutePoint(selection, focus: false);
+            Dispatcher.UIThread.RunJobs();
+
+            var layer = Assert.IsType<Canvas>(
+                window.FindControl<Canvas>("RouteTelemetryLayer"));
+            var card = Assert.IsType<Button>(
+                window.FindControl<Button>("RouteTelemetryCard"));
+            Assert.True(layer.IsVisible);
+            Assert.Equal("Route point telemetry", AutomationProperties.GetName(card));
+            Assert.Contains("Click or tap to close", AutomationProperties.GetHelpText(card));
+            Assert.Equal(
+                "14 Jul · 12:00 UTC",
+                Assert.IsType<TextBlock>(
+                    window.FindControl<TextBlock>("RouteTelemetryTime")).Text);
+            Assert.Equal(
+                "6.0 kt",
+                Assert.IsType<TextBlock>(
+                    window.FindControl<TextBlock>("RouteTelemetryBoatSpeed")).Text);
+            Assert.Equal(
+                "15.0 kt",
+                Assert.IsType<TextBlock>(
+                    window.FindControl<TextBlock>("RouteTelemetryTrueWind")).Text);
+            Assert.Equal(
+                "180°",
+                Assert.IsType<TextBlock>(
+                    window.FindControl<TextBlock>("RouteTelemetryTrueWindDirection")).Text);
+            Assert.Equal(
+                "16.2 kt",
+                Assert.IsType<TextBlock>(
+                    window.FindControl<TextBlock>("RouteTelemetryApparentWind")).Text);
+            Assert.Equal(
+                "90°",
+                Assert.IsType<TextBlock>(
+                    window.FindControl<TextBlock>("RouteTelemetryHeading")).Text);
+            Assert.True(new ScreenRect(0, 0, map.Bounds.Width, map.Bounds.Height).Contains(
+                new ScreenRect(
+                    Canvas.GetLeft(card),
+                    Canvas.GetTop(card),
+                    card.Width,
+                    card.Height)));
+
+            card.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Null(viewModel.SelectedRoutePoint);
+            Assert.False(layer.IsVisible);
+
+            viewModel.SelectRoutePoint(selection, focus: false);
+            Dispatcher.UIThread.RunJobs();
+            map.Focus();
+            window.KeyPress(
+                Key.Escape,
+                RawInputModifiers.None,
+                PhysicalKey.Escape,
+                string.Empty);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Null(viewModel.SelectedRoutePoint);
+            Assert.False(layer.IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void ExistingRouteSelectionDoesNotOpenTelemetryWhenWindowLoads()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.SelectRoutePoint(
+            CreateRouteSelection(new Coordinate(0, 0)),
+            focus: false);
+        var window = new MainWindow { DataContext = viewModel };
+
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.NotNull(viewModel.SelectedRoutePoint);
+            Assert.False(Assert.IsType<Canvas>(
+                window.FindControl<Canvas>("RouteTelemetryLayer")).IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void LegsListButtonsAreWiredToTheRealMarkAndUnmarkSailedCommands()
     {
         var viewModel = new MainViewModel(
@@ -607,6 +721,37 @@ public sealed class MainWindowLayoutTests
 
     private static MainWindow CreateWindow() =>
         new() { DataContext = CreateViewModel() };
+
+    private static RouteMapSelection CreateRouteSelection(Coordinate coordinate)
+    {
+        var departure = new DateTimeOffset(2026, 7, 14, 12, 0, 0, TimeSpan.Zero);
+        var destination = new Coordinate(
+            Math.Clamp(coordinate.Latitude + 0.25, -89, 89),
+            coordinate.Longitude <= 179.5
+                ? coordinate.Longitude + 0.25
+                : coordinate.Longitude - 0.25);
+        var request = new RouteRequest(
+            "telemetry-test",
+            coordinate,
+            destination,
+            departure,
+            departure.AddHours(6));
+        var point = new RoutePoint(coordinate, departure, 90, 6, 15, 180, 0);
+        var route = new RouteResult(
+            request,
+            ForecastModel.NoaaGfs,
+            [
+                point,
+                new RoutePoint(destination, departure.AddHours(6), 90, 6, 15, 180, 30)
+            ],
+            new RouteDiagnostics(10, 20, 5, 2));
+        return new RouteMapSelection(
+            route,
+            0,
+            point,
+            RouteHitKind.RoutePoint,
+            0);
+    }
 
     private static MainViewModel CreateViewModel() =>
         new(

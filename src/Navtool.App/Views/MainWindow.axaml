@@ -641,6 +641,92 @@
                            FontWeight="SemiBold" />
             </Border>
 
+            <Canvas x:Name="RouteTelemetryLayer"
+                    IsVisible="False">
+                <Line x:Name="RouteTelemetryConnector"
+                      Stroke="{DynamicResource FocusColor}"
+                      StrokeThickness="2"
+                      IsHitTestVisible="False" />
+                <Ellipse x:Name="RouteTelemetryAnchor"
+                         Width="16"
+                         Height="16"
+                         Fill="{DynamicResource FocusColor}"
+                         Stroke="{DynamicResource MarkerOutlineColor}"
+                         StrokeThickness="3"
+                         IsHitTestVisible="False" />
+                <Button x:Name="RouteTelemetryCard"
+                        Classes="route-telemetry"
+                        Width="296"
+                        Height="132"
+                        Click="OnRouteTelemetryCardClicked"
+                        AutomationProperties.Name="Route point telemetry"
+                        AutomationProperties.HelpText="Shows route point telemetry. Click or tap to close.">
+                    <Grid RowDefinitions="Auto,1,Auto,Auto"
+                          RowSpacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="1">
+                                <TextBlock Text="ROUTE POINT"
+                                           Classes="telemetry-label" />
+                                <TextBlock x:Name="RouteTelemetryTime"
+                                           Text="{Binding SelectedRoutePoint.Point.Timestamp, StringFormat={}{0:dd MMM · HH:mm} UTC}"
+                                           FontSize="14"
+                                           FontWeight="SemiBold" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1"
+                                       Text="×"
+                                       FontSize="18"
+                                       Foreground="{DynamicResource TextMutedColor}"
+                                       VerticalAlignment="Top" />
+                        </Grid>
+                        <Border Grid.Row="1"
+                                Background="{DynamicResource OverlayBorderColor}" />
+                        <Grid Grid.Row="2"
+                              ColumnDefinitions="*,*,*,*,*"
+                              ColumnSpacing="6">
+                            <StackPanel>
+                                <TextBlock Text="BOAT"
+                                           Classes="telemetry-label" />
+                                <TextBlock x:Name="RouteTelemetryBoatSpeed"
+                                           Text="{Binding SelectedRoutePoint.Point.BoatSpeedKnots, StringFormat={}{0:0.0} kt}"
+                                           Classes="telemetry-value" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="TWS"
+                                           Classes="telemetry-label" />
+                                <TextBlock x:Name="RouteTelemetryTrueWind"
+                                           Text="{Binding SelectedRoutePoint.Point.TrueWindSpeedKnots, StringFormat={}{0:0.0} kt}"
+                                           Classes="telemetry-value" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="TWD"
+                                           Classes="telemetry-label" />
+                                <TextBlock x:Name="RouteTelemetryTrueWindDirection"
+                                           Text="{Binding SelectedRoutePoint.Point.TrueWindDirectionDegrees, StringFormat={}{0:0}°}"
+                                           Classes="telemetry-value" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="3">
+                                <TextBlock Text="AWS"
+                                           Classes="telemetry-label" />
+                                <TextBlock x:Name="RouteTelemetryApparentWind"
+                                           Text="{Binding SelectedRoutePoint.Point.ApparentWindSpeedKnots, StringFormat={}{0:0.0} kt}"
+                                           Classes="telemetry-value" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="4">
+                                <TextBlock Text="HDG"
+                                           Classes="telemetry-label" />
+                                <TextBlock x:Name="RouteTelemetryHeading"
+                                           Text="{Binding SelectedRoutePoint.Point.HeadingDegrees, StringFormat={}{0:0}°}"
+                                           Classes="telemetry-value" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Grid.Row="3"
+                                   Text="Tap to close"
+                                   Classes="telemetry-hint"
+                                   HorizontalAlignment="Right" />
+                    </Grid>
+                </Button>
+            </Canvas>
+
             <Canvas x:Name="RadialMenuLayer"
                     IsVisible="False">
                 <Line x:Name="RadialConnector"

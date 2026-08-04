@@ -1431,6 +1431,15 @@ public sealed class MainViewModelWorkflowTests
         Assert.Equal(capturedSelection.TimelineTimestamp, viewModel.SelectedTimelineUtc);
         Assert.Equal(ForecastModel.EcmwfIfs, viewModel.ActiveWeatherModel);
         Assert.Contains("ECMWF", viewModel.StatusMessage);
+        Assert.Equal(
+            capturedSelection.Point.ApparentWindSpeedKnots,
+            viewModel.SelectedRoutePoint.Point.ApparentWindSpeedKnots);
+
+        var selectedLeg = viewModel.SelectedLeg;
+        viewModel.ClearRoutePointSelection();
+
+        Assert.Null(viewModel.SelectedRoutePoint);
+        Assert.Same(selectedLeg, viewModel.SelectedLeg);
     }
 
     [Fact]
