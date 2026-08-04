@@ -11,10 +11,11 @@ It targets macOS, Windows, and Linux.
   markers connected by an antimeridian-safe planning guide.
 - Open on a Salish Sea chart view and use resizable edge drawers plus
   right-click, long-press, or keyboard radial map actions to place endpoints,
-  inspect routes, and start calculation without obscuring the chart.
-- Choose a local departure date/time, converted to UTC with DST validation; when calculation
-  starts with a past active-leg departure, Navtool rolls it forward to the current time and warns
-  without changing sailed-leg history.
+  inspect routes, and start calculation without obscuring the chart. Placing or
+  replacing the final endpoint automatically starts a fresh calculation.
+- Choose a local departure date/time, converted to UTC with DST validation; when
+  calculation starts with a past active-leg departure, Navtool rolls it forward
+  to the current time and warns without changing sailed-leg history.
 - Set the expected passage duration so only the required forecast times are
   acquired, up to the ten-day planning limit.
 - Download NOAA GFS or ECMWF IFS 0.25-degree 10 m wind fields, or choose an
@@ -25,21 +26,27 @@ It targets macOS, Windows, and Linux.
   higher-detail OSM-derived service override.
 - Watch historical destination-facing isochrone fronts, the emphasized latest
   front, and the closest provisional route stream onto the map while each model
-  calculates.
+  calculates. An always-visible instrument rail summarizes acquisition and
+  routing progress across models and legs and provides a cancel action.
 - Temporarily enable professional routing controls to select the deterministic
   time-dependent lattice solver and tune maneuver, wind, polar, pruning, front,
-  and lattice-search behavior.
+  and lattice-search behavior, or opt into current, sea-state, signed-distance
+  landmask, and exclusion-zone providers.
 - Compare NOAA GFS and ECMWF IFS routes with distinct map colors.
 - Render every saved successful itinerary leg together on one full-route map,
   including sailed history, while retaining waypoint guides for blocked,
   uncalculated, and out-of-window legs.
 - Select a leg from the ordered list or map to emphasize it without hiding the
-  rest of the route, then fit the leg or focus an individual route point.
+  rest of the route, then fit the leg or inspect an individual route point in an
+  anchored telemetry card showing UTC arrival, boat and wind speeds, true wind
+  direction, and apparent wind angle.
 - Scrub a route-wide UTC timeline for one active forecast model at a time, move
   among that model's route-point timestamps, and see waypoint stopovers as
   explicit stationary holds.
 - Display time-varying wind-speed colors and directional arrows for the active
-  model.
+  model, synchronized to the inspected route point and forecast time. A
+  one-shot radial toggle requests the newest available forecast run on the next
+  calculation.
 - Switch at runtime among Light, Dark, and the midnight-blue and brass
   **Kind of Blue** theme. Navtool remembers the selected theme across launches.
 - Persist route plans and their latest per-model leg outcomes as
@@ -192,13 +199,14 @@ the final provisional route to a selectable forecast-limited estimate, retains
 the solver-appropriate search overlay, and displays an amber warning. Complete
 final routes remain authoritative and may differ from the last provisional route.
 
-The ABI-v6 bridge preserves the existing final-route and v1-v5 streaming
+The ABI-v7 bridge preserves the existing final-route and v1-v6 streaming
 functions. The v6 entry point adds fixed-layout routing options, solver identity,
 search points, and lattice counters while retaining optional pre-retention
-segment eligibility. Callback array and coordinate pointers are valid only for
+segment eligibility; v7 adds the optional environment payload and ground-frame
+route-point telemetry. Callback array and coordinate pointers are valid only for
 the duration of the synchronous callback and must be copied by consumers.
-Navtool rejects stale bridges so missing configuration or land-constraint
-support cannot silently degrade routing safety.
+Navtool rejects stale bridges so missing configuration, environment, or
+land-constraint support cannot silently degrade routing safety.
 
 ## Publish
 
