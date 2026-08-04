@@ -208,11 +208,24 @@ public sealed record RoutePointEnvironment
     /// </summary>
     public double? RelativeWaveAngleDegrees { get; }
 
-    /// <summary>True when a current provider contributed to this point.</summary>
-    public bool CurrentApplied => CurrentEastKnots is not null;
+    /// <summary>
+    /// True when a current provider contributed to this point. router-lib emits
+    /// the east and north components together, so a half-populated vector means
+    /// the payload was truncated or hand-edited rather than that a current was
+    /// applied; requiring both keeps the claim honest about incomplete data.
+    /// </summary>
+    public bool CurrentApplied =>
+        CurrentEastKnots is not null && CurrentNorthKnots is not null;
 
-    /// <summary>True when a sea state contributed to this point.</summary>
-    public bool WaveApplied => SignificantWaveHeightMetres is not null;
+    /// <summary>
+    /// True when a sea state contributed to this point. Height, period, and
+    /// relative angle are emitted as a set, so all three are required for the
+    /// same reason <see cref="CurrentApplied"/> requires both components.
+    /// </summary>
+    public bool WaveApplied =>
+        SignificantWaveHeightMetres is not null &&
+        WavePeriodSeconds is not null &&
+        RelativeWaveAngleDegrees is not null;
 }
 
 /// <summary>Counters describing how much environmental work a search performed.</summary>

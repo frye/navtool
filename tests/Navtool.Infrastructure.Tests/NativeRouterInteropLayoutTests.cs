@@ -86,4 +86,63 @@ public sealed class NativeRouterInteropLayoutTests
             (int)RouteLatticeSearchAlgorithm.Dijkstra,
             lattice.LatticeSearchAlgorithm);
     }
+
+    /// <summary>
+    /// The capability bits exist so a bridge can advertise partial Stage 3
+    /// support. Checking only the top-level environment bit would let a
+    /// configured provider reach the native call and fail there as an opaque
+    /// InvalidEnvironment status, so each provider in use is checked first.
+    /// </summary>
+    [Fact]
+    public void Missing_provider_capability_is_named_before_the_native_call()
+    {
+        var metadata = new RouteProviderMetadata("test", "unit test", "1");
+        var all = NativeRouterCapabilities.Environment |
+            NativeRouterCapabilities.CurrentProvider |
+            NativeRouterCapabilities.SeaState |
+            NativeRouterCapabilities.SignedDistanceLandmask |
+            NativeRouterCapabilities.ExclusionZones;
+
+        var currents = new RouteEnvironmentOptions(
+            currents: RouteCurrentOptions.Uniform(1.5, -0.5, metadata));
+        Assert.Equal(
+            "current providers",
+            NativeRouterBridge.DescribeMissingCapability(
+                all & ~NativeRouterCapabilities.CurrentProvider,
+                currents));
+        Assert.Null(NativeRouterBridge.DescribeMissingCapability(all, currents));
+
+        var waves = new RouteEnvironmentOptions(
+            waves: RouteWaveOptions.Uniform(2, 8, 180, metadata));
+        Assert.Equal(
+            "sea state derating",
+            NativeRouterBridge.DescribeMissingCapability(
+                all & ~NativeRouterCapabilities.SeaState,
+                waves));
+
+        // The top-level bit still wins, so the original message is preserved
+        // for a bridge with no Stage 3 support at all.
+        Assert.Equal(
+            "Stage 3 environmental physics",
+            NativeRouterBridge.DescribeMissingCapability(
+                NativeRouterCapabilities.None,
+                currents));
+    }
+
+    /// <summary>
+    /// A provider that is not configured must not be required, otherwise a
+    /// bridge lacking one capability would refuse routes that never use it.
+    /// </summary>
+    [Fact]
+    public void Unconfigured_providers_do_not_require_their_capability()
+    {
+        var metadata = new RouteProviderMetadata("test", "unit test", "1");
+        var currentsOnly = new RouteEnvironmentOptions(
+            currents: RouteCurrentOptions.Uniform(1, 0, metadata));
+
+        Assert.Null(NativeRouterBridge.DescribeMissingCapability(
+            NativeRouterCapabilities.Environment |
+                NativeRouterCapabilities.CurrentProvider,
+            currentsOnly));
+    }
 }

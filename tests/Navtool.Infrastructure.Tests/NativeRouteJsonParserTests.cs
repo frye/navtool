@@ -589,6 +589,62 @@ public sealed class NativeRouteJsonParserEnvironmentTests
         Assert.True(point.WaveApplied);
     }
 
+    /// <summary>
+    /// router-lib writes the current components as a pair, so a payload holding
+    /// only one of them is truncated rather than a real current. Reporting it as
+    /// applied would claim a set and drift vector the data cannot supply.
+    /// </summary>
+    [Fact]
+    public void Parse_treats_a_half_populated_current_vector_as_not_applied()
+    {
+        var json = BaselineJson(extraPointKeys: """
+            ,
+            "environment": {
+              "speedOverGroundKnots": 7,
+              "courseOverGroundDegrees": 48,
+              "currentEastKnots": 0.9,
+              "flatWaterSpeedKnots": 6.4
+            }
+            """);
+
+        var point = Parse(json).Points[0].Environment;
+
+        Assert.NotNull(point);
+        Assert.False(
+            point!.CurrentApplied,
+            "A current missing its north component is incomplete, not applied.");
+        Assert.Equal(0.9, point.CurrentEastKnots);
+        Assert.Null(point.CurrentNorthKnots);
+    }
+
+    /// <summary>
+    /// The sea state trio is emitted together for the same reason, so a payload
+    /// missing the relative angle cannot describe a derating.
+    /// </summary>
+    [Fact]
+    public void Parse_treats_a_partial_wave_triple_as_not_applied()
+    {
+        var json = BaselineJson(extraPointKeys: """
+            ,
+            "environment": {
+              "speedOverGroundKnots": 6.1,
+              "courseOverGroundDegrees": 45,
+              "flatWaterSpeedKnots": 6.8,
+              "significantWaveHeightMetres": 3.1,
+              "wavePeriodSeconds": 9
+            }
+            """);
+
+        var point = Parse(json).Points[0].Environment;
+
+        Assert.NotNull(point);
+        Assert.False(
+            point!.WaveApplied,
+            "A sea state missing its relative angle is incomplete, not applied.");
+        Assert.Equal(3.1, point.SignificantWaveHeightMetres);
+        Assert.Null(point.RelativeWaveAngleDegrees);
+    }
+
     [Fact]
     public void Parse_treats_absent_wave_keys_as_wave_not_applied()
     {

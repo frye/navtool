@@ -245,6 +245,50 @@ public sealed class NativeRouterBridge
     public bool ExclusionZonesAvailable =>
         (_capabilities & NativeRouterCapabilities.ExclusionZones) != 0;
 
+    /// <summary>
+    /// Names the capability a configured environment needs but the loaded
+    /// bridge does not advertise, or null when every provider in use is
+    /// supported. Checking the specific provider bits rather than only the
+    /// top-level environment bit turns an opaque native InvalidEnvironment
+    /// status into an actionable managed error.
+    /// </summary>
+    internal static string? DescribeMissingCapability(
+        NativeRouterCapabilities capabilities,
+        RouteEnvironmentOptions environment)
+    {
+        ArgumentNullException.ThrowIfNull(environment);
+        if ((capabilities & NativeRouterCapabilities.Environment) == 0)
+        {
+            return "Stage 3 environmental physics";
+        }
+
+        if (environment.Currents is not null &&
+            (capabilities & NativeRouterCapabilities.CurrentProvider) == 0)
+        {
+            return "current providers";
+        }
+
+        if (environment.Waves is not null &&
+            (capabilities & NativeRouterCapabilities.SeaState) == 0)
+        {
+            return "sea state derating";
+        }
+
+        if (environment.Land is not null &&
+            (capabilities & NativeRouterCapabilities.SignedDistanceLandmask) == 0)
+        {
+            return "signed distance landmasks";
+        }
+
+        if (environment.Exclusions is not null &&
+            (capabilities & NativeRouterCapabilities.ExclusionZones) == 0)
+        {
+            return "exclusion zones";
+        }
+
+        return null;
+    }
+
     public bool? StreamingProgressAvailable => Volatile.Read(
         ref _streamingProgressAvailability) switch
     {
@@ -521,10 +565,12 @@ public sealed class NativeRouterBridge
             // default path stays on the exact v6 entry point it always used.
             if (optimization.Environment is { IsActive: true } environmentOptions)
             {
-                if (!EnvironmentAvailable)
+                if (DescribeMissingCapability(_capabilities, environmentOptions)
+                    is { } missingCapability)
                 {
                     throw new NotSupportedException(
-                        "The native router bridge does not support Stage 3 environmental physics.");
+                        "The native router bridge does not support " +
+                        $"{missingCapability}.");
                 }
 
                 using var environmentScope =
