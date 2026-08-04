@@ -12,7 +12,9 @@ It targets macOS, Windows, and Linux.
 - Open on a Salish Sea chart view and use resizable edge drawers plus
   right-click, long-press, or keyboard radial map actions to place endpoints,
   inspect routes, and start calculation without obscuring the chart.
-- Choose a local departure date/time, converted to UTC with DST validation.
+- Choose a local departure date/time, converted to UTC with DST validation; when calculation
+  starts with a past active-leg departure, Navtool rolls it forward to the current time and warns
+  without changing sailed-leg history.
 - Set the expected passage duration so only the required forecast times are
   acquired, up to the ten-day planning limit.
 - Download geographically subsetted NOAA GFS 0.25-degree 10 m wind fields, or

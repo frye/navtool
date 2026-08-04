@@ -94,6 +94,7 @@ public sealed class AppThemeTests
             AssertContrast("AccentTextColor", "AccentHoverColor", 4.5);
             AssertContrast("AccentTextColor", "AccentPressedColor", 4.5);
             AssertContrast("ActiveToolTextColor", "ActiveToolBackgroundColor", 4.5);
+            AssertContrast("TextPrimaryColor", "SurfaceRaisedColor", 4.5);
 
             foreach (var key in new[]
                      {
@@ -108,6 +109,55 @@ public sealed class AppThemeTests
             {
                 Assert.IsType<Color>(FindResource(key));
             }
+        }
+    }
+
+    [AvaloniaFact]
+    public void PlanningInputsUseSemanticColorsInEveryTheme()
+    {
+        var service = AppThemeService.CreateTransient();
+        service.Initialize(Application.Current!);
+        var window = new MainWindow(service)
+        {
+            DataContext = CreateViewModel()
+        };
+
+        try
+        {
+            window.Show();
+            window.SetPlanningDrawerOpen(true);
+
+            foreach (var option in AppThemeService.AvailableThemes)
+            {
+                service.SelectTheme(option.Theme);
+                var expectedForeground = FindColorResource("TextPrimaryColor");
+                var expectedBackground = FindColorResource("SurfaceRaisedColor");
+                var inputs = window.GetVisualDescendants()
+                    .OfType<TemplatedControl>()
+                    .Where(control =>
+                        control is TextBox or ComboBox or DatePicker or TimePicker or NumericUpDown)
+                    .ToArray();
+
+                Assert.NotEmpty(inputs);
+                Assert.Contains(inputs, control => control is TextBox);
+                Assert.Contains(inputs, control => control is ComboBox);
+                Assert.Contains(inputs, control => control is DatePicker);
+                Assert.Contains(inputs, control => control is TimePicker);
+                Assert.Contains(inputs, control => control is NumericUpDown);
+                Assert.All(inputs, input =>
+                {
+                    Assert.Equal(
+                        expectedForeground,
+                        Assert.IsAssignableFrom<ISolidColorBrush>(input.Foreground).Color);
+                    Assert.Equal(
+                        expectedBackground,
+                        Assert.IsAssignableFrom<ISolidColorBrush>(input.Background).Color);
+                });
+            }
+        }
+        finally
+        {
+            window.Close();
         }
     }
 
