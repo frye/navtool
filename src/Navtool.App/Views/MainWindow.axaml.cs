@@ -69,6 +69,7 @@ public partial class MainWindow : Window
     private Ellipse? _routeTelemetryAnchor;
     private MainViewModel? _subscribedViewModel;
     private RouteMapSelection? _routeTelemetrySelection;
+    private MPoint? _routeTelemetryProjection;
     private ScreenPoint? _lastPointerPosition;
     private MPoint? _capturedWorldPoint;
     private RouteMapSelection? _capturedRouteSelection;
@@ -465,11 +466,11 @@ public partial class MainWindow : Window
     {
         if (selection is null)
         {
-            _routeTelemetrySelection = null;
+            SetRouteTelemetrySelection(null);
         }
         else if (_routeTelemetrySelection is not null)
         {
-            _routeTelemetrySelection = selection;
+            SetRouteTelemetrySelection(selection);
         }
 
         ScheduleRouteTelemetryRefresh();
@@ -477,8 +478,14 @@ public partial class MainWindow : Window
 
     private void OnRoutePointInspectionRequested(object? sender, RouteMapSelection selection)
     {
-        _routeTelemetrySelection = selection;
+        SetRouteTelemetrySelection(selection);
         ScheduleRouteTelemetryRefresh();
+    }
+
+    private void SetRouteTelemetrySelection(RouteMapSelection? selection)
+    {
+        _routeTelemetrySelection = selection;
+        _routeTelemetryProjection = null;
     }
 
     private void OnRouteTelemetryCardClicked(object? sender, RoutedEventArgs e)
@@ -509,7 +516,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var projected = _subscribedViewModel.GetProjectedRoutePoint(selection);
+        var projected = _routeTelemetryProjection ??=
+            _subscribedViewModel.GetProjectedRoutePoint(selection);
         var screen = _mapControl.Map.Navigator.Viewport.WorldToScreen(projected);
         var anchor = new ScreenPoint(screen.X, screen.Y);
         var visibleBounds = new ScreenRect(
@@ -520,7 +528,8 @@ public partial class MainWindow : Window
         if (anchor.X < visibleBounds.X ||
             anchor.Y < visibleBounds.Y ||
             anchor.X > visibleBounds.Right ||
-            anchor.Y > visibleBounds.Bottom)
+            anchor.Y > visibleBounds.Bottom ||
+            !CanPlaceRouteTelemetry(visibleBounds))
         {
             HideRouteTelemetryOverlay();
             return;
@@ -544,6 +553,10 @@ public partial class MainWindow : Window
             placement.Connector.End.Y);
         _routeTelemetryLayer.IsVisible = true;
     }
+
+    private static bool CanPlaceRouteTelemetry(ScreenRect visibleBounds) =>
+        visibleBounds.Width - (RouteTelemetrySafeMargin * 2) >= RouteTelemetryWidth &&
+        visibleBounds.Height - (RouteTelemetrySafeMargin * 2) >= RouteTelemetryHeight;
 
     private void HideRouteTelemetryOverlay()
     {
