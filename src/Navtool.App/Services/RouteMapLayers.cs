@@ -48,6 +48,8 @@ public sealed class RouteMapLayers
     private readonly MemoryLayer _ecmwfHistoricalFronts = CreateHistoricalFrontLayer("ECMWF IFS isochrone fronts");
     private readonly MemoryLayer _noaaDestinationFront = CreateDestinationFrontLayer("NOAA GFS latest isochrone front");
     private readonly MemoryLayer _ecmwfDestinationFront = CreateDestinationFrontLayer("ECMWF IFS latest isochrone front");
+    private readonly MemoryLayer _noaaSearchPoints = CreateRouteLayer("NOAA GFS lattice search");
+    private readonly MemoryLayer _ecmwfSearchPoints = CreateRouteLayer("ECMWF IFS lattice search");
     private readonly MemoryLayer _noaaProvisionalRoute = CreateProvisionalRouteLayer(
         "NOAA GFS provisional route",
         NoaaColor);
@@ -83,6 +85,8 @@ public sealed class RouteMapLayers
         map.Layers.Add(_ecmwfHistoricalFronts);
         map.Layers.Add(_noaaDestinationFront);
         map.Layers.Add(_ecmwfDestinationFront);
+        map.Layers.Add(_noaaSearchPoints);
+        map.Layers.Add(_ecmwfSearchPoints);
         map.Layers.Add(_noaaProvisionalRoute);
         map.Layers.Add(_ecmwfProvisionalRoute);
         map.Layers.Add(_noaaRoutes);
@@ -121,6 +125,9 @@ public sealed class RouteMapLayers
 
     public bool HasProvisionalRoute(ForecastModel model) =>
         GetProvisionalRouteLayer(model).Features.Any();
+
+    public bool HasSearchPoint(ForecastModel model) =>
+        GetSearchPointLayer(model).Features.Any();
 
     public void SetRoutes(IEnumerable<RouteResult> routes)
     {
@@ -267,6 +274,12 @@ public sealed class RouteMapLayers
         var destinationFrontLayer = GetDestinationFrontLayer(model);
         destinationFrontLayer.Features = frontFeatures;
         destinationFrontLayer.FeaturesWereModified();
+
+        var searchPointLayer = GetSearchPointLayer(model);
+        searchPointLayer.Features = snapshot.SearchPoints
+            .Select(point => CreateSearchPoint(point, model, snapshot))
+            .ToArray();
+        searchPointLayer.FeaturesWereModified();
 
         var provisionalLayer = GetProvisionalRouteLayer(model);
         var provisionalRoute = CreateRouteFeature(snapshot.ProvisionalRoute, snapshot);
@@ -658,6 +671,13 @@ public sealed class RouteMapLayers
         _ => throw new ArgumentOutOfRangeException(nameof(model))
     };
 
+    private MemoryLayer GetSearchPointLayer(ForecastModel model) => model switch
+    {
+        ForecastModel.NoaaGfs => _noaaSearchPoints,
+        ForecastModel.EcmwfIfs => _ecmwfSearchPoints,
+        _ => throw new ArgumentOutOfRangeException(nameof(model))
+    };
+
     private void ClearCalculationOverlay(ForecastModel model, bool refresh)
     {
         var features = GetHistoricalFrontFeatures(model);
@@ -668,6 +688,9 @@ public sealed class RouteMapLayers
         var destinationFrontLayer = GetDestinationFrontLayer(model);
         destinationFrontLayer.Features = Array.Empty<IFeature>();
         destinationFrontLayer.FeaturesWereModified();
+        var searchPointLayer = GetSearchPointLayer(model);
+        searchPointLayer.Features = Array.Empty<IFeature>();
+        searchPointLayer.FeaturesWereModified();
         var provisionalLayer = GetProvisionalRouteLayer(model);
         provisionalLayer.Features = Array.Empty<IFeature>();
         provisionalLayer.FeaturesWereModified();
@@ -675,6 +698,25 @@ public sealed class RouteMapLayers
         {
             Map.Refresh(ChangeType.Discrete);
         }
+    }
+
+    private static IFeature CreateSearchPoint(
+        CoreCoordinate coordinate,
+        ForecastModel model,
+        RouteCalculationSnapshot snapshot)
+    {
+        var point = MapProjection.ToMapPoint(coordinate);
+        var feature = new GeometryFeature(new Point(point.X, point.Y))
+        {
+            Data = snapshot
+        };
+        feature.Styles.Add(new LabelStyle
+        {
+            Text = "●",
+            Font = new Font { Size = 18, Bold = true },
+            ForeColor = model == ForecastModel.NoaaGfs ? NoaaColor : EcmwfColor
+        });
+        return feature;
     }
 
     private static IFeature CreateWindCell(

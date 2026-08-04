@@ -16,6 +16,8 @@
 
 namespace {
 
+static_assert(sizeof(navtool_router_options_v6) == 152U);
+
 void require(bool condition, const char* message) {
     if (!condition) {
         throw std::runtime_error(message);
@@ -63,6 +65,14 @@ struct DisplayProgressCapture {
     int64_t previous_time{};
     uint64_t previous_time_steps{};
     bool valid{true};
+};
+
+struct V6ProgressCapture {
+    int32_t expected_solver{};
+    size_t count{};
+    bool valid{true};
+    bool saw_search_points{};
+    bool saw_lattice_counters{};
 };
 
 struct SegmentEligibilityCapture {
@@ -275,6 +285,87 @@ void capture_display_progress(
     capture->previous_time = progress->isochrone_utc_epoch_seconds;
     capture->previous_time_steps = progress->diagnostics.time_steps;
     ++capture->count;
+}
+
+uint8_t capture_v6_progress(
+    const navtool_router_progress_v6* progress,
+    void* user_data) {
+    auto* capture = static_cast<V6ProgressCapture*>(user_data);
+    if (capture == nullptr || progress == nullptr) {
+        return 0U;
+    }
+
+    const bool is_lattice =
+        capture->expected_solver ==
+        NAVTOOL_ROUTER_SOLVER_TIME_DEPENDENT_LATTICE_V6;
+    capture->saw_search_points =
+        capture->saw_search_points || progress->search_point_count > 0U;
+    capture->saw_lattice_counters =
+        capture->saw_lattice_counters ||
+        progress->lattice_search.settled_labels > 0U;
+    const int64_t route_end_time =
+        progress->provisional_route_point_count > 0U
+        ? progress->provisional_route_points[
+              progress->provisional_route_point_count - 1U]
+              .utc_epoch_seconds
+        : 0;
+    capture->valid =
+        capture->valid &&
+        progress->solver == capture->expected_solver &&
+        progress->provisional_route_points != nullptr &&
+        progress->provisional_route_point_count > 0U &&
+        (is_lattice
+             ? route_end_time <= progress->progress_utc_epoch_seconds
+             : route_end_time == progress->progress_utc_epoch_seconds) &&
+        (is_lattice
+             ? progress->contour_point_count == 0U &&
+                   progress->front_point_count == 0U &&
+                   (progress->search_point_count == 0U ||
+                    progress->search_points != nullptr)
+             : progress->contour_points != nullptr &&
+                   progress->contour_point_count > 0U &&
+                   progress->front_points != nullptr &&
+                   progress->front_point_count > 0U &&
+                   progress->search_point_count == 0U);
+    ++capture->count;
+    return 1U;
+}
+
+uint8_t cancel_v6_progress(
+    const navtool_router_progress_v6*,
+    void* user_data) {
+    auto* count = static_cast<size_t*>(user_data);
+    if (count != nullptr) {
+        ++*count;
+    }
+    return 0U;
+}
+
+navtool_router_options_v6 balanced_options_v6() {
+    return {
+        NAVTOOL_ROUTER_SOLVER_ISOCHRONE_BEAM_V6,
+        3,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        30,
+        150.0,
+        0.0,
+        2.0,
+        120.0,
+        450.0,
+        3,
+        4,
+        1,
+        2,
+        250,
+        0};
 }
 
 std::filesystem::path create_grib_with_missing_v_step() {
@@ -790,6 +881,136 @@ int main() {
             route_json_length == std::strlen(route_json),
             "combined display streaming route JSON length mismatch");
         navtool_router_bridge_free_v1(route_json);
+
+        route_json = nullptr;
+        route_json_length = 0U;
+        auto balanced_options = balanced_options_v6();
+        V6ProgressCapture beam_v6_capture{
+            NAVTOOL_ROUTER_SOLVER_ISOCHRONE_BEAM_V6};
+        require_ok(
+            navtool_router_calculate_route_streaming_v6(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                &balanced_options,
+                capture_v6_progress,
+                &beam_v6_capture,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length),
+            "calculate configured beam route");
+        require(
+            beam_v6_capture.count > 0U && beam_v6_capture.valid,
+            "configured beam progress was invalid");
+        require(
+            route_json != nullptr && route_json_length == std::strlen(route_json),
+            "configured beam route JSON was invalid");
+        require(
+            std::string{route_json}.find("\"latticeDiagnostics\"") ==
+                std::string::npos,
+            "beam route unexpectedly included lattice diagnostics");
+        navtool_router_bridge_free_v1(route_json);
+
+        route_json = nullptr;
+        route_json_length = 0U;
+        auto invalid_options = balanced_options;
+        invalid_options.flags = 1ULL << 63;
+        require(
+            navtool_router_calculate_route_streaming_v6(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                &invalid_options,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length) ==
+                NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
+            "unsupported routing option flags were accepted");
+        require(
+            route_json == nullptr && route_json_length == 0U,
+            "invalid routing options populated route outputs");
+
+        auto lattice_options = balanced_options;
+        lattice_options.solver =
+            NAVTOOL_ROUTER_SOLVER_TIME_DEPENDENT_LATTICE_V6;
+        lattice_options.lattice_subdivision_level = 8U;
+        lattice_options.lattice_refinement_levels = 0U;
+        lattice_options.lattice_progress_every_n_expansions = 1U;
+        V6ProgressCapture lattice_v6_capture{
+            NAVTOOL_ROUTER_SOLVER_TIME_DEPENDENT_LATTICE_V6};
+        require_ok(
+            navtool_router_calculate_route_streaming_v6(
+                forecast,
+                48.0,
+                -123.75,
+                48.5,
+                -123.25,
+                &departure,
+                &lattice_options,
+                capture_v6_progress,
+                &lattice_v6_capture,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length),
+            "calculate configured lattice route");
+        require(
+            lattice_v6_capture.count > 0U,
+            "configured lattice reported no progress");
+        require(
+            lattice_v6_capture.valid,
+            "configured lattice progress payload was invalid");
+        require(
+            lattice_v6_capture.saw_search_points,
+            "configured lattice reported no search points");
+        require(
+            lattice_v6_capture.saw_lattice_counters,
+            "configured lattice reported no settled labels");
+        require(
+            route_json != nullptr && route_json_length == std::strlen(route_json),
+            "configured lattice route JSON was invalid");
+        require(
+            std::string{route_json}.find("\"latticeDiagnostics\"") !=
+                std::string::npos,
+            "lattice route omitted lattice diagnostics");
+        navtool_router_bridge_free_v1(route_json);
+        route_json = nullptr;
+        route_json_length = 0U;
+
+        size_t cancellation_progress_count = 0U;
+        require(
+            navtool_router_calculate_route_streaming_v6(
+                forecast,
+                48.0,
+                -123.75,
+                48.5,
+                -123.25,
+                &departure,
+                &lattice_options,
+                cancel_v6_progress,
+                &cancellation_progress_count,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length) ==
+                NAVTOOL_ROUTER_STATUS_NO_ROUTE_V1,
+            "cancelled lattice route did not stop");
+        require(
+            cancellation_progress_count == 1U,
+            "cancelled lattice route continued reporting progress");
+        require(
+            route_json == nullptr && route_json_length == 0U,
+            "cancelled lattice route populated route outputs");
 
 #if NAVTOOL_ROUTER_HAS_PROGRESS_CALLBACK
         route_json = nullptr;

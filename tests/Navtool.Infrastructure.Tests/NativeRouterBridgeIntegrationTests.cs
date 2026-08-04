@@ -33,7 +33,7 @@ public sealed class NativeRouterBridgeIntegrationTests
         }
 
         using var forecast = bridge.LoadForecast(sample);
-        Assert.Equal(5u, bridge.AbiVersion);
+        Assert.Equal(6u, bridge.AbiVersion);
         Assert.True(bridge.LandConstraintAvailable);
         Assert.True(forecast.Metadata.LatitudeCount > 0);
         Assert.True(forecast.Metadata.FirstValidAt < forecast.Metadata.LastValidAt);
@@ -104,6 +104,55 @@ public sealed class NativeRouterBridgeIntegrationTests
         {
             Assert.Empty(snapshots);
         }
+
+        var latticeRequest = new RouteRequest(
+            "native-lattice-integration",
+            new Coordinate(48, -123.75),
+            new Coordinate(48.5, -123.25),
+            forecast.Metadata.FirstValidAt,
+            forecast.Metadata.FirstValidAt.AddHours(10));
+        var latticeOptions = new RouteOptimizationOptions(
+            solver: RouteSolver.TimeDependentLattice,
+            lattice: new RouteLatticeOptions(
+                subdivisionLevel: 8,
+                refinementLevels: 0,
+                progressEveryExpansions: 1));
+        var latticeSnapshots = new List<RouteCalculationSnapshot>();
+        var latticeRoute = bridge.CalculateRoute(
+            forecast,
+            latticeRequest,
+            ForecastModel.NoaaGfs,
+            latticeOptions,
+            latticeSnapshots.Add,
+            null);
+        Assert.Equal(RouteSolver.TimeDependentLattice, latticeRoute.Solver);
+        Assert.NotNull(latticeRoute.LatticeDiagnostics);
+        Assert.NotEmpty(latticeSnapshots);
+        Assert.All(latticeSnapshots, snapshot =>
+        {
+            Assert.Equal(RouteSolver.TimeDependentLattice, snapshot.Solver);
+            Assert.Empty(snapshot.EnvelopeSegments);
+            Assert.Empty(snapshot.FrontSegments);
+            Assert.NotEmpty(snapshot.SearchPoints);
+            Assert.NotNull(snapshot.LatticeSearch);
+        });
+
+        using var cancellation = new CancellationTokenSource();
+        var cancellationProgressCount = 0;
+        Assert.Throws<OperationCanceledException>(() =>
+            bridge.CalculateRoute(
+                forecast,
+                latticeRequest,
+                ForecastModel.NoaaGfs,
+                latticeOptions,
+                _ =>
+                {
+                    cancellationProgressCount++;
+                    cancellation.Cancel();
+                },
+                null,
+                cancellation.Token));
+        Assert.Equal(1, cancellationProgressCount);
 
         Assert.All(route.Points, point =>
         {

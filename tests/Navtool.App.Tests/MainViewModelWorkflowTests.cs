@@ -15,6 +15,74 @@ public sealed class MainViewModelWorkflowTests
         new(2026, 7, 14, 16, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public void Professional_routing_defaults_off_and_filters_solver_specific_controls()
+    {
+        var viewModel = new MainViewModel(
+            null,
+            null,
+            new FixedTimeProvider(Now),
+            TimeZoneInfo.Utc,
+            new OsmTileOptions(Enabled: false));
+
+        Assert.False(viewModel.EnableProfessionalRouting);
+        Assert.False(viewModel.IsProfessionalBeamRouting);
+        Assert.False(viewModel.IsProfessionalLatticeRouting);
+
+        viewModel.EnableProfessionalRouting = true;
+        Assert.True(viewModel.IsProfessionalBeamRouting);
+        Assert.False(viewModel.IsProfessionalLatticeRouting);
+
+        viewModel.SelectedRouteSolver = RouteSolver.TimeDependentLattice;
+        Assert.False(viewModel.IsProfessionalBeamRouting);
+        Assert.True(viewModel.IsProfessionalLatticeRouting);
+    }
+
+    [Fact]
+    public async Task Standard_mode_always_routes_with_balanced_options()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateRoutingViewModel(noaa, engine);
+        viewModel.EnableProfessionalRouting = false;
+        viewModel.SelectedRouteSolver = RouteSolver.TimeDependentLattice;
+        viewModel.TackPenaltySeconds = 600;
+
+        viewModel.SetStartAt(new Coordinate(34, -64));
+        viewModel.SetDestinationAt(new Coordinate(39, -52));
+        await WaitForAsync(() => viewModel.SuccessfulRouteCount == 1);
+
+        Assert.Same(RouteOptimizationOptions.Balanced, engine.LastOptimization);
+    }
+
+    [Fact]
+    public async Task Professional_mode_routes_with_an_immutable_lattice_configuration()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateRoutingViewModel(noaa, engine);
+        viewModel.EnableProfessionalRouting = true;
+        viewModel.SelectedRouteSolver = RouteSolver.TimeDependentLattice;
+        viewModel.TackPenaltySeconds = 120;
+        viewModel.LatticeSearchAlgorithm = RouteLatticeSearchAlgorithm.Dijkstra;
+
+        viewModel.SetStartAt(new Coordinate(34, -64));
+        viewModel.SetDestinationAt(new Coordinate(39, -52));
+        await WaitForAsync(() => viewModel.SuccessfulRouteCount == 1);
+
+        Assert.Equal(RouteSolver.TimeDependentLattice, engine.LastOptimization!.Solver);
+        Assert.Equal(TimeSpan.FromSeconds(120), engine.LastOptimization.Maneuver.TackPenalty);
+        Assert.Equal(
+            RouteLatticeSearchAlgorithm.Dijkstra,
+            engine.LastOptimization.Lattice.SearchAlgorithm);
+    }
+
+    [Fact]
     public void DirectContextualEndpointAssignmentPreservesInteractionWorkflow()
     {
         var viewModel = new MainViewModel(
@@ -1670,6 +1738,17 @@ public sealed class MainViewModelWorkflowTests
         return viewModel;
     }
 
+    private static MainViewModel CreateRoutingViewModel(
+        IForecastProvider provider,
+        IRouteEngine engine) =>
+        new(
+            new RoutingWorkflow(new[] { provider }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            new FixedTimeProvider(Now),
+            TimeZoneInfo.Utc,
+            new OsmTileOptions(Enabled: false));
+
     private static async Task WaitForAsync(Func<bool> predicate)
     {
         var timeout = DateTime.UtcNow.AddSeconds(2);
@@ -1859,6 +1938,8 @@ public sealed class MainViewModelWorkflowTests
         Func<RouteRequest, ForecastAcquisition, CancellationToken, ValueTask<RouteResult>> calculate)
         : IRouteEngine
     {
+        public RouteOptimizationOptions? LastOptimization { get; private set; }
+
         public async ValueTask<RouteResult> CalculateAsync(
             RouteRequest request,
             ForecastAcquisition forecast,
@@ -1868,6 +1949,17 @@ public sealed class MainViewModelWorkflowTests
             var route = await calculate(request, forecast, cancellationToken);
             progress?.Report(new RouteCalculationProgress(1, "fake route"));
             return route;
+        }
+
+        public ValueTask<RouteResult> CalculateAsync(
+            RouteRequest request,
+            ForecastAcquisition forecast,
+            RouteOptimizationOptions optimization,
+            IProgress<RouteCalculationProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            LastOptimization = optimization;
+            return CalculateAsync(request, forecast, progress, cancellationToken);
         }
     }
 

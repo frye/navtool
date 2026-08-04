@@ -8,12 +8,14 @@ public sealed record RoutingWorkflowRequest
         RouteRequest route,
         IEnumerable<ForecastModel> models,
         GeographicBounds? forecastBounds = null,
-        ForecastRefreshPolicy refreshPolicy = ForecastRefreshPolicy.PreferCache)
+        ForecastRefreshPolicy refreshPolicy = ForecastRefreshPolicy.PreferCache,
+        RouteOptimizationOptions? optimization = null)
         : this(
             route,
             CreateDownloadSelections(models),
             forecastBounds,
-            refreshPolicy)
+            refreshPolicy,
+            optimization)
     {
     }
 
@@ -21,7 +23,8 @@ public sealed record RoutingWorkflowRequest
         RouteRequest route,
         IEnumerable<ForecastSelection> selections,
         GeographicBounds? forecastBounds = null,
-        ForecastRefreshPolicy refreshPolicy = ForecastRefreshPolicy.PreferCache)
+        ForecastRefreshPolicy refreshPolicy = ForecastRefreshPolicy.PreferCache,
+        RouteOptimizationOptions? optimization = null)
     {
         ArgumentNullException.ThrowIfNull(route);
         ArgumentNullException.ThrowIfNull(selections);
@@ -61,6 +64,7 @@ public sealed record RoutingWorkflowRequest
         ForecastBounds = forecastBounds ?? GeographicBounds.FromCoordinates(
             new[] { route.Origin, route.Destination });
         RefreshPolicy = refreshPolicy;
+        Optimization = optimization ?? RouteOptimizationOptions.Balanced;
     }
 
     public RouteRequest Route { get; }
@@ -72,6 +76,8 @@ public sealed record RoutingWorkflowRequest
     public GeographicBounds ForecastBounds { get; }
 
     public ForecastRefreshPolicy RefreshPolicy { get; }
+
+    public RouteOptimizationOptions Optimization { get; }
 
     private static IEnumerable<ForecastSelection> CreateDownloadSelections(
         IEnumerable<ForecastModel> models)
@@ -326,7 +332,12 @@ public sealed class RoutingWorkflow
                     value.Snapshot));
 
             var route = await _routeEngine
-                .CalculateAsync(request.Route, acquisition, routeProgress, cancellationToken)
+                .CalculateAsync(
+                    request.Route,
+                    acquisition,
+                    request.Optimization,
+                    routeProgress,
+                    cancellationToken)
                 .ConfigureAwait(false);
 
             cancellationToken.ThrowIfCancellationRequested();

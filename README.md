@@ -19,12 +19,16 @@ It targets macOS, Windows, and Linux.
   acquired, up to the ten-day planning limit.
 - Download NOAA GFS or ECMWF IFS 0.25-degree 10 m wind fields, or choose an
   existing GRIB through the operating system's native file picker.
-- Calculate routes through the native `router-lib` bridge.
+- Calculate routes through the native `router-lib` v0.4 bridge with enhanced
+  beam-routing accuracy enabled by default.
 - Apply bundled Natural Earth land geometry by default, with an optional
   higher-detail OSM-derived service override.
 - Watch historical destination-facing isochrone fronts, the emphasized latest
   front, and the closest provisional route stream onto the map while each model
   calculates.
+- Temporarily enable professional routing controls to select the deterministic
+  time-dependent lattice solver and tune maneuver, wind, polar, pruning, front,
+  and lattice-search behavior.
 - Compare NOAA GFS and ECMWF IFS routes with distinct map colors.
 - Render every saved successful itinerary leg together on one full-route map,
   including sailed history, while retaining waypoint guides for blocked,
@@ -114,6 +118,23 @@ cmake --build native/Navtool.RouterBridge/build --config Release --parallel
 `NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY` can also be overridden if you need to
 fetch releases from a different fork.
 
+## Routing profiles
+
+Standard calculations use Navtool's balanced isochrone-beam profile. It augments
+the normal heading set with destination-bearing and velocity-made-good headings,
+samples wind at segment midpoints, and uses monotone-cubic polar-angle
+interpolation. It intentionally adds no tack or gybe delay, no hard maximum-wind
+cutoff, and clamps wind above the polar's tabulated range.
+
+Enable **Professional routing features** in the planning drawer to reveal the
+temporary router-lib v0.4 controls. Professional mode can select either the
+isochrone beam or deterministic time-dependent lattice solver and configure
+maneuver penalties, heading augmentation, wind sampling, polar interpolation,
+wind limits, pruning, and solver-specific settings. The toggle and edited values
+reset when Navtool exits and are never stored as application preferences or route
+plan inputs. Completed results do retain solver attribution and lattice
+diagnostics.
+
 ## Multi-point routes and visualization
 
 Each forecast model calculates itinerary legs sequentially. A successful leg's
@@ -140,14 +161,15 @@ calculation generations cannot replace newer itinerary state.
 
 ## Streaming route visualization
 
-Navtool uses router-lib's `Router::optimize_view` progress contract. After each
-completed search step, the native bridge synchronously copies the
-callback-scoped reachability contours, destination-facing front, provisional
-route, and cumulative diagnostics into immutable managed data. The callback
-returns promptly; Mapsui updates are posted through the application's progress
-pipeline to the Avalonia UI context.
+Navtool uses router-lib's `Router::optimize_view` progress contract. The native
+bridge synchronously copies callback-scoped progress into immutable managed data.
+Beam progress contains reachability contours, the destination-facing front, the
+provisional route, and cumulative diagnostics. Lattice progress instead contains
+the provisional route, current search point, settled/queued/relaxed label counts,
+and refinement state. The callback returns promptly; Mapsui updates are posted
+through the application's progress pipeline to the Avalonia UI context.
 
-At every routing time step, Navtool accumulates the router-provided open,
+For beam routing, Navtool accumulates the router-provided open,
 destination-facing front as thin, translucent historical context. The front
 uses a 120-degree aperture on each side of the destination bearing to preserve
 useful port and starboard context without drawing the backward envelope.
@@ -159,22 +181,22 @@ and exclude internal search clusters. The model's provisional route is also
 replaced by the latest snapshot. Successful and forecast-limited search overlays
 remain visible with the final route. Failed model overlays and all
 cancelled-calculation overlays are cleared. Fronts, routes, and map-fit bounds
-are unwrapped safely at the antimeridian.
+are unwrapped safely at the antimeridian. Lattice routing does not synthesize
+isochrones or destination fronts that router-lib does not provide; it renders the
+search-point marker and latest provisional route instead.
 
 When forecast coverage ends before the destination is reached, Navtool promotes
 the final provisional route to a selectable forecast-limited estimate, retains
-the accumulated isochrone fronts and latest isochrone front, and
-displays an amber warning. Complete final routes remain authoritative and may
-differ from the last provisional route.
+the solver-appropriate search overlay, and displays an amber warning. Complete
+final routes remain authoritative and may differ from the last provisional route.
 
-The ABI-v5 bridge preserves the existing final-route and v1-v4 streaming
-functions. The v4 entry point adds pre-retention segment eligibility to the v3
-destination-front stream. The v5 entry point combines optional segment
-eligibility with display-contour topology and open destination-front segments
-in one snapshot. Callback array and coordinate pointers are valid only for the
-duration of the synchronous callback and must be copied by consumers. Navtool
-rejects stale bridges so missing contour or land-constraint support cannot
-silently degrade display or routing safety.
+The ABI-v6 bridge preserves the existing final-route and v1-v5 streaming
+functions. The v6 entry point adds fixed-layout routing options, solver identity,
+search points, and lattice counters while retaining optional pre-retention
+segment eligibility. Callback array and coordinate pointers are valid only for
+the duration of the synchronous callback and must be copied by consumers.
+Navtool rejects stale bridges so missing configuration or land-constraint
+support cannot silently degrade routing safety.
 
 ## Publish
 
@@ -212,9 +234,11 @@ also be installed or packaged according to the target platform.
 The selected display theme is stored in `preferences/theme.txt` beneath
 `NAVTOOL_APP_DATA_ROOT` (or Navtool's default local application-data directory).
 Route plans are stored atomically as JSON beneath `routes/` in the same root.
-Plan files contain waypoint, stopover, calculation-session, leg-outcome, sailed
-state, and route-point metadata, but never forecast binaries. Files from unknown
-future schemas or with inconsistent IDs/references are rejected visibly.
+Schema-v3 plan files contain waypoint, stopover, calculation-session, leg-outcome,
+sailed state, route-point metadata, solver attribution, and optional lattice
+diagnostics, but never forecast binaries or professional input settings. Schema
+v1 and v2 documents migrate forward; unknown future schemas or inconsistent
+IDs/references are rejected visibly.
 Opening a saved plan restores full-route geometry, sailed history, per-model leg
 status, and the model-specific timeline. Weather overlays are not restored from
 route JSON.
@@ -297,8 +321,8 @@ service must be suitable for production use and return OSM-derived data under
 the Open Database License; public Overpass endpoints are not used as a default.
 
 Land avoidance also requires router-lib's pre-retention segment-eligibility
-capability. Navtool's ABI-v5 bridge preserves the v1-v4 route entry points and
-exposes combined contour streaming and segment eligibility additively. When land
+capability. Navtool's ABI-v6 bridge preserves the v1-v5 route entry points and
+adds configured beam and lattice dispatch. When land
 geometry is available, every candidate segment is checked before router-lib
 retains it. A configured service failure marks the route as unchecked rather
 than silently falling back to less detailed geometry. Direct lower-level bridge
@@ -316,6 +340,11 @@ recent, small, generalized, or inaccurately mapped hazards and must be verified
 independently. The routing engine does not model currents, waves, traffic,
 restricted areas, depths, or safety limits. The built-in vessel polar is an
 approximate demonstration model.
+
+The professional lattice solver reports search points and counters, not
+isochrones or destination-front geometry. It is currently serial and intended
+for expert comparison rather than as a faster replacement for the default beam
+solver.
 
 Multi-point results depend on the forecast available when each leg was
 calculated. A sailed line is historical planning context, not a recorded vessel

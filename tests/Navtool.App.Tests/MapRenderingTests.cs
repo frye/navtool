@@ -164,6 +164,8 @@ public sealed class MapRenderingTests
                 "ECMWF IFS isochrone fronts",
                 "NOAA GFS latest isochrone front",
                 "ECMWF IFS latest isochrone front",
+                "NOAA GFS lattice search",
+                "ECMWF IFS lattice search",
                 "NOAA GFS provisional route",
                 "ECMWF IFS provisional route",
                 "NOAA GFS routes",
@@ -342,6 +344,45 @@ public sealed class MapRenderingTests
 
         Assert.Equal(0, layers.GetIsochroneFrontCount(ForecastModel.NoaaGfs));
         Assert.False(layers.HasLatestIsochroneFront(ForecastModel.NoaaGfs));
+        Assert.False(layers.HasProvisionalRoute(ForecastModel.NoaaGfs));
+    }
+
+    [Fact]
+    public void LatticeStreamingRendersSearchPointAndRouteWithoutBeamGeometry()
+    {
+        var map = new Map();
+        var layers = new RouteMapLayers(map);
+        var timestamp = new DateTimeOffset(2026, 7, 15, 2, 0, 0, TimeSpan.Zero);
+        var searchPoint = new Coordinate(10.5, 171.5);
+        var snapshot = new RouteCalculationSnapshot(
+            timestamp,
+            RouteSolver.TimeDependentLattice,
+            Array.Empty<RouteCalculationEnvelopeSegment>(),
+            Array.Empty<RouteCalculationFrontSegment>(),
+            new[] { searchPoint },
+            new[]
+            {
+                new RoutePoint(new Coordinate(10, 170), timestamp.AddHours(-1), 90, 6, 15, 180, 0),
+                new RoutePoint(searchPoint, timestamp, 90, 6, 15, 180, 10)
+            },
+            new RouteDiagnostics(10, 20, 5, 1),
+            new RouteLatticeSearchProgress(12, 7, 30, 1, 2));
+
+        layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, snapshot);
+
+        Assert.True(layers.HasSearchPoint(ForecastModel.NoaaGfs));
+        Assert.True(layers.HasProvisionalRoute(ForecastModel.NoaaGfs));
+        Assert.False(layers.HasLatestIsochroneFront(ForecastModel.NoaaGfs));
+        Assert.Equal(0, layers.GetIsochroneFrontCount(ForecastModel.NoaaGfs));
+        var search = Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS lattice search"));
+        var feature = Assert.IsType<GeometryFeature>(Assert.Single(search.Features));
+        Assert.IsType<Point>(feature.Geometry);
+        Assert.Same(snapshot, feature.Data);
+
+        layers.ClearCalculationOverlay(ForecastModel.NoaaGfs);
+
+        Assert.False(layers.HasSearchPoint(ForecastModel.NoaaGfs));
         Assert.False(layers.HasProvisionalRoute(ForecastModel.NoaaGfs));
     }
 
