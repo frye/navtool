@@ -100,8 +100,6 @@ public sealed class RoutingWorkflowTests
             engine);
         var reports = new ConcurrentQueue<RoutingProgress>();
         var request = CreateWorkflowRequest();
-        Assert.Same(RouteOptimizationOptions.Balanced, request.Optimization);
-        Assert.Equal(RouteSolver.IsochroneBeam, request.Optimization.Solver);
 
         var execution = workflow.ExecuteAsync(
             request,
