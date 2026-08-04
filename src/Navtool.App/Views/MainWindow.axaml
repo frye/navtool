@@ -511,17 +511,18 @@
                 </StackPanel>
             </Border>
 
-            <Border x:Name="InstrumentRail"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Top"
-                    Margin="16"
-                    MaxWidth="720"
-                    Classes="map-overlay"
-                    CornerRadius="18"
-                    Padding="0"
-                    ClipToBounds="True"
-                    IsHitTestVisible="False">
-                <Grid>
+            <Grid x:Name="InstrumentRailHost"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Top"
+                  Margin="16"
+                  MaxWidth="720">
+                <Border x:Name="InstrumentRail"
+                        Classes="map-overlay"
+                        CornerRadius="18"
+                        Padding="0"
+                        ClipToBounds="True"
+                        IsHitTestVisible="False">
+                    <Grid>
                     <StackPanel x:Name="InstrumentRailIdleRow"
                                 Margin="14,7"
                                 Orientation="Horizontal"
@@ -613,11 +614,8 @@
                                    FontWeight="SemiBold"
                                    TextAlignment="Center"
                                    VerticalAlignment="Center" />
-                        <Button x:Name="InstrumentRailCancelButton"
-                                Classes="instrument-cancel"
-                                Command="{Binding CancelCommand}"
-                                Content="Cancel"
-                                AutomationProperties.Name="Cancel route calculation" />
+                        <Border Width="58"
+                                Height="26" />
                     </StackPanel>
 
                     <ProgressBar x:Name="InstrumentRailProgressBar"
@@ -629,8 +627,18 @@
                                  IsVisible="{Binding IsCalculating}"
                                  AutomationProperties.Name="Route calculation progress"
                                  AutomationProperties.HelpText="{Binding CalculationStageLabel}" />
-                </Grid>
-            </Border>
+                    </Grid>
+                </Border>
+                <Button x:Name="InstrumentRailCancelButton"
+                        Classes="instrument-cancel"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Margin="0,7,14,0"
+                        IsVisible="{Binding IsCalculating}"
+                        Command="{Binding CancelCommand}"
+                        Content="Cancel"
+                        AutomationProperties.Name="Cancel route calculation" />
+            </Grid>
 
             <Border x:Name="MapInstructionOverlay"
                     HorizontalAlignment="Center"

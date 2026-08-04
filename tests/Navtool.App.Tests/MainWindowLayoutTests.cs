@@ -402,6 +402,9 @@ public sealed class MainWindowLayoutTests
             Assert.False(progress.IsVisible);
             Assert.False(cancel.IsEffectivelyVisible);
             Assert.Contains(mapShell, rail.GetLogicalAncestors());
+            Assert.DoesNotContain(rail, cancel.GetLogicalAncestors());
+            Assert.False(rail.IsHitTestVisible);
+            Assert.True(cancel.IsHitTestVisible);
 
             viewModel.ProgressFraction = 0.64;
             viewModel.IsCalculating = true;
