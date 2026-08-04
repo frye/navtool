@@ -10,6 +10,9 @@
     <EmbeddedResource
       Include="Assets\ne_10m_land.geojson.gz"
       LogicalName="Navtool.Infrastructure.Assets.ne_10m_land.geojson.gz" />
+    <EmbeddedResource
+      Include="Assets\antarctic-exclusion-zone.json"
+      LogicalName="Navtool.Infrastructure.Assets.antarctic-exclusion-zone.json" />
   </ItemGroup>
 
   <ItemGroup>

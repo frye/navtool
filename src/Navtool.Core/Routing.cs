@@ -156,6 +156,202 @@ public sealed class RouteRequestValidator : IRouteRequestValidator
     }
 }
 
+/// <summary>
+/// Stage 3 environmental audit for one route point. Present only when an
+/// environment was configured; every optional member is absent rather than
+/// defaulted when its provider did not apply.
+/// </summary>
+public sealed record RoutePointEnvironment
+{
+    public RoutePointEnvironment(
+        double speedOverGroundKnots,
+        double courseOverGroundDegrees,
+        double flatWaterSpeedKnots,
+        double? currentEastKnots = null,
+        double? currentNorthKnots = null,
+        double? significantWaveHeightMetres = null,
+        double? wavePeriodSeconds = null,
+        double? relativeWaveAngleDegrees = null)
+    {
+        SpeedOverGroundKnots = speedOverGroundKnots;
+        CourseOverGroundDegrees = courseOverGroundDegrees;
+        FlatWaterSpeedKnots = flatWaterSpeedKnots;
+        CurrentEastKnots = currentEastKnots;
+        CurrentNorthKnots = currentNorthKnots;
+        SignificantWaveHeightMetres = significantWaveHeightMetres;
+        WavePeriodSeconds = wavePeriodSeconds;
+        RelativeWaveAngleDegrees = relativeWaveAngleDegrees;
+    }
+
+    public double SpeedOverGroundKnots { get; }
+
+    public double CourseOverGroundDegrees { get; }
+
+    /// <summary>Speed the polar predicted before any sea-state derating.</summary>
+    public double FlatWaterSpeedKnots { get; }
+
+    /// <summary>
+    /// Current flowing east, knots, in the oceanographic set convention. Null
+    /// when no current was applied to this point.
+    /// </summary>
+    public double? CurrentEastKnots { get; }
+
+    public double? CurrentNorthKnots { get; }
+
+    public double? SignificantWaveHeightMetres { get; }
+
+    public double? WavePeriodSeconds { get; }
+
+    /// <summary>
+    /// Wave angle relative to the vessel: 0 is a following sea, 90 a beam sea,
+    /// and 180 a head sea.
+    /// </summary>
+    public double? RelativeWaveAngleDegrees { get; }
+
+    /// <summary>
+    /// True when a current provider contributed to this point. router-lib emits
+    /// the east and north components together, so a half-populated vector means
+    /// the payload was truncated or hand-edited rather than that a current was
+    /// applied; requiring both keeps the claim honest about incomplete data.
+    /// </summary>
+    public bool CurrentApplied =>
+        CurrentEastKnots is not null && CurrentNorthKnots is not null;
+
+    /// <summary>
+    /// True when a sea state contributed to this point. Height, period, and
+    /// relative angle are emitted as a set, so all three are required for the
+    /// same reason <see cref="CurrentApplied"/> requires both components.
+    /// </summary>
+    public bool WaveApplied =>
+        SignificantWaveHeightMetres is not null &&
+        WavePeriodSeconds is not null &&
+        RelativeWaveAngleDegrees is not null;
+}
+
+/// <summary>Counters describing how much environmental work a search performed.</summary>
+public sealed record RouteEnvironmentDiagnostics
+{
+    public RouteEnvironmentDiagnostics(
+        long currentSamples = 0,
+        long currentRejections = 0,
+        long waveSamples = 0,
+        long waveRejections = 0,
+        long seaStateEvaluations = 0,
+        long landChecks = 0,
+        long landDistanceQueries = 0,
+        long landRejections = 0,
+        long exclusionChecks = 0,
+        long exclusionGeometryTests = 0,
+        long exclusionRejections = 0)
+    {
+        CurrentSamples = currentSamples;
+        CurrentRejections = currentRejections;
+        WaveSamples = waveSamples;
+        WaveRejections = waveRejections;
+        SeaStateEvaluations = seaStateEvaluations;
+        LandChecks = landChecks;
+        LandDistanceQueries = landDistanceQueries;
+        LandRejections = landRejections;
+        ExclusionChecks = exclusionChecks;
+        ExclusionGeometryTests = exclusionGeometryTests;
+        ExclusionRejections = exclusionRejections;
+    }
+
+    public long CurrentSamples { get; }
+
+    public long CurrentRejections { get; }
+
+    public long WaveSamples { get; }
+
+    public long WaveRejections { get; }
+
+    public long SeaStateEvaluations { get; }
+
+    public long LandChecks { get; }
+
+    public long LandDistanceQueries { get; }
+
+    public long LandRejections { get; }
+
+    public long ExclusionChecks { get; }
+
+    public long ExclusionGeometryTests { get; }
+
+    public long ExclusionRejections { get; }
+}
+
+/// <summary>
+/// The models, sources, and policies an environment actually applied. Absent
+/// providers are null rather than defaulted so an unconfigured provider can
+/// never be mistaken for a benign one.
+/// </summary>
+public sealed record RouteEnvironmentMetadata
+{
+    public RouteEnvironmentMetadata(
+        RouteEnvironmentSampling sampling,
+        RouteProviderMetadata? currentProvider = null,
+        RouteProviderMetadata? waveProvider = null,
+        RouteProviderMetadata? seaStateModel = null,
+        RouteProviderMetadata? landmask = null,
+        RouteProviderMetadata? exclusions = null,
+        RouteMissingDataPolicy currentPolicy = RouteMissingDataPolicy.FailRoute,
+        RouteMissingDataPolicy wavePolicy = RouteMissingDataPolicy.FailRoute,
+        RouteMissingDataPolicy landPolicy = RouteMissingDataPolicy.FailRoute,
+        double? landResolutionNauticalMiles = null,
+        double? landInterpolationErrorNauticalMiles = null,
+        double? landClearanceNauticalMiles = null,
+        RouteExclusionBoundaryPolicy? exclusionBoundaryPolicy = null,
+        int? exclusionZoneCount = null,
+        ulong? exclusionRevision = null)
+    {
+        Sampling = sampling;
+        CurrentProvider = currentProvider;
+        WaveProvider = waveProvider;
+        SeaStateModel = seaStateModel;
+        Landmask = landmask;
+        Exclusions = exclusions;
+        CurrentPolicy = currentPolicy;
+        WavePolicy = wavePolicy;
+        LandPolicy = landPolicy;
+        LandResolutionNauticalMiles = landResolutionNauticalMiles;
+        LandInterpolationErrorNauticalMiles = landInterpolationErrorNauticalMiles;
+        LandClearanceNauticalMiles = landClearanceNauticalMiles;
+        ExclusionBoundaryPolicy = exclusionBoundaryPolicy;
+        ExclusionZoneCount = exclusionZoneCount;
+        ExclusionRevision = exclusionRevision;
+    }
+
+    public RouteEnvironmentSampling Sampling { get; }
+
+    public RouteProviderMetadata? CurrentProvider { get; }
+
+    public RouteProviderMetadata? WaveProvider { get; }
+
+    public RouteProviderMetadata? SeaStateModel { get; }
+
+    public RouteProviderMetadata? Landmask { get; }
+
+    public RouteProviderMetadata? Exclusions { get; }
+
+    public RouteMissingDataPolicy CurrentPolicy { get; }
+
+    public RouteMissingDataPolicy WavePolicy { get; }
+
+    public RouteMissingDataPolicy LandPolicy { get; }
+
+    public double? LandResolutionNauticalMiles { get; }
+
+    public double? LandInterpolationErrorNauticalMiles { get; }
+
+    public double? LandClearanceNauticalMiles { get; }
+
+    public RouteExclusionBoundaryPolicy? ExclusionBoundaryPolicy { get; }
+
+    public int? ExclusionZoneCount { get; }
+
+    public ulong? ExclusionRevision { get; }
+}
+
 public sealed record RoutePoint
 {
     public RoutePoint(
@@ -166,6 +362,27 @@ public sealed record RoutePoint
         double trueWindSpeedKnots,
         double trueWindDirectionDegrees,
         double cumulativeDistanceNauticalMiles)
+        : this(
+            location,
+            timestamp,
+            headingDegrees,
+            boatSpeedKnots,
+            trueWindSpeedKnots,
+            trueWindDirectionDegrees,
+            cumulativeDistanceNauticalMiles,
+            environment: null)
+    {
+    }
+
+    public RoutePoint(
+        Coordinate location,
+        DateTimeOffset timestamp,
+        double headingDegrees,
+        double boatSpeedKnots,
+        double trueWindSpeedKnots,
+        double trueWindDirectionDegrees,
+        double cumulativeDistanceNauticalMiles,
+        RoutePointEnvironment? environment)
     {
         ValidateDirection(headingDegrees, nameof(headingDegrees));
         ValidateNonNegative(boatSpeedKnots, nameof(boatSpeedKnots));
@@ -180,6 +397,7 @@ public sealed record RoutePoint
         TrueWindSpeedKnots = trueWindSpeedKnots;
         TrueWindDirectionDegrees = trueWindDirectionDegrees;
         CumulativeDistanceNauticalMiles = cumulativeDistanceNauticalMiles;
+        Environment = environment;
     }
 
     public Coordinate Location { get; }
@@ -195,6 +413,14 @@ public sealed record RoutePoint
     public double TrueWindDirectionDegrees { get; }
 
     public double CumulativeDistanceNauticalMiles { get; }
+
+    /// <summary>
+    /// Stage 3 environmental audit for this point, or null when no environment
+    /// was configured. <see cref="HeadingDegrees"/> and
+    /// <see cref="BoatSpeedKnots"/> stay water-relative even when a current is
+    /// applied; ground motion is only available here.
+    /// </summary>
+    public RoutePointEnvironment? Environment { get; }
 
     public double ApparentWindAngleSignedDegrees
     {
@@ -705,7 +931,9 @@ public sealed record RouteResult
         RouteCompletion completion,
         RouteLandAvoidance? landAvoidance,
         RouteSolver solver = RouteSolver.IsochroneBeam,
-        RouteLatticeDiagnostics? latticeDiagnostics = null)
+        RouteLatticeDiagnostics? latticeDiagnostics = null,
+        RouteEnvironmentMetadata? environment = null,
+        RouteEnvironmentDiagnostics? environmentDiagnostics = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(points);
@@ -765,6 +993,8 @@ public sealed record RouteResult
         LandAvoidance = landAvoidance ?? RouteLandAvoidance.NotEvaluated;
         Solver = solver;
         LatticeDiagnostics = latticeDiagnostics;
+        Environment = environment;
+        EnvironmentDiagnostics = environmentDiagnostics;
     }
 
     public RouteRequest Request { get; }
@@ -782,6 +1012,15 @@ public sealed record RouteResult
     public RouteSolver Solver { get; }
 
     public RouteLatticeDiagnostics? LatticeDiagnostics { get; }
+
+    /// <summary>
+    /// The Stage 3 environment this route applied, or null when none was
+    /// configured. Null is the pre-Stage-3 compatibility path.
+    /// </summary>
+    public RouteEnvironmentMetadata? Environment { get; }
+
+    /// <summary>Environmental work counters, or null when no environment applied.</summary>
+    public RouteEnvironmentDiagnostics? EnvironmentDiagnostics { get; }
 
     public DateTimeOffset ArrivalTime => Points[^1].Timestamp;
 
@@ -805,7 +1044,9 @@ public sealed record RouteResult
             Completion,
             landAvoidance,
             Solver,
-            LatticeDiagnostics);
+            LatticeDiagnostics,
+            Environment,
+            EnvironmentDiagnostics);
     }
 }
 

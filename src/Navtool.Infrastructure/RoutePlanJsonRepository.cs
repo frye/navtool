@@ -21,15 +21,22 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
                 $"Route plan schema version {fromVersion} is not supported by this application version.");
         }
 
+        if (fromVersion == 3)
+        {
+            return MigrateV3ToV4(document);
+        }
+
         if (fromVersion == 2)
         {
-            return MigrateV2ToV3(document);
+            using var versionThree = MigrateV2ToV3(document);
+            return MigrateV3ToV4(versionThree);
         }
 
         if (fromVersion == 1)
         {
             using var versionTwo = MigrateV1ToV2(document);
-            return MigrateV2ToV3(versionTwo);
+            using var versionThree = MigrateV2ToV3(versionTwo);
+            return MigrateV3ToV4(versionThree);
         }
 
         throw new InvalidDataException(
@@ -85,6 +92,62 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
         return JsonDocument.Parse(root.ToJsonString());
     }
 
+    /// <summary>
+    /// Rewrites a version-3 route plan document to version 4. Version 4 adds the
+    /// Stage 3 environment audit: a per-result <c>environment</c> and
+    /// <c>environmentDiagnostics</c>, and a per-point <c>environment</c>. A
+    /// version-3 plan predates environmental physics, so every one of those is
+    /// left null rather than synthesized. A null environment is what "no
+    /// environment ran" means everywhere else in the pipeline, so an upgraded
+    /// plan reads back exactly as it was written.
+    /// </summary>
+    private static JsonDocument MigrateV3ToV4(JsonDocument document)
+    {
+        var root = JsonNode.Parse(document.RootElement.GetRawText()) as JsonObject ??
+                   throw new InvalidDataException("A route plan document must be a JSON object.");
+        root["schemaVersion"] = 4;
+        foreach (var route in EnumerateRoutes(root))
+        {
+            route["environment"] = null;
+            route["environmentDiagnostics"] = null;
+            if (route["points"] is not JsonArray points)
+            {
+                continue;
+            }
+
+            foreach (var point in points.OfType<JsonObject>())
+            {
+                point["environment"] = null;
+            }
+        }
+
+        return JsonDocument.Parse(root.ToJsonString());
+    }
+
+    private static IEnumerable<JsonObject> EnumerateRoutes(JsonObject root)
+    {
+        if (root["plan"]?["results"] is not JsonArray results)
+        {
+            yield break;
+        }
+
+        foreach (var result in results.OfType<JsonObject>())
+        {
+            if (result["legs"] is not JsonArray legs)
+            {
+                continue;
+            }
+
+            foreach (var leg in legs.OfType<JsonObject>())
+            {
+                if (leg["route"] is JsonObject route)
+                {
+                    yield return route;
+                }
+            }
+        }
+    }
+
     private static void WriteMigratedEnvelope(Utf8JsonWriter writer, JsonElement root)
     {
         writer.WriteStartObject();
@@ -131,7 +194,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
 
 public sealed class RoutePlanJsonRepository : IRoutePlanRepository
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -479,7 +542,18 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
                 point.BoatSpeedKnots,
                 point.TrueWindSpeedKnots,
                 point.TrueWindDirectionDegrees,
-                point.CumulativeDistanceNauticalMiles)).ToArray(),
+                point.CumulativeDistanceNauticalMiles,
+                point.Environment is null
+                    ? null
+                    : new RoutePointEnvironmentDto(
+                        point.Environment.SpeedOverGroundKnots,
+                        point.Environment.CourseOverGroundDegrees,
+                        point.Environment.FlatWaterSpeedKnots,
+                        point.Environment.CurrentEastKnots,
+                        point.Environment.CurrentNorthKnots,
+                        point.Environment.SignificantWaveHeightMetres,
+                        point.Environment.WavePeriodSeconds,
+                        point.Environment.RelativeWaveAngleDegrees))).ToArray(),
             new RouteDiagnosticsDto(
                 route.Diagnostics.ExpandedNodes,
                 route.Diagnostics.GeneratedCandidates,
@@ -510,7 +584,47 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
                     route.LatticeDiagnostics.AcceptedCorridorWidthNauticalMiles,
                     route.LatticeDiagnostics.DisconnectedRefinements,
                     route.LatticeDiagnostics.RegressedRefinements,
-                    route.LatticeDiagnostics.FallbackReason));
+                    route.LatticeDiagnostics.FallbackReason),
+            route.Environment is null
+                ? null
+                : new RouteEnvironmentMetadataDto(
+                    route.Environment.Sampling,
+                    ToDto(route.Environment.CurrentProvider),
+                    ToDto(route.Environment.WaveProvider),
+                    ToDto(route.Environment.SeaStateModel),
+                    ToDto(route.Environment.Landmask),
+                    ToDto(route.Environment.Exclusions),
+                    route.Environment.CurrentPolicy,
+                    route.Environment.WavePolicy,
+                    route.Environment.LandPolicy,
+                    route.Environment.LandResolutionNauticalMiles,
+                    route.Environment.LandInterpolationErrorNauticalMiles,
+                    route.Environment.LandClearanceNauticalMiles,
+                    route.Environment.ExclusionBoundaryPolicy,
+                    route.Environment.ExclusionZoneCount,
+                    route.Environment.ExclusionRevision),
+            route.EnvironmentDiagnostics is null
+                ? null
+                : new RouteEnvironmentDiagnosticsDto(
+                    route.EnvironmentDiagnostics.CurrentSamples,
+                    route.EnvironmentDiagnostics.CurrentRejections,
+                    route.EnvironmentDiagnostics.WaveSamples,
+                    route.EnvironmentDiagnostics.WaveRejections,
+                    route.EnvironmentDiagnostics.SeaStateEvaluations,
+                    route.EnvironmentDiagnostics.LandChecks,
+                    route.EnvironmentDiagnostics.LandDistanceQueries,
+                    route.EnvironmentDiagnostics.LandRejections,
+                    route.EnvironmentDiagnostics.ExclusionChecks,
+                    route.EnvironmentDiagnostics.ExclusionGeometryTests,
+                    route.EnvironmentDiagnostics.ExclusionRejections));
+
+    private static RouteProviderMetadataDto? ToDto(RouteProviderMetadata? metadata) =>
+        metadata is null
+            ? null
+            : new RouteProviderMetadataDto(
+                metadata.Name,
+                metadata.Source,
+                metadata.Revision);
 
     private static RoutePlan FromDto(RoutePlanDto dto)
     {
@@ -668,7 +782,18 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
                 point.BoatSpeedKnots,
                 point.TrueWindSpeedKnots,
                 point.TrueWindDirectionDegrees,
-                point.CumulativeDistanceNauticalMiles)),
+                point.CumulativeDistanceNauticalMiles,
+                point.Environment is null
+                    ? null
+                    : new RoutePointEnvironment(
+                        point.Environment.SpeedOverGroundKnots,
+                        point.Environment.CourseOverGroundDegrees,
+                        point.Environment.FlatWaterSpeedKnots,
+                        point.Environment.CurrentEastKnots,
+                        point.Environment.CurrentNorthKnots,
+                        point.Environment.SignificantWaveHeightMetres,
+                        point.Environment.WavePeriodSeconds,
+                        point.Environment.RelativeWaveAngleDegrees))),
             new RouteDiagnostics(
                 dto.Diagnostics.ExpandedNodes,
                 dto.Diagnostics.GeneratedCandidates,
@@ -683,8 +808,45 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
                 dto.LandAvoidance.Warning,
                 dto.LandAvoidance.Attribution),
             dto.Solver,
-            latticeDiagnostics);
+            latticeDiagnostics,
+            dto.Environment is null
+                ? null
+                : new RouteEnvironmentMetadata(
+                    dto.Environment.Sampling,
+                    FromDto(dto.Environment.CurrentProvider),
+                    FromDto(dto.Environment.WaveProvider),
+                    FromDto(dto.Environment.SeaStateModel),
+                    FromDto(dto.Environment.Landmask),
+                    FromDto(dto.Environment.Exclusions),
+                    dto.Environment.CurrentPolicy,
+                    dto.Environment.WavePolicy,
+                    dto.Environment.LandPolicy,
+                    dto.Environment.LandResolutionNauticalMiles,
+                    dto.Environment.LandInterpolationErrorNauticalMiles,
+                    dto.Environment.LandClearanceNauticalMiles,
+                    dto.Environment.ExclusionBoundaryPolicy,
+                    dto.Environment.ExclusionZoneCount,
+                    dto.Environment.ExclusionRevision),
+            dto.EnvironmentDiagnostics is null
+                ? null
+                : new RouteEnvironmentDiagnostics(
+                    dto.EnvironmentDiagnostics.CurrentSamples,
+                    dto.EnvironmentDiagnostics.CurrentRejections,
+                    dto.EnvironmentDiagnostics.WaveSamples,
+                    dto.EnvironmentDiagnostics.WaveRejections,
+                    dto.EnvironmentDiagnostics.SeaStateEvaluations,
+                    dto.EnvironmentDiagnostics.LandChecks,
+                    dto.EnvironmentDiagnostics.LandDistanceQueries,
+                    dto.EnvironmentDiagnostics.LandRejections,
+                    dto.EnvironmentDiagnostics.ExclusionChecks,
+                    dto.EnvironmentDiagnostics.ExclusionGeometryTests,
+                    dto.EnvironmentDiagnostics.ExclusionRejections));
     }
+
+    private static RouteProviderMetadata? FromDto(RouteProviderMetadataDto? dto) =>
+        dto is null
+            ? null
+            : new RouteProviderMetadata(dto.Name, dto.Source, dto.Revision);
 
     private sealed record RoutePlanEnvelope(int SchemaVersion, RoutePlanDto? Plan);
 
@@ -736,7 +898,9 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
         RouteCompletion Completion,
         RouteLandAvoidanceDto LandAvoidance,
         RouteSolver Solver,
-        RouteLatticeDiagnosticsDto? LatticeDiagnostics);
+        RouteLatticeDiagnosticsDto? LatticeDiagnostics,
+        RouteEnvironmentMetadataDto? Environment = null,
+        RouteEnvironmentDiagnosticsDto? EnvironmentDiagnostics = null);
 
     private sealed record RouteRequestDto(
         string RouteId,
@@ -755,7 +919,57 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
         double BoatSpeedKnots,
         double TrueWindSpeedKnots,
         double TrueWindDirectionDegrees,
-        double CumulativeDistanceNauticalMiles);
+        double CumulativeDistanceNauticalMiles,
+        RoutePointEnvironmentDto? Environment = null);
+
+    /// <summary>
+    /// Ground-frame motion and sea state for one point. Absent when no
+    /// environment ran, which is exactly how router-lib emits it.
+    /// </summary>
+    private sealed record RoutePointEnvironmentDto(
+        double SpeedOverGroundKnots,
+        double CourseOverGroundDegrees,
+        double FlatWaterSpeedKnots,
+        double? CurrentEastKnots = null,
+        double? CurrentNorthKnots = null,
+        double? SignificantWaveHeightMetres = null,
+        double? WavePeriodSeconds = null,
+        double? RelativeWaveAngleDegrees = null);
+
+    private sealed record RouteProviderMetadataDto(
+        string Name,
+        string Source,
+        string Revision);
+
+    private sealed record RouteEnvironmentMetadataDto(
+        RouteEnvironmentSampling Sampling,
+        RouteProviderMetadataDto? CurrentProvider,
+        RouteProviderMetadataDto? WaveProvider,
+        RouteProviderMetadataDto? SeaStateModel,
+        RouteProviderMetadataDto? Landmask,
+        RouteProviderMetadataDto? Exclusions,
+        RouteMissingDataPolicy CurrentPolicy,
+        RouteMissingDataPolicy WavePolicy,
+        RouteMissingDataPolicy LandPolicy,
+        double? LandResolutionNauticalMiles = null,
+        double? LandInterpolationErrorNauticalMiles = null,
+        double? LandClearanceNauticalMiles = null,
+        RouteExclusionBoundaryPolicy? ExclusionBoundaryPolicy = null,
+        int? ExclusionZoneCount = null,
+        ulong? ExclusionRevision = null);
+
+    private sealed record RouteEnvironmentDiagnosticsDto(
+        long CurrentSamples,
+        long CurrentRejections,
+        long WaveSamples,
+        long WaveRejections,
+        long SeaStateEvaluations,
+        long LandChecks,
+        long LandDistanceQueries,
+        long LandRejections,
+        long ExclusionChecks,
+        long ExclusionGeometryTests,
+        long ExclusionRejections);
 
     private sealed record RouteDiagnosticsDto(
         long ExpandedNodes,

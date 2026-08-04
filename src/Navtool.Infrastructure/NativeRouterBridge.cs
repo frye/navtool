@@ -15,7 +15,7 @@ namespace Navtool.Infrastructure;
 
 public sealed record NativeRouterBridgeOptions
 {
-    public const uint SupportedAbiVersion = 6;
+    public const uint SupportedAbiVersion = 7;
 
     public int MaximumTextBytes { get; init; } = 64 * 1024 * 1024;
 
@@ -37,14 +37,31 @@ public enum NativeRouterStatus
     NoRoute = 8,
     OutputError = 9,
     InternalError = 10,
-    ForecastExhausted = 11
+    ForecastExhausted = 11,
+
+    /// <summary>
+    /// The environment is internally contradictory, for example a wave field
+    /// with no sea-state model. Reported before any search begins.
+    /// </summary>
+    InvalidEnvironment = 12,
+
+    /// <summary>
+    /// A configured provider had no usable sample and its missing-data policy
+    /// fails the route.
+    /// </summary>
+    EnvironmentDataUnavailable = 13
 }
 
 [Flags]
 public enum NativeRouterCapabilities : ulong
 {
     None = 0,
-    LandSegmentConstraint = 1UL << 0
+    LandSegmentConstraint = 1UL << 0,
+    Environment = 1UL << 1,
+    CurrentProvider = 1UL << 2,
+    SeaState = 1UL << 3,
+    SignedDistanceLandmask = 1UL << 4,
+    ExclusionZones = 1UL << 5
 }
 
 public sealed class NativeRouterException : Exception
@@ -217,6 +234,60 @@ public sealed class NativeRouterBridge
 
     public bool LandConstraintAvailable =>
         (_capabilities & NativeRouterCapabilities.LandSegmentConstraint) != 0;
+
+    /// <summary>True when the bridge accepts a Stage 3 environment payload.</summary>
+    public bool EnvironmentAvailable =>
+        (_capabilities & NativeRouterCapabilities.Environment) != 0;
+
+    public bool SignedDistanceLandmaskAvailable =>
+        (_capabilities & NativeRouterCapabilities.SignedDistanceLandmask) != 0;
+
+    public bool ExclusionZonesAvailable =>
+        (_capabilities & NativeRouterCapabilities.ExclusionZones) != 0;
+
+    /// <summary>
+    /// Names the capability a configured environment needs but the loaded
+    /// bridge does not advertise, or null when every provider in use is
+    /// supported. Checking the specific provider bits rather than only the
+    /// top-level environment bit turns an opaque native InvalidEnvironment
+    /// status into an actionable managed error.
+    /// </summary>
+    internal static string? DescribeMissingCapability(
+        NativeRouterCapabilities capabilities,
+        RouteEnvironmentOptions environment)
+    {
+        ArgumentNullException.ThrowIfNull(environment);
+        if ((capabilities & NativeRouterCapabilities.Environment) == 0)
+        {
+            return "Stage 3 environmental physics";
+        }
+
+        if (environment.Currents is not null &&
+            (capabilities & NativeRouterCapabilities.CurrentProvider) == 0)
+        {
+            return "current providers";
+        }
+
+        if (environment.Waves is not null &&
+            (capabilities & NativeRouterCapabilities.SeaState) == 0)
+        {
+            return "sea state derating";
+        }
+
+        if (environment.Land is not null &&
+            (capabilities & NativeRouterCapabilities.SignedDistanceLandmask) == 0)
+        {
+            return "signed distance landmasks";
+        }
+
+        if (environment.Exclusions is not null &&
+            (capabilities & NativeRouterCapabilities.ExclusionZones) == 0)
+        {
+            return "exclusion zones";
+        }
+
+        return null;
+    }
 
     public bool? StreamingProgressAvailable => Volatile.Read(
         ref _streamingProgressAvailability) switch
@@ -490,20 +561,55 @@ public sealed class NativeRouterBridge
         }
         try
         {
-            status = NativeMethods.CalculateRouteStreaming(
-                forecast.Handle,
-                request.Origin.Latitude,
-                request.Origin.Longitude,
-                request.Destination.Latitude,
-                request.Destination.Longitude,
-                ref departure,
-                ref nativeOptions,
-                callback,
-                IntPtr.Zero,
-                eligibilityCallback,
-                IntPtr.Zero,
-                out routePointer,
-                out routeLength);
+            // v7 is only invoked when there is something to configure, so the
+            // default path stays on the exact v6 entry point it always used.
+            if (optimization.Environment is { IsActive: true } environmentOptions)
+            {
+                if (DescribeMissingCapability(_capabilities, environmentOptions)
+                    is { } missingCapability)
+                {
+                    throw new NotSupportedException(
+                        "The native router bridge does not support " +
+                        $"{missingCapability}.");
+                }
+
+                using var environmentScope =
+                    NativeEnvironmentScope.Create(environmentOptions);
+                var nativeEnvironment = environmentScope.Environment;
+                status = NativeMethods.CalculateRouteStreamingWithEnvironment(
+                    forecast.Handle,
+                    request.Origin.Latitude,
+                    request.Origin.Longitude,
+                    request.Destination.Latitude,
+                    request.Destination.Longitude,
+                    ref departure,
+                    ref nativeOptions,
+                    ref nativeEnvironment,
+                    callback,
+                    IntPtr.Zero,
+                    eligibilityCallback,
+                    IntPtr.Zero,
+                    out routePointer,
+                    out routeLength);
+            }
+            else
+            {
+                status = NativeMethods.CalculateRouteStreaming(
+                    forecast.Handle,
+                    request.Origin.Latitude,
+                    request.Origin.Longitude,
+                    request.Destination.Latitude,
+                    request.Destination.Longitude,
+                    ref departure,
+                    ref nativeOptions,
+                    callback,
+                    IntPtr.Zero,
+                    eligibilityCallback,
+                    IntPtr.Zero,
+                    out routePointer,
+                    out routeLength);
+            }
+
             Volatile.Write(ref _streamingProgressAvailability, 1);
         }
         catch (EntryPointNotFoundException exception)
@@ -1012,11 +1118,27 @@ public sealed class NativeRouteEngine : IRouteEngine
                 .AcquireAsync(GetLoadBounds(forecast), cancellationToken)
                 .ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
+
+        // The signed-distance landmask replaces the callback rather than
+        // layering on top of it, so the two land paths never disagree.
+        var usesSignedDistanceLandmask =
+            optimization.Environment?.LandRequest is not null;
         Func<Coordinate, Coordinate, bool>? isSegmentEligible =
-            landData.Geometry is null
+            landData.Geometry is null || usesSignedDistanceLandmask
                 ? null
                 : (parent, candidate) =>
                     !landData.Geometry.IntersectsSegment(parent, candidate);
+
+        var effectiveOptimization = optimization;
+        if (usesSignedDistanceLandmask)
+        {
+            progress?.Report(new RouteCalculationProgress(0.05, "Building landmask"));
+            effectiveOptimization = ResolveLandmask(
+                optimization,
+                landData,
+                GetLoadBounds(forecast),
+                cancellationToken);
+        }
 
         progress?.Report(new RouteCalculationProgress(0, "Loading forecast"));
 
@@ -1058,13 +1180,13 @@ public sealed class NativeRouteEngine : IRouteEngine
                 loaded,
                 request,
                 forecast.Request.Model,
-                optimization,
+                effectiveOptimization,
                 reportSnapshot,
                 isSegmentEligible,
                 cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new RouteCalculationProgress(1, "Route complete"));
-            result = ApplyLandData(result, landData);
+            result = ApplyLandData(result, landData, usesSignedDistanceLandmask);
             _logger.LogInformation(
                 "Completed route {RouteId} using {Model} with {PointCount} points",
                 request.RouteId,
@@ -1113,10 +1235,73 @@ public sealed class NativeRouteEngine : IRouteEngine
                 1);
     }
 
+    private RouteOptimizationOptions ResolveLandmask(
+        RouteOptimizationOptions optimization,
+        LandDataAcquisition landData,
+        GeographicBounds bounds,
+        CancellationToken cancellationToken)
+    {
+        var environment = optimization.Environment ??
+            throw new InvalidOperationException(
+                "A landmask request requires a configured environment.");
+        var request = environment.LandRequest ??
+            throw new InvalidOperationException(
+                "A landmask request was expected but none was configured.");
+
+        if (!_bridge.SignedDistanceLandmaskAvailable)
+        {
+            throw new NotSupportedException(
+                "The installed router-lib does not provide the signed-distance landmask.");
+        }
+
+        // Never fall back to unrestricted water. Without geometry the mask
+        // cannot be built and the route must not proceed pretending otherwise.
+        if (landData.Geometry is null)
+        {
+            throw new InvalidOperationException(
+                landData.Warning ??
+                "The signed-distance landmask was requested but no land geometry is available.");
+        }
+
+        _logger.LogInformation(
+            "Rasterizing a {Resolution:0.###} nautical mile signed-distance landmask over {Bounds}",
+            request.ResolutionNauticalMiles,
+            bounds);
+        var mask = SignedDistanceLandmaskBuilder.Build(
+            landData.Geometry,
+            bounds,
+            request.ResolutionNauticalMiles,
+            new RouteProviderMetadata(
+                "Navtool signed-distance landmask",
+                landData.Attribution ?? "Navtool land data provider",
+                $"{request.ResolutionNauticalMiles:0.###}nm"),
+            request.ClearanceNauticalMiles,
+            request.MaximumSubdivisionDepth,
+            request.MissingDataPolicy,
+            cancellationToken);
+
+        return optimization.WithEnvironment(environment.WithResolvedLand(mask));
+    }
+
     private static RouteResult ApplyLandData(
         RouteResult result,
-        LandDataAcquisition landData)
+        LandDataAcquisition landData,
+        bool usesSignedDistanceLandmask = false)
     {
+        // With the built-in landmask the applied attribution comes from the
+        // environment metadata router-lib emits, so report the mask rather than
+        // the callback that was deliberately not installed.
+        if (usesSignedDistanceLandmask && landData.Status == LandDataStatus.Available)
+        {
+            return result.WithLandAvoidance(
+                new RouteLandAvoidance(
+                    LandAvoidanceStatus.Applied,
+                    Warning: null,
+                    Attribution: result.Environment?.Landmask is { } mask
+                        ? $"{mask.Name} ({mask.Source})"
+                        : landData.Attribution));
+        }
+
         var landAvoidance = landData.Status switch
         {
             LandDataStatus.Available when landData.Geometry is not null =>
@@ -1195,6 +1380,8 @@ internal static class NativeRouteJsonParser
     {
         RouteDiagnostics diagnostics;
         RouteLatticeDiagnostics? latticeDiagnostics = null;
+        RouteEnvironmentMetadata? environmentMetadata = null;
+        RouteEnvironmentDiagnostics? environmentDiagnostics = null;
         RouteCompletion completion;
         var raw = ImmutableArray.CreateBuilder<RawRoutePoint>();
 
@@ -1292,8 +1479,12 @@ internal static class NativeRouteJsonParser
                     RequiredDouble(element, "boatSpeedKnots"),
                     RequiredDouble(element, "trueWindSpeedKnots"),
                     RequiredDouble(element, "trueWindDirectionDegrees"),
-                    RequiredDouble(element, "cumulativeDistanceNauticalMiles")));
+                    RequiredDouble(element, "cumulativeDistanceNauticalMiles"),
+                    ParsePointEnvironment(element)));
             }
+
+            environmentMetadata = ParseEnvironmentMetadata(root);
+            environmentDiagnostics = ParseEnvironmentDiagnostics(root);
         }
         catch (NativeRouteFormatException)
         {
@@ -1323,7 +1514,8 @@ internal static class NativeRouteJsonParser
                     point.BoatSpeedKnots,
                     point.TrueWindSpeedKnots,
                     point.TrueWindDirectionDegrees,
-                    point.CumulativeDistanceNauticalMiles));
+                    point.CumulativeDistanceNauticalMiles,
+                    point.Environment));
             }
         }
         catch (ArgumentException exception)
@@ -1346,7 +1538,9 @@ internal static class NativeRouteJsonParser
                 completion,
                 landAvoidance: null,
                 solver,
-                latticeDiagnostics);
+                latticeDiagnostics,
+                environmentMetadata,
+                environmentDiagnostics);
         }
         catch (ArgumentException exception)
         {
@@ -1364,7 +1558,244 @@ internal static class NativeRouteJsonParser
         double BoatSpeedKnots,
         double TrueWindSpeedKnots,
         double TrueWindDirectionDegrees,
-        double CumulativeDistanceNauticalMiles);
+        double CumulativeDistanceNauticalMiles,
+        RoutePointEnvironment? Environment);
+
+    /// <summary>
+    /// Parses the per-point environment block. router-lib does not emit
+    /// currentApplied or waveApplied: the presence of currentEastKnots and
+    /// significantWaveHeightMetres is the only signal that a provider applied.
+    /// </summary>
+    private static RoutePointEnvironment? ParsePointEnvironment(JsonElement point)
+    {
+        if (!point.TryGetProperty("environment", out var element) ||
+            element.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return new RoutePointEnvironment(
+            RequiredDouble(element, "speedOverGroundKnots"),
+            RequiredDouble(element, "courseOverGroundDegrees"),
+            RequiredDouble(element, "flatWaterSpeedKnots"),
+            OptionalDouble(element, "currentEastKnots"),
+            OptionalDouble(element, "currentNorthKnots"),
+            OptionalDouble(element, "significantWaveHeightMetres"),
+            OptionalDouble(element, "wavePeriodSeconds"),
+            OptionalDouble(element, "relativeWaveAngleDegrees"));
+    }
+
+    private static RouteEnvironmentDiagnostics? ParseEnvironmentDiagnostics(JsonElement root)
+    {
+        if (!root.TryGetProperty("environmentDiagnostics", out var element) ||
+            element.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return new RouteEnvironmentDiagnostics(
+            OptionalInt64(element, "currentSamples"),
+            OptionalInt64(element, "currentRejections"),
+            OptionalInt64(element, "waveSamples"),
+            OptionalInt64(element, "waveRejections"),
+            OptionalInt64(element, "seaStateEvaluations"),
+            OptionalInt64(element, "landChecks"),
+            OptionalInt64(element, "landDistanceQueries"),
+            OptionalInt64(element, "landRejections"),
+            OptionalInt64(element, "exclusionChecks"),
+            OptionalInt64(element, "exclusionGeometryTests"),
+            OptionalInt64(element, "exclusionRejections"));
+    }
+
+    private static RouteEnvironmentMetadata? ParseEnvironmentMetadata(JsonElement root)
+    {
+        if (!root.TryGetProperty("environment", out var element) ||
+            element.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var policies = element.TryGetProperty("policies", out var policiesElement) &&
+            policiesElement.ValueKind == JsonValueKind.Object
+                ? policiesElement
+                : default;
+
+        return new RouteEnvironmentMetadata(
+            ParseSampling(element),
+            ParseProviderMetadata(element, "currentProvider"),
+            ParseProviderMetadata(element, "waveProvider"),
+            ParseProviderMetadata(element, "seaStateModel"),
+            ParseProviderMetadata(element, "landmask"),
+            ParseProviderMetadata(element, "exclusions"),
+            ParseMissingDataPolicy(policies, "current"),
+            ParseMissingDataPolicy(policies, "wave"),
+            ParseMissingDataPolicy(policies, "land"),
+            OptionalDouble(element, "landResolutionNauticalMiles"),
+            OptionalDouble(element, "landInterpolationErrorNauticalMiles"),
+            OptionalDouble(element, "landClearanceNauticalMiles"),
+            ParseBoundaryPolicy(element),
+            NullableInt64(element, "exclusionZoneCount") is { } zoneCount
+                ? checked((int)zoneCount)
+                : null,
+            NullableInt64(element, "exclusionRevision") is { } revision
+                ? checked((ulong)revision)
+                : null);
+    }
+
+    /// <summary>
+    /// Reads an optional nonnegative integer, returning null when the key is
+    /// absent. router-lib omits <c>exclusionZoneCount</c> and
+    /// <c>exclusionRevision</c> entirely when exclusions are not configured, and
+    /// "not configured" must never read back as a configured set of zero zones.
+    /// </summary>
+    private static long? NullableInt64(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var value) ||
+            value.ValueKind != JsonValueKind.Number ||
+            !value.TryGetInt64(out var result))
+        {
+            return null;
+        }
+
+        if (result < 0)
+        {
+            throw new NativeRouteFormatException(
+                $"Native route JSON field '{name}' must be nonnegative.");
+        }
+
+        return result;
+    }
+
+    private static RouteEnvironmentSampling ParseSampling(JsonElement element)
+    {
+        if (!element.TryGetProperty("sampling", out var value) ||
+            value.ValueKind != JsonValueKind.String)
+        {
+            return RouteEnvironmentSampling.SegmentStart;
+        }
+
+        return value.GetString() switch
+        {
+            "midpoint" => RouteEnvironmentSampling.Midpoint,
+            "segment_start" => RouteEnvironmentSampling.SegmentStart,
+            var other => throw new NativeRouteFormatException(
+                $"Native route JSON reported an unknown environment sampling mode '{other}'.")
+        };
+    }
+
+    private static RouteMissingDataPolicy ParseMissingDataPolicy(
+        JsonElement policies,
+        string name)
+    {
+        if (policies.ValueKind != JsonValueKind.Object ||
+            !policies.TryGetProperty(name, out var value) ||
+            value.ValueKind != JsonValueKind.String)
+        {
+            return RouteMissingDataPolicy.FailRoute;
+        }
+
+        return value.GetString() switch
+        {
+            "reject_transition" => RouteMissingDataPolicy.RejectTransition,
+            "fail_route" => RouteMissingDataPolicy.FailRoute,
+            var other => throw new NativeRouteFormatException(
+                $"Native route JSON reported an unknown missing-data policy '{other}'.")
+        };
+    }
+
+    private static RouteExclusionBoundaryPolicy? ParseBoundaryPolicy(JsonElement element)
+    {
+        if (!element.TryGetProperty("exclusionBoundaryPolicy", out var value) ||
+            value.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        return value.GetString() switch
+        {
+            "boundary_allowed" => RouteExclusionBoundaryPolicy.BoundaryAllowed,
+            "boundary_excluded" => RouteExclusionBoundaryPolicy.BoundaryExcluded,
+            var other => throw new NativeRouteFormatException(
+                $"Native route JSON reported an unknown exclusion boundary policy '{other}'.")
+        };
+    }
+
+    // An unconfigured provider is emitted as JSON null rather than omitted, so
+    // both shapes must read back as "not configured".
+    private static RouteProviderMetadata? ParseProviderMetadata(
+        JsonElement parent,
+        string name)
+    {
+        if (!parent.TryGetProperty(name, out var value) ||
+            value.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var providerName = OptionalString(value, "name");
+        if (string.IsNullOrWhiteSpace(providerName))
+        {
+            throw new NativeRouteFormatException(
+                $"Native route JSON environment provider '{name}' is missing a name.");
+        }
+
+        var source = OptionalString(value, "source");
+        var revision = OptionalString(value, "revision");
+
+        return new RouteProviderMetadata(
+            providerName,
+            string.IsNullOrWhiteSpace(source) ? "unattributed" : source,
+            revision ?? string.Empty);
+    }
+
+    /// <summary>
+    /// Reads an optional string, treating a wrong-kind value as absent the same
+    /// way <see cref="OptionalDouble"/> and <see cref="OptionalInt64"/> do. The
+    /// provider name is still required by its caller, so a non-string name
+    /// reports the specific missing-name error rather than the generic contract
+    /// failure a raw GetString would raise.
+    /// </summary>
+    private static string? OptionalString(JsonElement parent, string name) =>
+        parent.TryGetProperty(name, out var value) &&
+        value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static double? OptionalDouble(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var value) ||
+            value.ValueKind != JsonValueKind.Number)
+        {
+            return null;
+        }
+
+        var result = value.GetDouble();
+        if (!double.IsFinite(result))
+        {
+            throw new NativeRouteFormatException(
+                $"Native route JSON field '{name}' must be finite.");
+        }
+
+        return result;
+    }
+
+    private static long OptionalInt64(JsonElement parent, string name, long fallback = 0)
+    {
+        if (!parent.TryGetProperty(name, out var value) ||
+            value.ValueKind != JsonValueKind.Number ||
+            !value.TryGetInt64(out var result))
+        {
+            return fallback;
+        }
+
+        if (result < 0)
+        {
+            throw new NativeRouteFormatException(
+                $"Native route JSON field '{name}' must be nonnegative.");
+        }
+
+        return result;
+    }
 
     private static JsonElement Required(JsonElement parent, string name, JsonValueKind kind)
     {
@@ -1655,6 +2086,445 @@ internal struct NativeFrontSegment
     public ulong PointCount;
 }
 
+// ---------- Stage 3 environment payload (ABI v7) ----------
+
+internal enum NativeFieldMode
+{
+    None = 0,
+    Uniform = 1,
+    Grid = 2
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeProviderMetadata
+{
+    public IntPtr Name;
+    public IntPtr Source;
+    public IntPtr Revision;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeEnvironmentGridSpec
+{
+    public double SouthLatitudeDegrees;
+    public double WestLongitudeDegrees;
+    public double LatitudeStepDegrees;
+    public double LongitudeStepDegrees;
+    public ulong LatitudeCount;
+    public ulong LongitudeCount;
+    public byte GlobalLongitudeCoverage;
+
+    public static NativeEnvironmentGridSpec From(RouteEnvironmentGrid grid) => new()
+    {
+        SouthLatitudeDegrees = grid.SouthLatitudeDegrees,
+        WestLongitudeDegrees = grid.WestLongitudeDegrees,
+        LatitudeStepDegrees = grid.LatitudeStepDegrees,
+        LongitudeStepDegrees = grid.LongitudeStepDegrees,
+        LatitudeCount = checked((ulong)grid.LatitudeCount),
+        LongitudeCount = checked((ulong)grid.LongitudeCount),
+        GlobalLongitudeCoverage = grid.GlobalLongitudeCoverage ? (byte)1 : (byte)0
+    };
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeCurrentSettings
+{
+    public int Mode;
+    public int MissingDataPolicy;
+    public double UniformEastKnots;
+    public double UniformNorthKnots;
+    public NativeEnvironmentGridSpec Grid;
+    public IntPtr EastKnots;
+    public IntPtr NorthKnots;
+    public NativeProviderMetadata Metadata;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeWaveDerating
+{
+    public double HeightCoefficient;
+    public double HeightExponent;
+    public double HeadSeaFactor;
+    public double FollowingSeaFactor;
+    public double MaximumLossFraction;
+    public double PeriodSensitivity;
+    public double ReferencePeriodSeconds;
+    public double MinimumPeriodSeconds;
+
+    public static NativeWaveDerating From(RouteWaveDeratingCoefficients derating) => new()
+    {
+        HeightCoefficient = derating.HeightCoefficient,
+        HeightExponent = derating.HeightExponent,
+        HeadSeaFactor = derating.HeadSeaFactor,
+        FollowingSeaFactor = derating.FollowingSeaFactor,
+        MaximumLossFraction = derating.MaximumLossFraction,
+        PeriodSensitivity = derating.PeriodSensitivity,
+        ReferencePeriodSeconds = derating.ReferencePeriodSeconds,
+        MinimumPeriodSeconds = derating.MinimumPeriodSeconds
+    };
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeWaveSettings
+{
+    public int Mode;
+    public int MissingDataPolicy;
+    public double UniformSignificantHeightMetres;
+    public double UniformPeakPeriodSeconds;
+    public double UniformDirectionFromDegrees;
+    public NativeEnvironmentGridSpec Grid;
+    public IntPtr SignificantHeightMetres;
+    public IntPtr PeakPeriodSeconds;
+    public IntPtr DirectionFromDegrees;
+    public NativeWaveDerating Derating;
+    public NativeProviderMetadata ProviderMetadata;
+    public NativeProviderMetadata ModelMetadata;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeLandmaskSettings
+{
+    public byte Configured;
+    public int MissingDataPolicy;
+    public NativeEnvironmentGridSpec Grid;
+    public IntPtr SignedDistanceNauticalMiles;
+    public double ResolutionNauticalMiles;
+    public double InterpolationErrorNauticalMiles;
+    public double ClearanceNauticalMiles;
+    public ulong MaximumSubdivisionDepth;
+    public NativeProviderMetadata Metadata;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeExclusionRing
+{
+    public ulong VertexOffset;
+    public ulong VertexCount;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeExclusionPolygon
+{
+    public NativeExclusionRing Outer;
+    public ulong HoleOffset;
+    public ulong HoleCount;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeExclusionZone
+{
+    public IntPtr Identifier;
+    public IntPtr Source;
+    public ulong Revision;
+    public long ActiveFromUtcEpochSeconds;
+    public long ActiveUntilUtcEpochSeconds;
+    public byte HasActiveFrom;
+    public byte HasActiveUntil;
+    public ulong PolygonOffset;
+    public ulong PolygonCount;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeExclusionSettings
+{
+    public byte Configured;
+    public int BoundaryPolicy;
+    public IntPtr Zones;
+    public ulong ZoneCount;
+    public IntPtr Polygons;
+    public ulong PolygonCount;
+    public IntPtr Holes;
+    public ulong HoleCount;
+    public IntPtr Vertices;
+    public ulong VertexCount;
+    public NativeProviderMetadata Metadata;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeEnvironment
+{
+    public int Sampling;
+    private int _reserved;
+    public NativeCurrentSettings Currents;
+    public NativeWaveSettings Waves;
+    public NativeLandmaskSettings Land;
+    public NativeExclusionSettings Exclusions;
+}
+
+/// <summary>
+/// Builds a <see cref="NativeEnvironment"/> and owns every unmanaged buffer it
+/// points at. The bridge borrows these pointers for the duration of one call,
+/// so the scope must outlive the call and is disposed immediately after.
+/// </summary>
+internal sealed class NativeEnvironmentScope : IDisposable
+{
+    private readonly List<IntPtr> _allocations = new();
+    private readonly List<GCHandle> _handles = new();
+    private bool _disposed;
+
+    private NativeEnvironmentScope()
+    {
+    }
+
+    public NativeEnvironment Environment { get; private set; }
+
+    public static NativeEnvironmentScope Create(RouteEnvironmentOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var scope = new NativeEnvironmentScope();
+        try
+        {
+            var environment = new NativeEnvironment
+            {
+                Sampling = (int)options.Sampling,
+                Currents = scope.BuildCurrents(options.Currents),
+                Waves = scope.BuildWaves(options.Waves),
+                Land = scope.BuildLand(options.Land),
+                Exclusions = scope.BuildExclusions(options.Exclusions)
+            };
+            scope.Environment = environment;
+            return scope;
+        }
+        catch
+        {
+            scope.Dispose();
+            throw;
+        }
+    }
+
+    private NativeCurrentSettings BuildCurrents(RouteCurrentOptions? currents)
+    {
+        if (currents is null)
+        {
+            return new NativeCurrentSettings { Mode = (int)NativeFieldMode.None };
+        }
+
+        var settings = new NativeCurrentSettings
+        {
+            MissingDataPolicy = (int)currents.MissingDataPolicy,
+            Metadata = AllocateMetadata(currents.Metadata)
+        };
+
+        if (currents.IsUniform)
+        {
+            settings.Mode = (int)NativeFieldMode.Uniform;
+            settings.UniformEastKnots = currents.UniformEastKnots!.Value;
+            settings.UniformNorthKnots = currents.UniformNorthKnots!.Value;
+            return settings;
+        }
+
+        settings.Mode = (int)NativeFieldMode.Grid;
+        settings.Grid = NativeEnvironmentGridSpec.From(currents.Grid!);
+        settings.EastKnots = AllocateDoubles(currents.EastKnots!);
+        settings.NorthKnots = AllocateDoubles(currents.NorthKnots!);
+        return settings;
+    }
+
+    private NativeWaveSettings BuildWaves(RouteWaveOptions? waves)
+    {
+        if (waves is null)
+        {
+            return new NativeWaveSettings { Mode = (int)NativeFieldMode.None };
+        }
+
+        var settings = new NativeWaveSettings
+        {
+            MissingDataPolicy = (int)waves.MissingDataPolicy,
+            Derating = NativeWaveDerating.From(waves.Derating),
+            ProviderMetadata = AllocateMetadata(waves.Metadata),
+            // A null model name tells the bridge to let router-lib supply the
+            // built-in model's own attribution rather than inventing one.
+            ModelMetadata = default
+        };
+
+        if (waves.IsUniform)
+        {
+            settings.Mode = (int)NativeFieldMode.Uniform;
+            settings.UniformSignificantHeightMetres = waves.UniformSignificantHeightMetres!.Value;
+            settings.UniformPeakPeriodSeconds = waves.UniformPeakPeriodSeconds!.Value;
+            settings.UniformDirectionFromDegrees = waves.UniformDirectionFromDegrees!.Value;
+            return settings;
+        }
+
+        settings.Mode = (int)NativeFieldMode.Grid;
+        settings.Grid = NativeEnvironmentGridSpec.From(waves.Grid!);
+        settings.SignificantHeightMetres = AllocateDoubles(waves.SignificantHeightMetres!);
+        settings.PeakPeriodSeconds = AllocateDoubles(waves.PeakPeriodSeconds!);
+        settings.DirectionFromDegrees = AllocateDoubles(waves.DirectionFromDegrees!);
+        return settings;
+    }
+
+    private NativeLandmaskSettings BuildLand(RouteLandmaskOptions? land)
+    {
+        if (land is null)
+        {
+            return default;
+        }
+
+        return new NativeLandmaskSettings
+        {
+            Configured = 1,
+            MissingDataPolicy = (int)land.MissingDataPolicy,
+            Grid = NativeEnvironmentGridSpec.From(land.Grid),
+            SignedDistanceNauticalMiles = AllocateDoubles(land.SignedDistanceNauticalMiles),
+            ResolutionNauticalMiles = land.ResolutionNauticalMiles,
+            InterpolationErrorNauticalMiles = land.InterpolationErrorNauticalMiles,
+            ClearanceNauticalMiles = land.ClearanceNauticalMiles,
+            MaximumSubdivisionDepth = checked((ulong)land.MaximumSubdivisionDepth),
+            Metadata = AllocateMetadata(land.Metadata)
+        };
+    }
+
+    private NativeExclusionSettings BuildExclusions(RouteExclusionOptions? exclusions)
+    {
+        if (exclusions is null)
+        {
+            return default;
+        }
+
+        var vertices = new List<NativeCoordinate>();
+        var holes = new List<NativeExclusionRing>();
+        var polygons = new List<NativeExclusionPolygon>();
+        var zones = new List<NativeExclusionZone>(exclusions.Zones.Count);
+
+        foreach (var zone in exclusions.Zones)
+        {
+            var polygonOffset = (ulong)polygons.Count;
+            foreach (var polygon in zone.Polygons)
+            {
+                var outer = AppendRing(polygon.Outer, vertices);
+                var holeOffset = (ulong)holes.Count;
+                foreach (var hole in polygon.Holes)
+                {
+                    holes.Add(AppendRing(hole, vertices));
+                }
+
+                polygons.Add(new NativeExclusionPolygon
+                {
+                    Outer = outer,
+                    HoleOffset = holeOffset,
+                    HoleCount = (ulong)polygon.Holes.Count
+                });
+            }
+
+            zones.Add(new NativeExclusionZone
+            {
+                Identifier = AllocateUtf8(zone.Identifier),
+                Source = AllocateUtf8(zone.Source),
+                Revision = zone.Revision,
+                ActiveFromUtcEpochSeconds =
+                    zone.ActiveFrom?.ToUnixTimeSeconds() ?? 0,
+                ActiveUntilUtcEpochSeconds =
+                    zone.ActiveUntil?.ToUnixTimeSeconds() ?? 0,
+                HasActiveFrom = zone.ActiveFrom is null ? (byte)0 : (byte)1,
+                HasActiveUntil = zone.ActiveUntil is null ? (byte)0 : (byte)1,
+                PolygonOffset = polygonOffset,
+                PolygonCount = (ulong)zone.Polygons.Count
+            });
+        }
+
+        return new NativeExclusionSettings
+        {
+            Configured = 1,
+            BoundaryPolicy = (int)exclusions.BoundaryPolicy,
+            Zones = AllocateArray(zones),
+            ZoneCount = (ulong)zones.Count,
+            Polygons = AllocateArray(polygons),
+            PolygonCount = (ulong)polygons.Count,
+            Holes = AllocateArray(holes),
+            HoleCount = (ulong)holes.Count,
+            Vertices = AllocateArray(vertices),
+            VertexCount = (ulong)vertices.Count,
+            Metadata = AllocateMetadata(exclusions.Metadata)
+        };
+    }
+
+    private static NativeExclusionRing AppendRing(
+        RouteExclusionRing ring,
+        List<NativeCoordinate> vertices)
+    {
+        var offset = (ulong)vertices.Count;
+        foreach (var vertex in ring.Vertices)
+        {
+            vertices.Add(new NativeCoordinate
+            {
+                LatitudeDegrees = vertex.Latitude,
+                LongitudeDegrees = vertex.Longitude
+            });
+        }
+
+        return new NativeExclusionRing
+        {
+            VertexOffset = offset,
+            VertexCount = (ulong)ring.Vertices.Count
+        };
+    }
+
+    private NativeProviderMetadata AllocateMetadata(RouteProviderMetadata metadata) => new()
+    {
+        Name = AllocateUtf8(metadata.Name),
+        Source = AllocateUtf8(metadata.Source),
+        Revision = AllocateUtf8(metadata.Revision)
+    };
+
+    private IntPtr AllocateUtf8(string value)
+    {
+        var pointer = Marshal.StringToCoTaskMemUTF8(value);
+        _allocations.Add(pointer);
+        return pointer;
+    }
+
+    private IntPtr AllocateDoubles(IReadOnlyList<double> values)
+    {
+        var buffer = values as double[] ?? values.ToArray();
+        return Pin(buffer);
+    }
+
+    private IntPtr AllocateArray<T>(List<T> values)
+        where T : struct
+    {
+        if (values.Count == 0)
+        {
+            return IntPtr.Zero;
+        }
+
+        return Pin(values.ToArray());
+    }
+
+    private IntPtr Pin(Array buffer)
+    {
+        var handle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+        _handles.Add(handle);
+        return handle.AddrOfPinnedObject();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        Environment = default;
+        foreach (var handle in _handles)
+        {
+            if (handle.IsAllocated)
+            {
+                handle.Free();
+            }
+        }
+
+        _handles.Clear();
+        foreach (var allocation in _allocations)
+        {
+            Marshal.FreeCoTaskMem(allocation);
+        }
+
+        _allocations.Clear();
+    }
+}
+
 internal static class NativeMethods
 {
     private const string LibraryName = "navtool_router_bridge";
@@ -1729,6 +2599,23 @@ internal static class NativeMethods
         double destinationLongitude,
         ref long departureEpochSeconds,
         ref NativeRoutingOptions options,
+        RoutingProgressCallback onProgress,
+        IntPtr progressUserData,
+        SegmentEligibilityCallback? isSegmentEligible,
+        IntPtr segmentEligibilityUserData,
+        out IntPtr routeJson,
+        out nuint routeJsonLength);
+
+    [DllImport(LibraryName, EntryPoint = "navtool_router_calculate_route_streaming_v7", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern NativeRouterStatus CalculateRouteStreamingWithEnvironment(
+        NativeForecastSafeHandle forecast,
+        double startLatitude,
+        double startLongitude,
+        double destinationLatitude,
+        double destinationLongitude,
+        ref long departureEpochSeconds,
+        ref NativeRoutingOptions options,
+        ref NativeEnvironment environment,
         RoutingProgressCallback onProgress,
         IntPtr progressUserData,
         SegmentEligibilityCallback? isSegmentEligible,

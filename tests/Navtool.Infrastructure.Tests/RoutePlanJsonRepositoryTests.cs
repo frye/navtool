@@ -326,11 +326,160 @@ public sealed class RoutePlanJsonRepositoryTests
         return plan.MarkSailed(plan.Legs[0].Id);
     }
 
+
+    /// <summary>
+    /// Version 3 predates environmental physics. Upgrading must leave every
+    /// environment member null rather than synthesizing calm water, because a
+    /// synthesized environment is indistinguishable from one that actually ran.
+    /// </summary>
+    [Fact]
+    public async Task Version_three_results_are_migrated_with_null_environment()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = WithResult(CreatePlan());
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        root["schemaVersion"] = 3;
+        foreach (var result in root["plan"]!["results"]!.AsArray())
+        {
+            foreach (var leg in result!["legs"]!.AsArray())
+            {
+                var route = leg!["route"]!.AsObject();
+                route.Remove("environment");
+                route.Remove("environmentDiagnostics");
+                foreach (var point in route["points"]!.AsArray())
+                {
+                    point!.AsObject().Remove("environment");
+                }
+            }
+        }
+
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+
+        var loaded = await repository.OpenAsync(plan.Id);
+
+        Assert.All(
+            loaded.Results.SelectMany(result => result.Legs),
+            leg =>
+            {
+                Assert.Null(leg.Route!.Environment);
+                Assert.Null(leg.Route.EnvironmentDiagnostics);
+                Assert.All(leg.Route.Points, point => Assert.Null(point.Environment));
+            });
+    }
+
+    [Fact]
+    public async Task Environment_metadata_diagnostics_and_point_audit_round_trip()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = WithResult(CreatePlan(), environment: true);
+
+        await repository.SaveAsync(plan);
+        var loaded = await repository.OpenAsync(plan.Id);
+
+        Assert.All(
+            loaded.Results.SelectMany(result => result.Legs),
+            leg =>
+            {
+                var environment = leg.Route!.Environment;
+                Assert.NotNull(environment);
+                Assert.Equal(RouteEnvironmentSampling.Midpoint, environment!.Sampling);
+                Assert.Equal("uniform-current", environment.CurrentProvider?.Name);
+                Assert.Equal("operator", environment.CurrentProvider?.Source);
+                Assert.Equal("rev-1", environment.CurrentProvider?.Revision);
+                Assert.Equal("navtool-signed-distance", environment.Landmask?.Name);
+                Assert.Null(environment.Exclusions);
+                Assert.Equal(RouteMissingDataPolicy.FailRoute, environment.CurrentPolicy);
+                Assert.Equal(RouteMissingDataPolicy.RejectTransition, environment.LandPolicy);
+                Assert.Equal(2.5, environment.LandResolutionNauticalMiles);
+                Assert.Equal(1.75, environment.LandInterpolationErrorNauticalMiles);
+                Assert.Equal(0.25, environment.LandClearanceNauticalMiles);
+                Assert.Null(environment.ExclusionZoneCount);
+
+                var diagnostics = leg.Route.EnvironmentDiagnostics;
+                Assert.NotNull(diagnostics);
+                Assert.Equal(11, diagnostics!.CurrentSamples);
+                Assert.Equal(1, diagnostics.CurrentRejections);
+                Assert.Equal(44, diagnostics.LandChecks);
+                Assert.Equal(55, diagnostics.LandDistanceQueries);
+
+                var first = leg.Route.Points[0].Environment;
+                Assert.NotNull(first);
+                Assert.Equal(7.25, first!.SpeedOverGroundKnots);
+                Assert.Equal(95.5, first.CourseOverGroundDegrees);
+                Assert.Equal(6, first.FlatWaterSpeedKnots);
+                Assert.Equal(1.1, first.CurrentEastKnots);
+                Assert.Equal(-0.4, first.CurrentNorthKnots);
+                Assert.True(first.CurrentApplied);
+                Assert.False(first.WaveApplied);
+            });
+    }
+
+    /// <summary>
+    /// Water-relative heading and speed must survive persistence unchanged even
+    /// when the point also carries ground-frame motion, so a reloaded plan can
+    /// never silently swap frames.
+    /// </summary>
+    [Fact]
+    public async Task Persisted_points_keep_water_relative_values_alongside_ground_frame()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = WithResult(CreatePlan(), environment: true);
+
+        await repository.SaveAsync(plan);
+        var loaded = await repository.OpenAsync(plan.Id);
+
+        var point = loaded.Results.SelectMany(result => result.Legs).First().Route!.Points[0];
+        Assert.Equal(90, point.HeadingDegrees);
+        Assert.Equal(6, point.BoatSpeedKnots);
+        Assert.Equal(95.5, point.Environment!.CourseOverGroundDegrees);
+        Assert.Equal(7.25, point.Environment.SpeedOverGroundKnots);
+    }
+
     private static RoutePlan WithResult(
         RoutePlan plan,
         RouteSolver solver = RouteSolver.IsochroneBeam,
-        RouteLatticeDiagnostics? latticeDiagnostics = null)
+        RouteLatticeDiagnostics? latticeDiagnostics = null,
+        bool environment = false)
     {
+        var pointEnvironment = environment
+            ? new RoutePointEnvironment(
+                speedOverGroundKnots: 7.25,
+                courseOverGroundDegrees: 95.5,
+                flatWaterSpeedKnots: 6,
+                currentEastKnots: 1.1,
+                currentNorthKnots: -0.4)
+            : null;
+        var environmentMetadata = environment
+            ? new RouteEnvironmentMetadata(
+                RouteEnvironmentSampling.Midpoint,
+                currentProvider: new RouteProviderMetadata("uniform-current", "operator", "rev-1"),
+                landmask: new RouteProviderMetadata("navtool-signed-distance", "osm", "rev-7"),
+                currentPolicy: RouteMissingDataPolicy.FailRoute,
+                wavePolicy: RouteMissingDataPolicy.FailRoute,
+                landPolicy: RouteMissingDataPolicy.RejectTransition,
+                landResolutionNauticalMiles: 2.5,
+                landInterpolationErrorNauticalMiles: 1.75,
+                landClearanceNauticalMiles: 0.25)
+            : null;
+        var environmentDiagnostics = environment
+            ? new RouteEnvironmentDiagnostics(
+                currentSamples: 11,
+                currentRejections: 1,
+                waveSamples: 0,
+                waveRejections: 0,
+                seaStateEvaluations: 0,
+                landChecks: 44,
+                landDistanceQueries: 55,
+                landRejections: 2,
+                exclusionChecks: 0,
+                exclusionGeometryTests: 0,
+                exclusionRejections: 0)
+            : null;
         var now = new DateTimeOffset(2026, 8, 1, 18, 0, 0, TimeSpan.Zero);
         var session = new RouteCalculationSession(plan.Id, ForecastModel.NoaaGfs, now)
             .Complete(now.AddSeconds(2));
@@ -348,14 +497,16 @@ public sealed class RoutePlanJsonRepositoryTests
                 request,
                 ForecastModel.NoaaGfs,
                 [
-                    new RoutePoint(from.Coordinate, now, 90, 6, 15, 180, 0),
-                    new RoutePoint(to.Coordinate, now.AddHours(1), 90, 6, 15, 180, 50)
+                    new RoutePoint(from.Coordinate, now, 90, 6, 15, 180, 0, pointEnvironment),
+                    new RoutePoint(to.Coordinate, now.AddHours(1), 90, 6, 15, 180, 50, pointEnvironment)
                 ],
                 new RouteDiagnostics(1, 2, 1, 1, TimeSpan.FromSeconds(2)),
                 RouteCompletion.DestinationReached,
                 new RouteLandAvoidance(LandAvoidanceStatus.Applied, Attribution: "Test"),
                 solver,
-                latticeDiagnostics);
+                latticeDiagnostics,
+                environmentMetadata,
+                environmentDiagnostics);
             return new RouteLegResult(
                 leg.Id,
                 RouteLegOutcomeState.Succeeded,
