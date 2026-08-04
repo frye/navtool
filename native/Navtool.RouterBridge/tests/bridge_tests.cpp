@@ -519,6 +519,138 @@ std::filesystem::path create_tiled_grib() {
     return output_path;
 }
 
+std::filesystem::path create_ecmwf_grib(bool mixed_run = false) {
+    const auto output_path =
+        std::filesystem::temp_directory_path() /
+        ("navtool-ecmwf-" +
+         std::to_string(
+             std::chrono::steady_clock::now().time_since_epoch().count()) +
+         ".grib2");
+    constexpr long longitude_count = 360L;
+    constexpr long latitude_count = 181L;
+    bool first_message = true;
+
+    try {
+        for (const long forecast_hour : {0L, 3L}) {
+            for (const auto* short_name : {"10u", "10v"}) {
+                codes_handle* handle =
+                    codes_grib_handle_new_from_samples(
+                        nullptr,
+                        "regular_ll_sfc_grib2");
+                if (handle == nullptr) {
+                    throw std::runtime_error(
+                        "unable to create ECMWF ecCodes GRIB sample");
+                }
+
+                try {
+                    require_codes_ok(
+                        codes_set_long(handle, "centre", 98L),
+                        "set ECMWF centre");
+                    require_codes_ok(
+                        codes_set_long(handle, "Ni", longitude_count),
+                        "set ECMWF Ni");
+                    require_codes_ok(
+                        codes_set_long(handle, "Nj", latitude_count),
+                        "set ECMWF Nj");
+                    require_codes_ok(
+                        codes_set_double(
+                            handle,
+                            "latitudeOfFirstGridPointInDegrees",
+                            90.0),
+                        "set ECMWF first latitude");
+                    require_codes_ok(
+                        codes_set_double(
+                            handle,
+                            "latitudeOfLastGridPointInDegrees",
+                            -90.0),
+                        "set ECMWF last latitude");
+                    require_codes_ok(
+                        codes_set_double(
+                            handle,
+                            "longitudeOfFirstGridPointInDegrees",
+                            0.0),
+                        "set ECMWF first longitude");
+                    require_codes_ok(
+                        codes_set_double(
+                            handle,
+                            "longitudeOfLastGridPointInDegrees",
+                            359.0),
+                        "set ECMWF last longitude");
+                    require_codes_ok(
+                        codes_set_double(
+                            handle,
+                            "iDirectionIncrementInDegrees",
+                            1.0),
+                        "set ECMWF longitude increment");
+                    require_codes_ok(
+                        codes_set_double(
+                            handle,
+                            "jDirectionIncrementInDegrees",
+                            1.0),
+                        "set ECMWF latitude increment");
+                    require_codes_ok(
+                        codes_set_long(handle, "iScansNegatively", 0L),
+                        "set ECMWF i scan");
+                    require_codes_ok(
+                        codes_set_long(handle, "jScansPositively", 0L),
+                        "set ECMWF j scan");
+                    const bool use_mixed_run =
+                        mixed_run &&
+                        forecast_hour == 3L &&
+                        std::string{short_name} == "10v";
+                    require_codes_ok(
+                        codes_set_long(
+                            handle,
+                            "dataDate",
+                            use_mixed_run ? 20260804L : 20260803L),
+                        "set ECMWF date");
+                    require_codes_ok(
+                        codes_set_long(handle, "dataTime", 1800L),
+                        "set ECMWF time");
+                    require_codes_ok(
+                        codes_set_long(handle, "forecastTime", forecast_hour),
+                        "set ECMWF forecast time");
+                    const long parameter_id =
+                        std::string{short_name} == "10u" ? 165L : 166L;
+                    require_codes_ok(
+                        codes_set_long(handle, "paramId", parameter_id),
+                        "set ECMWF wind parameter");
+                    require_codes_ok(
+                        codes_set_long(handle, "level", 10L),
+                        "set ECMWF wind level");
+                    const std::vector<double> values(
+                        static_cast<std::size_t>(
+                            longitude_count * latitude_count),
+                        parameter_id == 165L ? 12.0 : 4.0);
+                    require_codes_ok(
+                        codes_set_double_array(
+                            handle,
+                            "values",
+                            values.data(),
+                            values.size()),
+                        "set ECMWF values");
+                    require_codes_ok(
+                        codes_write_message(
+                            handle,
+                            output_path.string().c_str(),
+                            first_message ? "w" : "a"),
+                        "write ECMWF GRIB message");
+                    first_message = false;
+                } catch (...) {
+                    codes_handle_delete(handle);
+                    throw;
+                }
+                codes_handle_delete(handle);
+            }
+        }
+    } catch (...) {
+        std::filesystem::remove(output_path);
+        throw;
+    }
+
+    return output_path;
+}
+
 }  // namespace
 
 int main() {
@@ -994,6 +1126,106 @@ int main() {
             std::filesystem::remove(tiled_grib);
             throw;
         }
+
+        const auto ecmwf_grib = create_ecmwf_grib();
+        try {
+            navtool_router_grib_descriptor_v1 ecmwf_desc{};
+            require_ok(
+                navtool_router_inspect_grib_v1(
+                    ecmwf_grib.string().c_str(),
+                    &ecmwf_desc),
+                "inspect ECMWF GRIB");
+            require(
+                ecmwf_desc.model_id == NAVTOOL_ROUTER_MODEL_ECMWF_IFS_V1,
+                "generated ECMWF GRIB has the wrong model identity");
+            require(
+                ecmwf_desc.first_valid_utc_epoch_seconds <
+                    ecmwf_desc.last_valid_utc_epoch_seconds,
+                "generated ECMWF GRIB does not have paired validity times");
+            require(
+                ecmwf_desc.south_latitude_degrees == -90.0 &&
+                    ecmwf_desc.north_latitude_degrees == 90.0,
+                "generated ECMWF GRIB does not report global latitude coverage");
+
+            require_ok(
+                navtool_router_forecast_load_bounded_v1(
+                    ecmwf_grib.string().c_str(),
+                    48.0,
+                    -124.0,
+                    49.0,
+                    -122.0,
+                    &forecast),
+                "load bounded ECMWF forecast");
+            require_ok(
+                navtool_router_forecast_get_metadata_v1(
+                    forecast,
+                    &metadata,
+                    &source,
+                    &source_length),
+                "read bounded ECMWF metadata");
+            require(
+                metadata.latitude_count == 2U &&
+                    metadata.longitude_count == 3U,
+                "ECMWF global forecast was not cropped to the requested corridor");
+            navtool_router_bridge_free_v1(source);
+
+            navtool_router_wind_sample_v1 ecmwf_sample{};
+            require_ok(
+                navtool_router_sample_grid_v1(
+                    forecast,
+                    48.5,
+                    -123.0,
+                    48.5,
+                    -123.0,
+                    1U,
+                    1U,
+                    metadata.first_valid_utc_epoch_seconds,
+                    &ecmwf_sample,
+                    1U),
+                "sample bounded ECMWF forecast");
+            require(
+                ecmwf_sample.valid == 1U &&
+                    std::abs(ecmwf_sample.east_mps - 12.0) < 1e-9 &&
+                    std::abs(ecmwf_sample.north_mps - 4.0) < 1e-9,
+                "ECMWF weather sampling returned unexpected wind");
+
+            departure = metadata.first_valid_utc_epoch_seconds;
+            route_json = nullptr;
+            route_json_length = 0U;
+            require_ok(
+                navtool_router_calculate_route_v1(
+                    forecast,
+                    48.5,
+                    -123.8,
+                    48.5,
+                    -123.2,
+                    &departure,
+                    &route_json,
+                    &route_json_length),
+                "calculate ECMWF route");
+            require(
+                route_json != nullptr && route_json_length > 0U,
+                "ECMWF route calculation returned no route");
+            navtool_router_bridge_free_v1(route_json);
+            require_ok(
+                navtool_router_forecast_destroy_v1(&forecast),
+                "destroy ECMWF forecast");
+            std::filesystem::remove(ecmwf_grib);
+        } catch (...) {
+            navtool_router_forecast_destroy_v1(&forecast);
+            std::filesystem::remove(ecmwf_grib);
+            throw;
+        }
+
+        const auto mixed_ecmwf_grib = create_ecmwf_grib(true);
+        navtool_router_grib_descriptor_v1 mixed_ecmwf_desc{};
+        require(
+            navtool_router_inspect_grib_v1(
+                mixed_ecmwf_grib.string().c_str(),
+                &mixed_ecmwf_desc) ==
+                NAVTOOL_ROUTER_STATUS_UNSUPPORTED_FORECAST_V1,
+            "mixed-run ECMWF GRIB was accepted");
+        std::filesystem::remove(mixed_ecmwf_grib);
 
         // ---- GRIB inspection API ----
 
