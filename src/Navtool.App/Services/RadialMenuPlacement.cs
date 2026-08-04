@@ -8,7 +8,7 @@ public enum RadialMenuAction
     SetStart,
     SetDestination,
     CalculateRoute,
-    Inspect
+    RefreshWeather
 }
 
 public enum RadialMenuLayout
@@ -60,9 +60,9 @@ public static class RadialMenuPlacement
     private static readonly ImmutableArray<RadialMenuAction> ActionOrder =
     [
         RadialMenuAction.SetStart,
-        RadialMenuAction.SetDestination,
         RadialMenuAction.CalculateRoute,
-        RadialMenuAction.Inspect
+        RadialMenuAction.SetDestination,
+        RadialMenuAction.RefreshWeather
     ];
 
     public static RadialMenuPlacementResult Calculate(

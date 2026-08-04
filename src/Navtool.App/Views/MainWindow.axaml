@@ -911,14 +911,18 @@
                                TextAlignment="Center"
                                LineHeight="16" />
                 </Button>
-                <Button x:Name="InspectRadialButton"
-                        Classes="radial-action"
-                        Click="OnInspectRadialClicked"
-                        ToolTip.Tip="Inspect the captured route point"
-                        AutomationProperties.Name="Inspect route point"
-                        Content="Inspect"
-                        HorizontalContentAlignment="Center"
-                        VerticalContentAlignment="Center" />
+                <ToggleButton x:Name="RefreshWeatherRadialToggle"
+                              Classes="radial-action"
+                              IsChecked="{Binding UseNewestWeatherData, Mode=TwoWay}"
+                              IsEnabled="{Binding IsDownloadForecast}"
+                              ToolTip.Tip="Download the newest weather data on the next calculation"
+                              AutomationProperties.Name="Refresh weather on next calculation"
+                              HorizontalContentAlignment="Center"
+                              VerticalContentAlignment="Center">
+                    <TextBlock Text="Refresh&#x0a;weather"
+                               TextAlignment="Center"
+                               LineHeight="16" />
+                </ToggleButton>
             </Canvas>
         </Grid>
 
