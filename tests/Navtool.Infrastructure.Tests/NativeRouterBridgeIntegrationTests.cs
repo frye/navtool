@@ -11,12 +11,30 @@ public sealed class NativeRouterBridgeIntegrationTests
         var configuredSample = Environment.GetEnvironmentVariable(
             "NAVTOOL_ROUTER_SAMPLE_GRIB");
         var repository = FindAncestor(AppContext.BaseDirectory, "Navtool.sln");
-        var sample = !string.IsNullOrWhiteSpace(configuredSample)
-            ? Path.GetFullPath(configuredSample)
-            : repository is null
-                ? string.Empty
-                : Path.GetFullPath(
-                    Path.Combine(repository, "..", "router-lib", "samples", "sample.grib"));
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(configuredSample))
+        {
+            candidates.Add(Path.GetFullPath(configuredSample));
+        }
+
+        if (repository is not null)
+        {
+            candidates.Add(Path.GetFullPath(
+                Path.Combine(repository, "..", "router-lib", "samples", "sample.grib")));
+            // The native build fetches router-lib here, so a developer who has run
+            // scripts/build-native.sh already has the sample on disk.
+            candidates.Add(Path.GetFullPath(Path.Combine(
+                repository,
+                "native",
+                "Navtool.RouterBridge",
+                "build",
+                "_deps",
+                "sailroute-src",
+                "samples",
+                "sample.grib")));
+        }
+
+        var sample = candidates.Find(File.Exists) ?? string.Empty;
         if (!File.Exists(sample))
         {
             return;
@@ -203,6 +221,51 @@ public sealed class NativeRouterBridgeIntegrationTests
             limitedRoute.Points.Select(point => point.Timestamp));
         Assert.Equal(limitedSnapshots[^1].FrontierTime, limitedRoute.ArrivalTime);
         Assert.True(limitedRoute.ArrivalTime <= forecast.Metadata.LastValidAt);
+
+        // Regression: the time-dependent lattice must reach the forecast horizon
+        // the same way the beam solver does. router-lib v0.4.1 probed the
+        // speculative midpoint wind of a long lattice edge before rejecting the
+        // edge for overrunning the horizon, so the probe fell past the last
+        // forecast step and aborted the whole search with OutsideForecast - before
+        // a single progress snapshot was emitted, so it could not be softened here
+        // either. Patched in native/Navtool.RouterBridge/patches.
+        foreach (var searchAlgorithm in new[]
+        {
+            RouteLatticeSearchAlgorithm.AStar,
+            RouteLatticeSearchAlgorithm.Dijkstra
+        })
+        {
+            var horizonOptions = new RouteOptimizationOptions(
+                solver: RouteSolver.TimeDependentLattice,
+                lattice: new RouteLatticeOptions(
+                    subdivisionLevel: 8,
+                    refinementLevels: 0,
+                    searchAlgorithm: searchAlgorithm));
+            RouteResult? horizonRoute = null;
+            var horizonFailure = Record.Exception(() =>
+                horizonRoute = bridge.CalculateRoute(
+                    forecast,
+                    limitedRequest,
+                    ForecastModel.NoaaGfs,
+                    horizonOptions,
+                    null,
+                    null));
+            if (horizonFailure is NativeRouterException nativeFailure)
+            {
+                // NoRoute is a legitimate answer when nothing is reachable inside
+                // the remaining coverage; OutsideForecast is the bug.
+                Assert.NotEqual(
+                    NativeRouterStatus.OutsideForecast,
+                    nativeFailure.Status);
+            }
+            else
+            {
+                Assert.Null(horizonFailure);
+                Assert.NotNull(horizonRoute);
+                Assert.Equal(RouteSolver.TimeDependentLattice, horizonRoute.Solver);
+                Assert.True(horizonRoute.ArrivalTime <= forecast.Metadata.LastValidAt);
+            }
+        }
     }
 
     private static string? FindAncestor(string start, string marker)

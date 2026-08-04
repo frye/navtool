@@ -132,7 +132,8 @@ public sealed record ModelRouteOutcome
         ModelRouteStatus status,
         ForecastAcquisition? acquisition,
         RouteResult? route,
-        ModelRouteFailure? failure)
+        ModelRouteFailure? failure,
+        string? solverFallback)
     {
         Model = model;
         Provider = model.Provider();
@@ -140,6 +141,7 @@ public sealed record ModelRouteOutcome
         Acquisition = acquisition;
         Route = route;
         Failure = failure;
+        SolverFallback = solverFallback;
     }
 
     public ForecastProvider Provider { get; }
@@ -154,10 +156,18 @@ public sealed record ModelRouteOutcome
 
     public ModelRouteFailure? Failure { get; }
 
+    /// <summary>
+    /// Set when the requested solver failed and the workflow completed the route with a
+    /// different one. Callers surface this to the user because the route they received was
+    /// not produced by the solver they asked for.
+    /// </summary>
+    public string? SolverFallback { get; }
+
     public static ModelRouteOutcome Succeeded(
         ForecastModel model,
         ForecastAcquisition acquisition,
-        RouteResult route) =>
+        RouteResult route,
+        string? solverFallback = null) =>
         new(
             model,
             route.IsForecastLimited
@@ -165,7 +175,8 @@ public sealed record ModelRouteOutcome
                 : ModelRouteStatus.Succeeded,
             acquisition,
             route,
-            null);
+            null,
+            solverFallback);
 
     public static ModelRouteOutcome Failed(
         ForecastModel model,
@@ -178,7 +189,8 @@ public sealed record ModelRouteOutcome
             ModelRouteStatus.Failed,
             acquisition,
             null,
-            new ModelRouteFailure(stage, code, message));
+            new ModelRouteFailure(stage, code, message),
+            null);
 }
 
 public sealed record RoutingWorkflowResult
@@ -331,14 +343,51 @@ public sealed class RoutingWorkflow
                     value.Message,
                     value.Snapshot));
 
-            var route = await _routeEngine
-                .CalculateAsync(
-                    request.Route,
-                    acquisition,
-                    request.Optimization,
-                    routeProgress,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            RouteResult route;
+            string? solverFallback = null;
+            try
+            {
+                route = await _routeEngine
+                    .CalculateAsync(
+                        request.Route,
+                        acquisition,
+                        request.Optimization,
+                        routeProgress,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception solverException)
+                when (!cancellationToken.IsCancellationRequested &&
+                      solverException is not OperationCanceledException &&
+                      request.Optimization.Solver != FallbackSolver)
+            {
+                // The time-dependent lattice solver can fail outright on passages the
+                // isochrone beam handles, most notably when the direct heading sits inside
+                // the polar's no-go zone: the lattice has no sub-edge spatial move, so it
+                // cannot tack and reports that it exhausted every reachable state. Rather
+                // than hand the user a hard failure for a routable passage, retry once with
+                // the beam and tell them the route came from a different solver.
+                var fallbackOptions = request.Optimization.WithSolver(FallbackSolver);
+                solverFallback =
+                    $"The {Describe(request.Optimization.Solver)} solver could not complete this route " +
+                    $"({solverException.Message}) so the {Describe(FallbackSolver)} solver was used instead.";
+                Report(
+                    progress,
+                    providerId,
+                    model,
+                    RoutingProgressStage.CalculatingRoute,
+                    0.5,
+                    solverFallback);
+
+                route = await _routeEngine
+                    .CalculateAsync(
+                        request.Route,
+                        acquisition,
+                        fallbackOptions,
+                        routeProgress,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
 
             cancellationToken.ThrowIfCancellationRequested();
             failureStage = ModelRouteFailureStage.ResultValidation;
@@ -348,7 +397,7 @@ public sealed class RoutingWorkflow
             }
 
             Report(progress, providerId, model, RoutingProgressStage.Completed, 1);
-            return ModelRouteOutcome.Succeeded(model, acquisition, route);
+            return ModelRouteOutcome.Succeeded(model, acquisition, route, solverFallback);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -370,6 +419,20 @@ public sealed class RoutingWorkflow
                 acquisition);
         }
     }
+
+    /// <summary>
+    /// The solver the workflow falls back to when the requested solver fails. The isochrone
+    /// beam is the most robust of the available solvers and degrades to a partial route
+    /// instead of erroring when it cannot reach the destination.
+    /// </summary>
+    private const RouteSolver FallbackSolver = RouteSolver.IsochroneBeam;
+
+    private static string Describe(RouteSolver solver) => solver switch
+    {
+        RouteSolver.IsochroneBeam => "isochrone beam",
+        RouteSolver.TimeDependentLattice => "time-dependent lattice",
+        _ => solver.ToString()
+    };
 
     private static ForecastAcquisition AcquireLocal(
         ForecastSelection selection,

@@ -179,15 +179,29 @@ public sealed partial class RouteLegEditorItemViewModel : ViewModelBase
 public sealed partial class ItineraryEditorViewModel : ViewModelBase
 {
     private readonly IRoutePlanRepository? _repository;
+    private readonly TimeZoneInfo _localTimeZone;
     private RoutePlan? _plan;
     private bool _suppressChanges;
     private bool _suppressEndpointChanged;
+    private bool _suppressCurrentPositionDepartureSync;
 
-    public ItineraryEditorViewModel(IRoutePlanRepository? repository = null)
+    public ItineraryEditorViewModel(
+        IRoutePlanRepository? repository = null,
+        TimeZoneInfo? localTimeZone = null)
     {
         _repository = repository;
+        _localTimeZone = localTimeZone ?? TimeZoneInfo.Local;
+        var localNow = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _localTimeZone);
+        _currentPositionDepartureDate = new DateTimeOffset(localNow.Date, localNow.Offset);
+        _currentPositionDepartureTimeOfDay = localNow.TimeOfDay;
         NewDraft();
     }
+
+    /// <summary>
+    /// The zone the current-position departure pickers are expressed in. Stored plan values are
+    /// always UTC; the pickers are only ever a local-time projection of them.
+    /// </summary>
+    public TimeZoneInfo LocalTimeZone => _localTimeZone;
 
     public ObservableCollection<WaypointEditorItemViewModel> Waypoints { get; } = [];
 
@@ -269,6 +283,25 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
           $"{Math.Abs(coordinate.Longitude):0.000}\u00b0 " +
           $"{(coordinate.Longitude >= 0 ? "E" : "W")}";
 
+    /// <summary>
+    /// Shows the departure the plan actually stores, in both the picker's local zone and the UTC
+    /// instant the router receives, so the two representations can never silently disagree.
+    /// </summary>
+    public string CurrentPositionDepartureDisplay
+    {
+        get
+        {
+            if (CurrentPositionDepartureTimeUtc is not { } departureUtc)
+            {
+                return "Departs: not set";
+            }
+
+            var local = TimeZoneInfo.ConvertTime(departureUtc, _localTimeZone);
+            return $"Departs {local:yyyy-MM-dd HH:mm} local \u00b7 " +
+                   $"{departureUtc:yyyy-MM-dd HH:mm} UTC";
+        }
+    }
+
     public void SetEndpoints(Coordinate start, Coordinate finish)
     {
         _suppressEndpointChanged = true;
@@ -346,6 +379,11 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
 
     internal bool UpdateCurrentPositionDeparture(
         DateTimeOffset departureTimeUtc,
+        out string? error) =>
+        UpdateCurrentPositionDeparture(departureTimeUtc, _localTimeZone, out error);
+
+    internal bool UpdateCurrentPositionDeparture(
+        DateTimeOffset departureTimeUtc,
         TimeZoneInfo localTimeZone,
         out string? error)
     {
@@ -361,11 +399,19 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             return false;
         }
 
-        var localDeparture = TimeZoneInfo.ConvertTime(departureTimeUtc, localTimeZone);
-        CurrentPositionDepartureDate = localDeparture;
-        CurrentPositionDepartureTimeOfDay = localDeparture.TimeOfDay;
+        SetCurrentPositionPickers(
+            TimeZoneInfo.ConvertTime(departureTimeUtc, localTimeZone));
         return true;
     }
+
+    /// <summary>
+    /// Places the current position using the local <see cref="CurrentPositionDepartureDate"/>/
+    /// <see cref="CurrentPositionDepartureTimeOfDay"/> fields, converted to UTC via the editor's
+    /// local zone. This is the explicit, user-supplied departure time for the current position;
+    /// it is never derived from wall clock or GPS.
+    /// </summary>
+    public bool TryPlaceCurrentPosition(Coordinate coordinate, out string? error) =>
+        TryPlaceCurrentPosition(coordinate, _localTimeZone, out error);
 
     /// <summary>
     /// Places the current position using the local <see cref="CurrentPositionDepartureDate"/>/
@@ -1053,10 +1099,95 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
 
     private void NotifyCurrentPositionChanged()
     {
+        SyncCurrentPositionPickers();
         OnPropertyChanged(nameof(CurrentPositionCoordinate));
         OnPropertyChanged(nameof(CurrentPositionDepartureTimeUtc));
         OnPropertyChanged(nameof(HasCurrentPosition));
         OnPropertyChanged(nameof(CurrentPositionDisplay));
+        OnPropertyChanged(nameof(CurrentPositionDepartureDisplay));
+    }
+
+    /// <summary>
+    /// Projects the plan's stored UTC current-position departure back onto the local-time pickers.
+    /// Without this a reopened plan leaves the pickers showing "today" while the plan still holds
+    /// an older departure, which then silently rolls forward during calculation.
+    /// </summary>
+    private void SyncCurrentPositionPickers()
+    {
+        if (_plan?.CurrentPosition is not { } currentPosition)
+        {
+            return;
+        }
+
+        SetCurrentPositionPickers(
+            TimeZoneInfo.ConvertTime(currentPosition.DepartureTime, _localTimeZone));
+    }
+
+    private void SetCurrentPositionPickers(DateTimeOffset local)
+    {
+        var wasSuppressed = _suppressCurrentPositionDepartureSync;
+        _suppressCurrentPositionDepartureSync = true;
+        try
+        {
+            CurrentPositionDepartureDate = new DateTimeOffset(local.Date, local.Offset);
+            CurrentPositionDepartureTimeOfDay = local.TimeOfDay;
+        }
+        finally
+        {
+            _suppressCurrentPositionDepartureSync = wasSuppressed;
+        }
+    }
+
+    partial void OnCurrentPositionDepartureDateChanged(DateTimeOffset? value) =>
+        ApplyCurrentPositionDepartureEdit();
+
+    partial void OnCurrentPositionDepartureTimeOfDayChanged(TimeSpan? value) =>
+        ApplyCurrentPositionDepartureEdit();
+
+    /// <summary>
+    /// Applies a user edit of the local departure pickers to the plan. The plan always stores UTC,
+    /// so the local selection is converted at this boundary.
+    /// </summary>
+    private void ApplyCurrentPositionDepartureEdit()
+    {
+        if (_suppressCurrentPositionDepartureSync ||
+            _suppressChanges ||
+            CurrentPositionCoordinate is not { } coordinate)
+        {
+            return;
+        }
+
+        if (!LocalDepartureConverter.TryConvertToUtc(
+                CurrentPositionDepartureDate,
+                CurrentPositionDepartureTimeOfDay,
+                _localTimeZone,
+                out var departureUtc,
+                out var conversionError))
+        {
+            ValidationMessage = conversionError;
+            return;
+        }
+
+        if (departureUtc == _plan?.CurrentPosition?.DepartureTime)
+        {
+            return;
+        }
+
+        _suppressCurrentPositionDepartureSync = true;
+        try
+        {
+            if (!PlaceCurrentPosition(coordinate, departureUtc, out var error))
+            {
+                ValidationMessage = error;
+                return;
+            }
+        }
+        finally
+        {
+            _suppressCurrentPositionDepartureSync = false;
+        }
+
+        ValidationMessage = null;
     }
 
     private void NotifyItineraryChanged()

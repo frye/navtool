@@ -251,6 +251,76 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task Forced_recalculation_rolls_a_stale_current_position_departure_forward()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"navtool-stale-departure-{Guid.NewGuid():N}");
+        var routeRequests = new List<RouteRequest>();
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+        {
+            routeRequests.Add(request);
+            return ValueTask.FromResult(CreateRoute(request, forecast.Request.Model));
+        });
+        try
+        {
+            var viewModel = CreateViewModel(
+                new RoutingWorkflow(new[] { noaa }, engine),
+                new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                    ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+                routePlanRepository: new RoutePlanJsonRepository(root));
+
+            // Mirrors a reopened plan: the stored current-position departure is already in the past.
+            var stale = Now.AddHours(-6);
+            Assert.True(
+                viewModel.Itinerary.PlaceCurrentPosition(new Coordinate(35, -62), stale, out var placeError),
+                placeError);
+            Assert.Equal(stale, viewModel.Itinerary.CurrentPositionDepartureTimeUtc);
+
+            await viewModel.ForceRecalculateCommand.ExecuteAsync(null);
+
+            Assert.Equal(Now, viewModel.Itinerary.CurrentPositionDepartureTimeUtc);
+            Assert.DoesNotContain(
+                "rolled forward",
+                viewModel.WarningMessage ?? string.Empty,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Departure_preview_reports_the_utc_instant_the_local_selection_resolves_to()
+    {
+        var zone = TimeZoneInfo.CreateCustomTimeZone(
+            "Test -07",
+            TimeSpan.FromHours(-7),
+            "Test -07",
+            "Test -07");
+        var viewModel = new MainViewModel(
+            null,
+            null,
+            new FixedTimeProvider(Now),
+            zone,
+            new OsmTileOptions(Enabled: false));
+
+        viewModel.DepartureDate = new DateTimeOffset(2026, 8, 4, 0, 0, 0, TimeSpan.FromHours(-7));
+        viewModel.DepartureTime = TimeSpan.FromHours(11);
+
+        Assert.Equal("= 2026-08-04 18:00 UTC", viewModel.DepartureUtcPreview);
+
+        viewModel.DepartureTime = null;
+
+        Assert.Equal("Choose both a departure date and local time.", viewModel.DepartureUtcPreview);
+    }
+
+    [Fact]
     public void Forecast_area_summary_reports_selected_provider_estimates()
     {
         var viewModel = new MainViewModel(
@@ -2061,6 +2131,48 @@ public sealed class MainViewModelWorkflowTests
                 throw exception;
             }
         }
+    }
+
+    [Fact]
+    public async Task Lattice_solver_failure_falls_back_to_the_beam_and_warns_the_user()
+    {
+        var solvers = new List<RouteSolver>();
+        DelegateRouteEngine? engine = null;
+        engine = new DelegateRouteEngine((request, forecast, _) =>
+        {
+            solvers.Add(engine!.LastOptimization!.Solver);
+            return engine.LastOptimization.Solver == RouteSolver.TimeDependentLattice
+                ? throw new InvalidOperationException(
+                    "Calculating route failed (NoRoute): time-dependent lattice search " +
+                    "exhausted every reachable state")
+                : ValueTask.FromResult(CreateRoute(request, forecast.Request.Model));
+        });
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var viewModel = new MainViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            new FixedTimeProvider(Now),
+            TimeZoneInfo.Utc,
+            new OsmTileOptions(Enabled: false));
+        var departure = Now.AddHours(1);
+        viewModel.DepartureDate = departure;
+        viewModel.DepartureTime = departure.TimeOfDay;
+        viewModel.EnableProfessionalRouting = true;
+        viewModel.SelectedRouteSolver = RouteSolver.TimeDependentLattice;
+
+        viewModel.SetStartAt(new Coordinate(34, -64));
+        viewModel.SetDestinationAt(new Coordinate(39, -52));
+        await WaitForAsync(() => viewModel.SuccessfulRouteCount == 1);
+
+        Assert.Equal(
+            new[] { RouteSolver.TimeDependentLattice, RouteSolver.IsochroneBeam },
+            solvers);
+        Assert.True(viewModel.HasWarning);
+        Assert.Contains("time-dependent lattice", viewModel.WarningMessage);
+        Assert.Contains("isochrone beam", viewModel.WarningMessage);
     }
 
     private sealed class DelegateRouteEngine(

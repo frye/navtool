@@ -19,6 +19,13 @@ set(
     CACHE STRING
     "Immutable router-lib revision used when SAILROUTE_SOURCE_DIR is unset")
 set(_navtool_router_effective_source_dir "")
+set(NAVTOOL_ROUTER_PATCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/patches")
+set(NAVTOOL_ROUTER_PATCH_SCRIPT "${NAVTOOL_ROUTER_PATCH_DIR}/apply.cmake")
+# Fixes carried against the pinned router-lib revision. See patches/README.md;
+# drop entries here once NAVTOOL_ROUTER_LIB_RELEASE_TAG moves past them.
+set(
+    NAVTOOL_ROUTER_LIB_PATCHES
+    "0001-prune-out-of-coverage-midpoint-wind-probes.patch")
 
 if(NOT TARGET sailroute::sailroute)
     if(DEFINED SAILROUTE_SOURCE_DIR AND NOT "${SAILROUTE_SOURCE_DIR}" STREQUAL "")
@@ -38,12 +45,37 @@ if(NOT TARGET sailroute::sailroute)
         include(FetchContent)
         set(SAILROUTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
         set(SAILROUTE_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+        string(JOIN "|" _navtool_router_patch_list ${NAVTOOL_ROUTER_LIB_PATCHES})
         FetchContent_Declare(
             sailroute
             GIT_REPOSITORY "${NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY}"
             GIT_TAG "${NAVTOOL_ROUTER_LIB_RELEASE_TAG}"
-            GIT_SHALLOW OFF)
+            GIT_SHALLOW OFF
+            PATCH_COMMAND
+                "${CMAKE_COMMAND}"
+                "-DPATCH_DIR=${NAVTOOL_ROUTER_PATCH_DIR}"
+                "-DPATCHES=${_navtool_router_patch_list}"
+                -P "${NAVTOOL_ROUTER_PATCH_SCRIPT}")
         FetchContent_MakeAvailable(sailroute)
+        if(DEFINED sailroute_SOURCE_DIR)
+            # PATCH_COMMAND only runs when FetchContent (re)populates the tree, so
+            # an already-populated build directory can hold unpatched sources.
+            # apply.cmake is idempotent, so replaying it on every configure keeps
+            # incremental builds honest.
+            execute_process(
+                COMMAND
+                    "${CMAKE_COMMAND}"
+                    "-DPATCH_DIR=${NAVTOOL_ROUTER_PATCH_DIR}"
+                    "-DPATCHES=${_navtool_router_patch_list}"
+                    -P "${NAVTOOL_ROUTER_PATCH_SCRIPT}"
+                WORKING_DIRECTORY "${sailroute_SOURCE_DIR}"
+                RESULT_VARIABLE _navtool_router_patch_result)
+            if(NOT _navtool_router_patch_result EQUAL 0)
+                message(
+                    FATAL_ERROR
+                    "Failed to apply router-lib patches to ${sailroute_SOURCE_DIR}.")
+            endif()
+        endif()
         if(NOT TARGET sailroute::sailroute)
             message(
                 FATAL_ERROR

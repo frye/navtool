@@ -361,13 +361,36 @@
                                 </Grid>
                                 <Grid ColumnDefinitions="*,104"
                                       ColumnSpacing="7">
-                                    <DatePicker x:Name="CurrentPositionDatePicker"
-                                                SelectedDate="{Binding Itinerary.CurrentPositionDepartureDate}" />
-                                    <TimePicker x:Name="CurrentPositionTimePicker"
-                                                Grid.Column="1"
-                                                SelectedTime="{Binding Itinerary.CurrentPositionDepartureTimeOfDay}"
-                                                ClockIdentifier="24HourClock" />
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Classes="field-label"
+                                                   Text="Departure date (local)" />
+                                        <DatePicker x:Name="CurrentPositionDatePicker"
+                                                    SelectedDate="{Binding Itinerary.CurrentPositionDepartureDate}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1"
+                                                Spacing="4">
+                                        <TextBlock Classes="field-label"
+                                                   Text="Time (local)" />
+                                        <TimePicker x:Name="CurrentPositionTimePicker"
+                                                    SelectedTime="{Binding Itinerary.CurrentPositionDepartureTimeOfDay}"
+                                                    ClockIdentifier="24HourClock" />
+                                    </StackPanel>
                                 </Grid>
+                                <TextBlock x:Name="CurrentPositionDepartureDisplay"
+                                           Classes="muted"
+                                           Text="{Binding Itinerary.CurrentPositionDepartureDisplay}"
+                                           TextWrapping="Wrap" />
+                                <Border Classes="subtle"
+                                        Padding="9,6">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Local time zone"
+                                                   Classes="muted" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding UtcOffsetDisplay}"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextSecondaryColor}" />
+                                    </Grid>
+                                </Border>
                                 <TextBlock Classes="muted"
                                            Text="{Binding Itinerary.CurrentPositionDisplay}"
                                            TextWrapping="Wrap" />
@@ -419,19 +442,23 @@
                                       ColumnSpacing="8">
                                     <StackPanel Spacing="4">
                                         <TextBlock Classes="field-label"
-                                                   Text="Departure date" />
+                                                   Text="Departure date (local)" />
                                         <DatePicker x:Name="DepartureDatePicker"
                                                     SelectedDate="{Binding DepartureDate}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1"
                                                 Spacing="4">
                                         <TextBlock Classes="field-label"
-                                                   Text="Departure time" />
+                                                   Text="Time (local)" />
                                         <TimePicker x:Name="DepartureTimePicker"
                                                     SelectedTime="{Binding DepartureTime}"
                                                     ClockIdentifier="24HourClock" />
                                     </StackPanel>
                                 </Grid>
+                                <TextBlock x:Name="DepartureUtcPreviewText"
+                                           Classes="muted"
+                                           Text="{Binding DepartureUtcPreview}"
+                                           TextWrapping="Wrap" />
                                 <Grid ColumnDefinitions="*,*"
                                       ColumnSpacing="8">
                                     <StackPanel Spacing="4">
