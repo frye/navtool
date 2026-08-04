@@ -696,6 +696,8 @@ public sealed class MainWindowLayoutTests
     public void CompactPickersKeepEveryValueSegmentInsideTheDrawerFields()
     {
         var window = CreateWindow();
+        window.Width = 1040;
+        window.Height = 680;
 
         try
         {
