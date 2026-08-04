@@ -287,6 +287,54 @@ public sealed class EcmwfOpenDataForecastProviderTests
     }
 
     [Fact]
+    public async Task Covering_cache_hit_is_not_blocked_by_remote_acquisition()
+    {
+        using var directory = new TestDirectory();
+        var clock = new MutableTimeProvider(Now);
+        var remoteEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRemote = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        EcmwfHandler? handler = null;
+        handler = new EcmwfHandler(async (request, token) =>
+        {
+            if (request.RequestUri!.AbsolutePath.Contains("/00z/", StringComparison.Ordinal) &&
+                request.RequestUri.AbsolutePath.EndsWith(".index", StringComparison.Ordinal))
+            {
+                remoteEntered.TrySetResult();
+                await releaseRemote.Task.WaitAsync(token);
+            }
+
+            return handler!.CreateStandardResponse(request);
+        });
+        using var client = new HttpClient(handler);
+        var provider = CreateProvider(directory.Path, client, timeProvider: clock);
+        var from = new DateTimeOffset(2026, 7, 15, 3, 0, 0, TimeSpan.Zero);
+        var preferCache = CreateRequest(from, TimeSpan.FromHours(3));
+        await provider.AcquireAsync(preferCache, null, CancellationToken.None);
+        clock.UtcNow = new DateTimeOffset(2026, 7, 15, 2, 0, 0, TimeSpan.Zero);
+        var latest = new ForecastRequest(
+            preferCache.Model,
+            preferCache.Bounds,
+            preferCache.From,
+            preferCache.Through,
+            ForecastRefreshPolicy.LatestAvailable);
+
+        var remote = provider.AcquireAsync(latest, null, CancellationToken.None).AsTask();
+        await remoteEntered.Task;
+        var cached = provider.AcquireAsync(preferCache, null, CancellationToken.None).AsTask();
+        try
+        {
+            Assert.Same(cached, await Task.WhenAny(cached, Task.Delay(TimeSpan.FromSeconds(1))));
+            Assert.Equal(ForecastAcquisitionSource.Cache, (await cached).Source);
+        }
+        finally
+        {
+            releaseRemote.TrySetResult();
+        }
+
+        Assert.Equal(ForecastAcquisitionSource.Remote, (await remote).Source);
+    }
+
+    [Fact]
     public async Task Acquire_propagates_caller_cancellation_during_index_request()
     {
         using var directory = new TestDirectory();
@@ -425,11 +473,16 @@ public sealed class EcmwfOpenDataForecastProviderTests
                 return _override(request, cancellationToken);
             }
 
+            return Task.FromResult(CreateStandardResponse(request));
+        }
+
+        public HttpResponseMessage CreateStandardResponse(HttpRequestMessage request)
+        {
             var uri = request.RequestUri!;
             if (_unpublishedCycleHour is { } hour &&
                 uri.AbsolutePath.Contains($"/{hour:00}z/", StringComparison.Ordinal))
             {
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
             }
 
             if (uri.AbsolutePath.EndsWith(".index", StringComparison.Ordinal))
@@ -439,10 +492,10 @@ public sealed class EcmwfOpenDataForecastProviderTests
                       {"param":"10u","levtype":"sfc","_offset":0,"_length":{{UWind.Length}}}
                       {"param":"10v","levtype":"sfc","_offset":{{UWind.Length}},"_length":{{VWind.Length}}}
                       """;
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                return new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = new StringContent(content)
-                });
+                };
             }
 
             var range = request.Headers.Range;
@@ -454,7 +507,7 @@ public sealed class EcmwfOpenDataForecastProviderTests
 
             if (_failRangeRequest == rangeRequest)
             {
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest));
+                return new HttpResponseMessage(HttpStatusCode.BadRequest);
             }
 
             var from = range?.Ranges.Single().From;
@@ -479,7 +532,7 @@ public sealed class EcmwfOpenDataForecastProviderTests
                     UWind.Length + VWind.Length);
             }
 
-            return Task.FromResult(response);
+            return response;
         }
     }
 }

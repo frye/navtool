@@ -119,6 +119,25 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
     {
         ValidateRequest(request);
         cancellationToken.ThrowIfCancellationRequested();
+        if (request.RefreshPolicy == ForecastRefreshPolicy.PreferCache)
+        {
+            var now = _timeProvider.GetUtcNow();
+            var candidates = GetCandidateRuns(now)
+                .Where(candidate => CanCover(candidate, request.From, request.Through))
+                .ToImmutableArray();
+            var cached = await TryAcquireCachedAsync(
+                    request,
+                    candidates,
+                    now,
+                    progress,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (cached is not null)
+            {
+                return cached;
+            }
+        }
+
         using var lease = await _acquisitionGate.EnterAsync(
                 "ecmwf-open-data-service",
                 cancellationToken)
@@ -326,25 +345,16 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
 
         if (request.RefreshPolicy == ForecastRefreshPolicy.PreferCache)
         {
-            foreach (var candidate in candidates)
+            var cached = await TryAcquireCachedAsync(
+                    request,
+                    candidates,
+                    now,
+                    progress,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (cached is not null)
             {
-                var hours = GetRequiredForecastHours(candidate, request.From, request.Through);
-                var cacheKey = CreateAssemblyCacheKey(candidate, hours);
-                var cached = await _cache.TryGetAsync(cacheKey, now, cancellationToken).ConfigureAwait(false);
-                if (cached is not null)
-                {
-                    Report(progress, ForecastProgressStage.Completed, 1, "Using cached ECMWF IFS forecast");
-                    return CreateAcquisition(
-                        request,
-                        candidate,
-                        cached,
-                        ForecastAcquisitionSource.Cache,
-                        new ForecastCacheUsage(
-                            hours.Length * 2,
-                            0,
-                            candidate,
-                            candidate));
-                }
+                return cached;
             }
         }
 
@@ -481,6 +491,39 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
                 downloadedParts,
                 plan.RunTime,
                 plan.RunTime));
+    }
+
+    private async ValueTask<ForecastAcquisition?> TryAcquireCachedAsync(
+        ForecastRequest request,
+        ImmutableArray<DateTimeOffset> candidates,
+        DateTimeOffset now,
+        IProgress<ForecastProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        foreach (var candidate in candidates)
+        {
+            var hours = GetRequiredForecastHours(candidate, request.From, request.Through);
+            var cacheKey = CreateAssemblyCacheKey(candidate, hours);
+            var cached = await _cache.TryGetAsync(cacheKey, now, cancellationToken).ConfigureAwait(false);
+            if (cached is null)
+            {
+                continue;
+            }
+
+            Report(progress, ForecastProgressStage.Completed, 1, "Using cached ECMWF IFS forecast");
+            return CreateAcquisition(
+                request,
+                candidate,
+                cached,
+                ForecastAcquisitionSource.Cache,
+                new ForecastCacheUsage(
+                    hours.Length * 2,
+                    0,
+                    candidate,
+                    candidate));
+        }
+
+        return null;
     }
 
     private async ValueTask<EcmwfAcquisitionPlan?> TryBuildPlanAsync(
@@ -895,17 +938,25 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
 
         Span<byte> header = stackalloc byte[16];
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        if (stream.Read(header) != header.Length ||
-            !header[..4].SequenceEqual("GRIB"u8) ||
-            header[7] != 2 ||
-            BinaryPrimitives.ReadUInt64BigEndian(header[8..]) != (ulong)expectedLength)
+        try
+        {
+            stream.ReadExactly(header);
+            if (!header[..4].SequenceEqual("GRIB"u8) ||
+                header[7] != 2 ||
+                BinaryPrimitives.ReadUInt64BigEndian(header[8..]) != (ulong)expectedLength)
+            {
+                return false;
+            }
+
+            Span<byte> marker = stackalloc byte[4];
+            stream.Seek(-4, SeekOrigin.End);
+            stream.ReadExactly(marker);
+            return marker.SequenceEqual("7777"u8);
+        }
+        catch (EndOfStreamException)
         {
             return false;
         }
-
-        Span<byte> marker = stackalloc byte[4];
-        stream.Seek(-4, SeekOrigin.End);
-        return stream.Read(marker) == marker.Length && marker.SequenceEqual("7777"u8);
     }
 
     private static void SweepOrphanedPartials(string directory)
