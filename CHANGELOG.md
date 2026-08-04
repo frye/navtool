@@ -67,7 +67,7 @@ validation.
 - Fixed route calculation for NOAA forecasts assembled from multiple spatial
   cache tiles, including corridors that cross tile latitude or longitude
   boundaries.
-  ([router-lib#22](https://github.com/frye/router-lib/pull/22))
+  ([router-lib v0.3.1](https://github.com/frye/router-lib/releases/tag/v0.3.1))
 - Fixed historical isochrone styles inheriting an opaque fill in CI and
   restored .NET 9 compatibility for radial-action placement.
   ([#35](https://github.com/frye/navtool/pull/35),
