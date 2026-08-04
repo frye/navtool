@@ -336,6 +336,106 @@
                                                            Value="{Binding LatticeProgressEveryExpansions}" />
                                         </Grid>
                                     </StackPanel>
+                                    <Separator />
+                                    <StackPanel x:Name="EnvironmentalPhysicsOptions" Spacing="8">
+                                        <TextBlock Classes="field-label" Text="Environmental physics" />
+                                        <TextBlock Classes="muted"
+                                                   Text="Each provider below is individually opt-in. With all of them off the route is calculated exactly as it is outside professional routing."
+                                                   TextWrapping="Wrap" />
+                                        <CheckBox x:Name="CurrentFieldToggle"
+                                                  Content="Uniform current"
+                                                  IsChecked="{Binding EnableCurrentField}" />
+                                        <StackPanel IsVisible="{Binding EnableCurrentField}" Spacing="4">
+                                            <TextBlock Classes="muted"
+                                                       Text="Oceanographic set: the direction the water flows toward, which is the opposite of the wind convention."
+                                                       TextWrapping="Wrap" />
+                                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                                <StackPanel Spacing="4">
+                                                    <TextBlock Classes="field-label" Text="East (kt)" />
+                                                    <NumericUpDown Minimum="-20" Maximum="20" Increment="0.1"
+                                                                   Value="{Binding CurrentEastKnots}" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" Spacing="4">
+                                                    <TextBlock Classes="field-label" Text="North (kt)" />
+                                                    <NumericUpDown Minimum="-20" Maximum="20" Increment="0.1"
+                                                                   Value="{Binding CurrentNorthKnots}" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <TextBlock Classes="field-label" Text="Outside coverage" />
+                                            <ComboBox ItemsSource="{Binding MissingDataPolicyOptions}"
+                                                      SelectedItem="{Binding CurrentMissingDataPolicy}" />
+                                        </StackPanel>
+                                        <CheckBox x:Name="SeaStateToggle"
+                                                  Content="Sea state derating"
+                                                  IsChecked="{Binding EnableSeaState}" />
+                                        <StackPanel IsVisible="{Binding EnableSeaState}" Spacing="4">
+                                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                                <StackPanel Spacing="4">
+                                                    <TextBlock Classes="field-label" Text="Height (m)" />
+                                                    <NumericUpDown Minimum="0" Maximum="30" Increment="0.1"
+                                                                   Value="{Binding SignificantWaveHeightMetres}" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" Spacing="4">
+                                                    <TextBlock Classes="field-label" Text="Period (s)" />
+                                                    <NumericUpDown Minimum="0.1" Maximum="30" Increment="0.5"
+                                                                   Value="{Binding WavePeriodSeconds}" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <TextBlock Classes="field-label" Text="From direction (° true)" />
+                                            <NumericUpDown Minimum="0" Maximum="360" Increment="5"
+                                                           Value="{Binding WaveFromDirectionDegrees}" />
+                                            <TextBlock Classes="field-label" Text="Outside coverage" />
+                                            <ComboBox ItemsSource="{Binding MissingDataPolicyOptions}"
+                                                      SelectedItem="{Binding WaveMissingDataPolicy}" />
+                                        </StackPanel>
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Classes="field-label" Text="Land avoidance" />
+                                            <ComboBox x:Name="LandAvoidanceModeSelector"
+                                                      ItemsSource="{Binding LandAvoidanceModeOptions}"
+                                                      SelectedItem="{Binding LandAvoidanceMode}" />
+                                            <TextBlock Classes="muted"
+                                                       Text="The segment callback is Navtool's long-standing coastline test. The signed-distance landmask hands the same coastline to router-lib, which certifies whole segments instead of sampling them."
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                        <StackPanel IsVisible="{Binding IsSignedDistanceLandmaskSelected}"
+                                                    Spacing="4">
+                                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                                <StackPanel Spacing="4">
+                                                    <TextBlock Classes="field-label" Text="Resolution (nm)" />
+                                                    <NumericUpDown Minimum="0.5" Maximum="60" Increment="0.5"
+                                                                   Value="{Binding LandmaskResolutionNauticalMiles}" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" Spacing="4">
+                                                    <TextBlock Classes="field-label" Text="Clearance (nm)" />
+                                                    <NumericUpDown Minimum="0" Maximum="100" Increment="0.5"
+                                                                   Value="{Binding LandmaskClearanceNauticalMiles}" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <TextBlock Classes="field-label" Text="Subdivision depth" />
+                                            <NumericUpDown Minimum="1" Maximum="32"
+                                                           Value="{Binding LandmaskMaximumSubdivisionDepth}" />
+                                            <TextBlock Classes="field-label" Text="Outside coverage" />
+                                            <ComboBox ItemsSource="{Binding MissingDataPolicyOptions}"
+                                                      SelectedItem="{Binding LandmaskMissingDataPolicy}" />
+                                        </StackPanel>
+                                        <CheckBox x:Name="AntarcticExclusionToggle"
+                                                  Content="Antarctic exclusion zone (example)"
+                                                  IsChecked="{Binding EnableAntarcticExclusionZone}" />
+                                        <StackPanel IsVisible="{Binding EnableAntarcticExclusionZone}"
+                                                    Spacing="4">
+                                            <TextBlock Classes="muted"
+                                                       Text="An illustrative 62°S ice limit bundled with Navtool. Replace it with the notice of race before using it to plan a real passage."
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Classes="field-label" Text="Boundary" />
+                                            <ComboBox ItemsSource="{Binding ExclusionBoundaryPolicyOptions}"
+                                                      SelectedItem="{Binding ExclusionBoundaryPolicy}" />
+                                        </StackPanel>
+                                        <StackPanel IsVisible="{Binding IsEnvironmentConfigured}" Spacing="4">
+                                            <TextBlock Classes="field-label" Text="Sampling" />
+                                            <ComboBox ItemsSource="{Binding EnvironmentSamplingOptions}"
+                                                      SelectedItem="{Binding EnvironmentSampling}" />
+                                        </StackPanel>
+                                    </StackPanel>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -827,7 +927,8 @@
                                 Background="{DynamicResource OverlayBorderColor}" />
                         <Grid Grid.Row="2"
                               ColumnDefinitions="*,*,*,*,*"
-                              ColumnSpacing="6">
+                              ColumnSpacing="6"
+                              IsVisible="{Binding SelectedRoutePoint.Point.Environment, Converter={x:Static ObjectConverters.IsNull}}">
                             <StackPanel>
                                 <TextBlock Text="BOAT"
                                            Classes="telemetry-label" />
@@ -861,6 +962,44 @@
                                            Classes="telemetry-label" />
                                 <TextBlock x:Name="RouteTelemetryHeading"
                                            Text="{Binding SelectedRoutePoint.Point.HeadingDegrees, StringFormat={}{0:0}°}"
+                                           Classes="telemetry-value" />
+                            </StackPanel>
+                        </Grid>
+                        <Grid Grid.Row="2"
+                              ColumnDefinitions="*,*,*,*,*"
+                              ColumnSpacing="6"
+                              IsVisible="{Binding SelectedRoutePoint.Point.Environment, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            <StackPanel>
+                                <TextBlock Text="SOG"
+                                           Classes="telemetry-label" />
+                                <TextBlock x:Name="RouteTelemetrySpeedOverGround"
+                                           Text="{Binding SelectedRoutePoint.Point.Environment.SpeedOverGroundKnots, StringFormat={}{0:0.0} kt}"
+                                           Classes="telemetry-value" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="COG"
+                                           Classes="telemetry-label" />
+                                <TextBlock x:Name="RouteTelemetryCourseOverGround"
+                                           Text="{Binding SelectedRoutePoint.Point.Environment.CourseOverGroundDegrees, StringFormat={}{0:0}°}"
+                                           Classes="telemetry-value" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="STW"
+                                           Classes="telemetry-label" />
+                                <TextBlock Text="{Binding SelectedRoutePoint.Point.BoatSpeedKnots, StringFormat={}{0:0.0} kt}"
+                                           Classes="telemetry-value" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="3">
+                                <TextBlock Text="FLAT"
+                                           Classes="telemetry-label" />
+                                <TextBlock x:Name="RouteTelemetryFlatWaterSpeed"
+                                           Text="{Binding SelectedRoutePoint.Point.Environment.FlatWaterSpeedKnots, StringFormat={}{0:0.0} kt}"
+                                           Classes="telemetry-value" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="4">
+                                <TextBlock Text="HDG"
+                                           Classes="telemetry-label" />
+                                <TextBlock Text="{Binding SelectedRoutePoint.Point.HeadingDegrees, StringFormat={}{0:0}°}"
                                            Classes="telemetry-value" />
                             </StackPanel>
                         </Grid>
