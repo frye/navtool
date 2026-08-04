@@ -311,6 +311,27 @@ public sealed record RouteOptimizationOptions
     /// </summary>
     public RouteEnvironmentOptions? Environment { get; }
 
+    /// <summary>
+    /// Returns these options with a different environment. Used by the route
+    /// engine to substitute a rasterized landmask for the request that asked
+    /// for one; every other setting is carried across untouched.
+    /// </summary>
+    public RouteOptimizationOptions WithEnvironment(RouteEnvironmentOptions? environment) =>
+        new(
+            Solver,
+            Maneuver,
+            HeadingAugmentation,
+            WindSampling,
+            MidpointWindSamplingThreshold,
+            PolarAngleInterpolation,
+            MaximumTrueWindSpeedKnots,
+            AbovePolarRange,
+            PruningStrategy,
+            PruningSectorDegrees,
+            DestinationFront,
+            Lattice,
+            environment);
+
     public static RouteOptimizationOptions Balanced { get; } = new();
 
     public static RouteOptimizationOptions UpstreamCompatible { get; } = new(

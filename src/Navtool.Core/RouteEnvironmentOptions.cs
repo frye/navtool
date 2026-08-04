@@ -509,6 +509,56 @@ public sealed record RouteWaveOptions
 /// A signed-distance landmask sampled on a regular grid. Distances are nautical
 /// miles, positive over water and negative over land.
 /// </summary>
+/// <summary>
+/// A request to derive a signed-distance landmask from whatever land geometry
+/// the route engine acquires. The grid itself cannot be built until the route
+/// corridor and coastline are known, so callers that want the built-in landmask
+/// express intent here and the engine produces the
+/// <see cref="RouteLandmaskOptions"/> it marshals.
+/// </summary>
+public sealed record RouteLandmaskRequest
+{
+    public RouteLandmaskRequest(
+        double resolutionNauticalMiles = 5,
+        double clearanceNauticalMiles = 0,
+        int maximumSubdivisionDepth = 12,
+        RouteMissingDataPolicy missingDataPolicy = RouteMissingDataPolicy.RejectTransition)
+    {
+        if (!double.IsFinite(resolutionNauticalMiles) || resolutionNauticalMiles <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(resolutionNauticalMiles));
+        }
+
+        if (!double.IsFinite(clearanceNauticalMiles) || clearanceNauticalMiles < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(clearanceNauticalMiles));
+        }
+
+        if (maximumSubdivisionDepth is < 1 or > 32)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumSubdivisionDepth));
+        }
+
+        if (!Enum.IsDefined(missingDataPolicy))
+        {
+            throw new ArgumentOutOfRangeException(nameof(missingDataPolicy));
+        }
+
+        ResolutionNauticalMiles = resolutionNauticalMiles;
+        ClearanceNauticalMiles = clearanceNauticalMiles;
+        MaximumSubdivisionDepth = maximumSubdivisionDepth;
+        MissingDataPolicy = missingDataPolicy;
+    }
+
+    public double ResolutionNauticalMiles { get; }
+
+    public double ClearanceNauticalMiles { get; }
+
+    public int MaximumSubdivisionDepth { get; }
+
+    public RouteMissingDataPolicy MissingDataPolicy { get; }
+}
+
 public sealed record RouteLandmaskOptions
 {
     public RouteLandmaskOptions(
@@ -746,17 +796,28 @@ public sealed record RouteEnvironmentOptions
         RouteWaveOptions? waves = null,
         RouteLandmaskOptions? land = null,
         RouteExclusionOptions? exclusions = null,
-        RouteEnvironmentSampling sampling = RouteEnvironmentSampling.SegmentStart)
+        RouteEnvironmentSampling sampling = RouteEnvironmentSampling.SegmentStart,
+        RouteLandmaskRequest? landRequest = null)
     {
         if (!Enum.IsDefined(sampling))
         {
             throw new ArgumentOutOfRangeException(nameof(sampling));
         }
 
+        // A built mask and a request to build one are contradictory; refusing
+        // the combination stops a stale grid silently winning.
+        if (land is not null && landRequest is not null)
+        {
+            throw new ArgumentException(
+                "Supply either a built landmask or a request to derive one, not both.",
+                nameof(landRequest));
+        }
+
         // Midpoint sampling only means something when there is a field to
         // sample; router-lib rejects the combination outright.
         if (sampling == RouteEnvironmentSampling.Midpoint &&
-            currents is null && waves is null && land is null && exclusions is null)
+            currents is null && waves is null && land is null &&
+            exclusions is null && landRequest is null)
         {
             throw new ArgumentException(
                 "Midpoint sampling requires at least one configured provider.",
@@ -768,6 +829,7 @@ public sealed record RouteEnvironmentOptions
         Land = land;
         Exclusions = exclusions;
         Sampling = sampling;
+        LandRequest = landRequest;
     }
 
     public RouteCurrentOptions? Currents { get; }
@@ -780,9 +842,24 @@ public sealed record RouteEnvironmentOptions
 
     public RouteEnvironmentSampling Sampling { get; }
 
+    /// <summary>
+    /// Set when the caller wants router-lib's signed-distance landmask but the
+    /// grid has not been rasterized yet. The route engine resolves this into
+    /// <see cref="Land"/> before marshalling.
+    /// </summary>
+    public RouteLandmaskRequest? LandRequest { get; }
+
     /// <summary>True when at least one provider is configured.</summary>
     public bool IsActive =>
-        Currents is not null || Waves is not null || Land is not null || Exclusions is not null;
+        Currents is not null || Waves is not null || Land is not null ||
+        Exclusions is not null || LandRequest is not null;
+
+    /// <summary>
+    /// Replaces an unresolved <see cref="LandRequest"/> with the mask the
+    /// engine rasterized for the corridor.
+    /// </summary>
+    public RouteEnvironmentOptions WithResolvedLand(RouteLandmaskOptions? land) =>
+        new(Currents, Waves, land, Exclusions, Sampling);
 
     /// <summary>An environment with nothing configured, equivalent to omitting it.</summary>
     public static RouteEnvironmentOptions None { get; } = new();

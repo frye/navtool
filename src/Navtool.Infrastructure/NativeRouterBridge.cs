@@ -1072,11 +1072,27 @@ public sealed class NativeRouteEngine : IRouteEngine
                 .AcquireAsync(GetLoadBounds(forecast), cancellationToken)
                 .ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
+
+        // The signed-distance landmask replaces the callback rather than
+        // layering on top of it, so the two land paths never disagree.
+        var usesSignedDistanceLandmask =
+            optimization.Environment?.LandRequest is not null;
         Func<Coordinate, Coordinate, bool>? isSegmentEligible =
-            landData.Geometry is null
+            landData.Geometry is null || usesSignedDistanceLandmask
                 ? null
                 : (parent, candidate) =>
                     !landData.Geometry.IntersectsSegment(parent, candidate);
+
+        var effectiveOptimization = optimization;
+        if (usesSignedDistanceLandmask)
+        {
+            progress?.Report(new RouteCalculationProgress(0.05, "Building landmask"));
+            effectiveOptimization = ResolveLandmask(
+                optimization,
+                landData,
+                GetLoadBounds(forecast),
+                cancellationToken);
+        }
 
         progress?.Report(new RouteCalculationProgress(0, "Loading forecast"));
 
@@ -1118,13 +1134,13 @@ public sealed class NativeRouteEngine : IRouteEngine
                 loaded,
                 request,
                 forecast.Request.Model,
-                optimization,
+                effectiveOptimization,
                 reportSnapshot,
                 isSegmentEligible,
                 cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new RouteCalculationProgress(1, "Route complete"));
-            result = ApplyLandData(result, landData);
+            result = ApplyLandData(result, landData, usesSignedDistanceLandmask);
             _logger.LogInformation(
                 "Completed route {RouteId} using {Model} with {PointCount} points",
                 request.RouteId,
@@ -1173,10 +1189,73 @@ public sealed class NativeRouteEngine : IRouteEngine
                 1);
     }
 
+    private RouteOptimizationOptions ResolveLandmask(
+        RouteOptimizationOptions optimization,
+        LandDataAcquisition landData,
+        GeographicBounds bounds,
+        CancellationToken cancellationToken)
+    {
+        var environment = optimization.Environment ??
+            throw new InvalidOperationException(
+                "A landmask request requires a configured environment.");
+        var request = environment.LandRequest ??
+            throw new InvalidOperationException(
+                "A landmask request was expected but none was configured.");
+
+        if (!_bridge.SignedDistanceLandmaskAvailable)
+        {
+            throw new NotSupportedException(
+                "The installed router-lib does not provide the signed-distance landmask.");
+        }
+
+        // Never fall back to unrestricted water. Without geometry the mask
+        // cannot be built and the route must not proceed pretending otherwise.
+        if (landData.Geometry is null)
+        {
+            throw new InvalidOperationException(
+                landData.Warning ??
+                "The signed-distance landmask was requested but no land geometry is available.");
+        }
+
+        _logger.LogInformation(
+            "Rasterizing a {Resolution:0.###} nautical mile signed-distance landmask over {Bounds}",
+            request.ResolutionNauticalMiles,
+            bounds);
+        var mask = SignedDistanceLandmaskBuilder.Build(
+            landData.Geometry,
+            bounds,
+            request.ResolutionNauticalMiles,
+            new RouteProviderMetadata(
+                "Navtool signed-distance landmask",
+                landData.Attribution ?? "Navtool land data provider",
+                $"{request.ResolutionNauticalMiles:0.###}nm"),
+            request.ClearanceNauticalMiles,
+            request.MaximumSubdivisionDepth,
+            request.MissingDataPolicy,
+            cancellationToken);
+
+        return optimization.WithEnvironment(environment.WithResolvedLand(mask));
+    }
+
     private static RouteResult ApplyLandData(
         RouteResult result,
-        LandDataAcquisition landData)
+        LandDataAcquisition landData,
+        bool usesSignedDistanceLandmask = false)
     {
+        // With the built-in landmask the applied attribution comes from the
+        // environment metadata router-lib emits, so report the mask rather than
+        // the callback that was deliberately not installed.
+        if (usesSignedDistanceLandmask && landData.Status == LandDataStatus.Available)
+        {
+            return result.WithLandAvoidance(
+                new RouteLandAvoidance(
+                    LandAvoidanceStatus.Applied,
+                    Warning: null,
+                    Attribution: result.Environment?.Landmask is { } mask
+                        ? $"{mask.Name} ({mask.Source})"
+                        : landData.Attribution));
+        }
+
         var landAvoidance = landData.Status switch
         {
             LandDataStatus.Available when landData.Geometry is not null =>
