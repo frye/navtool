@@ -329,6 +329,93 @@ public sealed record RouteDiagnostics
     public TimeSpan? CalculationDuration { get; }
 }
 
+public sealed record RouteLatticeSearchProgress
+{
+    public RouteLatticeSearchProgress(
+        long settledLabels,
+        long queuedLabels,
+        long relaxedLabels,
+        int refinementIndex,
+        int subdivisionLevel)
+    {
+        if (settledLabels < 0 || queuedLabels < 0 || relaxedLabels < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(settledLabels));
+        }
+
+        if (refinementIndex < 0 || subdivisionLevel < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(refinementIndex));
+        }
+
+        SettledLabels = settledLabels;
+        QueuedLabels = queuedLabels;
+        RelaxedLabels = relaxedLabels;
+        RefinementIndex = refinementIndex;
+        SubdivisionLevel = subdivisionLevel;
+    }
+
+    public long SettledLabels { get; }
+
+    public long QueuedLabels { get; }
+
+    public long RelaxedLabels { get; }
+
+    public int RefinementIndex { get; }
+
+    public int SubdivisionLevel { get; }
+}
+
+public sealed record RouteLatticeDiagnostics
+{
+    public RouteLatticeDiagnostics(
+        long settledLabels,
+        long queuedLabels,
+        long relaxedLabels,
+        long waitTransitions,
+        int refinementRuns,
+        int acceptedRefinements,
+        int subdivisionLevel,
+        bool refinementFallback)
+    {
+        if (settledLabels < 0 || queuedLabels < 0 || relaxedLabels < 0 ||
+            waitTransitions < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(settledLabels));
+        }
+
+        if (refinementRuns < 0 || acceptedRefinements < 0 || subdivisionLevel < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(refinementRuns));
+        }
+
+        SettledLabels = settledLabels;
+        QueuedLabels = queuedLabels;
+        RelaxedLabels = relaxedLabels;
+        WaitTransitions = waitTransitions;
+        RefinementRuns = refinementRuns;
+        AcceptedRefinements = acceptedRefinements;
+        SubdivisionLevel = subdivisionLevel;
+        RefinementFallback = refinementFallback;
+    }
+
+    public long SettledLabels { get; }
+
+    public long QueuedLabels { get; }
+
+    public long RelaxedLabels { get; }
+
+    public long WaitTransitions { get; }
+
+    public int RefinementRuns { get; }
+
+    public int AcceptedRefinements { get; }
+
+    public int SubdivisionLevel { get; }
+
+    public bool RefinementFallback { get; }
+}
+
 public sealed record RouteCalculationFrontSegment
 {
     public RouteCalculationFrontSegment(IEnumerable<Coordinate> points)
@@ -380,23 +467,50 @@ public sealed record RouteCalculationSnapshot
         IEnumerable<RouteCalculationFrontSegment> frontSegments,
         IEnumerable<RoutePoint> provisionalRoute,
         RouteDiagnostics diagnostics)
+        : this(
+            frontierTime,
+            RouteSolver.IsochroneBeam,
+            envelopeSegments,
+            frontSegments,
+            Array.Empty<Coordinate>(),
+            provisionalRoute,
+            diagnostics,
+            null)
+    {
+    }
+
+    public RouteCalculationSnapshot(
+        DateTimeOffset frontierTime,
+        RouteSolver solver,
+        IEnumerable<RouteCalculationEnvelopeSegment> envelopeSegments,
+        IEnumerable<RouteCalculationFrontSegment> frontSegments,
+        IEnumerable<Coordinate> searchPoints,
+        IEnumerable<RoutePoint> provisionalRoute,
+        RouteDiagnostics diagnostics,
+        RouteLatticeSearchProgress? latticeSearch)
     {
         ArgumentNullException.ThrowIfNull(envelopeSegments);
         ArgumentNullException.ThrowIfNull(frontSegments);
+        ArgumentNullException.ThrowIfNull(searchPoints);
         ArgumentNullException.ThrowIfNull(provisionalRoute);
         ArgumentNullException.ThrowIfNull(diagnostics);
+        if (!Enum.IsDefined(solver))
+        {
+            throw new ArgumentOutOfRangeException(nameof(solver));
+        }
 
         var immutableEnvelopeSegments = envelopeSegments.ToImmutableArray();
         var immutableFrontSegments = frontSegments.ToImmutableArray();
+        var immutableSearchPoints = searchPoints.ToImmutableArray();
         var immutableRoute = provisionalRoute.ToImmutableArray();
-        if (immutableEnvelopeSegments.IsEmpty)
+        if (solver == RouteSolver.IsochroneBeam && immutableEnvelopeSegments.IsEmpty)
         {
             throw new ArgumentException(
                 "A routing snapshot must contain at least one reachability envelope segment.",
                 nameof(envelopeSegments));
         }
 
-        if (immutableFrontSegments.IsEmpty)
+        if (solver == RouteSolver.IsochroneBeam && immutableFrontSegments.IsEmpty)
         {
             throw new ArgumentException(
                 "A routing snapshot must contain at least one isochrone front segment.",
@@ -409,13 +523,13 @@ public sealed record RouteCalculationSnapshot
         }
 
         var utcFrontierTime = frontierTime.ToUniversalTime();
-        if (immutableRoute[^1].Timestamp != utcFrontierTime)
+        if (solver == RouteSolver.IsochroneBeam &&
+            immutableRoute[^1].Timestamp != utcFrontierTime)
         {
             throw new ArgumentException(
                 "The provisional route must end at the frontier time.",
                 nameof(provisionalRoute));
         }
-
         for (var index = 1; index < immutableRoute.Length; index++)
         {
             if (immutableRoute[index].Timestamp < immutableRoute[index - 1].Timestamp ||
@@ -429,21 +543,36 @@ public sealed record RouteCalculationSnapshot
         }
 
         FrontierTime = utcFrontierTime;
+        Solver = solver;
         EnvelopeSegments = immutableEnvelopeSegments;
         FrontSegments = immutableFrontSegments;
+        SearchPoints = immutableSearchPoints;
         ProvisionalRoute = immutableRoute;
         Diagnostics = diagnostics;
+        LatticeSearch = latticeSearch;
+        if ((solver == RouteSolver.TimeDependentLattice) != (latticeSearch is not null))
+        {
+            throw new ArgumentException(
+                "Lattice progress is required only for the lattice solver.",
+                nameof(latticeSearch));
+        }
     }
 
     public DateTimeOffset FrontierTime { get; }
+
+    public RouteSolver Solver { get; }
 
     public ImmutableArray<RouteCalculationEnvelopeSegment> EnvelopeSegments { get; }
 
     public ImmutableArray<RouteCalculationFrontSegment> FrontSegments { get; }
 
+    public ImmutableArray<Coordinate> SearchPoints { get; }
+
     public ImmutableArray<RoutePoint> ProvisionalRoute { get; }
 
     public RouteDiagnostics Diagnostics { get; }
+
+    public RouteLatticeSearchProgress? LatticeSearch { get; }
 }
 
 public enum RouteCompletion
@@ -523,7 +652,9 @@ public sealed record RouteResult
         IEnumerable<RoutePoint> points,
         RouteDiagnostics diagnostics,
         RouteCompletion completion,
-        RouteLandAvoidance? landAvoidance)
+        RouteLandAvoidance? landAvoidance,
+        RouteSolver solver = RouteSolver.IsochroneBeam,
+        RouteLatticeDiagnostics? latticeDiagnostics = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(points);
@@ -532,6 +663,17 @@ public sealed record RouteResult
         if (!Enum.IsDefined(completion))
         {
             throw new ArgumentOutOfRangeException(nameof(completion));
+        }
+        if (!Enum.IsDefined(solver))
+        {
+            throw new ArgumentOutOfRangeException(nameof(solver));
+        }
+        if (solver != RouteSolver.TimeDependentLattice &&
+            latticeDiagnostics is not null)
+        {
+            throw new ArgumentException(
+                "Lattice diagnostics are valid only for lattice results.",
+                nameof(latticeDiagnostics));
         }
 
         var immutablePoints = points.ToImmutableArray();
@@ -570,6 +712,8 @@ public sealed record RouteResult
         Diagnostics = diagnostics;
         Completion = completion;
         LandAvoidance = landAvoidance ?? RouteLandAvoidance.NotEvaluated;
+        Solver = solver;
+        LatticeDiagnostics = latticeDiagnostics;
     }
 
     public RouteRequest Request { get; }
@@ -583,6 +727,10 @@ public sealed record RouteResult
     public RouteCompletion Completion { get; }
 
     public RouteLandAvoidance LandAvoidance { get; }
+
+    public RouteSolver Solver { get; }
+
+    public RouteLatticeDiagnostics? LatticeDiagnostics { get; }
 
     public DateTimeOffset ArrivalTime => Points[^1].Timestamp;
 
@@ -604,7 +752,9 @@ public sealed record RouteResult
             Points,
             Diagnostics,
             Completion,
-            landAvoidance);
+            landAvoidance,
+            Solver,
+            LatticeDiagnostics);
     }
 }
 
@@ -639,4 +789,12 @@ public interface IRouteEngine
         ForecastAcquisition forecast,
         IProgress<RouteCalculationProgress>? progress,
         CancellationToken cancellationToken);
+
+    ValueTask<RouteResult> CalculateAsync(
+        RouteRequest request,
+        ForecastAcquisition forecast,
+        RouteOptimizationOptions optimization,
+        IProgress<RouteCalculationProgress>? progress,
+        CancellationToken cancellationToken) =>
+        CalculateAsync(request, forecast, progress, cancellationToken);
 }

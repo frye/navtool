@@ -15,7 +15,7 @@ namespace Navtool.Infrastructure;
 
 public sealed record NativeRouterBridgeOptions
 {
-    public const uint SupportedAbiVersion = 5;
+    public const uint SupportedAbiVersion = 6;
 
     public int MaximumTextBytes { get; init; } = 64 * 1024 * 1024;
 
@@ -315,6 +315,7 @@ public sealed class NativeRouterBridge
             forecast,
             request,
             model,
+            RouteOptimizationOptions.Balanced,
             null,
             null,
             cancellationToken);
@@ -331,6 +332,7 @@ public sealed class NativeRouterBridge
             forecast,
             request,
             model,
+            RouteOptimizationOptions.Balanced,
             null,
             isSegmentEligible,
             cancellationToken);
@@ -348,6 +350,7 @@ public sealed class NativeRouterBridge
             forecast,
             request,
             model,
+            RouteOptimizationOptions.Balanced,
             onProgress,
             null,
             cancellationToken);
@@ -367,6 +370,27 @@ public sealed class NativeRouterBridge
             forecast,
             request,
             model,
+            RouteOptimizationOptions.Balanced,
+            onProgress,
+            isSegmentEligible,
+            cancellationToken);
+    }
+
+    public RouteResult CalculateRoute(
+        NativeForecast forecast,
+        RouteRequest request,
+        ForecastModel model,
+        RouteOptimizationOptions optimization,
+        Action<RouteCalculationSnapshot>? onProgress,
+        Func<Coordinate, Coordinate, bool>? isSegmentEligible,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(optimization);
+        return CalculateRouteCore(
+            forecast,
+            request,
+            model,
+            optimization,
             onProgress,
             isSegmentEligible,
             cancellationToken);
@@ -376,12 +400,14 @@ public sealed class NativeRouterBridge
         NativeForecast forecast,
         RouteRequest request,
         ForecastModel model,
+        RouteOptimizationOptions optimization,
         Action<RouteCalculationSnapshot>? onProgress,
         Func<Coordinate, Coordinate, bool>? isSegmentEligible,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(forecast);
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(optimization);
         _ = model.Provider();
         ThrowIfDisposed(forecast);
         if (isSegmentEligible is not null && !LandConstraintAvailable)
@@ -392,6 +418,7 @@ public sealed class NativeRouterBridge
 
         cancellationToken.ThrowIfCancellationRequested();
         var departure = request.DepartureTime.ToUnixTimeSeconds();
+        var nativeOptions = NativeRoutingOptions.From(optimization);
         var stopwatch = Stopwatch.StartNew();
         ExceptionDispatchInfo? callbackFailure = null;
         NativeMethods.RoutingProgressCallback callback;
@@ -404,7 +431,7 @@ public sealed class NativeRouterBridge
         {
             if (callbackFailure is not null)
             {
-                return;
+                return 0;
             }
 
             try
@@ -415,6 +442,7 @@ public sealed class NativeRouterBridge
                 {
                     onProgress(lastSnapshot);
                 }
+                cancellationToken.ThrowIfCancellationRequested();
             }
             catch (Exception exception)
             {
@@ -423,6 +451,7 @@ public sealed class NativeRouterBridge
                     ExceptionDispatchInfo.Capture(exception),
                     null);
             }
+            return callbackFailure is null ? (byte)1 : (byte)0;
         };
         if (isSegmentEligible is not null)
         {
@@ -468,6 +497,7 @@ public sealed class NativeRouterBridge
                 request.Destination.Latitude,
                 request.Destination.Longitude,
                 ref departure,
+                ref nativeOptions,
                 callback,
                 IntPtr.Zero,
                 eligibilityCallback,
@@ -506,7 +536,9 @@ public sealed class NativeRouterBridge
                         lastSnapshot.Diagnostics.RetainedCandidates,
                         lastSnapshot.Diagnostics.TimeSteps,
                         stopwatch.Elapsed),
-                    RouteCompletion.ForecastExhausted);
+                    RouteCompletion.ForecastExhausted,
+                    landAvoidance: null,
+                    optimization.Solver);
                 EnsureWithinForecastHorizon(partial, forecast.Metadata);
                 return ApplyLandAvoidanceCapability(
                     partial,
@@ -521,7 +553,12 @@ public sealed class NativeRouterBridge
 
         var json = CopyUtf8(routePointer, routeLength, _options.MaximumTextBytes, "route JSON");
         cancellationToken.ThrowIfCancellationRequested();
-        var result = NativeRouteJsonParser.Parse(json, request, model, stopwatch.Elapsed);
+        var result = NativeRouteJsonParser.Parse(
+            json,
+            request,
+            model,
+            stopwatch.Elapsed,
+            optimization.Solver);
         EnsureWithinForecastHorizon(result, forecast.Metadata);
         return ApplyLandAvoidanceCapability(
             result,
@@ -588,14 +625,23 @@ public sealed class NativeRouterBridge
         }
 
         var progress = Marshal.PtrToStructure<NativeRoutingProgress>(progressPointer);
+        var solver = progress.Solver switch
+        {
+            0 => RouteSolver.IsochroneBeam,
+            1 => RouteSolver.TimeDependentLattice,
+            _ => throw new NativeRouteFormatException(
+                "Native progress contained an unsupported solver.")
+        };
         var contourPoints = CopyArray<NativeCoordinate>(
             progress.ContourPoints,
             progress.ContourPointCount,
-            "contour points");
+            "contour points",
+            allowEmpty: true);
         var nativeContourSegments = CopyArray<NativeContourSegment>(
             progress.ContourSegments,
             progress.ContourSegmentCount,
-            "contour segments");
+            "contour segments",
+            allowEmpty: true);
         var envelopeSegments = ImmutableArray.CreateBuilder<RouteCalculationEnvelopeSegment>(
             nativeContourSegments.Length);
         foreach (var segment in nativeContourSegments)
@@ -629,11 +675,13 @@ public sealed class NativeRouterBridge
         var frontPoints = CopyArray<NativeCoordinate>(
             progress.FrontPoints,
             progress.FrontPointCount,
-            "front points");
+            "front points",
+            allowEmpty: true);
         var nativeSegments = CopyArray<NativeFrontSegment>(
             progress.FrontSegments,
             progress.FrontSegmentCount,
-            "front segments");
+            "front segments",
+            allowEmpty: true);
         var frontSegments = ImmutableArray.CreateBuilder<RouteCalculationFrontSegment>(
             nativeSegments.Length);
         foreach (var segment in nativeSegments)
@@ -662,6 +710,14 @@ public sealed class NativeRouterBridge
                 segmentPoints.MoveToImmutable()));
         }
 
+        var searchPoints = CopyArray<NativeCoordinate>(
+                progress.SearchPoints,
+                progress.SearchPointCount,
+                "search points",
+                allowEmpty: true)
+            .Select(point => new Coordinate(
+                point.LatitudeDegrees,
+                point.LongitudeDegrees));
         var provisionalRoute = CopyArray<NativeRoutePoint>(
                 progress.ProvisionalRoutePoints,
                 progress.ProvisionalRoutePointCount,
@@ -681,22 +737,39 @@ public sealed class NativeRouterBridge
             checked((long)progress.Diagnostics.GeneratedCandidates),
             checked((long)progress.Diagnostics.RetainedCandidates),
             checked((int)progress.Diagnostics.TimeSteps));
+        var latticeSearch = solver == RouteSolver.TimeDependentLattice
+            ? new RouteLatticeSearchProgress(
+                checked((long)progress.LatticeSearch.SettledLabels),
+                checked((long)progress.LatticeSearch.QueuedLabels),
+                checked((long)progress.LatticeSearch.RelaxedLabels),
+                checked((int)progress.LatticeSearch.RefinementIndex),
+                checked((int)progress.LatticeSearch.SubdivisionLevel))
+            : null;
         return new RouteCalculationSnapshot(
-            DateTimeOffset.FromUnixTimeSeconds(progress.IsochroneUtcEpochSeconds),
+            DateTimeOffset.FromUnixTimeSeconds(progress.ProgressUtcEpochSeconds),
+            solver,
             envelopeSegments.MoveToImmutable(),
             frontSegments.MoveToImmutable(),
+            searchPoints,
             provisionalRoute,
-            diagnostics);
+            diagnostics,
+            latticeSearch);
     }
 
     private ImmutableArray<T> CopyArray<T>(
         IntPtr pointer,
         ulong count,
-        string description)
+        string description,
+        bool allowEmpty = false)
         where T : struct
     {
         if (count == 0)
         {
+            if (allowEmpty)
+            {
+                return [];
+            }
+
             throw new NativeRouteFormatException($"Native progress {description} must not be empty.");
         }
 
@@ -903,14 +976,28 @@ public sealed class NativeRouteEngine : IRouteEngine
 
     public bool LandAvoidanceAvailable => _bridge.LandConstraintAvailable;
 
+    public ValueTask<RouteResult> CalculateAsync(
+        RouteRequest request,
+        ForecastAcquisition forecast,
+        IProgress<RouteCalculationProgress>? progress,
+        CancellationToken cancellationToken) =>
+        CalculateAsync(
+            request,
+            forecast,
+            RouteOptimizationOptions.Balanced,
+            progress,
+            cancellationToken);
+
     public async ValueTask<RouteResult> CalculateAsync(
         RouteRequest request,
         ForecastAcquisition forecast,
+        RouteOptimizationOptions optimization,
         IProgress<RouteCalculationProgress>? progress,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(forecast);
+        ArgumentNullException.ThrowIfNull(optimization);
         cancellationToken.ThrowIfCancellationRequested();
         if (!LandAvoidanceAvailable)
         {
@@ -947,57 +1034,34 @@ public sealed class NativeRouteEngine : IRouteEngine
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new RouteCalculationProgress(0.2, "Optimizing route"));
             RouteResult result;
-            if (progress is null)
+            Action<RouteCalculationSnapshot>? reportSnapshot = null;
+            if (progress is not null)
             {
-                result = isSegmentEligible is null
-                    ? _bridge.CalculateRoute(
-                        loaded,
-                        request,
-                        forecast.Request.Model,
-                        cancellationToken)
-                    : _bridge.CalculateRoute(
-                        loaded,
-                        request,
-                        forecast.Request.Model,
-                        isSegmentEligible,
-                        cancellationToken);
-            }
-            else
-            {
-                Action<RouteCalculationSnapshot> reportSnapshot = snapshot =>
+                var reportedElapsed = TimeSpan.Zero;
+                reportSnapshot = snapshot =>
                 {
-                    var requestedDuration =
-                        request.LatestArrivalTime - request.DepartureTime;
-                    var elapsed =
-                        snapshot.FrontierTime - request.DepartureTime;
-                    var fraction = requestedDuration <= TimeSpan.Zero
-                        ? 0
-                        : Math.Clamp(
-                            elapsed.TotalSeconds /
-                            requestedDuration.TotalSeconds,
-                            0,
-                            1);
+                    var fraction = AdvanceProgressFraction(
+                        request,
+                        snapshot,
+                        ref reportedElapsed);
                     progress.Report(new RouteCalculationProgress(
                         0.2 + (fraction * 0.79),
-                        $"Step {snapshot.Diagnostics.TimeSteps:N0} · " +
-                        $"{snapshot.Diagnostics.RetainedCandidates:N0} retained",
+                        snapshot.Solver == RouteSolver.TimeDependentLattice
+                            ? $"{snapshot.LatticeSearch!.SettledLabels:N0} settled · " +
+                              $"refinement {snapshot.LatticeSearch.RefinementIndex:N0}"
+                            : $"Step {snapshot.Diagnostics.TimeSteps:N0} · " +
+                              $"{snapshot.Diagnostics.RetainedCandidates:N0} retained",
                         snapshot));
                 };
-                result = isSegmentEligible is null
-                    ? _bridge.CalculateRoute(
-                        loaded,
-                        request,
-                        forecast.Request.Model,
-                        reportSnapshot,
-                        cancellationToken)
-                    : _bridge.CalculateRoute(
-                    loaded,
-                    request,
-                    forecast.Request.Model,
-                    reportSnapshot,
-                    isSegmentEligible,
-                    cancellationToken);
             }
+            result = _bridge.CalculateRoute(
+                loaded,
+                request,
+                forecast.Request.Model,
+                optimization,
+                reportSnapshot,
+                isSegmentEligible,
+                cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new RouteCalculationProgress(1, "Route complete"));
             result = ApplyLandData(result, landData);
@@ -1019,6 +1083,34 @@ public sealed class NativeRouteEngine : IRouteEngine
                 forecast.Artifact.Path);
             throw;
         }
+    }
+
+    internal static double AdvanceProgressFraction(
+        RouteRequest request,
+        RouteCalculationSnapshot snapshot,
+        ref TimeSpan reportedElapsed)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        var requestedDuration =
+            request.LatestArrivalTime - request.DepartureTime;
+        var progressTime = snapshot.Solver == RouteSolver.TimeDependentLattice
+            ? snapshot.ProvisionalRoute[^1].Timestamp
+            : snapshot.FrontierTime;
+        var elapsed = progressTime - request.DepartureTime;
+        if (elapsed > reportedElapsed)
+        {
+            reportedElapsed = elapsed;
+        }
+
+        return requestedDuration <= TimeSpan.Zero
+            ? 0
+            : Math.Clamp(
+                reportedElapsed.TotalSeconds /
+                requestedDuration.TotalSeconds,
+                0,
+                1);
     }
 
     private static RouteResult ApplyLandData(
@@ -1098,9 +1190,11 @@ internal static class NativeRouteJsonParser
         string json,
         RouteRequest request,
         ForecastModel model,
-        TimeSpan calculationDuration)
+        TimeSpan calculationDuration,
+        RouteSolver solver = RouteSolver.IsochroneBeam)
     {
         RouteDiagnostics diagnostics;
+        RouteLatticeDiagnostics? latticeDiagnostics = null;
         RouteCompletion completion;
         var raw = ImmutableArray.CreateBuilder<RawRoutePoint>();
 
@@ -1128,6 +1222,24 @@ internal static class NativeRouteJsonParser
                 RequiredInt64(diagnosticsElement, "retainedCandidates"),
                 RequiredInt32(diagnosticsElement, "timeSteps"),
                 calculationDuration);
+            if (root.TryGetProperty("latticeDiagnostics", out var latticeElement))
+            {
+                RequireKind(latticeElement, JsonValueKind.Object, "latticeDiagnostics");
+                latticeDiagnostics = new RouteLatticeDiagnostics(
+                    RequiredInt64(latticeElement, "settledLabels"),
+                    RequiredInt64(latticeElement, "queuedLabels"),
+                    RequiredInt64(latticeElement, "relaxedLabels"),
+                    RequiredInt64(latticeElement, "waitTransitions"),
+                    RequiredInt32(latticeElement, "refinementRuns"),
+                    RequiredInt32(latticeElement, "acceptedRefinements"),
+                    RequiredInt32(latticeElement, "subdivisionLevel"),
+                    RequiredBoolean(latticeElement, "refinementFallback"));
+            }
+            if (solver == RouteSolver.IsochroneBeam && latticeDiagnostics is not null)
+            {
+                throw new NativeRouteFormatException(
+                    "Native beam route JSON unexpectedly included lattice diagnostics.");
+            }
 
             var pointsElement = Required(root, "points", JsonValueKind.Array);
             foreach (var element in pointsElement.EnumerateArray())
@@ -1193,7 +1305,10 @@ internal static class NativeRouteJsonParser
                 model,
                 points.ToImmutable(),
                 diagnostics,
-                completion);
+                completion,
+                landAvoidance: null,
+                solver,
+                latticeDiagnostics);
         }
         catch (ArgumentException exception)
         {
@@ -1228,6 +1343,18 @@ internal static class NativeRouteJsonParser
         Required(parent, name, JsonValueKind.String).GetString() ??
         throw new NativeRouteFormatException(
             $"Native route JSON field '{name}' must not be null.");
+
+    private static bool RequiredBoolean(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var value) ||
+            value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            throw new NativeRouteFormatException(
+                $"Native route JSON field '{name}' must be Boolean.");
+        }
+
+        return value.GetBoolean();
+    }
 
     private static void RequireKind(JsonElement element, JsonValueKind kind, string name)
     {
@@ -1385,9 +1512,80 @@ internal struct NativeRoutingDiagnostics
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal struct NativeRoutingOptions
+{
+    public int Solver;
+    public int HeadingAugmentation;
+    public int WindSampling;
+    public int PolarAngleInterpolation;
+    public int AbovePolarRange;
+    public int PruningStrategy;
+    public int DestinationFrontSegmentPolicy;
+    public int LatticeSearchAlgorithm;
+    public long TackPenaltySeconds;
+    public long GybePenaltySeconds;
+    public long MidpointWindSamplingThresholdMinutes;
+    public long LatticeTimeBucketMinutes;
+    public double DownwindTrueWindAngleDegrees;
+    public double MaximumTrueWindSpeedKnots;
+    public double PruningSectorDegrees;
+    public double DestinationFrontHalfAngleDegrees;
+    public double LatticeCorridorWidthNauticalMiles;
+    public ulong DestinationFrontMinimumSecondarySegmentPoints;
+    public ulong LatticeSubdivisionLevel;
+    public ulong LatticeRefinementLevels;
+    public ulong LatticeCorridorWideningRetries;
+    public ulong LatticeProgressEveryExpansions;
+    public ulong Flags;
+
+    public static NativeRoutingOptions From(RouteOptimizationOptions options) => new()
+    {
+        Solver = (int)options.Solver,
+        HeadingAugmentation = (int)options.HeadingAugmentation,
+        WindSampling = (int)options.WindSampling,
+        PolarAngleInterpolation = (int)options.PolarAngleInterpolation,
+        AbovePolarRange = (int)options.AbovePolarRange,
+        PruningStrategy = (int)options.PruningStrategy,
+        DestinationFrontSegmentPolicy = (int)options.DestinationFront.SegmentPolicy,
+        LatticeSearchAlgorithm = (int)options.Lattice.SearchAlgorithm,
+        TackPenaltySeconds = checked((long)options.Maneuver.TackPenalty.TotalSeconds),
+        GybePenaltySeconds = checked((long)options.Maneuver.GybePenalty.TotalSeconds),
+        MidpointWindSamplingThresholdMinutes =
+            checked((long)options.MidpointWindSamplingThreshold.TotalMinutes),
+        LatticeTimeBucketMinutes = checked((long)options.Lattice.TimeBucket.TotalMinutes),
+        DownwindTrueWindAngleDegrees = options.Maneuver.DownwindTrueWindAngleDegrees,
+        MaximumTrueWindSpeedKnots = options.MaximumTrueWindSpeedKnots ?? 0,
+        PruningSectorDegrees = options.PruningSectorDegrees,
+        DestinationFrontHalfAngleDegrees = options.DestinationFront.HalfAngleDegrees,
+        LatticeCorridorWidthNauticalMiles = options.Lattice.CorridorWidthNauticalMiles,
+        DestinationFrontMinimumSecondarySegmentPoints =
+            checked((ulong)options.DestinationFront.MinimumSecondarySegmentPoints),
+        LatticeSubdivisionLevel = checked((ulong)options.Lattice.SubdivisionLevel),
+        LatticeRefinementLevels = checked((ulong)options.Lattice.RefinementLevels),
+        LatticeCorridorWideningRetries =
+            checked((ulong)options.Lattice.CorridorWideningRetries),
+        LatticeProgressEveryExpansions =
+            checked((ulong)options.Lattice.ProgressEveryExpansions),
+        Flags = options.MaximumTrueWindSpeedKnots.HasValue ? 1UL : 0UL
+    };
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeLatticeSearchProgress
+{
+    public ulong SettledLabels;
+    public ulong QueuedLabels;
+    public ulong RelaxedLabels;
+    public ulong RefinementIndex;
+    public ulong SubdivisionLevel;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal struct NativeRoutingProgress
 {
-    public long IsochroneUtcEpochSeconds;
+    public int Solver;
+    private int _reserved;
+    public long ProgressUtcEpochSeconds;
     public IntPtr ContourPoints;
     public ulong ContourPointCount;
     public IntPtr ContourSegments;
@@ -1396,9 +1594,12 @@ internal struct NativeRoutingProgress
     public ulong FrontPointCount;
     public IntPtr FrontSegments;
     public ulong FrontSegmentCount;
+    public IntPtr SearchPoints;
+    public ulong SearchPointCount;
     public IntPtr ProvisionalRoutePoints;
     public ulong ProvisionalRoutePointCount;
     public NativeRoutingDiagnostics Diagnostics;
+    public NativeLatticeSearchProgress LatticeSearch;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -1471,7 +1672,7 @@ internal static class NativeMethods
         out nuint routeJsonLength);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate void RoutingProgressCallback(
+    internal delegate byte RoutingProgressCallback(
         IntPtr progress,
         IntPtr userData);
 
@@ -1481,7 +1682,7 @@ internal static class NativeMethods
         ref NativeCoordinate candidate,
         IntPtr userData);
 
-    [DllImport(LibraryName, EntryPoint = "navtool_router_calculate_route_streaming_v5", CallingConvention = CallingConvention.Cdecl)]
+    [DllImport(LibraryName, EntryPoint = "navtool_router_calculate_route_streaming_v6", CallingConvention = CallingConvention.Cdecl)]
     internal static extern NativeRouterStatus CalculateRouteStreaming(
         NativeForecastSafeHandle forecast,
         double startLatitude,
@@ -1489,6 +1690,7 @@ internal static class NativeMethods
         double destinationLatitude,
         double destinationLongitude,
         ref long departureEpochSeconds,
+        ref NativeRoutingOptions options,
         RoutingProgressCallback onProgress,
         IntPtr progressUserData,
         SegmentEligibilityCallback? isSegmentEligible,

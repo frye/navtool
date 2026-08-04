@@ -79,6 +79,19 @@ public sealed class DeferredNativeRouteEngine : IRouteEngine, IWeatherSampler, I
         CancellationToken cancellationToken) =>
         _engine.Value.CalculateAsync(request, forecast, progress, cancellationToken);
 
+    public ValueTask<RouteResult> CalculateAsync(
+        RouteRequest request,
+        ForecastAcquisition forecast,
+        RouteOptimizationOptions optimization,
+        IProgress<RouteCalculationProgress>? progress,
+        CancellationToken cancellationToken) =>
+        _engine.Value.CalculateAsync(
+            request,
+            forecast,
+            optimization,
+            progress,
+            cancellationToken);
+
     public ValueTask<ImmutableArray<ViewportWindSample>> SampleViewportAsync(
         ForecastAcquisition forecast,
         GeographicBounds bounds,

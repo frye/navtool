@@ -213,6 +213,57 @@ public sealed class NativeBridgeContractTests
     }
 
     [Fact]
+    public void Lattice_snapshot_accepts_search_progress_ahead_of_provisional_route()
+    {
+        var progressTime = new DateTimeOffset(2026, 7, 15, 3, 0, 0, TimeSpan.Zero);
+        var routeTime = progressTime.AddMinutes(-30);
+        var search = new Coordinate(42.5, -59.5);
+        var snapshot = new RouteCalculationSnapshot(
+            progressTime,
+            RouteSolver.TimeDependentLattice,
+            Array.Empty<RouteCalculationEnvelopeSegment>(),
+            Array.Empty<RouteCalculationFrontSegment>(),
+            new[] { search },
+            new[]
+            {
+                new RoutePoint(new Coordinate(41, -61), routeTime.AddHours(-1), 90, 7, 20, 180, 0),
+                new RoutePoint(new Coordinate(42, -60), routeTime, 90, 7, 20, 180, 7)
+            },
+            new RouteDiagnostics(100, 400, 80, 3),
+            new RouteLatticeSearchProgress(50, 20, 120, 1, 5));
+
+        Assert.Equal(RouteSolver.TimeDependentLattice, snapshot.Solver);
+        Assert.Equal(search, Assert.Single(snapshot.SearchPoints));
+        Assert.Empty(snapshot.EnvelopeSegments);
+        Assert.Empty(snapshot.FrontSegments);
+        Assert.Equal(routeTime, snapshot.ProvisionalRoute[^1].Timestamp);
+        Assert.NotNull(snapshot.LatticeSearch);
+    }
+
+    [Fact]
+    public void Lattice_snapshot_accepts_provisional_route_ahead_of_search_progress()
+    {
+        var progressTime = new DateTimeOffset(2026, 7, 15, 3, 0, 0, TimeSpan.Zero);
+        var routeTime = progressTime.AddMinutes(30);
+        var snapshot = new RouteCalculationSnapshot(
+            progressTime,
+            RouteSolver.TimeDependentLattice,
+            Array.Empty<RouteCalculationEnvelopeSegment>(),
+            Array.Empty<RouteCalculationFrontSegment>(),
+            new[] { new Coordinate(42.5, -59.5) },
+            new[]
+            {
+                new RoutePoint(new Coordinate(41, -61), progressTime.AddHours(-1), 90, 7, 20, 180, 0),
+                new RoutePoint(new Coordinate(42, -60), routeTime, 90, 7, 20, 180, 7)
+            },
+            new RouteDiagnostics(100, 400, 80, 3),
+            new RouteLatticeSearchProgress(50, 20, 120, 1, 5));
+
+        Assert.Equal(routeTime, snapshot.ProvisionalRoute[^1].Timestamp);
+        Assert.Equal(progressTime, snapshot.FrontierTime);
+    }
+
+    [Fact]
     public void Route_result_accepts_arrival_after_the_requested_passage_target()
     {
         var departure = new DateTimeOffset(2026, 7, 15, 0, 0, 0, TimeSpan.Zero);

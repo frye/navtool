@@ -215,6 +215,129 @@
                         <Border Classes="card">
                             <StackPanel Spacing="8">
                                 <TextBlock Classes="section-title"
+                                           Text="ROUTING ENGINE" />
+                                <CheckBox x:Name="ProfessionalRoutingToggle"
+                                          Content="Professional routing features"
+                                          IsChecked="{Binding EnableProfessionalRouting}"
+                                          IsEnabled="{Binding !IsCalculating}" />
+                                <TextBlock Classes="muted"
+                                           Text="Off uses Navtool's balanced beam profile: destination and VMG headings, midpoint wind, and monotone-cubic polar interpolation."
+                                           TextWrapping="Wrap" />
+                                <StackPanel IsVisible="{Binding EnableProfessionalRouting}"
+                                            IsEnabled="{Binding !IsCalculating}"
+                                            Spacing="8">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Classes="field-label" Text="Solver" />
+                                        <ComboBox x:Name="RouteSolverSelector"
+                                                  ItemsSource="{Binding RouteSolverOptions}"
+                                                  SelectedItem="{Binding SelectedRouteSolver}" />
+                                    </StackPanel>
+                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Classes="field-label" Text="Tack penalty (s)" />
+                                            <NumericUpDown Minimum="0" Maximum="3600"
+                                                           Value="{Binding TackPenaltySeconds}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Spacing="4">
+                                            <TextBlock Classes="field-label" Text="Gybe penalty (s)" />
+                                            <NumericUpDown Minimum="0" Maximum="3600"
+                                                           Value="{Binding GybePenaltySeconds}" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Classes="field-label" Text="Downwind threshold (° TWA)" />
+                                        <NumericUpDown Minimum="0" Maximum="180" Increment="1"
+                                                       Value="{Binding DownwindTrueWindAngleDegrees}" />
+                                    </StackPanel>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Classes="field-label" Text="Heading augmentation" />
+                                        <ComboBox ItemsSource="{Binding HeadingAugmentationOptions}"
+                                                  SelectedItem="{Binding HeadingAugmentation}" />
+                                    </StackPanel>
+                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Classes="field-label" Text="Wind sampling" />
+                                            <ComboBox ItemsSource="{Binding WindSamplingOptions}"
+                                                      SelectedItem="{Binding WindSampling}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Spacing="4">
+                                            <TextBlock Classes="field-label" Text="Midpoint threshold (min)" />
+                                            <NumericUpDown Minimum="0" Maximum="1440"
+                                                           Value="{Binding MidpointWindSamplingThresholdMinutes}" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Classes="field-label" Text="Polar interpolation" />
+                                        <ComboBox ItemsSource="{Binding PolarInterpolationOptions}"
+                                                  SelectedItem="{Binding PolarAngleInterpolation}" />
+                                    </StackPanel>
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                        <CheckBox Content="Maximum wind (kt)"
+                                                  IsChecked="{Binding UseMaximumTrueWindSpeed}" />
+                                        <NumericUpDown Grid.Column="1" Minimum="1" Maximum="200"
+                                                       IsEnabled="{Binding UseMaximumTrueWindSpeed}"
+                                                       Value="{Binding MaximumTrueWindSpeedKnots}" />
+                                    </Grid>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Classes="field-label" Text="Above polar range" />
+                                        <ComboBox ItemsSource="{Binding AbovePolarRangeOptions}"
+                                                  SelectedItem="{Binding AbovePolarRange}" />
+                                    </StackPanel>
+                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Classes="field-label" Text="Pruning" />
+                                            <ComboBox ItemsSource="{Binding PruningStrategyOptions}"
+                                                      SelectedItem="{Binding PruningStrategy}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Spacing="4">
+                                            <TextBlock Classes="field-label" Text="Sector width (°)" />
+                                            <NumericUpDown Minimum="0.1" Maximum="180" Increment="0.5"
+                                                           Value="{Binding PruningSectorDegrees}" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <StackPanel IsVisible="{Binding IsProfessionalBeamRouting}"
+                                                Spacing="8">
+                                        <TextBlock Classes="field-label" Text="Destination front" />
+                                        <ComboBox ItemsSource="{Binding DestinationFrontPolicyOptions}"
+                                                  SelectedItem="{Binding DestinationFrontSegmentPolicy}" />
+                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                            <NumericUpDown Minimum="1" Maximum="180"
+                                                           Value="{Binding DestinationFrontHalfAngleDegrees}" />
+                                            <NumericUpDown Grid.Column="1" Minimum="1" Maximum="1000"
+                                                           Value="{Binding DestinationFrontMinimumSecondarySegmentPoints}" />
+                                        </Grid>
+                                    </StackPanel>
+                                    <StackPanel IsVisible="{Binding IsProfessionalLatticeRouting}"
+                                                Spacing="8">
+                                        <TextBlock Classes="field-label" Text="Lattice search" />
+                                        <ComboBox ItemsSource="{Binding LatticeSearchAlgorithmOptions}"
+                                                  SelectedItem="{Binding LatticeSearchAlgorithm}" />
+                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                            <NumericUpDown Minimum="0" Maximum="8"
+                                                           Value="{Binding LatticeSubdivisionLevel}" />
+                                            <NumericUpDown Grid.Column="1" Minimum="0" Maximum="8"
+                                                           Value="{Binding LatticeRefinementLevels}" />
+                                        </Grid>
+                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                            <NumericUpDown Minimum="1" Maximum="1440"
+                                                           Value="{Binding LatticeTimeBucketMinutes}" />
+                                            <NumericUpDown Grid.Column="1" Minimum="1" Maximum="5000"
+                                                           Value="{Binding LatticeCorridorWidthNauticalMiles}" />
+                                        </Grid>
+                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                            <NumericUpDown Minimum="0" Maximum="20"
+                                                           Value="{Binding LatticeCorridorWideningRetries}" />
+                                            <NumericUpDown Grid.Column="1" Minimum="1" Maximum="1000000"
+                                                           Value="{Binding LatticeProgressEveryExpansions}" />
+                                        </Grid>
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card">
+                            <StackPanel Spacing="8">
+                                <TextBlock Classes="section-title"
                                            Text="CURRENT POSITION &amp; PROGRESS" />
                                 <TextBlock Classes="muted"
                                            Text="Mark completed legs as sailed, choose the active leg to resume from, and place the vessel's current position for a mid-leg reroute."

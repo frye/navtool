@@ -224,6 +224,102 @@ navtool_router_diagnostics_v1 copy_diagnostics(
         static_cast<uint64_t>(diagnostics.time_steps)};
 }
 
+bool valid_v6_enum(int32_t value, int32_t maximum) noexcept {
+    return value >= 0 && value <= maximum;
+}
+
+bool fits_size_t(uint64_t value) noexcept {
+    return value <= static_cast<uint64_t>(
+        std::numeric_limits<std::size_t>::max());
+}
+
+navtool_router_status_v1 apply_options_v6(
+    const navtool_router_options_v6& source,
+    sailroute::RoutingOptions& target) {
+    if (!valid_v6_enum(source.solver, 1) ||
+        !valid_v6_enum(source.heading_augmentation, 3) ||
+        !valid_v6_enum(source.wind_sampling, 1) ||
+        !valid_v6_enum(source.polar_angle_interpolation, 1) ||
+        !valid_v6_enum(source.above_polar_range, 1) ||
+        !valid_v6_enum(source.pruning_strategy, 1) ||
+        !valid_v6_enum(source.destination_front_segment_policy, 1) ||
+        !valid_v6_enum(source.lattice_search_algorithm, 1) ||
+        (source.flags &
+         ~static_cast<uint64_t>(
+             NAVTOOL_ROUTER_OPTIONS_HAS_MAXIMUM_TRUE_WIND_SPEED_V6)) != 0ULL) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
+            "routing options contain an unsupported enum or flag value");
+    }
+    if (!fits_size_t(
+            source.destination_front_minimum_secondary_segment_points) ||
+        !fits_size_t(source.lattice_subdivision_level) ||
+        !fits_size_t(source.lattice_refinement_levels) ||
+        !fits_size_t(source.lattice_corridor_widening_retries) ||
+        !fits_size_t(source.lattice_progress_every_n_expansions)) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
+            "routing options exceed this platform's size limits");
+    }
+
+    target.solver = static_cast<sailroute::RoutingSolver>(source.solver);
+    target.maneuver.tack_penalty =
+        std::chrono::seconds{source.tack_penalty_seconds};
+    target.maneuver.gybe_penalty =
+        std::chrono::seconds{source.gybe_penalty_seconds};
+    target.maneuver.downwind_true_wind_angle_degrees =
+        source.downwind_true_wind_angle_degrees;
+    target.heading_augmentation =
+        static_cast<sailroute::HeadingAugmentation>(
+            source.heading_augmentation);
+    target.wind_sampling =
+        static_cast<sailroute::WindSampling>(source.wind_sampling);
+    target.midpoint_wind_sampling_threshold =
+        std::chrono::minutes{
+            source.midpoint_wind_sampling_threshold_minutes};
+    target.polar_angle_interpolation =
+        static_cast<sailroute::PolarAngleInterpolation>(
+            source.polar_angle_interpolation);
+    target.maximum_true_wind_speed_knots =
+        (source.flags &
+         NAVTOOL_ROUTER_OPTIONS_HAS_MAXIMUM_TRUE_WIND_SPEED_V6) != 0U
+            ? std::optional<double>{source.maximum_true_wind_speed_knots}
+            : std::nullopt;
+    target.above_polar_range =
+        static_cast<sailroute::AbovePolarRangePolicy>(
+            source.above_polar_range);
+    target.pruning_strategy =
+        static_cast<sailroute::PruningStrategy>(source.pruning_strategy);
+    target.pruning_sector_degrees = source.pruning_sector_degrees;
+    target.progress.destination_front.half_angle_degrees =
+        source.destination_front_half_angle_degrees;
+    target.progress.destination_front.segment_policy =
+        static_cast<sailroute::DestinationFrontSegmentPolicy>(
+            source.destination_front_segment_policy);
+    target.progress.destination_front.minimum_secondary_segment_points =
+        static_cast<std::size_t>(
+            source.destination_front_minimum_secondary_segment_points);
+    target.lattice.subdivision_level =
+        static_cast<std::size_t>(source.lattice_subdivision_level);
+    target.lattice.time_bucket =
+        std::chrono::minutes{source.lattice_time_bucket_minutes};
+    target.lattice.refinement_levels =
+        static_cast<std::size_t>(source.lattice_refinement_levels);
+    target.lattice.corridor_width_nautical_miles =
+        source.lattice_corridor_width_nautical_miles;
+    target.lattice.corridor_widening_retries =
+        static_cast<std::size_t>(
+            source.lattice_corridor_widening_retries);
+    target.lattice.progress_every_n_expansions =
+        static_cast<std::size_t>(
+            source.lattice_progress_every_n_expansions);
+    target.lattice.search_algorithm =
+        static_cast<sailroute::LatticeSearchAlgorithm>(
+            source.lattice_search_algorithm);
+    return static_cast<navtool_router_status_v1>(
+        NAVTOOL_ROUTER_STATUS_OK_V1);
+}
+
 navtool_router_status_v1 calculate_route(
     const navtool_router_forecast_v1* forecast,
     double start_latitude_degrees,
@@ -531,10 +627,12 @@ navtool_router_status_v1 calculate_route_with_display(
     double destination_latitude_degrees,
     double destination_longitude_degrees,
     const int64_t* departure_utc_epoch_seconds,
-    navtool_router_progress_callback_v5 on_progress,
+    navtool_router_progress_callback_v5 on_progress_v5,
+    navtool_router_progress_callback_v6 on_progress_v6,
     void* progress_user_data,
     navtool_router_segment_eligibility_callback_v1 is_segment_eligible,
     void* segment_eligibility_user_data,
+    const navtool_router_options_v6* bridge_options,
     char** out_route_json_utf8,
     size_t* out_route_json_length) {
     if (out_route_json_utf8 != nullptr) {
@@ -566,12 +664,25 @@ navtool_router_status_v1 calculate_route_with_display(
     if (departure_utc_epoch_seconds != nullptr) {
         request.departure_time = from_epoch(*departure_utc_epoch_seconds);
     }
+    if (bridge_options != nullptr) {
+        const auto status = apply_options_v6(
+            *bridge_options,
+            request.options);
+        if (status != NAVTOOL_ROUTER_STATUS_OK_V1) {
+            return status;
+        }
+    } else {
+        request.options.progress.destination_front.half_angle_degrees =
+            destination_front_half_angle_degrees;
+    }
     request.options.progress.payload =
-        sailroute::RoutingProgressPayload::display_contours |
-        sailroute::RoutingProgressPayload::destination_front |
-        sailroute::RoutingProgressPayload::provisional_route;
-    request.options.progress.destination_front.half_angle_degrees =
-        destination_front_half_angle_degrees;
+        request.options.solver ==
+            sailroute::RoutingSolver::time_dependent_lattice
+        ? sailroute::RoutingProgressPayload::search_points |
+            sailroute::RoutingProgressPayload::provisional_route
+        : sailroute::RoutingProgressPayload::display_contours |
+            sailroute::RoutingProgressPayload::destination_front |
+            sailroute::RoutingProgressPayload::provisional_route;
     if (is_segment_eligible != nullptr) {
         request.options.segment_eligibility =
             [is_segment_eligible, segment_eligibility_user_data](
@@ -586,10 +697,10 @@ navtool_router_status_v1 calculate_route_with_display(
             };
     }
 
-    sailroute::RoutingProgressViewCallback progress_callback;
-    if (on_progress != nullptr) {
+    sailroute::RoutingViewControlCallback progress_callback;
+    if (on_progress_v5 != nullptr || on_progress_v6 != nullptr) {
         progress_callback =
-            [on_progress, progress_user_data](
+            [on_progress_v5, on_progress_v6, progress_user_data](
                 const sailroute::RoutingProgressView& progress) {
                 std::vector<navtool_router_coordinate_v1> contour_points;
                 contour_points.reserve(progress.display_contours.points.size());
@@ -634,20 +745,65 @@ navtool_router_status_v1 calculate_route_with_display(
                     route_points.push_back(copy_route_point(point));
                 }
 
-                const navtool_router_progress_v5 bridge_progress{
-                    to_epoch(progress.time),
-                    contour_points.data(),
-                    static_cast<uint64_t>(contour_points.size()),
-                    contour_segments.data(),
-                    static_cast<uint64_t>(contour_segments.size()),
-                    front_points.data(),
-                    static_cast<uint64_t>(front_points.size()),
-                    front_segments.data(),
-                    static_cast<uint64_t>(front_segments.size()),
-                    route_points.data(),
-                    static_cast<uint64_t>(route_points.size()),
-                    copy_diagnostics(progress.diagnostics)};
-                on_progress(&bridge_progress, progress_user_data);
+                if (on_progress_v5 != nullptr) {
+                    const navtool_router_progress_v5 bridge_progress{
+                        to_epoch(progress.time),
+                        contour_points.data(),
+                        static_cast<uint64_t>(contour_points.size()),
+                        contour_segments.data(),
+                        static_cast<uint64_t>(contour_segments.size()),
+                        front_points.data(),
+                        static_cast<uint64_t>(front_points.size()),
+                        front_segments.data(),
+                        static_cast<uint64_t>(front_segments.size()),
+                        route_points.data(),
+                        static_cast<uint64_t>(route_points.size()),
+                        copy_diagnostics(progress.diagnostics)};
+                    on_progress_v5(&bridge_progress, progress_user_data);
+                }
+
+                if (on_progress_v6 != nullptr) {
+                    std::vector<navtool_router_coordinate_v1> search_points;
+                    search_points.reserve(progress.search_points.size());
+                    for (const sailroute::Coordinate point :
+                         progress.search_points) {
+                        search_points.push_back(copy_coordinate(point));
+                    }
+                    const navtool_router_progress_v6 bridge_progress{
+                        static_cast<int32_t>(progress.solver),
+                        0,
+                        to_epoch(progress.time),
+                        contour_points.data(),
+                        static_cast<uint64_t>(contour_points.size()),
+                        contour_segments.data(),
+                        static_cast<uint64_t>(contour_segments.size()),
+                        front_points.data(),
+                        static_cast<uint64_t>(front_points.size()),
+                        front_segments.data(),
+                        static_cast<uint64_t>(front_segments.size()),
+                        search_points.data(),
+                        static_cast<uint64_t>(search_points.size()),
+                        route_points.data(),
+                        static_cast<uint64_t>(route_points.size()),
+                        copy_diagnostics(progress.diagnostics),
+                        {
+                            static_cast<uint64_t>(
+                                progress.search.settled_labels),
+                            static_cast<uint64_t>(
+                                progress.search.queued_labels),
+                            static_cast<uint64_t>(
+                                progress.search.relaxed_labels),
+                            static_cast<uint64_t>(
+                                progress.search.refinement_index),
+                            static_cast<uint64_t>(
+                                progress.search.subdivision_level)}};
+                    if (on_progress_v6(
+                            &bridge_progress,
+                            progress_user_data) == 0U) {
+                        return sailroute::RoutingProgressDecision::cancel;
+                    }
+                }
+                return sailroute::RoutingProgressDecision::continue_routing;
             };
     }
 
@@ -1134,9 +1290,49 @@ navtool_router_status_v1 navtool_router_calculate_route_streaming_v5(
             destination_longitude_degrees,
             departure_utc_epoch_seconds,
             on_progress,
+            nullptr,
             progress_user_data,
             is_segment_eligible,
             segment_eligibility_user_data,
+            nullptr,
+            out_route_json_utf8,
+            out_route_json_length);
+    });
+}
+
+navtool_router_status_v1 navtool_router_calculate_route_streaming_v6(
+    const navtool_router_forecast_v1* forecast,
+    double start_latitude_degrees,
+    double start_longitude_degrees,
+    double destination_latitude_degrees,
+    double destination_longitude_degrees,
+    const int64_t* departure_utc_epoch_seconds,
+    const navtool_router_options_v6* options,
+    navtool_router_progress_callback_v6 on_progress,
+    void* progress_user_data,
+    navtool_router_segment_eligibility_callback_v1 is_segment_eligible,
+    void* segment_eligibility_user_data,
+    char** out_route_json_utf8,
+    size_t* out_route_json_length) {
+    return protect([&] {
+        if (options == nullptr) {
+            return fail(
+                NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
+                "routing options must not be null");
+        }
+        return calculate_route_with_display(
+            forecast,
+            start_latitude_degrees,
+            start_longitude_degrees,
+            destination_latitude_degrees,
+            destination_longitude_degrees,
+            departure_utc_epoch_seconds,
+            nullptr,
+            on_progress,
+            progress_user_data,
+            is_segment_eligible,
+            segment_eligibility_user_data,
+            options,
             out_route_json_utf8,
             out_route_json_length);
     });

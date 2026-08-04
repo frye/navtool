@@ -40,8 +40,11 @@ public sealed class RoutePlanJsonRepositoryTests
             expectedRoute.Points.Select(point => point.Location),
             loadedRoute.Points.Select(point => point.Location));
         Assert.Equal(expectedRoute.Diagnostics.CalculationDuration, loadedRoute.Diagnostics.CalculationDuration);
+        Assert.Equal(expectedRoute.Solver, loadedRoute.Solver);
+        Assert.Equal(expectedRoute.LatticeDiagnostics, loadedRoute.LatticeDiagnostics);
         Assert.NotEqual(plan.Id, copy.Id);
         Assert.Equal("Return passage", copy.Name);
+        Assert.Equal(expectedRoute.Solver, copy.Results[0].Legs[0].Route!.Solver);
         Assert.Equal(2, summaries.Length);
         Assert.Empty(Directory.EnumerateFiles(repository.RootDirectory, "*.tmp"));
 
@@ -187,6 +190,58 @@ public sealed class RoutePlanJsonRepositoryTests
     }
 
     [Fact]
+    public async Task Version_two_results_are_migrated_to_beam_attribution()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = WithResult(CreatePlan());
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        root["schemaVersion"] = 2;
+        foreach (var result in root["plan"]!["results"]!.AsArray())
+        {
+            foreach (var leg in result!["legs"]!.AsArray())
+            {
+                leg!["route"]!.AsObject().Remove("solver");
+                leg["route"]!.AsObject().Remove("latticeDiagnostics");
+            }
+        }
+
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+
+        var loaded = await repository.OpenAsync(plan.Id);
+
+        Assert.All(
+            loaded.Results.SelectMany(result => result.Legs),
+            leg =>
+            {
+                Assert.Equal(RouteSolver.IsochroneBeam, leg.Route!.Solver);
+                Assert.Null(leg.Route.LatticeDiagnostics);
+            });
+    }
+
+    [Fact]
+    public async Task Lattice_solver_and_diagnostics_round_trip()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var diagnostics = new RouteLatticeDiagnostics(100, 20, 300, 4, 2, 1, 3, true);
+        var plan = WithResult(CreatePlan(), RouteSolver.TimeDependentLattice, diagnostics);
+
+        await repository.SaveAsync(plan);
+        var loaded = await repository.OpenAsync(plan.Id);
+
+        Assert.All(
+            loaded.Results.SelectMany(result => result.Legs),
+            leg =>
+            {
+                Assert.Equal(RouteSolver.TimeDependentLattice, leg.Route!.Solver);
+                Assert.Equal(diagnostics, leg.Route.LatticeDiagnostics);
+            });
+    }
+
+    [Fact]
     public async Task Current_position_and_active_leg_round_trip_through_save_and_open()
     {
         using var directory = new TestDirectory();
@@ -235,7 +290,10 @@ public sealed class RoutePlanJsonRepositoryTests
         return plan.MarkSailed(plan.Legs[0].Id);
     }
 
-    private static RoutePlan WithResult(RoutePlan plan)
+    private static RoutePlan WithResult(
+        RoutePlan plan,
+        RouteSolver solver = RouteSolver.IsochroneBeam,
+        RouteLatticeDiagnostics? latticeDiagnostics = null)
     {
         var now = new DateTimeOffset(2026, 8, 1, 18, 0, 0, TimeSpan.Zero);
         var session = new RouteCalculationSession(plan.Id, ForecastModel.NoaaGfs, now)
@@ -259,7 +317,9 @@ public sealed class RoutePlanJsonRepositoryTests
                 ],
                 new RouteDiagnostics(1, 2, 1, 1, TimeSpan.FromSeconds(2)),
                 RouteCompletion.DestinationReached,
-                new RouteLandAvoidance(LandAvoidanceStatus.Applied, Attribution: "Test"));
+                new RouteLandAvoidance(LandAvoidanceStatus.Applied, Attribution: "Test"),
+                solver,
+                latticeDiagnostics);
             return new RouteLegResult(
                 leg.Id,
                 RouteLegOutcomeState.Succeeded,
