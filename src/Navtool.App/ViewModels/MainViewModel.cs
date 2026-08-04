@@ -89,6 +89,88 @@ public partial class MainViewModel : ViewModelBase
     private int _passageHours;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsProfessionalBeamRouting))]
+    [NotifyPropertyChangedFor(nameof(IsProfessionalLatticeRouting))]
+    private bool _enableProfessionalRouting;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsProfessionalBeamRouting))]
+    [NotifyPropertyChangedFor(nameof(IsProfessionalLatticeRouting))]
+    private RouteSolver _selectedRouteSolver = RouteSolver.IsochroneBeam;
+
+    [ObservableProperty]
+    private int _tackPenaltySeconds;
+
+    [ObservableProperty]
+    private int _gybePenaltySeconds;
+
+    [ObservableProperty]
+    private double _downwindTrueWindAngleDegrees = 150;
+
+    [ObservableProperty]
+    private RouteHeadingAugmentation _headingAugmentation =
+        RouteHeadingAugmentation.DestinationBearingAndVelocityMadeGood;
+
+    [ObservableProperty]
+    private RouteWindSampling _windSampling = RouteWindSampling.Midpoint;
+
+    [ObservableProperty]
+    private int _midpointWindSamplingThresholdMinutes;
+
+    [ObservableProperty]
+    private RoutePolarAngleInterpolation _polarAngleInterpolation =
+        RoutePolarAngleInterpolation.MonotoneCubic;
+
+    [ObservableProperty]
+    private bool _useMaximumTrueWindSpeed;
+
+    [ObservableProperty]
+    private double _maximumTrueWindSpeedKnots = 45;
+
+    [ObservableProperty]
+    private RouteAbovePolarRangePolicy _abovePolarRange =
+        RouteAbovePolarRangePolicy.Clamp;
+
+    [ObservableProperty]
+    private RoutePruningStrategy _pruningStrategy =
+        RoutePruningStrategy.DestinationDistanceGrid;
+
+    [ObservableProperty]
+    private double _pruningSectorDegrees = 2;
+
+    [ObservableProperty]
+    private double _destinationFrontHalfAngleDegrees = 120;
+
+    [ObservableProperty]
+    private RouteDestinationFrontSegmentPolicy _destinationFrontSegmentPolicy =
+        RouteDestinationFrontSegmentPolicy.ProvisionalComponent;
+
+    [ObservableProperty]
+    private int _destinationFrontMinimumSecondarySegmentPoints = 3;
+
+    [ObservableProperty]
+    private int _latticeSubdivisionLevel = 4;
+
+    [ObservableProperty]
+    private int _latticeTimeBucketMinutes = 30;
+
+    [ObservableProperty]
+    private int _latticeRefinementLevels = 1;
+
+    [ObservableProperty]
+    private double _latticeCorridorWidthNauticalMiles = 450;
+
+    [ObservableProperty]
+    private int _latticeCorridorWideningRetries = 2;
+
+    [ObservableProperty]
+    private int _latticeProgressEveryExpansions = 250;
+
+    [ObservableProperty]
+    private RouteLatticeSearchAlgorithm _latticeSearchAlgorithm =
+        RouteLatticeSearchAlgorithm.AStar;
+
+    [ObservableProperty]
     private ForecastInputMode _forecastInputMode;
 
     [ObservableProperty]
@@ -380,6 +462,38 @@ public partial class MainViewModel : ViewModelBase
     public bool IsDownloadForecast => ForecastInputMode == ForecastInputMode.Download;
 
     public bool IsLocalForecast => ForecastInputMode == ForecastInputMode.LocalFile;
+
+    public bool IsProfessionalBeamRouting =>
+        EnableProfessionalRouting &&
+        SelectedRouteSolver == RouteSolver.IsochroneBeam;
+
+    public bool IsProfessionalLatticeRouting =>
+        EnableProfessionalRouting &&
+        SelectedRouteSolver == RouteSolver.TimeDependentLattice;
+
+    public IReadOnlyList<RouteSolver> RouteSolverOptions { get; } =
+        Enum.GetValues<RouteSolver>();
+
+    public IReadOnlyList<RouteHeadingAugmentation> HeadingAugmentationOptions { get; } =
+        Enum.GetValues<RouteHeadingAugmentation>();
+
+    public IReadOnlyList<RouteWindSampling> WindSamplingOptions { get; } =
+        Enum.GetValues<RouteWindSampling>();
+
+    public IReadOnlyList<RoutePolarAngleInterpolation> PolarInterpolationOptions { get; } =
+        Enum.GetValues<RoutePolarAngleInterpolation>();
+
+    public IReadOnlyList<RouteAbovePolarRangePolicy> AbovePolarRangeOptions { get; } =
+        Enum.GetValues<RouteAbovePolarRangePolicy>();
+
+    public IReadOnlyList<RoutePruningStrategy> PruningStrategyOptions { get; } =
+        Enum.GetValues<RoutePruningStrategy>();
+
+    public IReadOnlyList<RouteDestinationFrontSegmentPolicy> DestinationFrontPolicyOptions { get; } =
+        Enum.GetValues<RouteDestinationFrontSegmentPolicy>();
+
+    public IReadOnlyList<RouteLatticeSearchAlgorithm> LatticeSearchAlgorithmOptions { get; } =
+        Enum.GetValues<RouteLatticeSearchAlgorithm>();
 
     public bool IsSettingStart => InteractionMode == MapInteractionMode.SetStart;
 
@@ -842,7 +956,8 @@ public partial class MainViewModel : ViewModelBase
                 request.Route.DepartureTime,
                 request.Route.LatestArrivalTime,
                 request.Selections,
-                request.RefreshPolicy);
+                request.RefreshPolicy,
+                request.Optimization);
         }
 
         var generation = Interlocked.Increment(ref _calculationGeneration);
@@ -1526,15 +1641,71 @@ public partial class MainViewModel : ViewModelBase
             return false;
         }
 
+        if (!TryBuildOptimizationOptions(out var optimization, out error))
+        {
+            return false;
+        }
+
         request = new RoutingWorkflowRequest(
             route,
             selections,
             ForecastCorridor.Create(route.Origin, route.Destination),
             UseNewestWeatherData
                 ? ForecastRefreshPolicy.LatestAvailable
-                : ForecastRefreshPolicy.PreferCache);
+                : ForecastRefreshPolicy.PreferCache,
+            optimization);
         error = null;
         return true;
+    }
+
+    private bool TryBuildOptimizationOptions(
+        out RouteOptimizationOptions optimization,
+        [NotNullWhen(false)] out string? error)
+    {
+        if (!EnableProfessionalRouting)
+        {
+            optimization = RouteOptimizationOptions.Balanced;
+            error = null;
+            return true;
+        }
+
+        try
+        {
+            optimization = new RouteOptimizationOptions(
+                SelectedRouteSolver,
+                new RouteManeuverOptions(
+                    TimeSpan.FromSeconds(TackPenaltySeconds),
+                    TimeSpan.FromSeconds(GybePenaltySeconds),
+                    DownwindTrueWindAngleDegrees),
+                HeadingAugmentation,
+                WindSampling,
+                TimeSpan.FromMinutes(MidpointWindSamplingThresholdMinutes),
+                PolarAngleInterpolation,
+                UseMaximumTrueWindSpeed ? MaximumTrueWindSpeedKnots : null,
+                AbovePolarRange,
+                PruningStrategy,
+                PruningSectorDegrees,
+                new RouteDestinationFrontOptions(
+                    DestinationFrontHalfAngleDegrees,
+                    DestinationFrontSegmentPolicy,
+                    DestinationFrontMinimumSecondarySegmentPoints),
+                new RouteLatticeOptions(
+                    LatticeSubdivisionLevel,
+                    TimeSpan.FromMinutes(LatticeTimeBucketMinutes),
+                    LatticeRefinementLevels,
+                    LatticeCorridorWidthNauticalMiles,
+                    LatticeCorridorWideningRetries,
+                    LatticeProgressEveryExpansions,
+                    LatticeSearchAlgorithm));
+            error = null;
+            return true;
+        }
+        catch (ArgumentException exception)
+        {
+            optimization = RouteOptimizationOptions.Balanced;
+            error = $"Professional routing settings are invalid: {exception.Message}";
+            return false;
+        }
     }
 
     private void ApplyWorkflowResult(

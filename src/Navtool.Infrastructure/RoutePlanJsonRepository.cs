@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Navtool.Core;
 
@@ -14,9 +15,21 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
 {
     public JsonDocument MigrateToCurrent(JsonDocument document, int fromVersion, int currentVersion)
     {
-        if (fromVersion == 1 && currentVersion == 2)
+        if (currentVersion != RoutePlanJsonRepository.CurrentSchemaVersion)
         {
-            return MigrateV1ToV2(document);
+            throw new InvalidDataException(
+                $"Route plan schema version {fromVersion} is not supported by this application version.");
+        }
+
+        if (fromVersion == 2)
+        {
+            return MigrateV2ToV3(document);
+        }
+
+        if (fromVersion == 1)
+        {
+            using var versionTwo = MigrateV1ToV2(document);
+            return MigrateV2ToV3(versionTwo);
         }
 
         throw new InvalidDataException(
@@ -40,6 +53,36 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
 
         stream.Position = 0;
         return JsonDocument.Parse(stream.ToArray());
+    }
+
+    private static JsonDocument MigrateV2ToV3(JsonDocument document)
+    {
+        var root = JsonNode.Parse(document.RootElement.GetRawText()) as JsonObject ??
+                   throw new InvalidDataException("A route plan document must be a JSON object.");
+        root["schemaVersion"] = 3;
+        if (root["plan"]?["results"] is JsonArray results)
+        {
+            foreach (var result in results.OfType<JsonObject>())
+            {
+                if (result["legs"] is not JsonArray legs)
+                {
+                    continue;
+                }
+
+                foreach (var leg in legs.OfType<JsonObject>())
+                {
+                    if (leg["route"] is not JsonObject route)
+                    {
+                        continue;
+                    }
+
+                    route["solver"] = nameof(RouteSolver.IsochroneBeam);
+                    route["latticeDiagnostics"] = null;
+                }
+            }
+        }
+
+        return JsonDocument.Parse(root.ToJsonString());
     }
 
     private static void WriteMigratedEnvelope(Utf8JsonWriter writer, JsonElement root)
@@ -88,7 +131,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
 
 public sealed class RoutePlanJsonRepository : IRoutePlanRepository
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -447,7 +490,19 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
             new RouteLandAvoidanceDto(
                 route.LandAvoidance.Status,
                 route.LandAvoidance.Warning,
-                route.LandAvoidance.Attribution));
+                route.LandAvoidance.Attribution),
+            route.Solver,
+            route.LatticeDiagnostics is null
+                ? null
+                : new RouteLatticeDiagnosticsDto(
+                    route.LatticeDiagnostics.SettledLabels,
+                    route.LatticeDiagnostics.QueuedLabels,
+                    route.LatticeDiagnostics.RelaxedLabels,
+                    route.LatticeDiagnostics.WaitTransitions,
+                    route.LatticeDiagnostics.RefinementRuns,
+                    route.LatticeDiagnostics.AcceptedRefinements,
+                    route.LatticeDiagnostics.SubdivisionLevel,
+                    route.LatticeDiagnostics.RefinementFallback));
 
     private static RoutePlan FromDto(RoutePlanDto dto)
     {
@@ -569,10 +624,23 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
             dto.Request.LatestArrivalTime);
         if (!Enum.IsDefined(dto.Model) ||
             !Enum.IsDefined(dto.Completion) ||
-            !Enum.IsDefined(dto.LandAvoidance.Status))
+            !Enum.IsDefined(dto.LandAvoidance.Status) ||
+            !Enum.IsDefined(dto.Solver))
         {
             throw new InvalidDataException("A stored route result contains an unknown enum value.");
         }
+
+        var latticeDiagnostics = dto.LatticeDiagnostics is null
+            ? null
+            : new RouteLatticeDiagnostics(
+                dto.LatticeDiagnostics.SettledLabels,
+                dto.LatticeDiagnostics.QueuedLabels,
+                dto.LatticeDiagnostics.RelaxedLabels,
+                dto.LatticeDiagnostics.WaitTransitions,
+                dto.LatticeDiagnostics.RefinementRuns,
+                dto.LatticeDiagnostics.AcceptedRefinements,
+                dto.LatticeDiagnostics.SubdivisionLevel,
+                dto.LatticeDiagnostics.RefinementFallback);
 
         return new RouteResult(
             request,
@@ -597,7 +665,9 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
             new RouteLandAvoidance(
                 dto.LandAvoidance.Status,
                 dto.LandAvoidance.Warning,
-                dto.LandAvoidance.Attribution));
+                dto.LandAvoidance.Attribution),
+            dto.Solver,
+            latticeDiagnostics);
     }
 
     private sealed record RoutePlanEnvelope(int SchemaVersion, RoutePlanDto? Plan);
@@ -648,7 +718,9 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
         RoutePointDto[] Points,
         RouteDiagnosticsDto Diagnostics,
         RouteCompletion Completion,
-        RouteLandAvoidanceDto LandAvoidance);
+        RouteLandAvoidanceDto LandAvoidance,
+        RouteSolver Solver,
+        RouteLatticeDiagnosticsDto? LatticeDiagnostics);
 
     private sealed record RouteRequestDto(
         string RouteId,
@@ -680,4 +752,14 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
         LandAvoidanceStatus Status,
         string? Warning,
         string? Attribution);
+
+    private sealed record RouteLatticeDiagnosticsDto(
+        long SettledLabels,
+        long QueuedLabels,
+        long RelaxedLabels,
+        long WaitTransitions,
+        int RefinementRuns,
+        int AcceptedRefinements,
+        int SubdivisionLevel,
+        bool RefinementFallback);
 }

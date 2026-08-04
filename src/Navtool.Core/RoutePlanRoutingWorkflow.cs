@@ -11,7 +11,8 @@ public sealed record RoutePlanRoutingRequest
         DateTimeOffset departureTime,
         DateTimeOffset forecastCutoff,
         IEnumerable<ForecastSelection> selections,
-        ForecastRefreshPolicy refreshPolicy = ForecastRefreshPolicy.PreferCache)
+        ForecastRefreshPolicy refreshPolicy = ForecastRefreshPolicy.PreferCache,
+        RouteOptimizationOptions? optimization = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(selections);
@@ -52,6 +53,7 @@ public sealed record RoutePlanRoutingRequest
         Selections = immutableSelections;
         Models = immutableSelections.Select(selection => selection.Model).ToImmutableArray();
         RefreshPolicy = refreshPolicy;
+        Optimization = optimization ?? RouteOptimizationOptions.Balanced;
         StartLegIndex = plan.ActiveLegIndex;
         StartOrigin = plan.CurrentPosition?.Coordinate ??
             plan.Waypoints[StartLegIndex].Coordinate;
@@ -68,6 +70,8 @@ public sealed record RoutePlanRoutingRequest
     public ImmutableArray<ForecastModel> Models { get; }
 
     public ForecastRefreshPolicy RefreshPolicy { get; }
+
+    public RouteOptimizationOptions Optimization { get; }
 
     /// <summary>
     /// The index of the leg routing should resume from: <see cref="RoutePlan.ActiveLegIndex"/> at
@@ -250,7 +254,8 @@ public sealed class RoutePlanRoutingWorkflow
                         route,
                         [modelState.Selection],
                         ForecastCorridor.Create(route.Origin, route.Destination),
-                        request.RefreshPolicy);
+                        request.RefreshPolicy,
+                        request.Optimization);
                     var legProgress = new InlineProgress<RoutingProgress>(value =>
                         progressState.Report(
                             value.Model,

@@ -20,7 +20,7 @@
 extern "C" {
 #endif
 
-#define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 5u
+#define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 6u
 
 enum {
     NAVTOOL_ROUTER_CAPABILITY_LAND_SEGMENT_CONSTRAINT_V1 = 1ull << 0
@@ -184,6 +184,77 @@ typedef void (*navtool_router_progress_callback_v5)(
     const navtool_router_progress_v5* progress,
     void* user_data);
 
+enum {
+    NAVTOOL_ROUTER_SOLVER_ISOCHRONE_BEAM_V6 = 0,
+    NAVTOOL_ROUTER_SOLVER_TIME_DEPENDENT_LATTICE_V6 = 1
+};
+
+typedef struct navtool_router_options_v6 {
+    int32_t solver;
+    int32_t heading_augmentation;
+    int32_t wind_sampling;
+    int32_t polar_angle_interpolation;
+    int32_t above_polar_range;
+    int32_t pruning_strategy;
+    int32_t destination_front_segment_policy;
+    int32_t lattice_search_algorithm;
+    int64_t tack_penalty_seconds;
+    int64_t gybe_penalty_seconds;
+    int64_t midpoint_wind_sampling_threshold_minutes;
+    int64_t lattice_time_bucket_minutes;
+    double downwind_true_wind_angle_degrees;
+    double maximum_true_wind_speed_knots;
+    double pruning_sector_degrees;
+    double destination_front_half_angle_degrees;
+    double lattice_corridor_width_nautical_miles;
+    uint64_t destination_front_minimum_secondary_segment_points;
+    uint64_t lattice_subdivision_level;
+    uint64_t lattice_refinement_levels;
+    uint64_t lattice_corridor_widening_retries;
+    uint64_t lattice_progress_every_n_expansions;
+    uint64_t flags;
+} navtool_router_options_v6;
+
+enum {
+    NAVTOOL_ROUTER_OPTIONS_HAS_MAXIMUM_TRUE_WIND_SPEED_V6 = 1ull << 0
+};
+
+typedef struct navtool_router_lattice_search_progress_v6 {
+    uint64_t settled_labels;
+    uint64_t queued_labels;
+    uint64_t relaxed_labels;
+    uint64_t refinement_index;
+    uint64_t subdivision_level;
+} navtool_router_lattice_search_progress_v6;
+
+typedef struct navtool_router_progress_v6 {
+    int32_t solver;
+    int32_t reserved;
+    int64_t progress_utc_epoch_seconds;
+    const navtool_router_coordinate_v1* contour_points;
+    uint64_t contour_point_count;
+    const navtool_router_contour_segment_v2* contour_segments;
+    uint64_t contour_segment_count;
+    const navtool_router_coordinate_v1* front_points;
+    uint64_t front_point_count;
+    const navtool_router_front_segment_v3* front_segments;
+    uint64_t front_segment_count;
+    const navtool_router_coordinate_v1* search_points;
+    uint64_t search_point_count;
+    const navtool_router_route_point_v1* provisional_route_points;
+    uint64_t provisional_route_point_count;
+    navtool_router_diagnostics_v1 diagnostics;
+    navtool_router_lattice_search_progress_v6 lattice_search;
+} navtool_router_progress_v6;
+
+/*
+ * Return nonzero to continue routing or zero to cancel. All views remain
+ * callback-scoped.
+ */
+typedef uint8_t (*navtool_router_progress_callback_v6)(
+    const navtool_router_progress_v6* progress,
+    void* user_data);
+
 NAVTOOL_ROUTER_BRIDGE_API uint32_t
 navtool_router_bridge_abi_version_v1(void);
 
@@ -304,6 +375,27 @@ navtool_router_calculate_route_streaming_v5(
     double destination_longitude_degrees,
     const int64_t* departure_utc_epoch_seconds,
     navtool_router_progress_callback_v5 on_progress,
+    void* progress_user_data,
+    navtool_router_segment_eligibility_callback_v1 is_segment_eligible,
+    void* segment_eligibility_user_data,
+    char** out_route_json_utf8,
+    size_t* out_route_json_length);
+
+/*
+ * Configuration-driven router-lib v0.4 entry point. Beam progress includes
+ * contours/fronts; lattice progress includes search points instead. Views are
+ * synchronous and callback-scoped.
+ */
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_calculate_route_streaming_v6(
+    const navtool_router_forecast_v1* forecast,
+    double start_latitude_degrees,
+    double start_longitude_degrees,
+    double destination_latitude_degrees,
+    double destination_longitude_degrees,
+    const int64_t* departure_utc_epoch_seconds,
+    const navtool_router_options_v6* options,
+    navtool_router_progress_callback_v6 on_progress,
     void* progress_user_data,
     navtool_router_segment_eligibility_callback_v1 is_segment_eligible,
     void* segment_eligibility_user_data,

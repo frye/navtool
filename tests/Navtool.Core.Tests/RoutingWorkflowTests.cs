@@ -304,6 +304,31 @@ public sealed class RoutingWorkflowTests
         Assert.Single(result.SuccessfulRoutes);
     }
 
+    [Fact]
+    public async Task Workflow_passes_the_same_optimization_snapshot_to_route_engine()
+    {
+        var provider = new StubForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new StubRouteEngine((request, acquisition, _, _) =>
+            ValueTask.FromResult(CreateRoute(request, acquisition.Request.Model)));
+        var optimization = new RouteOptimizationOptions(
+            solver: RouteSolver.TimeDependentLattice,
+            maneuver: new RouteManeuverOptions(
+                TimeSpan.FromMinutes(2),
+                TimeSpan.FromMinutes(3)),
+            lattice: new RouteLatticeOptions(searchAlgorithm: RouteLatticeSearchAlgorithm.Dijkstra));
+        var workflow = new RoutingWorkflow(new[] { provider }, engine);
+        var request = new RoutingWorkflowRequest(
+            CreateRouteRequest(),
+            new[] { ForecastModel.NoaaGfs },
+            optimization: optimization);
+
+        await workflow.ExecuteAsync(request);
+
+        Assert.Same(optimization, engine.LastOptimization);
+    }
+
     private static RoutingWorkflowRequest CreateWorkflowRequest() =>
         new(
             CreateRouteRequest(),
@@ -388,6 +413,19 @@ public sealed class RoutingWorkflowTests
             IProgress<RouteCalculationProgress>? progress,
             CancellationToken cancellationToken) =>
             calculate(request, forecast, progress, cancellationToken);
+
+        public RouteOptimizationOptions? LastOptimization { get; private set; }
+
+        public ValueTask<RouteResult> CalculateAsync(
+            RouteRequest request,
+            ForecastAcquisition forecast,
+            RouteOptimizationOptions optimization,
+            IProgress<RouteCalculationProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            LastOptimization = optimization;
+            return calculate(request, forecast, progress, cancellationToken);
+        }
     }
 
     private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>

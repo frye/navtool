@@ -29,6 +29,10 @@ bridge launch guidance and automated validation.
   together, selected from the list or map, and inspected on a route-wide
   active-model timeline with explicit stopover holds.
   ([#43](https://github.com/frye/navtool/pull/43))
+- **Router-lib v0.4 routing:** Standard routes now use destination/VMG heading
+  augmentation, midpoint wind sampling, and monotone-cubic polar interpolation
+  by default. A temporary professional panel exposes the time-dependent lattice
+  solver and advanced routing controls.
 
 ### Added
 
@@ -51,6 +55,9 @@ bridge launch guidance and automated validation.
 
 ### Improved
 
+- Added ABI-v6 solver-aware progress, lattice search markers and diagnostics,
+  configured beam/lattice dispatch, and schema-v3 result attribution while
+  preserving legacy bridge exports and route-plan migration.
 - Restored one open, destination-facing isochrone front per routing step,
   retained forecast-limited estimates, softened display-only corners, widened
   the useful destination aperture, and suppressed misleading singleton marks.
@@ -94,6 +101,9 @@ bridge launch guidance and automated validation.
   safety limits.
 - Online ECMWF support is wind-only. Routing still does not model waves or
   currents, and ECMWF global field downloads can be larger than NOAA subsets.
+- Professional lattice routing is serial and does not produce beam-style
+  isochrones or destination fronts; Navtool displays its search point and
+  provisional route instead.
 
 ## Week of July 13-17, 2026 (Draft)
 

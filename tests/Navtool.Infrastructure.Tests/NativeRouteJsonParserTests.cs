@@ -89,6 +89,49 @@ public sealed class NativeRouteJsonParserTests
     }
 
     [Fact]
+    public void Parse_preserves_lattice_solver_and_diagnostics()
+    {
+        var request = CreateRequest(TimeSpan.FromHours(10));
+        var json = AddLatticeDiagnostics(BuildJson(
+            (Departure, 40, -60, 0),
+            (Departure.AddHours(8), 44, -56, 35)));
+
+        var result = NativeRouteJsonParser.Parse(
+            json,
+            request,
+            ForecastModel.NoaaGfs,
+            TimeSpan.FromSeconds(1),
+            RouteSolver.TimeDependentLattice);
+
+        Assert.Equal(RouteSolver.TimeDependentLattice, result.Solver);
+        Assert.Equal(100, result.LatticeDiagnostics!.SettledLabels);
+        Assert.Equal(4, result.LatticeDiagnostics.WaitTransitions);
+        Assert.True(result.LatticeDiagnostics.RefinementFallback);
+    }
+
+    [Fact]
+    public void Parse_rejects_partial_or_solver_incompatible_lattice_diagnostics()
+    {
+        var request = CreateRequest(TimeSpan.FromHours(10));
+        var json = AddLatticeDiagnostics(BuildJson(
+            (Departure, 40, -60, 0),
+            (Departure.AddHours(8), 44, -56, 35)));
+
+        Assert.Throws<NativeRouteFormatException>(() => NativeRouteJsonParser.Parse(
+            json.Replace("\"waitTransitions\": 4,", string.Empty),
+            request,
+            ForecastModel.NoaaGfs,
+            TimeSpan.FromSeconds(1),
+            RouteSolver.TimeDependentLattice));
+        Assert.Throws<NativeRouteFormatException>(() => NativeRouteJsonParser.Parse(
+            json,
+            request,
+            ForecastModel.NoaaGfs,
+            TimeSpan.FromSeconds(1),
+            RouteSolver.IsochroneBeam));
+    }
+
+    [Fact]
     public void Parse_throws_format_error_for_malformed_json()
     {
         var request = CreateRequest(TimeSpan.FromHours(10));
@@ -234,4 +277,22 @@ public sealed class NativeRouteJsonParserTests
         360,
         false,
         "test-forecast");
+
+    private static string AddLatticeDiagnostics(string json) =>
+        json.Replace(
+            "\"points\":",
+            """
+            "latticeDiagnostics": {
+              "settledLabels": 100,
+              "queuedLabels": 20,
+              "relaxedLabels": 250,
+              "waitTransitions": 4,
+              "refinementRuns": 2,
+              "acceptedRefinements": 1,
+              "subdivisionLevel": 5,
+              "refinementFallback": true
+            },
+            "points":
+            """,
+            StringComparison.Ordinal);
 }
