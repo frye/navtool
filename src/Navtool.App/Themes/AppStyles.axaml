@@ -92,6 +92,52 @@
         <Setter Property="BorderBrush" Value="{DynamicResource FocusColor}" />
         <Setter Property="BorderThickness" Value="2" />
     </Style>
+    <Style Selector="TextBox">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceRaisedColor}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderColor}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryColor}" />
+    </Style>
+    <Style Selector="TextBox:disabled">
+        <Setter Property="Foreground" Value="{DynamicResource DisabledTextColor}" />
+        <Setter Property="Background" Value="{DynamicResource DisabledBackgroundColor}" />
+    </Style>
+    <Style Selector="ComboBox">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceRaisedColor}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderColor}" />
+    </Style>
+    <Style Selector="ComboBox:disabled">
+        <Setter Property="Foreground" Value="{DynamicResource DisabledTextColor}" />
+        <Setter Property="Background" Value="{DynamicResource DisabledBackgroundColor}" />
+    </Style>
+    <Style Selector="DatePicker">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceRaisedColor}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderColor}" />
+    </Style>
+    <Style Selector="DatePicker:disabled">
+        <Setter Property="Foreground" Value="{DynamicResource DisabledTextColor}" />
+        <Setter Property="Background" Value="{DynamicResource DisabledBackgroundColor}" />
+    </Style>
+    <Style Selector="TimePicker">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceRaisedColor}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderColor}" />
+    </Style>
+    <Style Selector="TimePicker:disabled">
+        <Setter Property="Foreground" Value="{DynamicResource DisabledTextColor}" />
+        <Setter Property="Background" Value="{DynamicResource DisabledBackgroundColor}" />
+    </Style>
+    <Style Selector="NumericUpDown">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryColor}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceRaisedColor}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderColor}" />
+    </Style>
+    <Style Selector="NumericUpDown:disabled">
+        <Setter Property="Foreground" Value="{DynamicResource DisabledTextColor}" />
+        <Setter Property="Background" Value="{DynamicResource DisabledBackgroundColor}" />
+    </Style>
     <Style Selector="ToggleButton.map-tool">
         <Setter Property="MinHeight" Value="44" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />

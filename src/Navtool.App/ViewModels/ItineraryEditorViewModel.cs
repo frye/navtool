@@ -344,6 +344,29 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         return applied;
     }
 
+    internal bool UpdateCurrentPositionDeparture(
+        DateTimeOffset departureTimeUtc,
+        TimeZoneInfo localTimeZone,
+        out string? error)
+    {
+        ArgumentNullException.ThrowIfNull(localTimeZone);
+        if (CurrentPositionCoordinate is not { } coordinate)
+        {
+            error = "Set the current position before updating its departure time.";
+            return false;
+        }
+
+        if (!PlaceCurrentPosition(coordinate, departureTimeUtc, out error))
+        {
+            return false;
+        }
+
+        var localDeparture = TimeZoneInfo.ConvertTime(departureTimeUtc, localTimeZone);
+        CurrentPositionDepartureDate = localDeparture;
+        CurrentPositionDepartureTimeOfDay = localDeparture.TimeOfDay;
+        return true;
+    }
+
     /// <summary>
     /// Places the current position using the local <see cref="CurrentPositionDepartureDate"/>/
     /// <see cref="CurrentPositionDepartureTimeOfDay"/> fields, converted to UTC via

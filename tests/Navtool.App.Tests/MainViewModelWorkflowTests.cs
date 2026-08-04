@@ -464,6 +464,45 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task Past_departure_rolls_forward_and_calculates_with_the_requested_duration()
+    {
+        var selectedRun = Now.AddHours(-6);
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(
+                request,
+                new ForecastCacheUsage(3, 0, selectedRun, selectedRun.AddHours(6)))));
+        RouteRequest? routed = null;
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+        {
+            routed = request;
+            return ValueTask.FromResult(CreateRoute(request, forecast.Request.Model));
+        });
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { noaa }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        var pastDeparture = Now.AddHours(-2);
+        viewModel.DepartureDate = pastDeparture;
+        viewModel.DepartureTime = pastDeparture.TimeOfDay;
+        viewModel.PassageDays = 2;
+        viewModel.PassageHours = 5;
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.NotNull(routed);
+        Assert.Equal(Now, routed.DepartureTime);
+        Assert.Equal(TimeSpan.FromHours(53), routed.LatestArrivalTime - routed.DepartureTime);
+        Assert.Equal(Now.Date, viewModel.DepartureDate!.Value.Date);
+        Assert.Equal(Now.TimeOfDay, viewModel.DepartureTime);
+        Assert.Null(viewModel.ErrorMessage);
+        Assert.Contains("rolled forward", viewModel.WarningMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Calculation started anyway", viewModel.WarningMessage, StringComparison.Ordinal);
+        Assert.Contains("cached run", viewModel.WarningMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(noaa.Requests);
+    }
+
+    [Fact]
     public async Task Intermediate_waypoint_routes_sequentially_and_persists_results()
     {
         var root = Path.Combine(Path.GetTempPath(), $"navtool-multi-leg-{Guid.NewGuid():N}");
@@ -682,6 +721,70 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task Past_current_leg_start_rolls_forward_without_changing_sailed_history()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"navtool-roll-current-leg-{Guid.NewGuid():N}");
+        try
+        {
+            var repository = new RoutePlanJsonRepository(root);
+            var noaa = new DelegateForecastProvider(
+                ForecastModel.NoaaGfs,
+                (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+            var routeRequests = new List<RouteRequest>();
+            var engine = new DelegateRouteEngine((request, forecast, _) =>
+            {
+                routeRequests.Add(request);
+                return ValueTask.FromResult(CreateRoute(request, forecast.Request.Model));
+            });
+            var viewModel = CreateViewModel(
+                new RoutingWorkflow(new[] { noaa }, engine),
+                new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                    ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+                routePlanRepository: repository);
+            viewModel.Itinerary.AddWaypointCommand.Execute(null);
+            var intermediate = viewModel.Itinerary.Waypoints[1];
+            intermediate.SetOnMapCommand.Execute(null);
+            viewModel.HandleMapClick(
+                MapProjection.ToMapPoint(new Coordinate(36, -58)),
+                default);
+
+            await viewModel.CalculateRoutesAsync();
+
+            var firstLeg = routeRequests[0];
+            var firstLegId = viewModel.Itinerary.Legs[0].Id;
+            viewModel.Itinerary.Legs[0].MarkSailedCommand.Execute(null);
+            var currentPosition = new Coordinate(36.5, -57.5);
+            Assert.True(viewModel.Itinerary.PlaceCurrentPosition(
+                currentPosition,
+                Now.AddHours(-3),
+                out var placementError));
+            Assert.Null(placementError);
+            routeRequests.Clear();
+
+            await viewModel.CalculateRoutesAsync();
+
+            var activeRoute = Assert.Single(routeRequests);
+            Assert.Equal(currentPosition, activeRoute.Origin);
+            Assert.Equal(Now, activeRoute.DepartureTime);
+            Assert.Equal(Now, viewModel.Itinerary.CurrentPositionDepartureTimeUtc);
+            Assert.Equal(Now.Date, viewModel.Itinerary.CurrentPositionDepartureDate!.Value.Date);
+            Assert.Equal(Now.TimeOfDay, viewModel.Itinerary.CurrentPositionDepartureTimeOfDay);
+            Assert.Contains("rolled forward", viewModel.WarningMessage, StringComparison.OrdinalIgnoreCase);
+            Assert.Null(viewModel.ErrorMessage);
+
+            var reopened = await repository.OpenAsync(viewModel.Itinerary.PlanId);
+            Assert.Contains(firstLegId, reopened.SailedLegIds);
+            var retainedFirstLeg = reopened.LatestResult(ForecastModel.NoaaGfs)!.Legs[0];
+            Assert.Equal(firstLeg.RouteId, retainedFirstLeg.Route!.Request.RouteId);
+            Assert.Equal(RouteLegOutcomeState.Succeeded, retainedFirstLeg.State);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Cancelling_a_multi_leg_calculation_preserves_the_completed_leg()
     {
         var noaa = new DelegateForecastProvider(
@@ -789,6 +892,9 @@ public sealed class MainViewModelWorkflowTests
             new DelegateWeatherSampler((_, _, _, _, _, _) =>
                 ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
             nativeRoutingPreflight: preflight);
+        var pastDeparture = Now.AddHours(-2);
+        viewModel.DepartureDate = pastDeparture;
+        viewModel.DepartureTime = pastDeparture.TimeOfDay;
 
         await viewModel.CalculateRoutesAsync();
 
@@ -803,6 +909,9 @@ public sealed class MainViewModelWorkflowTests
         Assert.Contains("runtimes/<RID>/native", viewModel.ErrorMessage);
         Assert.Contains("NAVTOOL_ROUTER_BRIDGE_PATH", viewModel.ErrorMessage);
         Assert.Equal("No forecast was downloaded.", viewModel.StatusMessage);
+        Assert.Null(viewModel.WarningMessage);
+        Assert.Equal(pastDeparture.Date, viewModel.DepartureDate!.Value.Date);
+        Assert.Equal(pastDeparture.TimeOfDay, viewModel.DepartureTime);
     }
 
     [Fact]
