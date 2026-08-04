@@ -643,7 +643,7 @@
             <Border x:Name="MapInstructionOverlay"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Top"
-                    Margin="14,60,14,0"
+                    Margin="14,68,14,0"
                     Classes="map-overlay"
                     CornerRadius="14"
                     Padding="12,7"

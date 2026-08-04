@@ -1382,18 +1382,24 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
-    public async Task Itinerary_change_discards_late_result_and_clears_displayed_route()
+    public async Task Itinerary_change_discards_late_result_and_recalculates_updated_route()
     {
         var started = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource<ForecastAcquisition>(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
         var provider = new DelegateForecastProvider(
             ForecastModel.NoaaGfs,
-            async (_, _) =>
+            async (request, _) =>
             {
-                started.SetResult();
-                return await release.Task;
+                if (Interlocked.Increment(ref calls) == 1)
+                {
+                    started.SetResult();
+                    return await release.Task;
+                }
+
+                return CreateAcquisition(request);
             });
         var engine = new DelegateRouteEngine((request, forecast, _) =>
             ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
@@ -1404,12 +1410,16 @@ public sealed class MainViewModelWorkflowTests
 
         var calculation = viewModel.CalculateRoutesAsync();
         await started.Task;
-        viewModel.SetDestinationAt(new Coordinate(40, -50));
+        var replacement = new Coordinate(40, -50);
+        viewModel.SetDestinationAt(replacement);
         release.SetResult(CreateAcquisition(provider.LastRequest!));
         await calculation;
+        await WaitForAsync(() => !viewModel.IsCalculating);
 
-        Assert.Equal(0, viewModel.SuccessfulRouteCount);
-        Assert.False(viewModel.HasTimeline);
+        Assert.Equal(2, calls);
+        Assert.Equal(1, viewModel.SuccessfulRouteCount);
+        Assert.Equal(replacement, viewModel.SelectedRoutePoint!.Route.Request.Destination);
+        Assert.True(viewModel.HasTimeline);
         Assert.False(viewModel.IsCalculating);
     }
 
