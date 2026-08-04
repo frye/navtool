@@ -656,7 +656,7 @@
                          IsHitTestVisible="False" />
                 <Button x:Name="RouteTelemetryCard"
                         Classes="route-telemetry"
-                        Width="252"
+                        Width="296"
                         Height="132"
                         Click="OnRouteTelemetryCardClicked"
                         AutomationProperties.Name="Route point telemetry"
@@ -681,8 +681,8 @@
                         <Border Grid.Row="1"
                                 Background="{DynamicResource OverlayBorderColor}" />
                         <Grid Grid.Row="2"
-                              ColumnDefinitions="*,*,*,*"
-                              ColumnSpacing="8">
+                              ColumnDefinitions="*,*,*,*,*"
+                              ColumnSpacing="6">
                             <StackPanel>
                                 <TextBlock Text="BOAT"
                                            Classes="telemetry-label" />
@@ -698,13 +698,20 @@
                                            Classes="telemetry-value" />
                             </StackPanel>
                             <StackPanel Grid.Column="2">
+                                <TextBlock Text="TWD"
+                                           Classes="telemetry-label" />
+                                <TextBlock x:Name="RouteTelemetryTrueWindDirection"
+                                           Text="{Binding SelectedRoutePoint.Point.TrueWindDirectionDegrees, StringFormat={}{0:0}°}"
+                                           Classes="telemetry-value" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="3">
                                 <TextBlock Text="AWS"
                                            Classes="telemetry-label" />
                                 <TextBlock x:Name="RouteTelemetryApparentWind"
                                            Text="{Binding SelectedRoutePoint.Point.ApparentWindSpeedKnots, StringFormat={}{0:0.0} kt}"
                                            Classes="telemetry-value" />
                             </StackPanel>
-                            <StackPanel Grid.Column="3">
+                            <StackPanel Grid.Column="4">
                                 <TextBlock Text="HDG"
                                            Classes="telemetry-label" />
                                 <TextBlock x:Name="RouteTelemetryHeading"

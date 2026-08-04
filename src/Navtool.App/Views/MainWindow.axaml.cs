@@ -36,7 +36,7 @@ public partial class MainWindow : Window
     private const double RadialActionHeight = 48;
     private const double RadialRadius = 82;
     private const double RadialSafeMargin = 16;
-    private const double RouteTelemetryWidth = 252;
+    private const double RouteTelemetryWidth = 296;
     private const double RouteTelemetryHeight = 132;
     private const double RouteTelemetryGap = 18;
     private const double RouteTelemetrySafeMargin = 12;
