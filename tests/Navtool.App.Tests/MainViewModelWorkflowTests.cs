@@ -61,6 +61,31 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public void Forecast_area_summary_reports_selected_provider_estimates()
+    {
+        var viewModel = new MainViewModel(
+            null,
+            null,
+            new FixedTimeProvider(Now),
+            TimeZoneInfo.Utc,
+            new OsmTileOptions(Enabled: false),
+            forecastEstimators:
+            [
+                new StubForecastEstimator(ForecastModel.NoaaGfs, 4, 8),
+                new StubForecastEstimator(ForecastModel.EcmwfIfs, 3, 6)
+            ]);
+        viewModel.SetEndpoints(
+            new Coordinate(34, -64),
+            new Coordinate(39, -52));
+        viewModel.DepartureDate = Now.AddHours(1);
+        viewModel.DepartureTime = Now.AddHours(1).TimeOfDay;
+        viewModel.UseEcmwf = true;
+
+        Assert.Contains("NOAA 4 times/8 parts", viewModel.ForecastAreaSummary);
+        Assert.Contains("ECMWF 3 times/6 global wind ranges", viewModel.ForecastAreaSummary);
+    }
+
+    [Fact]
     public void LocalDepartureConversionHandlesUtcAndDstEdgeCases()
     {
         Assert.True(LocalDepartureConverter.TryConvertToUtc(
@@ -114,7 +139,7 @@ public sealed class MainViewModelWorkflowTests
         Assert.True(viewModel.HasTimeline);
         Assert.Equal(ForecastModel.NoaaGfs, viewModel.SelectedRoutePoint!.Route.Model);
         Assert.Contains("complete", viewModel.NoaaStatus, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Experimental ECMWF failed", viewModel.ErrorMessage);
+        Assert.Contains("ECMWF IFS failed", viewModel.ErrorMessage);
         Assert.Contains("indexed ranges are unavailable", viewModel.EcmwfStatus);
     }
 
@@ -1406,6 +1431,17 @@ public sealed class MainViewModelWorkflowTests
         }
 
         Assert.True(predicate());
+    }
+
+    private sealed class StubForecastEstimator(
+        ForecastModel model,
+        int forecastStepCount,
+        int partCount) : IForecastDownloadEstimator
+    {
+        public ForecastModel Model { get; } = model;
+
+        public ForecastDownloadEstimate EstimateDownload(ForecastRequest request) =>
+            new(Model, forecastStepCount, partCount, null, string.Empty);
     }
 
     private static ForecastAcquisition CreateAcquisition(

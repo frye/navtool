@@ -53,7 +53,8 @@ public partial class MainViewModel : ViewModelBase
     private readonly IWeatherSampler? _weatherSampler;
     private readonly ILocalGribInspector? _localGribInspector;
     private readonly INativeRoutingPreflight? _nativeRoutingPreflight;
-    private readonly NoaaGfsForecastProvider? _noaaProvider;
+    private readonly IReadOnlyDictionary<ForecastModel, IForecastDownloadEstimator>
+        _forecastEstimators;
     private readonly TimeProvider _timeProvider;
     private readonly TimeZoneInfo _localTimeZone;
     private readonly ILogger<MainViewModel> _logger;
@@ -146,7 +147,7 @@ public partial class MainViewModel : ViewModelBase
     private string _noaaStatus = "Ready";
 
     [ObservableProperty]
-    private string _ecmwfStatus = "Experimental · not selected";
+    private string _ecmwfStatus = "Not selected";
 
     [ObservableProperty]
     private RouteMapSelection? _selectedRoutePoint;
@@ -197,14 +198,14 @@ public partial class MainViewModel : ViewModelBase
         IWeatherSampler weatherSampler,
         ILocalGribInspector localGribInspector,
         INativeRoutingPreflight nativeRoutingPreflight,
-        NoaaGfsForecastProvider noaaProvider,
+        IEnumerable<IForecastDownloadEstimator> forecastEstimators,
         ILogger<MainViewModel> logger)
         : this(
             workflow,
             weatherSampler,
             localGribInspector,
             nativeRoutingPreflight,
-            noaaProvider,
+            forecastEstimators,
             logger,
             null)
     {
@@ -215,7 +216,7 @@ public partial class MainViewModel : ViewModelBase
         IWeatherSampler weatherSampler,
         ILocalGribInspector localGribInspector,
         INativeRoutingPreflight nativeRoutingPreflight,
-        NoaaGfsForecastProvider noaaProvider,
+        IEnumerable<IForecastDownloadEstimator> forecastEstimators,
         ILogger<MainViewModel> logger,
         IRoutePlanRepository? routePlanRepository)
         : this(
@@ -227,8 +228,8 @@ public partial class MainViewModel : ViewModelBase
             logger,
             localGribInspector,
             nativeRoutingPreflight,
-            noaaProvider,
-            routePlanRepository)
+            routePlanRepository,
+            forecastEstimators: forecastEstimators)
     {
     }
 
@@ -237,7 +238,7 @@ public partial class MainViewModel : ViewModelBase
         IWeatherSampler weatherSampler,
         ILocalGribInspector localGribInspector,
         INativeRoutingPreflight nativeRoutingPreflight,
-        NoaaGfsForecastProvider noaaProvider,
+        IEnumerable<IForecastDownloadEstimator> forecastEstimators,
         ILogger<MainViewModel> logger,
         IRoutePlanRepository routePlanRepository,
         RoutePlanRoutingWorkflow routePlanWorkflow)
@@ -246,7 +247,7 @@ public partial class MainViewModel : ViewModelBase
             weatherSampler,
             localGribInspector,
             nativeRoutingPreflight,
-            noaaProvider,
+            forecastEstimators,
             logger,
             routePlanRepository,
             routePlanWorkflow,
@@ -259,7 +260,7 @@ public partial class MainViewModel : ViewModelBase
         IWeatherSampler weatherSampler,
         ILocalGribInspector localGribInspector,
         INativeRoutingPreflight nativeRoutingPreflight,
-        NoaaGfsForecastProvider noaaProvider,
+        IEnumerable<IForecastDownloadEstimator> forecastEstimators,
         ILogger<MainViewModel> logger,
         IRoutePlanRepository routePlanRepository,
         RoutePlanRoutingWorkflow routePlanWorkflow,
@@ -273,9 +274,9 @@ public partial class MainViewModel : ViewModelBase
             logger,
             localGribInspector,
             nativeRoutingPreflight,
-            noaaProvider,
             routePlanRepository,
-            routePlanWorkflow)
+            routePlanWorkflow,
+            forecastEstimators)
     {
     }
 
@@ -288,9 +289,9 @@ public partial class MainViewModel : ViewModelBase
         ILogger<MainViewModel>? logger = null,
         ILocalGribInspector? localGribInspector = null,
         INativeRoutingPreflight? nativeRoutingPreflight = null,
-        NoaaGfsForecastProvider? noaaProvider = null,
         IRoutePlanRepository? routePlanRepository = null,
-        RoutePlanRoutingWorkflow? routePlanWorkflow = null)
+        RoutePlanRoutingWorkflow? routePlanWorkflow = null,
+        IEnumerable<IForecastDownloadEstimator>? forecastEstimators = null)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(localTimeZone);
@@ -302,7 +303,8 @@ public partial class MainViewModel : ViewModelBase
         _weatherSampler = weatherSampler;
         _localGribInspector = localGribInspector;
         _nativeRoutingPreflight = nativeRoutingPreflight;
-        _noaaProvider = noaaProvider;
+        _forecastEstimators = (forecastEstimators ?? [])
+            .ToDictionary(estimator => estimator.Model);
         _timeProvider = timeProvider;
         _localTimeZone = localTimeZone;
         _logger = logger ?? NullLogger<MainViewModel>.Instance;
@@ -808,9 +810,7 @@ public partial class MainViewModel : ViewModelBase
         foreach (var model in request.Models)
         {
             _modelProgress[model] = 0;
-            SetModelStatus(model, IsExperimentalDownload(request, model)
-                ? "Experimental · queued"
-                : "Queued");
+            SetModelStatus(model, "Queued");
         }
 
         var progress = new Progress<RoutingProgress>(value =>
@@ -835,7 +835,6 @@ public partial class MainViewModel : ViewModelBase
                 });
             SetModelStatus(
                 value.Model,
-                $"{(IsExperimentalDownload(request, value.Model) ? "Experimental · " : string.Empty)}" +
                 $"{ProgressStageName(value.Stage)} {value.Fraction:P0}" +
                 $"{(string.IsNullOrWhiteSpace(value.Message) ? string.Empty : $" · {value.Message}")}");
             if (value.Snapshot is not null)
@@ -867,7 +866,6 @@ public partial class MainViewModel : ViewModelBase
                 });
             SetModelStatus(
                 value.Model,
-                $"{(IsExperimentalDownload(request, value.Model) ? "Experimental · " : string.Empty)}" +
                 $"leg {value.LegIndex + 1} {PlanProgressStageName(value.Status)} " +
                 $"{value.UnitFraction:P0}" +
                 $"{(string.IsNullOrWhiteSpace(value.Message) ? string.Empty : $" · {value.Message}")}");
@@ -1248,9 +1246,7 @@ public partial class MainViewModel : ViewModelBase
 
             var legStatuses = outcome.Legs.Select((leg, index) =>
                 $"leg {index + 1} {LegStatusName(leg, result.Plan.SailedLegIds.Contains(leg.LegId))}");
-            var modelStatus =
-                $"{(IsExperimentalDownload(result.Request.Selections, outcome.Model) ? "Experimental · " : string.Empty)}" +
-                string.Join(" · ", legStatuses);
+            var modelStatus = string.Join(" · ", legStatuses);
             SetModelStatus(outcome.Model, modelStatus);
 
             foreach (var leg in outcome.Legs)
@@ -1305,6 +1301,8 @@ public partial class MainViewModel : ViewModelBase
     partial void OnPassageHoursChanged(int value) => UpdateForecastAreaSummary();
 
     partial void OnUseNoaaChanged(bool value) => UpdateForecastAreaSummary();
+
+    partial void OnUseEcmwfChanged(bool value) => UpdateForecastAreaSummary();
 
     partial void OnForecastInputModeChanged(ForecastInputMode value)
     {
@@ -1457,7 +1455,6 @@ public partial class MainViewModel : ViewModelBase
                 if (route.IsForecastLimited)
                 {
                     status =
-                        $"{(IsExperimentalDownload(result.Request, outcome.Model) ? "Experimental · " : string.Empty)}" +
                         $"forecast ended · best estimate through {route.ArrivalTime:MMM d HH:mm} UTC";
                     warnings.Add(
                         $"{ModelName(outcome.Model)} route calculation ended because there is no more " +
@@ -1468,7 +1465,6 @@ public partial class MainViewModel : ViewModelBase
                 else
                 {
                     status =
-                        $"{(IsExperimentalDownload(result.Request, outcome.Model) ? "Experimental · " : string.Empty)}" +
                         $"complete · arrival {route.ArrivalTime:MMM d HH:mm} UTC";
                     if (route.ExceedsRequestedArrival)
                     {
@@ -1492,9 +1488,6 @@ public partial class MainViewModel : ViewModelBase
             else
             {
                 _mapLayers.ClearCalculationOverlay(outcome.Model);
-                var experimental = IsExperimentalDownload(result.Request, outcome.Model)
-                    ? "Experimental ECMWF"
-                    : ModelName(outcome.Model);
                 var failedStage = outcome.Failure!.Stage switch
                 {
                     ModelRouteFailureStage.ForecastAcquisition => "forecast acquisition",
@@ -1502,7 +1495,7 @@ public partial class MainViewModel : ViewModelBase
                     ModelRouteFailureStage.ResultValidation => "route result validation",
                     _ => "provider setup"
                 };
-                var message = $"{experimental} failed during {failedStage}: {outcome.Failure.Message}";
+                var message = $"{ModelName(outcome.Model)} failed during {failedStage}: {outcome.Failure.Message}";
                 failures.Add(message);
                 _logger.LogWarning(
                     "Forecast model {Model} failed during {FailureStage}: {FailureMessage}",
@@ -2173,9 +2166,7 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        if (!UseNoaa ||
-            _noaaProvider is null ||
-            !TryGetPassageDuration(out var duration, out _) ||
+        if (!TryGetPassageDuration(out var duration, out _) ||
             !LocalDepartureConverter.TryConvertToUtc(
                 DepartureDate,
                 DepartureTime,
@@ -2189,15 +2180,35 @@ public partial class MainViewModel : ViewModelBase
 
         try
         {
-            var estimate = _noaaProvider.Estimate(new ForecastRequest(
-                ForecastModel.NoaaGfs,
-                bounds,
-                departure,
-                departure + duration));
-            ForecastAreaSummary =
-                $"{area} · {estimate.ForecastStepCount} times, " +
-                $"{estimate.PartCount} forecast part{(estimate.PartCount == 1 ? string.Empty : "s")} " +
-                "(cached parts are reused)";
+            var estimates = new List<string>();
+            if (UseNoaa &&
+                _forecastEstimators.TryGetValue(ForecastModel.NoaaGfs, out var noaaEstimator))
+            {
+                var estimate = noaaEstimator.EstimateDownload(new ForecastRequest(
+                    ForecastModel.NoaaGfs,
+                    bounds,
+                    departure,
+                    departure + duration));
+                estimates.Add(
+                    $"NOAA {estimate.ForecastStepCount} times/{estimate.PartCount} parts");
+            }
+
+            if (UseEcmwf &&
+                _forecastEstimators.TryGetValue(ForecastModel.EcmwfIfs, out var ecmwfEstimator))
+            {
+                var estimate = ecmwfEstimator.EstimateDownload(new ForecastRequest(
+                    ForecastModel.EcmwfIfs,
+                    bounds,
+                    departure,
+                    departure + duration));
+                estimates.Add(
+                    $"ECMWF {estimate.ForecastStepCount} times/" +
+                    $"{estimate.PartCount} global wind ranges");
+            }
+
+            ForecastAreaSummary = estimates.Count == 0
+                ? area
+                : $"{area} · {string.Join("; ", estimates)} (cached parts are reused)";
         }
         catch (Exception exception)
         {
@@ -2224,19 +2235,6 @@ public partial class MainViewModel : ViewModelBase
     private static string FormatBounds(GeographicBounds bounds) =>
         $"{bounds.South:0.##}° to {bounds.North:0.##}° latitude, " +
         $"{bounds.West:0.##}° to {bounds.East:0.##}° longitude";
-
-    private static bool IsExperimentalDownload(
-        RoutingWorkflowRequest request,
-        ForecastModel model) =>
-        IsExperimentalDownload(request.Selections, model);
-
-    private static bool IsExperimentalDownload(
-        IEnumerable<ForecastSelection> selections,
-        ForecastModel model) =>
-        model == ForecastModel.EcmwfIfs &&
-        selections.Any(selection =>
-            selection.Model == model &&
-            selection.Kind == ForecastSelectionKind.OfficialDownload);
 
     private static string PlanProgressStageName(RoutePlanRoutingUnitStatus status) => status switch
     {
@@ -2323,7 +2321,7 @@ public partial class MainViewModel : ViewModelBase
     private static string ModelName(ForecastModel model) => model switch
     {
         ForecastModel.NoaaGfs => "NOAA GFS",
-        ForecastModel.EcmwfIfs => "ECMWF IFS (experimental)",
+        ForecastModel.EcmwfIfs => "ECMWF IFS",
         _ => model.ToString()
     };
 
