@@ -5,6 +5,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Navtool.App.Models;
 using Navtool.App.Services;
@@ -126,6 +127,7 @@ public sealed class AppThemeTests
         {
             window.Show();
             window.SetPlanningDrawerOpen(true);
+            Dispatcher.UIThread.RunJobs();
 
             foreach (var option in AppThemeService.AvailableThemes)
             {
