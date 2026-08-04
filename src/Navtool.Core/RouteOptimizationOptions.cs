@@ -214,7 +214,8 @@ public sealed record RouteOptimizationOptions
         RoutePruningStrategy pruningStrategy = RoutePruningStrategy.DestinationDistanceGrid,
         double pruningSectorDegrees = 2,
         RouteDestinationFrontOptions? destinationFront = null,
-        RouteLatticeOptions? lattice = null)
+        RouteLatticeOptions? lattice = null,
+        RouteEnvironmentOptions? environment = null)
     {
         if (!Enum.IsDefined(solver))
         {
@@ -277,6 +278,7 @@ public sealed record RouteOptimizationOptions
         PruningSectorDegrees = pruningSectorDegrees;
         DestinationFront = destinationFront ?? new RouteDestinationFrontOptions();
         Lattice = lattice ?? new RouteLatticeOptions();
+        Environment = environment is { IsActive: true } ? environment : null;
     }
 
     public RouteSolver Solver { get; }
@@ -302,6 +304,12 @@ public sealed record RouteOptimizationOptions
     public RouteDestinationFrontOptions DestinationFront { get; }
 
     public RouteLatticeOptions Lattice { get; }
+
+    /// <summary>
+    /// The opt-in Stage 3 environment, or null when no provider is configured.
+    /// Null keeps route arithmetic identical to every pre-Stage-3 release.
+    /// </summary>
+    public RouteEnvironmentOptions? Environment { get; }
 
     public static RouteOptimizationOptions Balanced { get; } = new();
 
