@@ -365,7 +365,7 @@
                                     </CheckBox>
                                     <CheckBox IsChecked="{Binding UseEcmwf}">
                                         <StackPanel>
-                                            <TextBlock Text="ECMWF IFS · EXPERIMENTAL"
+                                            <TextBlock Text="ECMWF IFS"
                                                        FontWeight="SemiBold" />
                                             <TextBlock Text="{Binding EcmwfStatus}"
                                                        Classes="muted"
@@ -761,7 +761,7 @@
                                                  Command="{Binding ActivateNoaaRouteCommand}"
                                                  IsChecked="{Binding IsNoaaRouteActive, Mode=OneWay}"
                                                  IsVisible="{Binding HasNoaaRoutes}" />
-                                    <RadioButton Content="ECMWF experimental"
+                                    <RadioButton Content="ECMWF IFS"
                                                  Command="{Binding ActivateEcmwfRouteCommand}"
                                                  IsChecked="{Binding IsEcmwfRouteActive, Mode=OneWay}"
                                                  IsVisible="{Binding HasEcmwfRoutes}" />
@@ -883,7 +883,7 @@
                                                      Command="{Binding ActivateNoaaWeatherCommand}"
                                                      IsChecked="{Binding IsNoaaWeatherActive, Mode=OneWay}"
                                                      IsVisible="{Binding HasNoaaWeather}" />
-                                        <RadioButton Content="ECMWF experimental"
+                                        <RadioButton Content="ECMWF IFS"
                                                      Command="{Binding ActivateEcmwfWeatherCommand}"
                                                      IsChecked="{Binding IsEcmwfWeatherActive, Mode=OneWay}"
                                                      IsVisible="{Binding HasEcmwfWeather}" />
