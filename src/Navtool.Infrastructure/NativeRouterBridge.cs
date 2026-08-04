@@ -1732,27 +1732,34 @@ internal static class NativeRouteJsonParser
             return null;
         }
 
-        var providerName = value.TryGetProperty("name", out var nameValue)
-            ? nameValue.GetString()
-            : null;
+        var providerName = OptionalString(value, "name");
         if (string.IsNullOrWhiteSpace(providerName))
         {
             throw new NativeRouteFormatException(
                 $"Native route JSON environment provider '{name}' is missing a name.");
         }
 
-        var source = value.TryGetProperty("source", out var sourceValue)
-            ? sourceValue.GetString()
-            : null;
-        var revision = value.TryGetProperty("revision", out var revisionValue)
-            ? revisionValue.GetString()
-            : null;
+        var source = OptionalString(value, "source");
+        var revision = OptionalString(value, "revision");
 
         return new RouteProviderMetadata(
             providerName,
             string.IsNullOrWhiteSpace(source) ? "unattributed" : source,
             revision ?? string.Empty);
     }
+
+    /// <summary>
+    /// Reads an optional string, treating a wrong-kind value as absent the same
+    /// way <see cref="OptionalDouble"/> and <see cref="OptionalInt64"/> do. The
+    /// provider name is still required by its caller, so a non-string name
+    /// reports the specific missing-name error rather than the generic contract
+    /// failure a raw GetString would raise.
+    /// </summary>
+    private static string? OptionalString(JsonElement parent, string name) =>
+        parent.TryGetProperty(name, out var value) &&
+        value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 
     private static double? OptionalDouble(JsonElement parent, string name)
     {

@@ -491,6 +491,54 @@ public sealed class NativeRouteJsonParserEnvironmentTests
         Assert.Equal(11UL, environment.ExclusionRevision);
     }
 
+    /// <summary>
+    /// Optional provider fields follow the same wrong-kind-is-absent rule as
+    /// every other optional field here, so a numeric source falls back to
+    /// "unattributed" instead of failing the whole route parse over a field
+    /// that already has a defined fallback.
+    /// </summary>
+    [Fact]
+    public void Parse_treats_a_wrong_kind_provider_source_as_absent()
+    {
+        var json = BaselineJson(extraRootKeys: """
+            ,
+            "environment": {
+              "sampling": "segment_start",
+              "currentProvider": { "name": "uniform", "source": 7, "revision": 3 },
+              "policies": { "current": "fail_route", "wave": "fail_route", "land": "fail_route" }
+            }
+            """);
+
+        var environment = Parse(json).Environment;
+
+        Assert.NotNull(environment);
+        Assert.Equal("uniform", environment!.CurrentProvider!.Name);
+        Assert.Equal("unattributed", environment.CurrentProvider.Source);
+        Assert.Equal(string.Empty, environment.CurrentProvider.Revision);
+    }
+
+    /// <summary>
+    /// A non-string name must still report the specific missing-name error
+    /// rather than being rebranded as a generic v1 contract failure.
+    /// </summary>
+    [Fact]
+    public void Parse_reports_a_wrong_kind_provider_name_as_a_missing_name()
+    {
+        var json = BaselineJson(extraRootKeys: """
+            ,
+            "environment": {
+              "sampling": "segment_start",
+              "currentProvider": { "name": 42, "source": "operator" },
+              "policies": { "current": "fail_route", "wave": "fail_route", "land": "fail_route" }
+            }
+            """);
+
+        var error = Assert.Throws<NativeRouteFormatException>(() => Parse(json));
+
+        Assert.Contains("missing a name", error.Message);
+        Assert.Contains("currentProvider", error.Message);
+    }
+
     [Fact]
     public void Parse_reads_every_environment_diagnostics_counter()
     {
