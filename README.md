@@ -12,15 +12,17 @@ It targets macOS, Windows, and Linux.
 - Open on a Salish Sea chart view and use resizable edge drawers plus
   right-click, long-press, or keyboard radial map actions to place endpoints,
   inspect routes, and start calculation without obscuring the chart.
-- Choose a local departure date/time, converted to UTC with DST validation; when calculation
-  starts with a past active-leg departure, Navtool rolls it forward to the current time and warns
-  without changing sailed-leg history.
+- Choose a local departure date/time with a UTC preview and DST validation. When
+  calculation starts with a past active-leg departure, Navtool rolls it forward
+  to the current time and warns without changing sailed-leg history.
 - Set the expected passage duration so only the required forecast times are
   acquired, up to the ten-day planning limit.
 - Download NOAA GFS or ECMWF IFS 0.25-degree 10 m wind fields, or choose an
   existing GRIB through the operating system's native file picker.
 - Calculate routes through the native `router-lib` v0.4 bridge with enhanced
   beam-routing accuracy enabled by default.
+- Start calculation automatically after both endpoints are placed, restart
+  safely when an endpoint changes, or force recalculation from the radial menu.
 - Apply bundled Natural Earth land geometry by default, with an optional
   higher-detail OSM-derived service override.
 - Watch historical destination-facing isochrone fronts, the emphasized latest
@@ -35,6 +37,9 @@ It targets macOS, Windows, and Linux.
   uncalculated, and out-of-window legs.
 - Select a leg from the ordered list or map to emphasize it without hiding the
   rest of the route, then fit the leg or focus an individual route point.
+- Inspect a route point in an anchored map card showing arrival time, boat
+  speed, heading, true and apparent wind, and apparent wind angle. The selected
+  model, timeline, card, and wind overlay remain synchronized.
 - Scrub a route-wide UTC timeline for one active forecast model at a time, move
   among that model's route-point timestamps, and see waypoint stopovers as
   explicit stationary holds.
@@ -129,13 +134,13 @@ interpolation. It intentionally adds no tack or gybe delay, no hard maximum-wind
 cutoff, and clamps wind above the polar's tabulated range.
 
 Enable **Professional routing features** in the planning drawer to reveal the
-temporary `router-lib` Stage 2.5 controls. Professional mode can select either the
-isochrone beam or deterministic time-dependent lattice solver and configure
-maneuver penalties, heading augmentation, wind sampling, polar interpolation,
-wind limits, pruning, and solver-specific settings. The toggle and edited values
-reset when Navtool exits and are never stored as application preferences or route
-plan inputs. Completed results do retain solver attribution and lattice
-diagnostics.
+advanced `router-lib` controls. Professional mode can select either the isochrone
+beam or deterministic time-dependent lattice solver and configure maneuver
+penalties, heading augmentation, wind sampling, polar interpolation, wind limits,
+pruning, solver-specific settings, and the opt-in Stage 3 providers described
+below. The toggle and edited values reset when Navtool exits and are never stored
+as application preferences or route plan inputs. Completed results retain solver
+attribution, lattice diagnostics, and applied environment attribution.
 
 ## Multi-point routes and visualization
 
@@ -192,13 +197,14 @@ the final provisional route to a selectable forecast-limited estimate, retains
 the solver-appropriate search overlay, and displays an amber warning. Complete
 final routes remain authoritative and may differ from the last provisional route.
 
-The ABI-v6 bridge preserves the existing final-route and v1-v5 streaming
+The ABI-v7 bridge preserves the existing final-route and v1-v6 streaming
 functions. The v6 entry point adds fixed-layout routing options, solver identity,
-search points, and lattice counters while retaining optional pre-retention
-segment eligibility. Callback array and coordinate pointers are valid only for
-the duration of the synchronous callback and must be copied by consumers.
-Navtool rejects stale bridges so missing configuration or land-constraint
-support cannot silently degrade routing safety.
+search points, and lattice counters; v7 adds configured solver dispatch and the
+optional environment payload while retaining pre-retention segment eligibility.
+Callback array and coordinate pointers are valid only for the duration of the
+synchronous callback and must be copied by consumers. Navtool rejects stale
+bridges so missing configuration or land-constraint support cannot silently
+degrade routing safety.
 
 ## Publish
 
@@ -424,10 +430,10 @@ avoidance depends on the bundled generalized dataset or configured OSM-derived
 service, cached data freshness, and router-lib capability. Any degraded route
 is explicitly marked as not checked for land. Even a land-aware route can omit
 recent, small, generalized, or inaccurately mapped hazards and must be verified
-independently. The routing engine models currents, waves, and exclusion zones only when
-you explicitly enable and supply them (see "Environmental physics"); it never
-models traffic, depths, or safety limits. The built-in vessel polar is an
-approximate demonstration model.
+independently. The routing engine models currents, waves, and exclusion zones
+only when you explicitly enable and supply them (see "Environmental physics");
+it never models traffic, depths, or safety limits. The built-in vessel polar is
+an approximate demonstration model.
 
 The professional lattice solver reports search points and counters, not
 isochrones or destination-front geometry. It is currently serial and intended
