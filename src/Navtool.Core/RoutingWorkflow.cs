@@ -333,15 +333,22 @@ public sealed class RoutingWorkflow
 
             failureStage = ModelRouteFailureStage.RouteCalculation;
             Report(progress, providerId, model, RoutingProgressStage.CalculatingRoute, 0.5);
+            // Route calculation occupies the upper half of the bar. Clamp to the highest
+            // fraction reported so far so progress never runs backwards: the fallback below
+            // re-runs the engine from zero, and a raw projection would rewind the bar.
+            var highestFraction = 0.5;
             var routeProgress = new SynchronousProgress<RouteCalculationProgress>(value =>
+            {
+                highestFraction = Math.Max(highestFraction, 0.5 + (value.Fraction * 0.5));
                 Report(
                     progress,
                     providerId,
                     model,
                     RoutingProgressStage.CalculatingRoute,
-                    0.5 + (value.Fraction * 0.5),
+                    highestFraction,
                     value.Message,
-                    value.Snapshot));
+                    value.Snapshot);
+            });
 
             RouteResult route;
             string? solverFallback = null;
@@ -359,6 +366,7 @@ public sealed class RoutingWorkflow
             catch (Exception solverException)
                 when (!cancellationToken.IsCancellationRequested &&
                       solverException is not OperationCanceledException &&
+                      solverException is not OutOfMemoryException &&
                       request.Optimization.Solver != FallbackSolver)
             {
                 // The time-dependent lattice solver can fail outright on passages the
@@ -366,7 +374,9 @@ public sealed class RoutingWorkflow
                 // the polar's no-go zone: the lattice has no sub-edge spatial move, so it
                 // cannot tack and reports that it exhausted every reachable state. Rather
                 // than hand the user a hard failure for a routable passage, retry once with
-                // the beam and tell them the route came from a different solver.
+                // the beam and tell them the route came from a different solver. Memory
+                // exhaustion is excluded above: the honest signal there is the original
+                // exception, not a "solver could not complete" warning.
                 var fallbackOptions = request.Optimization.WithSolver(FallbackSolver);
                 solverFallback =
                     $"The {Describe(request.Optimization.Solver)} solver could not complete this route " +
@@ -376,7 +386,7 @@ public sealed class RoutingWorkflow
                     providerId,
                     model,
                     RoutingProgressStage.CalculatingRoute,
-                    0.5,
+                    highestFraction,
                     solverFallback);
 
                 route = await _routeEngine

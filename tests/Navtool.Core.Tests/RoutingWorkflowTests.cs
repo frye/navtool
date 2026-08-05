@@ -387,6 +387,81 @@ public sealed class RoutingWorkflowTests
     }
 
     [Fact]
+    public async Task Workflow_keeps_progress_monotonic_across_a_solver_fallback()
+    {
+        StubRouteEngine? engine = null;
+        engine = new StubRouteEngine((request, acquisition, progress, _) =>
+        {
+            if (engine!.Optimizations[^1].Solver == RouteSolver.TimeDependentLattice)
+            {
+                // The lattice searches for a while before giving up, so the bar has
+                // already advanced when the fallback message is reported.
+                progress?.Report(new RouteCalculationProgress(0.8));
+                throw new InvalidOperationException("lattice failed");
+            }
+
+            progress?.Report(new RouteCalculationProgress(0.1));
+            return ValueTask.FromResult(CreateRoute(request, acquisition.Request.Model));
+        });
+        var workflow = new RoutingWorkflow(
+            new[]
+            {
+                new StubForecastProvider(
+                    ForecastModel.NoaaGfs,
+                    (request, _, _) => ValueTask.FromResult(CreateAcquisition(request)))
+            },
+            engine);
+        var fractions = new List<double>();
+
+        var result = await workflow.ExecuteAsync(
+            new RoutingWorkflowRequest(
+                CreateRouteRequest(),
+                new[] { ForecastModel.NoaaGfs },
+                optimization: new RouteOptimizationOptions(
+                    solver: RouteSolver.TimeDependentLattice)),
+            new InlineProgress<RoutingProgress>(report => fractions.Add(report.Fraction)));
+
+        Assert.Equal(ModelRouteStatus.Succeeded, Assert.Single(result.Outcomes).Status);
+        Assert.NotEmpty(fractions);
+        for (var index = 1; index < fractions.Count; index++)
+        {
+            Assert.True(
+                fractions[index] >= fractions[index - 1],
+                $"Progress went backwards: {fractions[index - 1]} then {fractions[index]}.");
+        }
+    }
+
+    [Fact]
+    public async Task Workflow_does_not_fall_back_when_the_solver_runs_out_of_memory()
+    {
+        var engine = new StubRouteEngine((_, _, _, _) => throw new OutOfMemoryException());
+        var workflow = new RoutingWorkflow(
+            new[]
+            {
+                new StubForecastProvider(
+                    ForecastModel.NoaaGfs,
+                    (request, _, _) => ValueTask.FromResult(CreateAcquisition(request)))
+            },
+            engine);
+
+        var result = await workflow.ExecuteAsync(
+            new RoutingWorkflowRequest(
+                CreateRouteRequest(),
+                new[] { ForecastModel.NoaaGfs },
+                optimization: new RouteOptimizationOptions(
+                    solver: RouteSolver.TimeDependentLattice)));
+
+        // Retrying after memory exhaustion would paper over the real failure, so the
+        // lattice attempt must be the only one and the outcome must report the failure.
+        var outcome = Assert.Single(result.Outcomes);
+        Assert.Equal(ModelRouteStatus.Failed, outcome.Status);
+        Assert.Null(outcome.SolverFallback);
+        Assert.Equal(
+            new[] { RouteSolver.TimeDependentLattice },
+            engine.Optimizations.Select(item => item.Solver));
+    }
+
+    [Fact]
     public async Task Workflow_preserves_every_other_option_when_it_falls_back()
     {
         StubRouteEngine? engine = null;
