@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <cstddef>
 #include <cstring>
 #include <iostream>
 #include <fstream>
@@ -17,6 +18,26 @@
 namespace {
 
 static_assert(sizeof(navtool_router_options_v6) == 152U);
+
+// The managed side pins these same literals in
+// tests/Navtool.Infrastructure.Tests/NativeRouterInteropLayoutTests.cs. Both
+// sides assert against fixed numbers rather than each other, so a layout change
+// on either side fails loudly instead of silently corrupting memory.
+static_assert(sizeof(navtool_router_provider_metadata_v7) == 24U);
+static_assert(sizeof(navtool_router_grid_spec_v7) == 56U);
+static_assert(sizeof(navtool_router_current_settings_v7) == 120U);
+static_assert(sizeof(navtool_router_wave_derating_v7) == 64U);
+static_assert(sizeof(navtool_router_wave_settings_v7) == 224U);
+static_assert(sizeof(navtool_router_landmask_settings_v7) == 128U);
+static_assert(sizeof(navtool_router_exclusion_ring_v7) == 16U);
+static_assert(sizeof(navtool_router_exclusion_polygon_v7) == 32U);
+static_assert(sizeof(navtool_router_exclusion_zone_v7) == 64U);
+static_assert(sizeof(navtool_router_exclusion_settings_v7) == 96U);
+static_assert(sizeof(navtool_router_environment_v7) == 576U);
+static_assert(offsetof(navtool_router_environment_v7, currents) == 8U);
+static_assert(offsetof(navtool_router_environment_v7, waves) == 128U);
+static_assert(offsetof(navtool_router_environment_v7, land) == 352U);
+static_assert(offsetof(navtool_router_environment_v7, exclusions) == 480U);
 
 void require(bool condition, const char* message) {
     if (!condition) {
@@ -738,13 +759,25 @@ std::filesystem::path create_ecmwf_grib(bool mixed_run = false) {
 int main() {
     try {
         require(
-            navtool_router_bridge_abi_version_v1() ==
-                NAVTOOL_ROUTER_BRIDGE_ABI_VERSION,
+            navtool_router_bridge_abi_version_v1() == 7U,
             "unexpected bridge ABI version");
         require(
-            navtool_router_bridge_capabilities_v1() ==
-                NAVTOOL_ROUTER_CAPABILITY_LAND_SEGMENT_CONSTRAINT_V1,
+            (navtool_router_bridge_capabilities_v1() &
+                NAVTOOL_ROUTER_CAPABILITY_LAND_SEGMENT_CONSTRAINT_V1) != 0ULL,
             "bridge did not advertise land segment constraints");
+        require(
+            (navtool_router_bridge_capabilities_v1() &
+                (NAVTOOL_ROUTER_CAPABILITY_ENVIRONMENT_V7 |
+                 NAVTOOL_ROUTER_CAPABILITY_CURRENT_PROVIDER_V7 |
+                 NAVTOOL_ROUTER_CAPABILITY_SEA_STATE_V7 |
+                 NAVTOOL_ROUTER_CAPABILITY_SIGNED_DISTANCE_LAND_V7 |
+                 NAVTOOL_ROUTER_CAPABILITY_EXCLUSION_ZONES_V7)) ==
+                (NAVTOOL_ROUTER_CAPABILITY_ENVIRONMENT_V7 |
+                 NAVTOOL_ROUTER_CAPABILITY_CURRENT_PROVIDER_V7 |
+                 NAVTOOL_ROUTER_CAPABILITY_SEA_STATE_V7 |
+                 NAVTOOL_ROUTER_CAPABILITY_SIGNED_DISTANCE_LAND_V7 |
+                 NAVTOOL_ROUTER_CAPABILITY_EXCLUSION_ZONES_V7),
+            "bridge did not advertise the Stage 3 environment capabilities");
 
         navtool_router_forecast_v1* forecast = nullptr;
         require(
@@ -1048,6 +1081,541 @@ int main() {
         require(
             route_json == nullptr && route_json_length == 0U,
             "cancelled lattice route populated route outputs");
+
+        // ---------- Stage 3 environment ----------
+
+        // The v6 baseline every compatibility assertion below compares against.
+        route_json = nullptr;
+        route_json_length = 0U;
+        require_ok(
+            navtool_router_calculate_route_streaming_v6(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                &balanced_options,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length),
+            "calculate v6 environment baseline route");
+        const std::string baseline_route_json{route_json};
+        navtool_router_bridge_free_v1(route_json);
+        route_json = nullptr;
+        route_json_length = 0U;
+
+        require(
+            baseline_route_json.find("\"environment\"") == std::string::npos &&
+                baseline_route_json.find("\"environmentDiagnostics\"") ==
+                    std::string::npos,
+            "the v6 baseline unexpectedly emitted environment audit data");
+
+        require_ok(
+            navtool_router_calculate_route_streaming_v7(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                &balanced_options,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length),
+            "calculate v7 route with a null environment");
+        require(
+            std::string{route_json} == baseline_route_json,
+            "a null environment did not reproduce the v6 route byte for byte");
+        navtool_router_bridge_free_v1(route_json);
+        route_json = nullptr;
+        route_json_length = 0U;
+
+        // An all-unconfigured payload must also collapse onto the v6 path.
+        navtool_router_environment_v7 empty_environment{};
+        require_ok(
+            navtool_router_calculate_route_streaming_v7(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                &balanced_options,
+                &empty_environment,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length),
+            "calculate v7 route with an unconfigured environment");
+        require(
+            std::string{route_json} == baseline_route_json,
+            "an unconfigured environment did not reproduce the v6 route byte for byte");
+        navtool_router_bridge_free_v1(route_json);
+        route_json = nullptr;
+        route_json_length = 0U;
+
+        // A uniform current must appear in both audit blocks and shift the
+        // ground track away from the water-relative heading.
+        navtool_router_environment_v7 current_environment{};
+        current_environment.currents.mode =
+            NAVTOOL_ROUTER_FIELD_MODE_UNIFORM_V7;
+        current_environment.currents.missing_data_policy =
+            NAVTOOL_ROUTER_MISSING_DATA_FAIL_ROUTE_V7;
+        current_environment.currents.uniform_east_knots = 1.25;
+        current_environment.currents.uniform_north_knots = -0.5;
+        current_environment.currents.metadata.name_utf8 =
+            "uniform_current_field";
+        current_environment.currents.metadata.source_utf8 = "bridge tests";
+        current_environment.currents.metadata.revision_utf8 = "test-1";
+        require_ok(
+            navtool_router_calculate_route_streaming_v7(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                &balanced_options,
+                &current_environment,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length),
+            "calculate v7 route with a uniform current");
+        {
+            const std::string current_route_json{route_json};
+            require(
+                current_route_json.find("\"environment\"") !=
+                    std::string::npos,
+                "the current route omitted the environment metadata block");
+            require(
+                current_route_json.find("\"environmentDiagnostics\"") !=
+                    std::string::npos,
+                "the current route omitted the environment diagnostics block");
+            require(
+                current_route_json.find("\"currentEastKnots\"") !=
+                    std::string::npos &&
+                    current_route_json.find("\"currentNorthKnots\"") !=
+                        std::string::npos,
+                "the current route omitted per-point current samples");
+            require(
+                current_route_json.find("\"speedOverGroundKnots\"") !=
+                    std::string::npos &&
+                    current_route_json.find("\"courseOverGroundDegrees\"") !=
+                        std::string::npos,
+                "the current route omitted ground-frame motion");
+            require(
+                current_route_json.find("uniform_current_field") !=
+                    std::string::npos,
+                "the current route omitted provider attribution");
+            require(
+                current_route_json != baseline_route_json,
+                "a uniform current did not change the route");
+            require(
+                current_route_json.find("\"significantWaveHeightMetres\"") ==
+                    std::string::npos,
+                "an unconfigured wave provider emitted sea-state samples");
+        }
+        navtool_router_bridge_free_v1(route_json);
+        route_json = nullptr;
+        route_json_length = 0U;
+
+        // Sea-state derating must reduce boat speed below the flat-water speed.
+        navtool_router_environment_v7 wave_environment{};
+        wave_environment.waves.mode = NAVTOOL_ROUTER_FIELD_MODE_UNIFORM_V7;
+        wave_environment.waves.missing_data_policy =
+            NAVTOOL_ROUTER_MISSING_DATA_FAIL_ROUTE_V7;
+        wave_environment.waves.uniform_significant_height_metres = 3.5;
+        wave_environment.waves.uniform_peak_period_seconds = 9.0;
+        wave_environment.waves.uniform_direction_from_degrees = 270.0;
+        wave_environment.waves.derating.height_coefficient = 0.03;
+        wave_environment.waves.derating.height_exponent = 1.5;
+        wave_environment.waves.derating.head_sea_factor = 1.6;
+        wave_environment.waves.derating.following_sea_factor = 0.35;
+        wave_environment.waves.derating.maximum_loss_fraction = 0.6;
+        wave_environment.waves.derating.period_sensitivity = 0.0;
+        wave_environment.waves.derating.reference_period_seconds = 8.0;
+        wave_environment.waves.derating.minimum_period_seconds = 2.0;
+        wave_environment.waves.provider_metadata.name_utf8 =
+            "uniform_wave_field";
+        wave_environment.waves.provider_metadata.source_utf8 = "bridge tests";
+        wave_environment.waves.provider_metadata.revision_utf8 = "test-1";
+        require_ok(
+            navtool_router_calculate_route_streaming_v7(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                &balanced_options,
+                &wave_environment,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length),
+            "calculate v7 route with sea-state derating");
+        {
+            const std::string wave_route_json{route_json};
+            require(
+                wave_route_json.find("\"significantWaveHeightMetres\"") !=
+                        std::string::npos &&
+                    wave_route_json.find("\"wavePeriodSeconds\"") !=
+                        std::string::npos &&
+                    wave_route_json.find("\"relativeWaveAngleDegrees\"") !=
+                        std::string::npos,
+                "the wave route omitted per-point sea-state samples");
+            require(
+                wave_route_json.find("\"flatWaterSpeedKnots\"") !=
+                    std::string::npos,
+                "the wave route omitted the flat-water reference speed");
+            require(
+                wave_route_json.find("\"seaStateEvaluations\"") !=
+                    std::string::npos,
+                "the wave route omitted sea-state diagnostics");
+            require(
+                wave_route_json.find("\"currentEastKnots\"") ==
+                    std::string::npos,
+                "an unconfigured current provider emitted current samples");
+            require(
+                wave_route_json != baseline_route_json,
+                "sea-state derating did not change the route");
+        }
+        navtool_router_bridge_free_v1(route_json);
+        route_json = nullptr;
+        route_json_length = 0U;
+
+        // A landmask that fills the whole corridor with land must leave no
+        // certifiable transition rather than quietly routing across it.
+        constexpr uint64_t kLandNodes = 5U;
+        std::vector<double> land_distances(
+            static_cast<size_t>(kLandNodes * kLandNodes),
+            -25.0);
+        navtool_router_environment_v7 land_environment{};
+        land_environment.land.configured = 1U;
+        land_environment.land.missing_data_policy =
+            NAVTOOL_ROUTER_MISSING_DATA_REJECT_TRANSITION_V7;
+        land_environment.land.grid.south_latitude_degrees = 47.5;
+        land_environment.land.grid.west_longitude_degrees = -124.5;
+        land_environment.land.grid.latitude_step_degrees = 0.5;
+        land_environment.land.grid.longitude_step_degrees = 0.5;
+        land_environment.land.grid.latitude_count = kLandNodes;
+        land_environment.land.grid.longitude_count = kLandNodes;
+        land_environment.land.signed_distance_nautical_miles =
+            land_distances.data();
+        land_environment.land.resolution_nautical_miles = 30.0;
+        land_environment.land.interpolation_error_nautical_miles = 1.0;
+        land_environment.land.clearance_nautical_miles = 0.5;
+        land_environment.land.maximum_subdivision_depth = 12U;
+        land_environment.land.metadata.name_utf8 = "signed_distance_landmask";
+        land_environment.land.metadata.source_utf8 = "bridge tests";
+        land_environment.land.metadata.revision_utf8 = "test-1";
+        require(
+            navtool_router_calculate_route_streaming_v7(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                &balanced_options,
+                &land_environment,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length) != NAVTOOL_ROUTER_STATUS_OK_V1,
+            "a fully land-covered corridor produced a route");
+        require(
+            route_json == nullptr && route_json_length == 0U,
+            "a rejected landmask route populated route outputs");
+
+        // The same mask over open water must certify the corridor and report
+        // its resolution and error bound.
+        std::fill(land_distances.begin(), land_distances.end(), 40.0);
+        require_ok(
+            navtool_router_calculate_route_streaming_v7(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                &balanced_options,
+                &land_environment,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length),
+            "calculate v7 route over an all-water landmask");
+        {
+            const std::string water_route_json{route_json};
+            require(
+                water_route_json.find("\"landResolutionNauticalMiles\"") !=
+                        std::string::npos &&
+                    water_route_json.find(
+                        "\"landInterpolationErrorNauticalMiles\"") !=
+                        std::string::npos &&
+                    water_route_json.find("\"landClearanceNauticalMiles\"") !=
+                        std::string::npos,
+                "the landmask route omitted mask attribution");
+            require(
+                water_route_json.find("\"landChecks\"") != std::string::npos &&
+                    water_route_json.find("\"landDistanceQueries\"") !=
+                        std::string::npos,
+                "the landmask route omitted landmask diagnostics");
+        }
+        navtool_router_bridge_free_v1(route_json);
+        route_json = nullptr;
+        route_json_length = 0U;
+
+        // An exclusion zone covering the corridor must block it, and the same
+        // zone outside its activation window must not.
+        const std::vector<navtool_router_coordinate_v1> exclusion_vertices{
+            {47.5, -124.5},
+            {47.5, -122.5},
+            {49.0, -122.5},
+            {49.0, -124.5}};
+        navtool_router_exclusion_polygon_v7 exclusion_polygon{};
+        exclusion_polygon.outer.vertex_offset = 0U;
+        exclusion_polygon.outer.vertex_count = exclusion_vertices.size();
+        navtool_router_exclusion_zone_v7 exclusion_zone{};
+        exclusion_zone.identifier_utf8 = "test-zone";
+        exclusion_zone.source_utf8 = "bridge tests";
+        exclusion_zone.revision = 1U;
+        exclusion_zone.polygon_offset = 0U;
+        exclusion_zone.polygon_count = 1U;
+
+        navtool_router_environment_v7 exclusion_environment{};
+        exclusion_environment.exclusions.configured = 1U;
+        exclusion_environment.exclusions.boundary_policy =
+            NAVTOOL_ROUTER_EXCLUSION_BOUNDARY_EXCLUDED_V7;
+        exclusion_environment.exclusions.zones = &exclusion_zone;
+        exclusion_environment.exclusions.zone_count = 1U;
+        exclusion_environment.exclusions.polygons = &exclusion_polygon;
+        exclusion_environment.exclusions.polygon_count = 1U;
+        exclusion_environment.exclusions.holes = nullptr;
+        exclusion_environment.exclusions.hole_count = 0U;
+        exclusion_environment.exclusions.vertices = exclusion_vertices.data();
+        exclusion_environment.exclusions.vertex_count =
+            exclusion_vertices.size();
+        exclusion_environment.exclusions.metadata.name_utf8 =
+            "exclusion_zone_set";
+        exclusion_environment.exclusions.metadata.source_utf8 = "bridge tests";
+        exclusion_environment.exclusions.metadata.revision_utf8 = "test-1";
+        require(
+            navtool_router_calculate_route_streaming_v7(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                &balanced_options,
+                &exclusion_environment,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length) != NAVTOOL_ROUTER_STATUS_OK_V1,
+            "an active exclusion zone covering the corridor produced a route");
+        require(
+            route_json == nullptr && route_json_length == 0U,
+            "a rejected exclusion route populated route outputs");
+
+        // Retire the zone before departure so it can no longer apply.
+        exclusion_zone.has_active_until = 1U;
+        exclusion_zone.active_until_utc_epoch_seconds = departure - 86400;
+        require_ok(
+            navtool_router_calculate_route_streaming_v7(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                &balanced_options,
+                &exclusion_environment,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length),
+            "calculate v7 route with an expired exclusion zone");
+        require(
+            std::string{route_json}.find("\"exclusionBoundaryPolicy\"") !=
+                std::string::npos,
+            "the exclusion route omitted the boundary policy");
+        navtool_router_bridge_free_v1(route_json);
+        route_json = nullptr;
+        route_json_length = 0U;
+
+        // Contradictory and malformed payloads must be refused up front rather
+        // than degrading to a weaker but still routable environment.
+        navtool_router_environment_v7 invalid_environment{};
+        invalid_environment.sampling = 99;
+        require(
+            navtool_router_calculate_route_streaming_v7(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                &balanced_options,
+                &invalid_environment,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length) ==
+                NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "an unsupported sampling mode was accepted");
+
+        invalid_environment = navtool_router_environment_v7{};
+        invalid_environment.currents.mode =
+            NAVTOOL_ROUTER_FIELD_MODE_UNIFORM_V7;
+        invalid_environment.currents.missing_data_policy = 7;
+        require(
+            navtool_router_calculate_route_streaming_v7(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                &balanced_options,
+                &invalid_environment,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length) ==
+                NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "an unsupported missing-data policy was accepted");
+
+        invalid_environment = navtool_router_environment_v7{};
+        invalid_environment.currents.mode = NAVTOOL_ROUTER_FIELD_MODE_GRID_V7;
+        invalid_environment.currents.grid = land_environment.land.grid;
+        invalid_environment.currents.east_knots = nullptr;
+        invalid_environment.currents.north_knots = nullptr;
+        require(
+            navtool_router_calculate_route_streaming_v7(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                &balanced_options,
+                &invalid_environment,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length) ==
+                NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "a grid current with no sample arrays was accepted");
+
+        invalid_environment = navtool_router_environment_v7{};
+        invalid_environment.land.configured = 1U;
+        invalid_environment.land.grid = land_environment.land.grid;
+        invalid_environment.land.signed_distance_nautical_miles =
+            land_distances.data();
+        invalid_environment.land.resolution_nautical_miles = 30.0;
+        invalid_environment.land.interpolation_error_nautical_miles = 1.0;
+        invalid_environment.land.clearance_nautical_miles = 0.5;
+        invalid_environment.land.maximum_subdivision_depth = 0U;
+        require(
+            navtool_router_calculate_route_streaming_v7(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                &balanced_options,
+                &invalid_environment,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length) ==
+                NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "a zero landmask subdivision depth was accepted");
+
+        invalid_environment = navtool_router_environment_v7{};
+        invalid_environment.exclusions.configured = 1U;
+        invalid_environment.exclusions.zones = &exclusion_zone;
+        invalid_environment.exclusions.zone_count = 1U;
+        invalid_environment.exclusions.polygons = &exclusion_polygon;
+        invalid_environment.exclusions.polygon_count = 1U;
+        invalid_environment.exclusions.vertices = exclusion_vertices.data();
+        // Understate the vertex array so the ring escapes it.
+        invalid_environment.exclusions.vertex_count = 2U;
+        require(
+            navtool_router_calculate_route_streaming_v7(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                &balanced_options,
+                &invalid_environment,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length) ==
+                NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "an exclusion ring escaping its vertex array was accepted");
+
+        require(
+            navtool_router_calculate_route_streaming_v7(
+                forecast,
+                48.25,
+                -123.65,
+                48.25,
+                -123.35,
+                &departure,
+                nullptr,
+                &current_environment,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &route_json,
+                &route_json_length) ==
+                NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
+            "null v7 routing options were accepted");
+        require(
+            route_json == nullptr && route_json_length == 0U,
+            "a rejected v7 environment populated route outputs");
 
 #if NAVTOOL_ROUTER_HAS_PROGRESS_CALLBACK
         route_json = nullptr;

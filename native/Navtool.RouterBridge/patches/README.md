@@ -15,7 +15,11 @@ checkout — that tree is assumed to be managed by hand.
 
 ## 0001-prune-out-of-coverage-midpoint-wind-probes.patch
 
-Applies to: `v0.4.1` · Upstream file: `src/routing/transition.cpp`
+Applies to: `a98d5651` · Upstream file: `src/routing/transition.cpp`
+
+Originally written against `v0.4.1` and regenerated when the pin moved to
+`a98d5651`, where the Stage 3 rewrite relocated the probe but left the defect
+intact.
 
 **Symptom.** With professional routing enabled and the time-dependent lattice
 solver selected (either A\* or Dijkstra), route calculation aborts with
@@ -53,8 +57,9 @@ Tracked upstream as [frye/router-lib#57](https://github.com/frye/router-lib/issu
 
 ## Upstream defects that are *not* patched here
 
-Four further defects were reproduced against `v0.4.1` and filed upstream. They
-are all structural to the lattice solver, so patching them here would mean
+Four further defects were reproduced against `v0.4.1` and filed upstream, and
+all four are still present at `a98d5651`. They are all structural to the lattice
+solver, so patching them here would mean
 rewriting the search rather than adjusting a guard. Navtool mitigates them at the
 workflow layer instead — `RoutingWorkflow` retries with the isochrone beam when
 the selected solver throws, and tells the user the route came from a different

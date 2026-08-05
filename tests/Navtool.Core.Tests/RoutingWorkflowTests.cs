@@ -407,7 +407,10 @@ public sealed class RoutingWorkflowTests
             headingAugmentation: RouteHeadingAugmentation.VelocityMadeGood,
             windSampling: RouteWindSampling.SegmentStart,
             pruningSectorDegrees: 7,
-            lattice: new RouteLatticeOptions(subdivisionLevel: 5));
+            lattice: new RouteLatticeOptions(subdivisionLevel: 5),
+            environment: new RouteEnvironmentOptions(
+                landRequest: new RouteLandmaskRequest(),
+                sampling: RouteEnvironmentSampling.Midpoint));
 
         await workflow.ExecuteAsync(
             new RoutingWorkflowRequest(
@@ -422,6 +425,12 @@ public sealed class RoutingWorkflowTests
         Assert.Equal(RouteWindSampling.SegmentStart, fallback.WindSampling);
         Assert.Equal(7, fallback.PruningSectorDegrees);
         Assert.Equal(5, fallback.Lattice.SubdivisionLevel);
+        // The Stage 3 environment must survive the fallback: dropping it would
+        // silently route the retry without the caller's landmask or exclusions.
+        Assert.NotNull(fallback.Environment);
+        Assert.Equal(
+            RouteEnvironmentSampling.Midpoint,
+            fallback.Environment.Sampling);
     }
 
     [Fact]

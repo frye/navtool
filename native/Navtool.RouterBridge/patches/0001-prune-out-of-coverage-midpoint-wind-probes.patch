@@ -1,23 +1,22 @@
 diff --git a/src/routing/transition.cpp b/src/routing/transition.cpp
-index 3011c1c..13eb966 100644
+index 55e203b..02f9e7c 100644
 --- a/src/routing/transition.cpp
 +++ b/src/routing/transition.cpp
-@@ -138,8 +138,17 @@ Result<std::optional<VariableTransition>> evaluate_variable_transition(
-                     std::ceil(sailing_seconds * 0.5))};
-         auto midpoint_wind = weather.interpolate(midpoint, midpoint_time);
-         if (!midpoint_wind) {
-+            // The midpoint probe is speculative: it is taken before the
-+            // arrival-versus-route_end check below, so a long lattice edge near
-+            // the forecast horizon can sample past the last forecast step even
-+            // though the transition would be rejected anyway. Treat a probe
-+            // outside forecast coverage - in space or in time - as "this
-+            // transition is not evaluable" and prune it, so the solver can
-+            // still finish and report a forecast-limited route.
-             if (midpoint_wind.error().code ==
--                ErrorCode::coordinate_outside_forecast) {
-+                    ErrorCode::coordinate_outside_forecast ||
-+                midpoint_wind.error().code ==
-+                    ErrorCode::departure_outside_forecast) {
-                 return std::optional<VariableTransition>{};
-             }
-             return midpoint_wind.error();
+@@ -300,8 +300,16 @@ Result<std::optional<VariableTransition>> evaluate_variable_transition(
+         if (midpoint_wind) {
+             auto sampled_wind = weather.interpolate(midpoint, midpoint_time);
+             if (!sampled_wind) {
++                // This midpoint is speculative: the transition has not yet been
++                // checked against `route_end` below, so an edge starting near the
++                // forecast horizon probes past `last_valid_time`. Prune the
++                // candidate when the probe falls outside coverage in *time* just
++                // as we already do when it falls outside coverage in *space*;
++                // propagating the error aborts the entire search instead.
+                 if (sampled_wind.error().code ==
+-                    ErrorCode::coordinate_outside_forecast) {
++                        ErrorCode::coordinate_outside_forecast ||
++                    sampled_wind.error().code ==
++                        ErrorCode::departure_outside_forecast) {
+                     return std::optional<VariableTransition>{};
+                 }
+                 return sampled_wind.error();

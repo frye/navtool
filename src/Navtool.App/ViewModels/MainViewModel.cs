@@ -171,6 +171,75 @@ public partial class MainViewModel : ViewModelBase
     private RouteLatticeSearchAlgorithm _latticeSearchAlgorithm =
         RouteLatticeSearchAlgorithm.AStar;
 
+    // Stage 3 environmental physics. Every one of these is inert unless
+    // professional routing is enabled, and each provider is individually
+    // opt-in, so the default route path is byte-for-byte what it always was.
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEnvironmentConfigured))]
+    private bool _enableCurrentField;
+
+    /// <summary>Eastward current in knots, oceanographic set (the direction water flows toward).</summary>
+    [ObservableProperty]
+    private double _currentEastKnots;
+
+    [ObservableProperty]
+    private double _currentNorthKnots;
+
+    [ObservableProperty]
+    private RouteMissingDataPolicy _currentMissingDataPolicy =
+        RouteMissingDataPolicy.FailRoute;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEnvironmentConfigured))]
+    private bool _enableSeaState;
+
+    /// <summary>Significant wave height in metres.</summary>
+    [ObservableProperty]
+    private double _significantWaveHeightMetres = 2;
+
+    [ObservableProperty]
+    private double _wavePeriodSeconds = 8;
+
+    /// <summary>Meteorological direction the waves arrive from, degrees true.</summary>
+    [ObservableProperty]
+    private double _waveFromDirectionDegrees;
+
+    [ObservableProperty]
+    private RouteMissingDataPolicy _waveMissingDataPolicy =
+        RouteMissingDataPolicy.FailRoute;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEnvironmentConfigured))]
+    [NotifyPropertyChangedFor(nameof(IsSignedDistanceLandmaskSelected))]
+    private RouteLandAvoidanceMode _landAvoidanceMode =
+        RouteLandAvoidanceMode.SegmentEligibilityCallback;
+
+    [ObservableProperty]
+    private double _landmaskResolutionNauticalMiles = 5;
+
+    [ObservableProperty]
+    private double _landmaskClearanceNauticalMiles;
+
+    [ObservableProperty]
+    private int _landmaskMaximumSubdivisionDepth = 12;
+
+    [ObservableProperty]
+    private RouteMissingDataPolicy _landmaskMissingDataPolicy =
+        RouteMissingDataPolicy.RejectTransition;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEnvironmentConfigured))]
+    private bool _enableAntarcticExclusionZone;
+
+    [ObservableProperty]
+    private RouteExclusionBoundaryPolicy _exclusionBoundaryPolicy =
+        RouteExclusionBoundaryPolicy.BoundaryExcluded;
+
+    [ObservableProperty]
+    private RouteEnvironmentSampling _environmentSampling =
+        RouteEnvironmentSampling.SegmentStart;
+
     [ObservableProperty]
     private ForecastInputMode _forecastInputMode;
 
@@ -500,6 +569,28 @@ public partial class MainViewModel : ViewModelBase
     public IReadOnlyList<RouteLatticeSearchAlgorithm> LatticeSearchAlgorithmOptions { get; } =
         Enum.GetValues<RouteLatticeSearchAlgorithm>();
 
+    public IReadOnlyList<RouteLandAvoidanceMode> LandAvoidanceModeOptions { get; } =
+        Enum.GetValues<RouteLandAvoidanceMode>();
+
+    public IReadOnlyList<RouteMissingDataPolicy> MissingDataPolicyOptions { get; } =
+        Enum.GetValues<RouteMissingDataPolicy>();
+
+    public IReadOnlyList<RouteExclusionBoundaryPolicy> ExclusionBoundaryPolicyOptions { get; } =
+        Enum.GetValues<RouteExclusionBoundaryPolicy>();
+
+    public IReadOnlyList<RouteEnvironmentSampling> EnvironmentSamplingOptions { get; } =
+        Enum.GetValues<RouteEnvironmentSampling>();
+
+    public bool IsSignedDistanceLandmaskSelected =>
+        LandAvoidanceMode == RouteLandAvoidanceMode.SignedDistanceLandmask;
+
+    /// <summary>True when at least one Stage 3 provider has been switched on.</summary>
+    public bool IsEnvironmentConfigured =>
+        EnableCurrentField ||
+        EnableSeaState ||
+        EnableAntarcticExclusionZone ||
+        IsSignedDistanceLandmaskSelected;
+
     public bool IsSettingStart => InteractionMode == MapInteractionMode.SetStart;
 
     public bool IsSettingDestination => InteractionMode == MapInteractionMode.SetDestination;
@@ -590,12 +681,14 @@ public partial class MainViewModel : ViewModelBase
                   $"{point.Location.Latitude:0.0000}°, {point.Location.Longitude:0.0000}° · " +
                    $"heading {point.HeadingDegrees:0}° · boat {point.BoatSpeedKnots:0.0} kt · " +
                    $"{FormatApparentWind(point)}\n" +
+                   $"{FormatPointEnvironment(point)}" +
                    $"true wind {point.TrueWindSpeedKnots:0.0} kt @ {point.TrueWindDirectionDegrees:0}° · " +
                    $"cumulative {point.CumulativeDistanceNauticalMiles:0.0} NM\n" +
                    $"{ModelName(selection.Route.Model)} · " +
                    $"{(selection.Route.IsForecastLimited ? "forecast-limited endpoint" : "arrival")} " +
                    $"{selection.Route.ArrivalTime:yyyy-MM-dd HH:mm} UTC · " +
-                   $"distance {selection.Route.Points[^1].CumulativeDistanceNauticalMiles:0.0} NM · {forecast}";
+                   $"distance {selection.Route.Points[^1].CumulativeDistanceNauticalMiles:0.0} NM · {forecast}" +
+                   FormatEnvironmentAudit(selection.Route);
         }
     }
 
@@ -1755,17 +1848,84 @@ public partial class MainViewModel : ViewModelBase
                     LatticeCorridorWidthNauticalMiles,
                     LatticeCorridorWideningRetries,
                     LatticeProgressEveryExpansions,
-                    LatticeSearchAlgorithm));
+                    LatticeSearchAlgorithm),
+                BuildEnvironmentOptions());
             error = null;
             return true;
         }
-        catch (ArgumentException exception)
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidDataException)
         {
             optimization = RouteOptimizationOptions.Balanced;
             error = $"Professional routing settings are invalid: {exception.Message}";
             return false;
         }
     }
+
+    /// <summary>
+    /// Assembles the Stage 3 environment from the professional panel. Returns
+    /// null when nothing is switched on, which keeps the route on the original
+    /// ABI v6 path rather than sending an inert environment across the bridge.
+    /// </summary>
+    private RouteEnvironmentOptions? BuildEnvironmentOptions()
+    {
+        if (!IsEnvironmentConfigured)
+        {
+            return null;
+        }
+
+        var currents = EnableCurrentField
+            ? RouteCurrentOptions.Uniform(
+                CurrentEastKnots,
+                CurrentNorthKnots,
+                new RouteProviderMetadata(
+                    "Manual uniform current",
+                    "Navtool professional routing panel",
+                    "manual"),
+                CurrentMissingDataPolicy)
+            : null;
+
+        var waves = EnableSeaState
+            ? RouteWaveOptions.Uniform(
+                SignificantWaveHeightMetres,
+                WavePeriodSeconds,
+                WaveFromDirectionDegrees,
+                new RouteProviderMetadata(
+                    "Manual uniform sea state",
+                    "Navtool professional routing panel",
+                    "manual"),
+                missingDataPolicy: WaveMissingDataPolicy)
+            : null;
+
+        var landRequest = IsSignedDistanceLandmaskSelected
+            ? new RouteLandmaskRequest(
+                LandmaskResolutionNauticalMiles,
+                LandmaskClearanceNauticalMiles,
+                LandmaskMaximumSubdivisionDepth,
+                LandmaskMissingDataPolicy)
+            : null;
+
+        var exclusions = EnableAntarcticExclusionZone
+            ? WithBoundaryPolicy(
+                ExclusionZoneJsonSource.LoadAntarcticExample(),
+                ExclusionBoundaryPolicy)
+            : null;
+
+        return new RouteEnvironmentOptions(
+            currents,
+            waves,
+            land: null,
+            exclusions,
+            EnvironmentSampling,
+            landRequest);
+    }
+
+    private static RouteExclusionOptions WithBoundaryPolicy(
+        RouteExclusionOptions options,
+        RouteExclusionBoundaryPolicy policy) =>
+        options.BoundaryPolicy == policy
+            ? options
+            : new RouteExclusionOptions(options.Zones, options.Metadata, policy);
 
     private void ApplyWorkflowResult(
         RoutingWorkflowResult result,
@@ -2110,6 +2270,172 @@ public partial class MainViewModel : ViewModelBase
 
     private static string FormatDuration(TimeSpan duration) =>
         $"{(int)duration.TotalHours}h {duration.Minutes:00}m";
+
+    /// <summary>
+    /// Ground-frame motion and the sea state that produced it. Heading and boat
+    /// speed stay water-relative, so course and speed over ground only appear
+    /// here, where a current has actually been applied.
+    /// </summary>
+    private static string FormatPointEnvironment(RoutePoint point)
+    {
+        if (point.Environment is not { } environment)
+        {
+            return string.Empty;
+        }
+
+        var parts = new List<string>
+        {
+            $"SOG {environment.SpeedOverGroundKnots:0.0} kt",
+            $"COG {environment.CourseOverGroundDegrees:0}°",
+            $"flat water {environment.FlatWaterSpeedKnots:0.0} kt"
+        };
+
+        if (environment is { CurrentEastKnots: { } east, CurrentNorthKnots: { } north })
+        {
+            parts.Add(
+                $"current {Math.Sqrt((east * east) + (north * north)):0.0} kt " +
+                $"setting {NormalizeDegrees(Math.Atan2(east, north) * 180 / Math.PI):0}°");
+        }
+
+        if (environment.SignificantWaveHeightMetres is { } height)
+        {
+            var sea = $"sea {height:0.0} m";
+            if (environment.WavePeriodSeconds is { } period)
+            {
+                sea += $" @ {period:0.0} s";
+            }
+
+            if (environment.RelativeWaveAngleDegrees is { } relative)
+            {
+                sea += $" · {relative:0}° off the bow";
+            }
+
+            parts.Add(sea);
+        }
+
+        return string.Join(" · ", parts) + "\n";
+    }
+
+    /// <summary>
+    /// Which environmental models ran, where their data came from, how they were
+    /// told to behave outside coverage, and how much work they did. Absent
+    /// entirely when no environment was configured.
+    /// </summary>
+    private static string FormatEnvironmentAudit(RouteResult route)
+    {
+        if (route.Environment is not { } environment)
+        {
+            return string.Empty;
+        }
+
+        var lines = new List<string>
+        {
+            $"Environment · sampling {DescribeSampling(environment.Sampling)}"
+        };
+
+        AppendProvider(lines, "Current", environment.CurrentProvider, environment.CurrentPolicy);
+        AppendProvider(lines, "Waves", environment.WaveProvider, environment.WavePolicy);
+        AppendProvider(lines, "Sea state", environment.SeaStateModel, policy: null);
+        AppendProvider(lines, "Landmask", environment.Landmask, environment.LandPolicy);
+        AppendProvider(lines, "Exclusions", environment.Exclusions, policy: null);
+
+        if (environment.LandResolutionNauticalMiles is { } resolution)
+        {
+            var detail = $"  land grid {resolution:0.###} nm";
+            if (environment.LandInterpolationErrorNauticalMiles is { } error)
+            {
+                detail += $" · interpolation error ±{error:0.###} nm";
+            }
+
+            if (environment.LandClearanceNauticalMiles is { } clearance)
+            {
+                detail += $" · clearance {clearance:0.###} nm";
+            }
+
+            lines.Add(detail);
+        }
+
+        if (environment.ExclusionZoneCount is { } zoneCount)
+        {
+            lines.Add(
+                $"  {zoneCount} zone{(zoneCount == 1 ? string.Empty : "s")} · " +
+                $"{DescribeBoundaryPolicy(environment.ExclusionBoundaryPolicy)}");
+        }
+
+        if (route.EnvironmentDiagnostics is { } diagnostics)
+        {
+            lines.Add(
+                $"  samples: current {diagnostics.CurrentSamples:N0} " +
+                $"({diagnostics.CurrentRejections:N0} rejected) · " +
+                $"wave {diagnostics.WaveSamples:N0} " +
+                $"({diagnostics.WaveRejections:N0} rejected) · " +
+                $"sea state {diagnostics.SeaStateEvaluations:N0}");
+            lines.Add(
+                $"  checks: land {diagnostics.LandChecks:N0} " +
+                $"({diagnostics.LandDistanceQueries:N0} distance queries, " +
+                $"{diagnostics.LandRejections:N0} rejected) · " +
+                $"exclusion {diagnostics.ExclusionChecks:N0} " +
+                $"({diagnostics.ExclusionGeometryTests:N0} geometry tests, " +
+                $"{diagnostics.ExclusionRejections:N0} rejected)");
+        }
+
+        return "\n" + string.Join("\n", lines);
+    }
+
+    private static void AppendProvider(
+        ICollection<string> lines,
+        string label,
+        RouteProviderMetadata? provider,
+        RouteMissingDataPolicy? policy)
+    {
+        if (provider is null)
+        {
+            return;
+        }
+
+        var line = $"  {label}: {provider.Name} · {provider.Source}";
+        if (!string.IsNullOrWhiteSpace(provider.Revision))
+        {
+            line += $" · rev {provider.Revision}";
+        }
+
+        if (policy is { } value)
+        {
+            line += $" · outside coverage {DescribeMissingDataPolicy(value)}";
+        }
+
+        lines.Add(line);
+    }
+
+    private static string DescribeSampling(RouteEnvironmentSampling sampling) =>
+        sampling switch
+        {
+            RouteEnvironmentSampling.Midpoint => "segment midpoint",
+            RouteEnvironmentSampling.SegmentStart => "segment start",
+            _ => sampling.ToString()
+        };
+
+    private static string DescribeMissingDataPolicy(RouteMissingDataPolicy policy) =>
+        policy switch
+        {
+            RouteMissingDataPolicy.RejectTransition => "reject the transition",
+            RouteMissingDataPolicy.FailRoute => "fail the route",
+            _ => policy.ToString()
+        };
+
+    private static string DescribeBoundaryPolicy(RouteExclusionBoundaryPolicy? policy) =>
+        policy switch
+        {
+            RouteExclusionBoundaryPolicy.BoundaryAllowed => "boundary allowed",
+            RouteExclusionBoundaryPolicy.BoundaryExcluded => "boundary excluded",
+            _ => "boundary policy unreported"
+        };
+
+    private static double NormalizeDegrees(double degrees)
+    {
+        var normalized = degrees % 360;
+        return normalized < 0 ? normalized + 360 : normalized;
+    }
 
     private void UpdateLandAvoidanceWarning(IEnumerable<RouteResult> routes)
     {

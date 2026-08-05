@@ -80,6 +80,12 @@ navtool_router_status_v1 map_error(const sailroute::Error& error) {
         case ErrorCode::invalid_polar:
             status = NAVTOOL_ROUTER_STATUS_INTERNAL_ERROR_V1;
             break;
+        case ErrorCode::invalid_environment:
+            status = NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7;
+            break;
+        case ErrorCode::environment_data_unavailable:
+            status = NAVTOOL_ROUTER_STATUS_ENVIRONMENT_DATA_UNAVAILABLE_V7;
+            break;
     }
     return fail(status, error.message);
 }
@@ -316,6 +322,485 @@ navtool_router_status_v1 apply_options_v6(
     target.lattice.search_algorithm =
         static_cast<sailroute::LatticeSearchAlgorithm>(
             source.lattice_search_algorithm);
+    return static_cast<navtool_router_status_v1>(
+        NAVTOOL_ROUTER_STATUS_OK_V1);
+}
+
+// ---------- Stage 3 environment translation ----------
+
+std::string borrowed_string(const char* text) {
+    return text == nullptr ? std::string{} : std::string{text};
+}
+
+sailroute::ProviderMetadata copy_provider_metadata(
+    const navtool_router_provider_metadata_v7& source) {
+    return sailroute::ProviderMetadata{
+        borrowed_string(source.name_utf8),
+        borrowed_string(source.source_utf8),
+        borrowed_string(source.revision_utf8)};
+}
+
+bool valid_missing_data_policy(int32_t value) noexcept {
+    return value == NAVTOOL_ROUTER_MISSING_DATA_FAIL_ROUTE_V7 ||
+        value == NAVTOOL_ROUTER_MISSING_DATA_REJECT_TRANSITION_V7;
+}
+
+sailroute::MissingDataPolicy to_missing_data_policy(int32_t value) noexcept {
+    return value == NAVTOOL_ROUTER_MISSING_DATA_REJECT_TRANSITION_V7
+        ? sailroute::MissingDataPolicy::reject_transition
+        : sailroute::MissingDataPolicy::fail_route;
+}
+
+// Validates a grid spec and returns its total sample count, or nullopt when
+// the spec is unusable. A grid that would overflow size_t is rejected rather
+// than silently truncated.
+std::optional<std::size_t> grid_sample_count(
+    const navtool_router_grid_spec_v7& spec) noexcept {
+    if (!std::isfinite(spec.south_latitude_degrees) ||
+        !std::isfinite(spec.west_longitude_degrees) ||
+        !std::isfinite(spec.latitude_step_degrees) ||
+        !std::isfinite(spec.longitude_step_degrees) ||
+        spec.latitude_step_degrees <= 0.0 ||
+        spec.longitude_step_degrees <= 0.0 ||
+        spec.latitude_count < 2U || spec.longitude_count < 2U ||
+        !fits_size_t(spec.latitude_count) ||
+        !fits_size_t(spec.longitude_count)) {
+        return std::nullopt;
+    }
+    const auto latitude_count = static_cast<std::size_t>(spec.latitude_count);
+    const auto longitude_count = static_cast<std::size_t>(spec.longitude_count);
+    if (longitude_count >
+        std::numeric_limits<std::size_t>::max() / latitude_count) {
+        return std::nullopt;
+    }
+    return latitude_count * longitude_count;
+}
+
+sailroute::EnvironmentGridSpec to_grid_spec(
+    const navtool_router_grid_spec_v7& spec) {
+    sailroute::EnvironmentGridSpec result;
+    result.south_latitude_degrees = spec.south_latitude_degrees;
+    result.west_longitude_degrees = spec.west_longitude_degrees;
+    result.latitude_step_degrees = spec.latitude_step_degrees;
+    result.longitude_step_degrees = spec.longitude_step_degrees;
+    result.latitude_count = static_cast<std::size_t>(spec.latitude_count);
+    result.longitude_count = static_cast<std::size_t>(spec.longitude_count);
+    result.global_longitude_coverage = spec.global_longitude_coverage != 0U;
+    return result;
+}
+
+// Copies count borrowed doubles, rejecting a null array or any non-finite
+// value so bad data can never reach a provider as a usable sample.
+bool copy_field_values(
+    const double* source,
+    std::size_t count,
+    std::vector<double>& target) {
+    if (source == nullptr) {
+        return false;
+    }
+    target.assign(source, source + count);
+    return std::all_of(
+        target.begin(),
+        target.end(),
+        [](double value) { return std::isfinite(value); });
+}
+
+navtool_router_status_v1 apply_current_settings_v7(
+    const navtool_router_current_settings_v7& source,
+    sailroute::CurrentSettings& target) {
+    if (source.mode == NAVTOOL_ROUTER_FIELD_MODE_NONE_V7) {
+        return static_cast<navtool_router_status_v1>(
+            NAVTOOL_ROUTER_STATUS_OK_V1);
+    }
+    if (!valid_missing_data_policy(source.missing_data_policy)) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "current settings specify an unsupported missing-data policy");
+    }
+    target.missing_data_policy =
+        to_missing_data_policy(source.missing_data_policy);
+
+    if (source.mode == NAVTOOL_ROUTER_FIELD_MODE_UNIFORM_V7) {
+        if (!std::isfinite(source.uniform_east_knots) ||
+            !std::isfinite(source.uniform_north_knots)) {
+            return fail(
+                NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+                "uniform current components must be finite");
+        }
+        auto provider = sailroute::make_uniform_current_provider(
+            sailroute::CurrentVector{
+                source.uniform_east_knots,
+                source.uniform_north_knots},
+            copy_provider_metadata(source.metadata));
+        if (!provider) {
+            return map_error(provider.error());
+        }
+        target.provider = provider.value();
+        return static_cast<navtool_router_status_v1>(
+            NAVTOOL_ROUTER_STATUS_OK_V1);
+    }
+
+    if (source.mode != NAVTOOL_ROUTER_FIELD_MODE_GRID_V7) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "current settings specify an unsupported field mode");
+    }
+    const auto count = grid_sample_count(source.grid);
+    if (!count) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "the current grid specification is not a usable sample grid");
+    }
+    std::vector<double> east;
+    std::vector<double> north;
+    if (!copy_field_values(source.east_knots, *count, east) ||
+        !copy_field_values(source.north_knots, *count, north)) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "the current grid must supply finite east and north samples");
+    }
+    auto provider = sailroute::make_grid_current_provider(
+        to_grid_spec(source.grid),
+        std::move(east),
+        std::move(north),
+        copy_provider_metadata(source.metadata));
+    if (!provider) {
+        return map_error(provider.error());
+    }
+    target.provider = provider.value();
+    return static_cast<navtool_router_status_v1>(
+        NAVTOOL_ROUTER_STATUS_OK_V1);
+}
+
+navtool_router_status_v1 apply_wave_settings_v7(
+    const navtool_router_wave_settings_v7& source,
+    sailroute::WaveSettings& target) {
+    if (source.mode == NAVTOOL_ROUTER_FIELD_MODE_NONE_V7) {
+        return static_cast<navtool_router_status_v1>(
+            NAVTOOL_ROUTER_STATUS_OK_V1);
+    }
+    if (!valid_missing_data_policy(source.missing_data_policy)) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "wave settings specify an unsupported missing-data policy");
+    }
+    target.missing_data_policy =
+        to_missing_data_policy(source.missing_data_policy);
+
+    if (source.mode == NAVTOOL_ROUTER_FIELD_MODE_UNIFORM_V7) {
+        if (!std::isfinite(source.uniform_significant_height_metres) ||
+            !std::isfinite(source.uniform_peak_period_seconds) ||
+            !std::isfinite(source.uniform_direction_from_degrees)) {
+            return fail(
+                NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+                "uniform wave components must be finite");
+        }
+        auto provider = sailroute::make_uniform_wave_provider(
+            sailroute::WaveState{
+                source.uniform_significant_height_metres,
+                source.uniform_peak_period_seconds,
+                source.uniform_direction_from_degrees},
+            copy_provider_metadata(source.provider_metadata));
+        if (!provider) {
+            return map_error(provider.error());
+        }
+        target.provider = provider.value();
+    } else if (source.mode == NAVTOOL_ROUTER_FIELD_MODE_GRID_V7) {
+        const auto count = grid_sample_count(source.grid);
+        if (!count) {
+            return fail(
+                NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+                "the wave grid specification is not a usable sample grid");
+        }
+        std::vector<double> heights;
+        std::vector<double> periods;
+        std::vector<double> directions;
+        if (!copy_field_values(
+                source.significant_height_metres,
+                *count,
+                heights) ||
+            !copy_field_values(source.peak_period_seconds, *count, periods) ||
+            !copy_field_values(
+                source.direction_from_degrees,
+                *count,
+                directions)) {
+            return fail(
+                NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+                "the wave grid must supply finite height, period, and direction samples");
+        }
+        auto provider = sailroute::make_grid_wave_provider(
+            to_grid_spec(source.grid),
+            std::move(heights),
+            std::move(periods),
+            std::move(directions),
+            copy_provider_metadata(source.provider_metadata));
+        if (!provider) {
+            return map_error(provider.error());
+        }
+        target.provider = provider.value();
+    } else {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "wave settings specify an unsupported field mode");
+    }
+
+    sailroute::WaveHeightDeratingCoefficients coefficients;
+    coefficients.height_coefficient = source.derating.height_coefficient;
+    coefficients.height_exponent = source.derating.height_exponent;
+    coefficients.head_sea_factor = source.derating.head_sea_factor;
+    coefficients.following_sea_factor = source.derating.following_sea_factor;
+    coefficients.maximum_loss_fraction = source.derating.maximum_loss_fraction;
+    coefficients.period_sensitivity = source.derating.period_sensitivity;
+    coefficients.reference_period_seconds =
+        source.derating.reference_period_seconds;
+    coefficients.minimum_period_seconds =
+        source.derating.minimum_period_seconds;
+
+    std::optional<sailroute::ProviderMetadata> model_metadata;
+    if (source.model_metadata.name_utf8 != nullptr) {
+        model_metadata = copy_provider_metadata(source.model_metadata);
+    }
+    auto model = sailroute::make_wave_height_derating_model(
+        coefficients,
+        std::move(model_metadata));
+    if (!model) {
+        return map_error(model.error());
+    }
+    target.model = model.value();
+    return static_cast<navtool_router_status_v1>(
+        NAVTOOL_ROUTER_STATUS_OK_V1);
+}
+
+navtool_router_status_v1 apply_landmask_settings_v7(
+    const navtool_router_landmask_settings_v7& source,
+    sailroute::LandmaskSettings& target) {
+    if (source.configured == 0U) {
+        return static_cast<navtool_router_status_v1>(
+            NAVTOOL_ROUTER_STATUS_OK_V1);
+    }
+    if (!valid_missing_data_policy(source.missing_data_policy)) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "landmask settings specify an unsupported missing-data policy");
+    }
+    if (!std::isfinite(source.clearance_nautical_miles) ||
+        source.clearance_nautical_miles < 0.0 ||
+        !std::isfinite(source.resolution_nautical_miles) ||
+        source.resolution_nautical_miles <= 0.0 ||
+        !std::isfinite(source.interpolation_error_nautical_miles) ||
+        source.interpolation_error_nautical_miles < 0.0) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "landmask clearance, resolution, and interpolation error must be finite and non-negative");
+    }
+    if (!fits_size_t(source.maximum_subdivision_depth)) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "the landmask subdivision depth exceeds this platform's size limits");
+    }
+    const auto count = grid_sample_count(source.grid);
+    if (!count) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "the landmask grid specification is not a usable sample grid");
+    }
+    std::vector<double> distances;
+    if (!copy_field_values(
+            source.signed_distance_nautical_miles,
+            *count,
+            distances)) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "the landmask must supply finite signed distances");
+    }
+
+    sailroute::LandmaskMetadata metadata;
+    metadata.provider = copy_provider_metadata(source.metadata);
+    metadata.resolution_nautical_miles = source.resolution_nautical_miles;
+    metadata.interpolation_error_nautical_miles =
+        source.interpolation_error_nautical_miles;
+
+    auto landmask = sailroute::SignedDistanceLandmask::create(
+        to_grid_spec(source.grid),
+        std::move(distances),
+        std::move(metadata));
+    if (!landmask) {
+        return map_error(landmask.error());
+    }
+    target.landmask = std::move(landmask.value());
+    target.clearance_nautical_miles = source.clearance_nautical_miles;
+    target.missing_data_policy =
+        to_missing_data_policy(source.missing_data_policy);
+    target.maximum_subdivision_depth =
+        static_cast<std::size_t>(source.maximum_subdivision_depth);
+    return static_cast<navtool_router_status_v1>(
+        NAVTOOL_ROUTER_STATUS_OK_V1);
+}
+
+// Rebuilds one ring from the flattened vertex array, rejecting any range that
+// escapes the array rather than reading past its end.
+bool rebuild_exclusion_ring(
+    const navtool_router_exclusion_ring_v7& ring,
+    const navtool_router_coordinate_v1* vertices,
+    uint64_t vertex_count,
+    sailroute::ExclusionRing& target) {
+    if (ring.vertex_count == 0U || ring.vertex_offset > vertex_count ||
+        ring.vertex_count > vertex_count - ring.vertex_offset ||
+        !fits_size_t(ring.vertex_count)) {
+        return false;
+    }
+    target.vertices.reserve(static_cast<std::size_t>(ring.vertex_count));
+    for (uint64_t index = 0U; index < ring.vertex_count; ++index) {
+        const auto& vertex = vertices[ring.vertex_offset + index];
+        target.vertices.push_back(
+            {vertex.latitude_degrees, vertex.longitude_degrees});
+    }
+    return true;
+}
+
+navtool_router_status_v1 apply_exclusion_settings_v7(
+    const navtool_router_exclusion_settings_v7& source,
+    sailroute::ExclusionSettings& target) {
+    if (source.configured == 0U) {
+        return static_cast<navtool_router_status_v1>(
+            NAVTOOL_ROUTER_STATUS_OK_V1);
+    }
+    if (source.boundary_policy != NAVTOOL_ROUTER_EXCLUSION_BOUNDARY_EXCLUDED_V7 &&
+        source.boundary_policy != NAVTOOL_ROUTER_EXCLUSION_BOUNDARY_ALLOWED_V7) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "exclusion settings specify an unsupported boundary policy");
+    }
+    if (source.zone_count == 0U || source.zones == nullptr ||
+        source.polygons == nullptr || source.vertices == nullptr ||
+        (source.hole_count != 0U && source.holes == nullptr) ||
+        !fits_size_t(source.zone_count)) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "configured exclusion zones must supply zone, polygon, and vertex data");
+    }
+
+    std::vector<sailroute::ExclusionZone> zones;
+    zones.reserve(static_cast<std::size_t>(source.zone_count));
+    for (uint64_t zone_index = 0U; zone_index < source.zone_count;
+         ++zone_index) {
+        const auto& raw_zone = source.zones[zone_index];
+        if (raw_zone.polygon_count == 0U ||
+            raw_zone.polygon_offset > source.polygon_count ||
+            raw_zone.polygon_count >
+                source.polygon_count - raw_zone.polygon_offset ||
+            !fits_size_t(raw_zone.polygon_count)) {
+            return fail(
+                NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+                "an exclusion zone references polygons outside the supplied array");
+        }
+
+        sailroute::ExclusionZone zone;
+        zone.identifier = borrowed_string(raw_zone.identifier_utf8);
+        zone.source = borrowed_string(raw_zone.source_utf8);
+        zone.revision = raw_zone.revision;
+        if (raw_zone.has_active_from != 0U) {
+            zone.active_from =
+                from_epoch(raw_zone.active_from_utc_epoch_seconds);
+        }
+        if (raw_zone.has_active_until != 0U) {
+            zone.active_until =
+                from_epoch(raw_zone.active_until_utc_epoch_seconds);
+        }
+        zone.polygons.reserve(
+            static_cast<std::size_t>(raw_zone.polygon_count));
+
+        for (uint64_t offset = 0U; offset < raw_zone.polygon_count; ++offset) {
+            const auto& raw_polygon =
+                source.polygons[raw_zone.polygon_offset + offset];
+            sailroute::ExclusionPolygon polygon;
+            if (!rebuild_exclusion_ring(
+                    raw_polygon.outer,
+                    source.vertices,
+                    source.vertex_count,
+                    polygon.outer)) {
+                return fail(
+                    NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+                    "an exclusion polygon references vertices outside the supplied array");
+            }
+            if (raw_polygon.hole_offset > source.hole_count ||
+                raw_polygon.hole_count >
+                    source.hole_count - raw_polygon.hole_offset ||
+                !fits_size_t(raw_polygon.hole_count)) {
+                return fail(
+                    NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+                    "an exclusion polygon references holes outside the supplied array");
+            }
+            polygon.holes.reserve(
+                static_cast<std::size_t>(raw_polygon.hole_count));
+            for (uint64_t hole = 0U; hole < raw_polygon.hole_count; ++hole) {
+                sailroute::ExclusionRing ring;
+                if (!rebuild_exclusion_ring(
+                        source.holes[raw_polygon.hole_offset + hole],
+                        source.vertices,
+                        source.vertex_count,
+                        ring)) {
+                    return fail(
+                        NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+                        "an exclusion hole references vertices outside the supplied array");
+                }
+                polygon.holes.push_back(std::move(ring));
+            }
+            zone.polygons.push_back(std::move(polygon));
+        }
+        zones.push_back(std::move(zone));
+    }
+
+    auto zone_set = sailroute::ExclusionZoneSet::create(
+        std::move(zones),
+        copy_provider_metadata(source.metadata));
+    if (!zone_set) {
+        return map_error(zone_set.error());
+    }
+    target.zones = std::move(zone_set.value());
+    target.boundary_policy =
+        source.boundary_policy == NAVTOOL_ROUTER_EXCLUSION_BOUNDARY_ALLOWED_V7
+        ? sailroute::ExclusionBoundaryPolicy::boundary_allowed
+        : sailroute::ExclusionBoundaryPolicy::boundary_excluded;
+    return static_cast<navtool_router_status_v1>(
+        NAVTOOL_ROUTER_STATUS_OK_V1);
+}
+
+navtool_router_status_v1 apply_environment_v7(
+    const navtool_router_environment_v7& source,
+    sailroute::RoutingEnvironment& target) {
+    if (source.sampling !=
+            NAVTOOL_ROUTER_ENVIRONMENT_SAMPLING_SEGMENT_START_V7 &&
+        source.sampling != NAVTOOL_ROUTER_ENVIRONMENT_SAMPLING_MIDPOINT_V7) {
+        return fail(
+            NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7,
+            "the environment specifies an unsupported sampling mode");
+    }
+    target.sampling =
+        source.sampling == NAVTOOL_ROUTER_ENVIRONMENT_SAMPLING_MIDPOINT_V7
+        ? sailroute::EnvironmentSampling::midpoint
+        : sailroute::EnvironmentSampling::segment_start;
+
+    auto status = apply_current_settings_v7(source.currents, target.currents);
+    if (status != NAVTOOL_ROUTER_STATUS_OK_V1) {
+        return status;
+    }
+    status = apply_wave_settings_v7(source.waves, target.waves);
+    if (status != NAVTOOL_ROUTER_STATUS_OK_V1) {
+        return status;
+    }
+    status = apply_landmask_settings_v7(source.land, target.land);
+    if (status != NAVTOOL_ROUTER_STATUS_OK_V1) {
+        return status;
+    }
+    status = apply_exclusion_settings_v7(source.exclusions, target.exclusions);
+    if (status != NAVTOOL_ROUTER_STATUS_OK_V1) {
+        return status;
+    }
+
+    if (const auto error = sailroute::validate_environment(target)) {
+        return map_error(*error);
+    }
     return static_cast<navtool_router_status_v1>(
         NAVTOOL_ROUTER_STATUS_OK_V1);
 }
@@ -633,6 +1118,7 @@ navtool_router_status_v1 calculate_route_with_display(
     navtool_router_segment_eligibility_callback_v1 is_segment_eligible,
     void* segment_eligibility_user_data,
     const navtool_router_options_v6* bridge_options,
+    const navtool_router_environment_v7* environment,
     char** out_route_json_utf8,
     size_t* out_route_json_length) {
     if (out_route_json_utf8 != nullptr) {
@@ -807,7 +1293,42 @@ navtool_router_status_v1 calculate_route_with_display(
             };
     }
 
-    const sailroute::Router router{forecast->weather};
+    // A null environment must take the exact ABI-v6 path, including the
+    // two-argument Router constructor, so route arithmetic stays bit-identical.
+    if (environment == nullptr) {
+        const sailroute::Router router{forecast->weather};
+        auto route = router.optimize_view(request, progress_callback);
+        if (!route) {
+            return map_error(route.error());
+        }
+        return copy_route_json(
+            route.value(),
+            out_route_json_utf8,
+            out_route_json_length);
+    }
+
+    sailroute::RoutingEnvironment routing_environment;
+    const auto environment_status =
+        apply_environment_v7(*environment, routing_environment);
+    if (environment_status != NAVTOOL_ROUTER_STATUS_OK_V1) {
+        return environment_status;
+    }
+    if (!routing_environment.active()) {
+        const sailroute::Router router{forecast->weather};
+        auto route = router.optimize_view(request, progress_callback);
+        if (!route) {
+            return map_error(route.error());
+        }
+        return copy_route_json(
+            route.value(),
+            out_route_json_utf8,
+            out_route_json_length);
+    }
+
+    const sailroute::Router router{
+        forecast->weather,
+        sailroute::VesselPolar::default_racer_cruiser_45ft(),
+        std::move(routing_environment)};
     auto route = router.optimize_view(request, progress_callback);
     if (!route) {
         return map_error(route.error());
@@ -1027,7 +1548,12 @@ uint32_t navtool_router_bridge_abi_version_v1(void) {
 }
 
 uint64_t navtool_router_bridge_capabilities_v1(void) {
-    return NAVTOOL_ROUTER_CAPABILITY_LAND_SEGMENT_CONSTRAINT_V1;
+    return NAVTOOL_ROUTER_CAPABILITY_LAND_SEGMENT_CONSTRAINT_V1 |
+        NAVTOOL_ROUTER_CAPABILITY_ENVIRONMENT_V7 |
+        NAVTOOL_ROUTER_CAPABILITY_CURRENT_PROVIDER_V7 |
+        NAVTOOL_ROUTER_CAPABILITY_SEA_STATE_V7 |
+        NAVTOOL_ROUTER_CAPABILITY_SIGNED_DISTANCE_LAND_V7 |
+        NAVTOOL_ROUTER_CAPABILITY_EXCLUSION_ZONES_V7;
 }
 
 const char* navtool_router_last_error_v1(void) {
@@ -1295,6 +1821,7 @@ navtool_router_status_v1 navtool_router_calculate_route_streaming_v5(
             is_segment_eligible,
             segment_eligibility_user_data,
             nullptr,
+            nullptr,
             out_route_json_utf8,
             out_route_json_length);
     });
@@ -1333,6 +1860,47 @@ navtool_router_status_v1 navtool_router_calculate_route_streaming_v6(
             is_segment_eligible,
             segment_eligibility_user_data,
             options,
+            nullptr,
+            out_route_json_utf8,
+            out_route_json_length);
+    });
+}
+
+navtool_router_status_v1 navtool_router_calculate_route_streaming_v7(
+    const navtool_router_forecast_v1* forecast,
+    double start_latitude_degrees,
+    double start_longitude_degrees,
+    double destination_latitude_degrees,
+    double destination_longitude_degrees,
+    const int64_t* departure_utc_epoch_seconds,
+    const navtool_router_options_v6* options,
+    const navtool_router_environment_v7* environment,
+    navtool_router_progress_callback_v6 on_progress,
+    void* progress_user_data,
+    navtool_router_segment_eligibility_callback_v1 is_segment_eligible,
+    void* segment_eligibility_user_data,
+    char** out_route_json_utf8,
+    size_t* out_route_json_length) {
+    return protect([&] {
+        if (options == nullptr) {
+            return fail(
+                NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1,
+                "routing options must not be null");
+        }
+        return calculate_route_with_display(
+            forecast,
+            start_latitude_degrees,
+            start_longitude_degrees,
+            destination_latitude_degrees,
+            destination_longitude_degrees,
+            departure_utc_epoch_seconds,
+            nullptr,
+            on_progress,
+            progress_user_data,
+            is_segment_eligible,
+            segment_eligibility_user_data,
+            options,
+            environment,
             out_route_json_utf8,
             out_route_json_length);
     });

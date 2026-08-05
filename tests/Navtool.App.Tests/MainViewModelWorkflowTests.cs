@@ -59,6 +59,117 @@ public sealed class MainViewModelWorkflowTests
         Assert.Same(RouteOptimizationOptions.Balanced, engine.LastOptimization);
     }
 
+
+    /// <summary>
+    /// Stage 3 physics is opt-in. Turning professional routing on must not by
+    /// itself configure any environmental provider, or every professional route
+    /// would silently change behaviour.
+    /// </summary>
+    [Fact]
+    public async Task Professional_mode_configures_no_environment_until_a_provider_is_enabled()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateRoutingViewModel(noaa, engine);
+        viewModel.EnableProfessionalRouting = true;
+
+        Assert.False(viewModel.IsEnvironmentConfigured);
+
+        viewModel.SetStartAt(new Coordinate(34, -64));
+        viewModel.SetDestinationAt(new Coordinate(39, -52));
+        await WaitForAsync(() => viewModel.SuccessfulRouteCount == 1);
+
+        Assert.Null(engine.LastOptimization!.Environment);
+    }
+
+    [Fact]
+    public async Task Enabling_a_uniform_current_flows_through_to_the_route_engine()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateRoutingViewModel(noaa, engine);
+        viewModel.EnableProfessionalRouting = true;
+        viewModel.EnableCurrentField = true;
+        viewModel.CurrentEastKnots = 1.25;
+        viewModel.CurrentNorthKnots = -0.75;
+
+        Assert.True(viewModel.IsEnvironmentConfigured);
+
+        viewModel.SetStartAt(new Coordinate(34, -64));
+        viewModel.SetDestinationAt(new Coordinate(39, -52));
+        await WaitForAsync(() => viewModel.SuccessfulRouteCount == 1);
+
+        var environment = engine.LastOptimization!.Environment;
+        Assert.NotNull(environment);
+        Assert.NotNull(environment!.Currents);
+        Assert.Equal(1.25, environment.Currents!.UniformEastKnots);
+        Assert.Equal(-0.75, environment.Currents.UniformNorthKnots);
+        Assert.Null(environment.Waves);
+        Assert.Null(environment.Land);
+        Assert.Null(environment.Exclusions);
+    }
+
+    /// <summary>
+    /// Selecting the signed-distance landmask must express intent as an
+    /// unresolved request; only the engine has the corridor and coastline needed
+    /// to rasterize the grid.
+    /// </summary>
+    [Fact]
+    public async Task Selecting_the_signed_distance_landmask_emits_an_unresolved_land_request()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateRoutingViewModel(noaa, engine);
+        viewModel.EnableProfessionalRouting = true;
+        viewModel.LandAvoidanceMode = RouteLandAvoidanceMode.SignedDistanceLandmask;
+
+        Assert.True(viewModel.IsSignedDistanceLandmaskSelected);
+
+        viewModel.SetStartAt(new Coordinate(34, -64));
+        viewModel.SetDestinationAt(new Coordinate(39, -52));
+        await WaitForAsync(() => viewModel.SuccessfulRouteCount == 1);
+
+        var environment = engine.LastOptimization!.Environment;
+        Assert.NotNull(environment);
+        Assert.NotNull(environment!.LandRequest);
+        Assert.Null(environment.Land);
+    }
+
+    /// <summary>
+    /// Standard mode must ignore Stage 3 state entirely, so a user who
+    /// configured physics and then dropped back to standard mode still gets the
+    /// unmodified balanced profile.
+    /// </summary>
+    [Fact]
+    public async Task Standard_mode_ignores_configured_environment_state()
+    {
+        var noaa = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateRoutingViewModel(noaa, engine);
+        viewModel.EnableProfessionalRouting = true;
+        viewModel.EnableCurrentField = true;
+        viewModel.CurrentEastKnots = 2;
+        viewModel.EnableProfessionalRouting = false;
+
+        viewModel.SetStartAt(new Coordinate(34, -64));
+        viewModel.SetDestinationAt(new Coordinate(39, -52));
+        await WaitForAsync(() => viewModel.SuccessfulRouteCount == 1);
+
+        Assert.Same(RouteOptimizationOptions.Balanced, engine.LastOptimization);
+    }
+
     [Fact]
     public async Task Professional_mode_routes_with_an_immutable_lattice_configuration()
     {

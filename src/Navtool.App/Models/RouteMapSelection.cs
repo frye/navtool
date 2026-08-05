@@ -54,4 +54,25 @@ public sealed record RouteMapSelection
     public DateTimeOffset TimelineTimestamp => Point.Timestamp;
 
     public Coordinate FocusCoordinate => Point.Location;
+
+    public string ApparentWindAngleText =>
+        FormatApparentWindAngle(Point.ApparentWindAngleSignedDegrees);
+
+    internal static string FormatApparentWindAngle(double signedAngleDegrees)
+    {
+        var angle = (int)Math.Round(
+            Math.Abs(signedAngleDegrees),
+            MidpointRounding.AwayFromZero);
+        if (angle <= 0)
+        {
+            return "0°";
+        }
+
+        if (angle >= 180)
+        {
+            return "180°";
+        }
+
+        return $"{angle}° {(signedAngleDegrees > 0d ? "S" : "P")}";
+    }
 }

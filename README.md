@@ -102,8 +102,9 @@ validation, and use `scripts/publish.sh` or `scripts/publish.ps1` for
 distributable artifacts. For a custom bridge location, set
 `NAVTOOL_ROUTER_BRIDGE_PATH` to the shared library or its directory. Packaged
 applications discover their bridge under `runtimes/<RID>/native`. Native builds
-fetch and compile the immutable `router-lib` Stage 2.5 release `v0.4.1` by
-default. Set
+fetch and compile the immutable `router-lib` Stage 3 revision
+`a98d5651d2273044c22f5fb6f54e4355af90392b` by default; it will move to the
+`v0.4.2` release tag once `router-lib` publishes it. Set
 `SAILROUTE_SOURCE_DIR` to a local `router-lib` checkout when testing other
 revisions.
 
@@ -225,7 +226,7 @@ also be installed or packaged according to the target platform.
 | --- | --- |
 | `NAVTOOL_ROUTER_BRIDGE_PATH` | Native bridge file or directory |
 | `SAILROUTE_SOURCE_DIR` | Optional `router-lib` checkout override for native build/run scripts |
-| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default `v0.4.1`) |
+| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default is the Stage 3 revision `a98d5651d2273044c22f5fb6f54e4355af90392b`) |
 | `NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY` | `router-lib` Git repository used when `SAILROUTE_SOURCE_DIR` is unset |
 | `NAVTOOL_NATIVE_BUILD_DIR` | Optional native bridge build directory |
 | `NAVTOOL_APP_DATA_ROOT` | Application data root |
@@ -322,14 +323,99 @@ service must be suitable for production use and return OSM-derived data under
 the Open Database License; public Overpass endpoints are not used as a default.
 
 Land avoidance also requires router-lib's pre-retention segment-eligibility
-capability. Navtool's ABI-v6 bridge preserves the v1-v5 route entry points and
-adds configured beam and lattice dispatch. When land
+capability. Navtool's ABI-v7 bridge preserves the v1-v6 route entry points and
+adds configured beam and lattice dispatch plus the optional environment payload
+described under "Environmental physics". When land
 geometry is available, every candidate segment is checked before router-lib
 retains it. A configured service failure marks the route as unchecked rather
 than silently falling back to less detailed geometry. Direct lower-level bridge
 results are likewise marked as not evaluated unless the caller supplies a
 segment constraint. The existing raster basemap is never sampled as land
 geometry.
+
+## Environmental physics (opt-in)
+
+Navtool can enable router-lib's Stage 3 environmental providers from the
+professional routing panel. **Every one of them is off by default.** With none
+enabled, routing takes exactly the path it took before Stage 3 shipped, down to
+byte-identical route JSON, which both the native and managed test suites assert.
+
+| Provider | What it adds | Default |
+| --- | --- | --- |
+| Current field | Uniform set/drift translated into ground-frame motion | Off |
+| Sea state | Significant height, period, and relative angle derating of boat speed | Off |
+| Signed-distance landmask | router-lib's certified land clearance, replacing the callback | Off (callback is the default) |
+| Exclusion zones | Time-varying restricted polygons with activation windows | Off |
+
+### Units and reference frames
+
+Getting a frame backwards silently produces a plausible but wrong route, so
+Navtool states each one explicitly:
+
+- **Current** is entered as east and north components in knots, using the
+  oceanographic *set* convention: the direction the water flows **toward**. This
+  is the opposite of the meteorological wind convention used elsewhere in the
+  app, where wind direction is the direction the wind comes **from**.
+- **Waves** use significant height in metres, period in seconds, and a
+  meteorological *from* direction in degrees true. The reported relative wave
+  angle is 0° for a following sea, 90° for a beam sea, and 180° for a head sea.
+- **Signed land distance** is in nautical miles, positive over water and
+  negative over land.
+- **Route point heading and boat speed stay water relative** even when a current
+  is applied. Ground-frame speed and course are reported separately as speed
+  over ground and course over ground, so the two frames can never be confused
+  for one another.
+
+### Missing-data policies
+
+Each provider decides what happens when a sample falls outside its coverage.
+There is deliberately no "assume calm" option, because outside coverage is not
+the same claim as zero current, flat water, or open ocean.
+
+- **Fail route** aborts the calculation. This is the default for currents and
+  waves, matching router-lib.
+- **Reject transition** discards only the affected segment. This is Navtool's
+  default for the landmask, because a corridor-scoped mask has finite coverage
+  by construction and leaving it is expected rather than exceptional.
+
+### Signed-distance landmask
+
+When selected, the landmask **replaces** the NetTopologySuite segment callback
+rather than layering on top of it, so the two land paths can never disagree
+about the same water. Navtool rasterizes the mask from the same Natural Earth or
+OSM-derived geometry described above, scoped to the route corridor.
+
+Distances are computed in a local equirectangular frame whose longitude is
+compressed by the cosine of the highest latitude in the corridor. Every row
+except the extreme one is therefore compressed slightly more than is strictly
+correct, which means reported distances are **lower bounds** on true distance.
+Under-reporting distance only ever makes segment certification more cautious.
+The sign comes from a separate point-in-polygon test against unscaled geometry,
+so which side of the coastline a node is on stays exact. Declared interpolation
+error is half the node diagonal.
+
+If the landmask is selected and land geometry cannot be obtained, the route
+fails rather than proceeding over what would look like open water.
+
+### Attribution
+
+Every configured provider carries a name, source, and revision. These, along
+with the applied policies and the environment diagnostics counters, appear in
+the route detail view and are persisted with the plan, so a stored route records
+which data actually shaped it.
+
+### Not included
+
+Stage 3 in Navtool consumes data you supply; it does not acquire any. The
+following are deliberately out of scope for this work and tracked separately:
+
+- NOAA WaveWatch III wave forecast download
+- RTOFS and OSCAR ocean current acquisition
+- GRIB-backed gridded current and wave providers
+- Exclusion zone map editing and notices-to-mariners ingestion
+
+The bundled Antarctic exclusion zone is an example of the format, not
+navigational guidance.
 
 ## Safety and current limitations
 
@@ -338,8 +424,9 @@ avoidance depends on the bundled generalized dataset or configured OSM-derived
 service, cached data freshness, and router-lib capability. Any degraded route
 is explicitly marked as not checked for land. Even a land-aware route can omit
 recent, small, generalized, or inaccurately mapped hazards and must be verified
-independently. The routing engine does not model currents, waves, traffic,
-restricted areas, depths, or safety limits. The built-in vessel polar is an
+independently. The routing engine models currents, waves, and exclusion zones only when
+you explicitly enable and supply them (see "Environmental physics"); it never
+models traffic, depths, or safety limits. The built-in vessel polar is an
 approximate demonstration model.
 
 The professional lattice solver reports search points and counters, not

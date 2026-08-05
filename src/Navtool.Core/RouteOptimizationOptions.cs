@@ -214,7 +214,8 @@ public sealed record RouteOptimizationOptions
         RoutePruningStrategy pruningStrategy = RoutePruningStrategy.DestinationDistanceGrid,
         double pruningSectorDegrees = 2,
         RouteDestinationFrontOptions? destinationFront = null,
-        RouteLatticeOptions? lattice = null)
+        RouteLatticeOptions? lattice = null,
+        RouteEnvironmentOptions? environment = null)
     {
         if (!Enum.IsDefined(solver))
         {
@@ -277,6 +278,7 @@ public sealed record RouteOptimizationOptions
         PruningSectorDegrees = pruningSectorDegrees;
         DestinationFront = destinationFront ?? new RouteDestinationFrontOptions();
         Lattice = lattice ?? new RouteLatticeOptions();
+        Environment = environment is { IsActive: true } ? environment : null;
     }
 
     public RouteSolver Solver { get; }
@@ -304,6 +306,33 @@ public sealed record RouteOptimizationOptions
     public RouteLatticeOptions Lattice { get; }
 
     /// <summary>
+    /// The opt-in Stage 3 environment, or null when no provider is configured.
+    /// Null keeps route arithmetic identical to every pre-Stage-3 release.
+    /// </summary>
+    public RouteEnvironmentOptions? Environment { get; }
+
+    /// <summary>
+    /// Returns these options with a different environment. Used by the route
+    /// engine to substitute a rasterized landmask for the request that asked
+    /// for one; every other setting is carried across untouched.
+    /// </summary>
+    public RouteOptimizationOptions WithEnvironment(RouteEnvironmentOptions? environment) =>
+        new(
+            Solver,
+            Maneuver,
+            HeadingAugmentation,
+            WindSampling,
+            MidpointWindSamplingThreshold,
+            PolarAngleInterpolation,
+            MaximumTrueWindSpeedKnots,
+            AbovePolarRange,
+            PruningStrategy,
+            PruningSectorDegrees,
+            DestinationFront,
+            Lattice,
+            environment);
+
+    /// <summary>
     /// Returns a copy of these options that uses <paramref name="solver"/>, leaving every
     /// other setting untouched. <see cref="Solver"/> is assigned in the constructor rather
     /// than through an init accessor, so a <c>with</c> expression cannot change it.
@@ -323,7 +352,8 @@ public sealed record RouteOptimizationOptions
                 PruningStrategy,
                 PruningSectorDegrees,
                 DestinationFront,
-                Lattice);
+                Lattice,
+                Environment);
 
     public static RouteOptimizationOptions Balanced { get; } = new();
 

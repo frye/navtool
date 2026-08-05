@@ -12,6 +12,18 @@ bridge launch guidance and automated validation.
 
 ### Highlights
 
+- **Opt-in environmental physics:** The professional routing panel can now
+  enable router-lib's Stage 3 providers: a uniform current field translated into
+  ground-frame motion, sea-state derating of boat speed, router-lib's certified
+  signed-distance landmask as an alternative to the segment callback, and
+  time-varying exclusion zones. Every provider is off by default, and a route
+  with none enabled produces byte-identical output to the previous release.
+  Applied models, sources, revisions, missing-data policies, and diagnostics
+  counters are shown in the route detail view and persisted with the plan.
+  Speed and course over ground are reported alongside the water-relative values
+  rather than replacing them. Navtool consumes environmental data you supply; it
+  does not acquire currents or wave forecasts.
+
 - **Land-aware routing by default:** Candidate route segments are checked
   against bundled Natural Earth coastline data before retention. An optional
   OSM-derived GeoJSON service can provide higher-detail geometry, and degraded

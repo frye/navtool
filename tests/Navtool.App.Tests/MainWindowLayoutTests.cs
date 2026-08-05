@@ -595,6 +595,10 @@ public sealed class MainWindowLayoutTests
                 Assert.IsType<TextBlock>(
                     window.FindControl<TextBlock>("RouteTelemetryApparentWind")).Text);
             Assert.Equal(
+                "68° S",
+                Assert.IsType<TextBlock>(
+                    window.FindControl<TextBlock>("RouteTelemetryApparentWindAngle")).Text);
+            Assert.Equal(
                 "90°",
                 Assert.IsType<TextBlock>(
                     window.FindControl<TextBlock>("RouteTelemetryHeading")).Text);

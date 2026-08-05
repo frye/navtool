@@ -401,3 +401,393 @@ public sealed class NativeRouteJsonParserTests
             """,
             StringComparison.Ordinal);
 }
+
+public sealed class NativeRouteJsonParserEnvironmentTests
+{
+    private static readonly DateTimeOffset Departure =
+        new(2026, 7, 15, 0, 0, 0, TimeSpan.Zero);
+
+    private static RouteRequest CreateRequest() => new(
+        "route-environment",
+        new Coordinate(40, -60),
+        new Coordinate(45, -55),
+        Departure,
+        Departure.AddHours(12));
+
+    private static string Iso(DateTimeOffset value) =>
+        value.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Mirrors the shape router-lib emits when no environment is configured:
+    /// the three environment blocks are absent entirely, not null and not empty.
+    /// </summary>
+    private static string BaselineJson(string extraPointKeys = "", string extraRootKeys = "") =>
+        $$"""
+        {
+          "completion": "destination_reached",
+          "diagnostics": {
+            "expandedNodes": 10,
+            "generatedCandidates": 20,
+            "retainedCandidates": 5,
+            "timeSteps": 2
+          }{{extraRootKeys}},
+          "points": [
+            {
+              "position": { "latitude": 40, "longitude": -60 },
+              "time": "{{Iso(Departure)}}",
+              "headingDegrees": 45,
+              "boatSpeedKnots": 6,
+              "trueWindSpeedKnots": 15,
+              "trueWindDirectionDegrees": 200,
+              "cumulativeDistanceNauticalMiles": 0{{extraPointKeys}}
+            },
+            {
+              "position": { "latitude": 45, "longitude": -55 },
+              "time": "{{Iso(Departure.AddHours(8))}}",
+              "headingDegrees": 50,
+              "boatSpeedKnots": 6.5,
+              "trueWindSpeedKnots": 16,
+              "trueWindDirectionDegrees": 205,
+              "cumulativeDistanceNauticalMiles": 40{{extraPointKeys}}
+            }
+          ]
+        }
+        """;
+
+    private static RouteResult Parse(string json) =>
+        NativeRouteJsonParser.Parse(json, CreateRequest(), ForecastModel.NoaaGfs, TimeSpan.FromSeconds(1));
+
+    [Fact]
+    public void Parse_leaves_environment_null_when_router_emits_no_environment_blocks()
+    {
+        var result = Parse(BaselineJson());
+
+        Assert.Null(result.Environment);
+        Assert.Null(result.EnvironmentDiagnostics);
+        Assert.All(result.Points, point => Assert.Null(point.Environment));
+    }
+
+    [Fact]
+    public void Parse_reads_environment_metadata_with_router_lib_key_spellings()
+    {
+        var json = BaselineJson(extraRootKeys: """
+            ,
+            "environment": {
+              "sampling": "midpoint",
+              "currentProvider": { "name": "uniform", "source": "operator", "revision": "1" },
+              "waveProvider": { "name": "uniform-wave", "source": "operator", "revision": "2" },
+              "seaStateModel": { "name": "wave-height-derating", "source": "sailroute", "revision": "3" },
+              "landmask": null,
+              "exclusions": null,
+              "policies": {
+                "current": "fail_route",
+                "wave": "reject_transition",
+                "land": "fail_route"
+              }
+            }
+            """);
+
+        var environment = Parse(json).Environment;
+
+        Assert.NotNull(environment);
+        Assert.Equal(RouteEnvironmentSampling.Midpoint, environment!.Sampling);
+        Assert.Equal("uniform", environment.CurrentProvider?.Name);
+        Assert.Equal("operator", environment.CurrentProvider?.Source);
+        Assert.Equal("1", environment.CurrentProvider?.Revision);
+        Assert.Equal("wave-height-derating", environment.SeaStateModel?.Name);
+        Assert.Null(environment.Landmask);
+        Assert.Null(environment.Exclusions);
+        Assert.Equal(RouteMissingDataPolicy.FailRoute, environment.CurrentPolicy);
+        Assert.Equal(RouteMissingDataPolicy.RejectTransition, environment.WavePolicy);
+        Assert.Equal(RouteMissingDataPolicy.FailRoute, environment.LandPolicy);
+        Assert.Null(environment.LandClearanceNauticalMiles);
+        Assert.Null(environment.ExclusionZoneCount);
+    }
+
+    [Fact]
+    public void Parse_reads_landmask_and_exclusion_fields_only_when_router_emits_them()
+    {
+        var json = BaselineJson(extraRootKeys: """
+            ,
+            "environment": {
+              "sampling": "segment_start",
+              "currentProvider": null,
+              "waveProvider": null,
+              "seaStateModel": null,
+              "landmask": { "name": "navtool-signed-distance", "source": "osm", "revision": "7" },
+              "exclusions": { "name": "antarctic", "source": "navtool", "revision": "1" },
+              "policies": { "current": "fail_route", "wave": "fail_route", "land": "reject_transition" },
+              "landResolutionNauticalMiles": 2.5,
+              "landInterpolationErrorNauticalMiles": 1.75,
+              "landClearanceNauticalMiles": 0.5,
+              "exclusionBoundaryPolicy": "boundary_allowed",
+              "exclusionZoneCount": 2,
+              "exclusionRevision": 11
+            }
+            """);
+
+        var environment = Parse(json).Environment;
+
+        Assert.NotNull(environment);
+        Assert.Equal(RouteEnvironmentSampling.SegmentStart, environment!.Sampling);
+        Assert.Equal(2.5, environment.LandResolutionNauticalMiles);
+        Assert.Equal(1.75, environment.LandInterpolationErrorNauticalMiles);
+        Assert.Equal(0.5, environment.LandClearanceNauticalMiles);
+        Assert.Equal(RouteExclusionBoundaryPolicy.BoundaryAllowed, environment.ExclusionBoundaryPolicy);
+        Assert.Equal(2, environment.ExclusionZoneCount);
+        Assert.Equal(11UL, environment.ExclusionRevision);
+    }
+
+    /// <summary>
+    /// Optional provider fields follow the same wrong-kind-is-absent rule as
+    /// every other optional field here, so a numeric source falls back to
+    /// "unattributed" instead of failing the whole route parse over a field
+    /// that already has a defined fallback.
+    /// </summary>
+    [Fact]
+    public void Parse_treats_a_wrong_kind_provider_source_as_absent()
+    {
+        var json = BaselineJson(extraRootKeys: """
+            ,
+            "environment": {
+              "sampling": "segment_start",
+              "currentProvider": { "name": "uniform", "source": 7, "revision": 3 },
+              "policies": { "current": "fail_route", "wave": "fail_route", "land": "fail_route" }
+            }
+            """);
+
+        var environment = Parse(json).Environment;
+
+        Assert.NotNull(environment);
+        Assert.Equal("uniform", environment!.CurrentProvider!.Name);
+        Assert.Equal("unattributed", environment.CurrentProvider.Source);
+        Assert.Equal(string.Empty, environment.CurrentProvider.Revision);
+    }
+
+    /// <summary>
+    /// A non-string name must still report the specific missing-name error
+    /// rather than being rebranded as a generic v1 contract failure.
+    /// </summary>
+    [Fact]
+    public void Parse_reports_a_wrong_kind_provider_name_as_a_missing_name()
+    {
+        var json = BaselineJson(extraRootKeys: """
+            ,
+            "environment": {
+              "sampling": "segment_start",
+              "currentProvider": { "name": 42, "source": "operator" },
+              "policies": { "current": "fail_route", "wave": "fail_route", "land": "fail_route" }
+            }
+            """);
+
+        var error = Assert.Throws<NativeRouteFormatException>(() => Parse(json));
+
+        Assert.Contains("missing a name", error.Message);
+        Assert.Contains("currentProvider", error.Message);
+    }
+
+    [Fact]
+    public void Parse_reads_every_environment_diagnostics_counter()
+    {
+        var json = BaselineJson(extraRootKeys: """
+            ,
+            "environmentDiagnostics": {
+              "currentSamples": 11,
+              "currentRejections": 1,
+              "waveSamples": 22,
+              "waveRejections": 2,
+              "seaStateEvaluations": 33,
+              "landChecks": 44,
+              "landDistanceQueries": 55,
+              "landRejections": 5,
+              "exclusionChecks": 66,
+              "exclusionGeometryTests": 77,
+              "exclusionRejections": 7
+            }
+            """);
+
+        var diagnostics = Parse(json).EnvironmentDiagnostics;
+
+        Assert.NotNull(diagnostics);
+        Assert.Equal(11, diagnostics!.CurrentSamples);
+        Assert.Equal(1, diagnostics.CurrentRejections);
+        Assert.Equal(22, diagnostics.WaveSamples);
+        Assert.Equal(2, diagnostics.WaveRejections);
+        Assert.Equal(33, diagnostics.SeaStateEvaluations);
+        Assert.Equal(44, diagnostics.LandChecks);
+        Assert.Equal(55, diagnostics.LandDistanceQueries);
+        Assert.Equal(5, diagnostics.LandRejections);
+        Assert.Equal(66, diagnostics.ExclusionChecks);
+        Assert.Equal(77, diagnostics.ExclusionGeometryTests);
+        Assert.Equal(7, diagnostics.ExclusionRejections);
+    }
+
+    [Fact]
+    public void Parse_reads_point_environment_with_current_and_wave_applied()
+    {
+        var json = BaselineJson(extraPointKeys: """
+            ,
+            "environment": {
+              "speedOverGroundKnots": 7.25,
+              "courseOverGroundDegrees": 52.5,
+              "currentEastKnots": 1.1,
+              "currentNorthKnots": -0.4,
+              "flatWaterSpeedKnots": 6.8,
+              "significantWaveHeightMetres": 2.4,
+              "wavePeriodSeconds": 8.5,
+              "relativeWaveAngleDegrees": 135
+            }
+            """);
+
+        var point = Parse(json).Points[0].Environment;
+
+        Assert.NotNull(point);
+        Assert.Equal(7.25, point!.SpeedOverGroundKnots);
+        Assert.Equal(52.5, point.CourseOverGroundDegrees);
+        Assert.Equal(6.8, point.FlatWaterSpeedKnots);
+        Assert.Equal(1.1, point.CurrentEastKnots);
+        Assert.Equal(-0.4, point.CurrentNorthKnots);
+        Assert.Equal(2.4, point.SignificantWaveHeightMetres);
+        Assert.Equal(8.5, point.WavePeriodSeconds);
+        Assert.Equal(135, point.RelativeWaveAngleDegrees);
+        Assert.True(point.CurrentApplied);
+        Assert.True(point.WaveApplied);
+    }
+
+    /// <summary>
+    /// router-lib does not emit <c>currentApplied</c> or <c>waveApplied</c> as JSON
+    /// keys even though they exist as C++ bools. The only signal that a provider
+    /// ran is the presence of its value keys, so a point with sea state but no
+    /// current must report the current as not applied rather than as zero drift.
+    /// </summary>
+    [Fact]
+    public void Parse_treats_absent_current_keys_as_current_not_applied()
+    {
+        var json = BaselineJson(extraPointKeys: """
+            ,
+            "environment": {
+              "speedOverGroundKnots": 6.1,
+              "courseOverGroundDegrees": 45,
+              "flatWaterSpeedKnots": 6.8,
+              "significantWaveHeightMetres": 3.1,
+              "wavePeriodSeconds": 9,
+              "relativeWaveAngleDegrees": 170
+            }
+            """);
+
+        var point = Parse(json).Points[0].Environment;
+
+        Assert.NotNull(point);
+        Assert.False(point!.CurrentApplied);
+        Assert.Null(point.CurrentEastKnots);
+        Assert.Null(point.CurrentNorthKnots);
+        Assert.True(point.WaveApplied);
+    }
+
+    /// <summary>
+    /// router-lib writes the current components as a pair, so a payload holding
+    /// only one of them is truncated rather than a real current. Reporting it as
+    /// applied would claim a set and drift vector the data cannot supply.
+    /// </summary>
+    [Fact]
+    public void Parse_treats_a_half_populated_current_vector_as_not_applied()
+    {
+        var json = BaselineJson(extraPointKeys: """
+            ,
+            "environment": {
+              "speedOverGroundKnots": 7,
+              "courseOverGroundDegrees": 48,
+              "currentEastKnots": 0.9,
+              "flatWaterSpeedKnots": 6.4
+            }
+            """);
+
+        var point = Parse(json).Points[0].Environment;
+
+        Assert.NotNull(point);
+        Assert.False(
+            point!.CurrentApplied,
+            "A current missing its north component is incomplete, not applied.");
+        Assert.Equal(0.9, point.CurrentEastKnots);
+        Assert.Null(point.CurrentNorthKnots);
+    }
+
+    /// <summary>
+    /// The sea state trio is emitted together for the same reason, so a payload
+    /// missing the relative angle cannot describe a derating.
+    /// </summary>
+    [Fact]
+    public void Parse_treats_a_partial_wave_triple_as_not_applied()
+    {
+        var json = BaselineJson(extraPointKeys: """
+            ,
+            "environment": {
+              "speedOverGroundKnots": 6.1,
+              "courseOverGroundDegrees": 45,
+              "flatWaterSpeedKnots": 6.8,
+              "significantWaveHeightMetres": 3.1,
+              "wavePeriodSeconds": 9
+            }
+            """);
+
+        var point = Parse(json).Points[0].Environment;
+
+        Assert.NotNull(point);
+        Assert.False(
+            point!.WaveApplied,
+            "A sea state missing its relative angle is incomplete, not applied.");
+        Assert.Equal(3.1, point.SignificantWaveHeightMetres);
+        Assert.Null(point.RelativeWaveAngleDegrees);
+    }
+
+    [Fact]
+    public void Parse_treats_absent_wave_keys_as_wave_not_applied()
+    {
+        var json = BaselineJson(extraPointKeys: """
+            ,
+            "environment": {
+              "speedOverGroundKnots": 7,
+              "courseOverGroundDegrees": 48,
+              "currentEastKnots": 0.9,
+              "currentNorthKnots": 0.2,
+              "flatWaterSpeedKnots": 6.4
+            }
+            """);
+
+        var point = Parse(json).Points[0].Environment;
+
+        Assert.NotNull(point);
+        Assert.True(point!.CurrentApplied);
+        Assert.False(point.WaveApplied);
+        Assert.Null(point.SignificantWaveHeightMetres);
+        Assert.Null(point.WavePeriodSeconds);
+        Assert.Null(point.RelativeWaveAngleDegrees);
+    }
+
+    /// <summary>
+    /// Water-relative heading and speed must stay water relative even when a
+    /// current is applied. Ground motion is only ever reported through the
+    /// environment block, so a consumer can never confuse the two frames.
+    /// </summary>
+    [Fact]
+    public void Parse_keeps_point_heading_and_speed_water_relative_under_current()
+    {
+        var json = BaselineJson(extraPointKeys: """
+            ,
+            "environment": {
+              "speedOverGroundKnots": 7.25,
+              "courseOverGroundDegrees": 52.5,
+              "currentEastKnots": 1.1,
+              "currentNorthKnots": -0.4,
+              "flatWaterSpeedKnots": 6.8
+            }
+            """);
+
+        var point = Parse(json).Points[0];
+
+        Assert.Equal(45, point.HeadingDegrees);
+        Assert.Equal(6, point.BoatSpeedKnots);
+        Assert.Equal(52.5, point.Environment!.CourseOverGroundDegrees);
+        Assert.Equal(7.25, point.Environment.SpeedOverGroundKnots);
+    }
+}

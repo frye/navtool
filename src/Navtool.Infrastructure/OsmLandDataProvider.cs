@@ -537,6 +537,21 @@ public sealed class LandGeometryIndex
         _index.Insert(geometry.EnvelopeInternal, indexed);
     }
 
+    /// <summary>
+    /// Land geometry overlapping <paramref name="envelope"/>, including the
+    /// longitude-shifted copies that make antimeridian queries work. Exposed so
+    /// the signed-distance landmask builder can rasterize the same source
+    /// geometry the segment callback uses, keeping the two land paths
+    /// consistent.
+    /// </summary>
+    internal IReadOnlyList<Geometry> QueryGeometries(Envelope envelope)
+    {
+        ArgumentNullException.ThrowIfNull(envelope);
+        return _index.Query(envelope)
+            .Select(item => item.Geometry)
+            .ToList();
+    }
+
     private static Geometry ShiftLongitude(Geometry geometry, double offset)
     {
         var shifted = geometry.Copy();
