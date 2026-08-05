@@ -394,7 +394,8 @@ public sealed class ItineraryEditorViewModelTests
             [rule]);
     }
 
-    private static RoutePlan CreatePlanWithPendingResult()    {
+    private static RoutePlan CreatePlanWithPendingResult()
+    {
         var plan = new RoutePlan(
             "Stored",
             [
