@@ -74,6 +74,18 @@ public sealed class NativeRouterException : Exception
         NativeMessage = nativeMessage;
     }
 
+    public NativeRouterException(
+        NativeRouterStatus status,
+        string operation,
+        string nativeMessage,
+        string explanation)
+        : base($"{operation} failed ({status}): {nativeMessage}. {explanation}")
+    {
+        Status = status;
+        Operation = operation;
+        NativeMessage = nativeMessage;
+    }
+
     public NativeRouterStatus Status { get; }
 
     public string Operation { get; }
@@ -654,7 +666,8 @@ public sealed class NativeRouterBridge
             throw new NativeRouterException(
                 status,
                 "Calculating route",
-                nativeMessage);
+                nativeMessage,
+                DescribeFailure(status, request, forecast.Metadata));
         }
 
         var json = CopyUtf8(routePointer, routeLength, _options.MaximumTextBytes, "route JSON");
@@ -669,6 +682,37 @@ public sealed class NativeRouterBridge
         return ApplyLandAvoidanceCapability(
             result,
             isSegmentEligible is not null);
+    }
+
+    // The native layer reports a bare sailroute diagnostic such as "requested time is
+    // after forecast coverage", which says nothing about the departure the user chose
+    // or the coverage they actually have. Add that context so the status card can
+    // explain the failure instead of just echoing it.
+    internal static string DescribeFailure(
+        NativeRouterStatus status,
+        RouteRequest request,
+        NativeForecastMetadata metadata)
+    {
+        var coverage =
+            $"The loaded forecast covers {metadata.FirstValidAt:u} to {metadata.LastValidAt:u}";
+        return status switch
+        {
+            NativeRouterStatus.OutsideForecast when request.DepartureTime > metadata.LastValidAt =>
+                $"The departure {request.DepartureTime:u} is after the end of the forecast. " +
+                $"{coverage}. Choose an earlier departure or download a newer forecast.",
+            NativeRouterStatus.OutsideForecast when request.DepartureTime < metadata.FirstValidAt =>
+                $"The departure {request.DepartureTime:u} is before the start of the forecast. " +
+                $"{coverage}. Choose a later departure.",
+            NativeRouterStatus.OutsideForecast =>
+                $"The route needed weather outside the loaded forecast. {coverage}, and the " +
+                "route must also stay inside its geographic bounds. Shorten the passage or " +
+                "download a forecast that covers it.",
+            NativeRouterStatus.NoRoute =>
+                "No route reached the destination within the available weather. " +
+                $"{coverage}. Try a longer passage duration, a newer forecast, or a " +
+                "nearer destination.",
+            _ => coverage + "."
+        };
     }
 
     private RouteResult ApplyLandAvoidanceCapability(

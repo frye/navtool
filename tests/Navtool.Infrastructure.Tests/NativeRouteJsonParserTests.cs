@@ -22,6 +22,13 @@ public sealed class NativeRouteJsonParserTests
         Departure,
         Departure + window);
 
+    private static RouteRequest RequestDepartingAt(DateTimeOffset departure) => new(
+        "route-parse",
+        new Coordinate(40, -60),
+        new Coordinate(45, -55),
+        departure,
+        departure.AddHours(10));
+
     private static string Iso(DateTimeOffset value) =>
         value.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
 
@@ -309,6 +316,46 @@ public sealed class NativeRouteJsonParserTests
         360,
         false,
         "test-forecast");
+
+    [Fact]
+    public void Outside_forecast_failures_name_the_departure_and_the_coverage_they_missed()
+    {
+        var metadata = Metadata(Departure.AddDays(3));
+
+        var late = NativeRouterBridge.DescribeFailure(
+            NativeRouterStatus.OutsideForecast,
+            RequestDepartingAt(metadata.LastValidAt.AddHours(6)),
+            metadata);
+        Assert.Contains("after the end of the forecast", late, StringComparison.Ordinal);
+        Assert.Contains(metadata.LastValidAt.ToString("u"), late, StringComparison.Ordinal);
+
+        var early = NativeRouterBridge.DescribeFailure(
+            NativeRouterStatus.OutsideForecast,
+            RequestDepartingAt(metadata.FirstValidAt.AddHours(-6)),
+            metadata);
+        Assert.Contains("before the start of the forecast", early, StringComparison.Ordinal);
+
+        // A departure inside coverage means the *route* left the forecast, not the
+        // departure, so the advice must not blame the departure.
+        var inCoverage = NativeRouterBridge.DescribeFailure(
+            NativeRouterStatus.OutsideForecast,
+            CreateRequest(TimeSpan.FromHours(10)),
+            metadata);
+        Assert.Contains("weather outside the loaded forecast", inCoverage, StringComparison.Ordinal);
+        Assert.DoesNotContain("departure is", inCoverage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void No_route_failures_explain_the_available_coverage()
+    {
+        var message = NativeRouterBridge.DescribeFailure(
+            NativeRouterStatus.NoRoute,
+            CreateRequest(TimeSpan.FromHours(10)),
+            Metadata(Departure.AddDays(3)));
+
+        Assert.Contains("No route reached the destination", message, StringComparison.Ordinal);
+        Assert.Contains(Departure.ToString("u"), message, StringComparison.Ordinal);
+    }
 
     private static string AddLatticeDiagnostics(string json) =>
         json.Replace(

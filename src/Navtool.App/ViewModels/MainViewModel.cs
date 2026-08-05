@@ -332,6 +332,9 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     private bool _hasEcmwfWeather;
 
+    [ObservableProperty]
+    private string? _departureUtcPreview;
+
     public MainViewModel()
         : this(null, null, TimeProvider.System, TimeZoneInfo.Local, new OsmTileOptions())
     {
@@ -465,7 +468,7 @@ public partial class MainViewModel : ViewModelBase
         var localNow = TimeZoneInfo.ConvertTime(_timeProvider.GetUtcNow(), _localTimeZone);
         _departureDate = new DateTimeOffset(localNow.Date, localNow.Offset);
         _departureTime = localNow.TimeOfDay;
-        Itinerary = new ItineraryEditorViewModel(routePlanRepository);
+        Itinerary = new ItineraryEditorViewModel(routePlanRepository, _localTimeZone);
         Itinerary.ItineraryChanged += OnItineraryChanged;
         Itinerary.EndpointChanged += OnEndpointChanged;
         Itinerary.MapPlacementStarted += OnMapPlacementStarted;
@@ -486,6 +489,7 @@ public partial class MainViewModel : ViewModelBase
         _mapLayers = new RouteMapLayers(Map);
         UpdateWaypointLayers();
         UtcOffsetDisplay = FormatUtcOffset(localTimeZone.GetUtcOffset(timeProvider.GetLocalNow()));
+        UpdateDepartureUtcPreview();
         Map.Navigator.ZoomToBox(CreateDefaultChartExtent());
         UpdateForecastAreaSummary();
     }
@@ -1355,8 +1359,23 @@ public partial class MainViewModel : ViewModelBase
 
     private void RefreshExpiredDeparture()
     {
-        if (Itinerary.HasCurrentPosition ||
-            !LocalDepartureConverter.TryConvertToUtc(
+        var nowUtc = _timeProvider.GetUtcNow();
+        if (Itinerary.HasCurrentPosition)
+        {
+            // A placed current position owns the active leg departure, so it needs the same
+            // roll-forward the plain departure fields already get. Without this a reopened plan
+            // keeps a stale UTC departure and the router is asked for weather it cannot have.
+            if (Itinerary.CurrentPositionDepartureTimeUtc is { } currentDeparture &&
+                currentDeparture < nowUtc &&
+                !Itinerary.UpdateCurrentPositionDeparture(nowUtc, _localTimeZone, out var error))
+            {
+                ErrorMessage = error;
+            }
+
+            return;
+        }
+
+        if (!LocalDepartureConverter.TryConvertToUtc(
                 DepartureDate,
                 DepartureTime,
                 _localTimeZone,
@@ -1366,7 +1385,6 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        var nowUtc = _timeProvider.GetUtcNow();
         if (departureUtc >= nowUtc)
         {
             return;
@@ -1603,9 +1621,32 @@ public partial class MainViewModel : ViewModelBase
     partial void OnHasEcmwfWeatherChanged(bool value) =>
         ActivateEcmwfWeatherCommand.NotifyCanExecuteChanged();
 
-    partial void OnDepartureDateChanged(DateTimeOffset? value) => UpdateForecastAreaSummary();
+    partial void OnDepartureDateChanged(DateTimeOffset? value)
+    {
+        UpdateDepartureUtcPreview();
+        UpdateForecastAreaSummary();
+    }
 
-    partial void OnDepartureTimeChanged(TimeSpan? value) => UpdateForecastAreaSummary();
+    partial void OnDepartureTimeChanged(TimeSpan? value)
+    {
+        UpdateDepartureUtcPreview();
+        UpdateForecastAreaSummary();
+    }
+
+    /// <summary>
+    /// Echoes the UTC instant the local departure selection resolves to. The router and every
+    /// status message speak UTC, so showing both removes the ambiguity that lets a user pick a
+    /// departure that is already in the past.
+    /// </summary>
+    private void UpdateDepartureUtcPreview() =>
+        DepartureUtcPreview = LocalDepartureConverter.TryConvertToUtc(
+            DepartureDate,
+            DepartureTime,
+            _localTimeZone,
+            out var departureUtc,
+            out var error)
+            ? $"= {departureUtc:yyyy-MM-dd HH:mm} UTC"
+            : error;
 
     partial void OnPassageDaysChanged(int value) => UpdateForecastAreaSummary();
 
@@ -1903,6 +1944,8 @@ public partial class MainViewModel : ViewModelBase
                 AddNewerRunWarning(warnings, outcome.Model, [outcome.Acquisition]);
             }
 
+            AddSolverFallbackWarning(warnings, outcome.Model, outcome.SolverFallback);
+
             if (outcome.Route is not null)
             {
                 var route = outcome.Route;
@@ -2015,6 +2058,23 @@ public partial class MainViewModel : ViewModelBase
         };
         OnPropertyChanged(nameof(SelectedRouteDetails));
         UpdateWeatherAvailability();
+    }
+
+    private static void AddSolverFallbackWarning(
+        List<string> warnings,
+        ForecastModel model,
+        string? solverFallback)
+    {
+        if (string.IsNullOrWhiteSpace(solverFallback))
+        {
+            return;
+        }
+
+        var message = $"{ModelName(model)}: {solverFallback}";
+        if (!warnings.Contains(message))
+        {
+            warnings.Add(message);
+        }
     }
 
     private static void AddCalculationWarning(List<string> warnings, string? warning)

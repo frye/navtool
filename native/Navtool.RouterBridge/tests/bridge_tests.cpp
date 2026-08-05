@@ -1017,6 +1017,46 @@ int main() {
         route_json = nullptr;
         route_json_length = 0U;
 
+        // Regression: a lattice search that runs up against the forecast horizon
+        // must degrade to a forecast-limited route instead of aborting. router-lib
+        // v0.4.1 sampled the speculative midpoint wind of a long lattice edge
+        // before rejecting the edge for overrunning route_end, so the probe landed
+        // past the last forecast step and the search failed outright with
+        // OUTSIDE_FORECAST. The isochrone beam solver was unaffected because it
+        // clamps its time step to the horizon. See patches/README.md.
+        for (const int32_t search_algorithm : {0, 1}) {  // 0 = A*, 1 = Dijkstra
+            auto horizon_options = balanced_options;
+            horizon_options.solver =
+                NAVTOOL_ROUTER_SOLVER_TIME_DEPENDENT_LATTICE_V6;
+            horizon_options.lattice_search_algorithm = search_algorithm;
+            int64_t late_departure =
+                metadata.last_valid_utc_epoch_seconds - 3600;
+            const int32_t horizon_status =
+                navtool_router_calculate_route_streaming_v6(
+                    forecast,
+                    48.0,
+                    -123.75,
+                    48.5,
+                    -123.25,
+                    &late_departure,
+                    &horizon_options,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    &route_json,
+                    &route_json_length);
+            require(
+                horizon_status != NAVTOOL_ROUTER_STATUS_OUTSIDE_FORECAST_V1,
+                "lattice search near the forecast horizon reported "
+                "OUTSIDE_FORECAST instead of degrading gracefully");
+            if (route_json != nullptr) {
+                navtool_router_bridge_free_v1(route_json);
+            }
+            route_json = nullptr;
+            route_json_length = 0U;
+        }
+
         size_t cancellation_progress_count = 0U;
         require(
             navtool_router_calculate_route_streaming_v6(
