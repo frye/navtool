@@ -18,7 +18,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
         if (currentVersion != RoutePlanJsonRepository.CurrentSchemaVersion)
         {
             throw new InvalidDataException(
-                $"Route plan schema version {fromVersion} is not supported by this application version.");
+                $"Route plan schema version {currentVersion} is not supported by this application version.");
         }
 
         if (fromVersion == 4)

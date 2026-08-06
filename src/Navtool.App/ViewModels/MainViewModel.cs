@@ -2271,7 +2271,7 @@ public partial class MainViewModel : ViewModelBase
             RouteCompletion.DestinationReached => "arrival",
             RouteCompletion.ForecastExhausted => "forecast-limited endpoint",
             RouteCompletion.DurationExhausted => "duration-limited endpoint",
-            _ => throw new ArgumentOutOfRangeException(nameof(route))
+            _ => throw new ArgumentOutOfRangeException(nameof(route.Completion))
         };
 
     private static string VisualizationStatusName(RouteLegVisualization leg) =>

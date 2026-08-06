@@ -176,7 +176,7 @@ public sealed record ModelRouteOutcome
                 RouteCompletion.DestinationReached => ModelRouteStatus.Succeeded,
                 RouteCompletion.ForecastExhausted => ModelRouteStatus.ForecastLimited,
                 RouteCompletion.DurationExhausted => ModelRouteStatus.DurationLimited,
-                _ => throw new ArgumentOutOfRangeException(nameof(route))
+                _ => throw new ArgumentOutOfRangeException(nameof(route.Completion))
             },
             acquisition,
             route,
