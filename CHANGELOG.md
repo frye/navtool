@@ -1,12 +1,12 @@
 # Navtool release notes
 
-## Week of July 27-August 1, 2026 (Draft)
+## Weeks of July 27-August 7, 2026 (Draft)
 
 This week adds land-aware routing, persistent multi-point voyage plans,
 sequential per-model calculation, rolling route resume, full-route
 visualization, and reusable NOAA forecast caching. It also modernizes the chart
-controls, adds production ECMWF IFS wind acquisition, and strengthens native
-bridge launch guidance and automated validation.
+controls, adds production ECMWF IFS wind acquisition and expert routing options,
+and strengthens native bridge launch guidance and automated validation.
 
 > **Release status:** Unreleased draft for editorial review.
 
@@ -45,9 +45,14 @@ bridge launch guidance and automated validation.
   augmentation, midpoint wind sampling, and monotone-cubic polar interpolation
   by default. A temporary professional panel exposes the time-dependent lattice
   solver and advanced routing controls.
+  ([#59](https://github.com/frye/navtool/pull/59))
 - **Stage 2.5 lattice integration:** Native builds now use the released
-  router-lib `v0.4.1`, keep the isochrone beam as the standard/default route,
+  router-lib `v0.4.3`, keep the isochrone beam as the standard/default route,
   and expose lattice routing only after explicit professional solver selection.
+  Duration-limited lattice results remain selectable partial routes and retain
+  their completion reason when saved.
+  ([#64](https://github.com/frye/navtool/pull/64),
+  [#74](https://github.com/frye/navtool/pull/74))
 
 ### Added
 
@@ -55,6 +60,11 @@ bridge launch guidance and automated validation.
   including rolling-cycle discovery, indexed 10u/10v byte-range downloads,
   resumable persistent caching, native route-corridor loading, and normal
   multi-model routing and weather overlays.
+  ([#56](https://github.com/frye/navtool/pull/56))
+- Added route-point telemetry popups with apparent wind speed and compact
+  port/starboard apparent wind angles.
+  ([#55](https://github.com/frye/navtool/pull/55),
+  [#68](https://github.com/frye/navtool/pull/68))
 - Added persistent Light, Dark, and **Kind of Blue** themes with a compact
   runtime selector and distinct interactive states.
   ([#22](https://github.com/frye/navtool/pull/22))
@@ -70,9 +80,20 @@ bridge launch guidance and automated validation.
 
 ### Improved
 
-- Added ABI-v6 solver-aware progress, lattice search markers and diagnostics,
-  configured beam/lattice dispatch, and schema-v3 result attribution while
-  preserving legacy bridge exports and route-plan migration.
+- Added ABI-v7 configured beam/lattice dispatch, solver-aware progress, lattice
+  search markers and diagnostics, opt-in environmental providers, and schema-v5
+  result attribution and completion reasons while preserving legacy bridge
+  exports and route-plan migration.
+  ([#59](https://github.com/frye/navtool/pull/59),
+  [#69](https://github.com/frye/navtool/pull/69),
+  [#74](https://github.com/frye/navtool/pull/74))
+- Route calculation now starts automatically when an endpoint changes, cancels
+  stale work, and exposes cancellation in the progress rail. Local departure
+  inputs are converted to UTC with DST validation, and expired active-leg
+  departures roll forward without changing sailed history.
+  ([#52](https://github.com/frye/navtool/pull/52),
+  [#54](https://github.com/frye/navtool/pull/54),
+  [#71](https://github.com/frye/navtool/pull/71))
 - Restored one open, destination-facing isochrone front per routing step,
   retained forecast-limited estimates, softened display-only corners, widened
   the useful destination aperture, and suppressed misleading singleton marks.
@@ -112,10 +133,11 @@ bridge launch guidance and automated validation.
 
 - Navtool is planning software, not navigation-certified guidance. Bundled
   coastline data is generalized and can omit small or recent hazards; routing
-  still does not model currents, waves, traffic, restricted areas, depths, or
-  safety limits.
-- Online ECMWF support is wind-only. Routing still does not model waves or
-  currents, and ECMWF global field downloads can be larger than NOAA subsets.
+  models currents, waves, land clearance, and exclusion zones only when the
+  corresponding professional provider is explicitly enabled and supplied.
+  Traffic, depths, and safety limits are never modeled.
+- Online ECMWF acquisition is wind-only; current and wave data must be supplied
+  separately. ECMWF global field downloads can be larger than NOAA subsets.
 - Professional lattice routing is serial and does not produce beam-style
   isochrones or destination fronts; Navtool displays its search point and
   provisional route instead.
