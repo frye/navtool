@@ -181,7 +181,8 @@ public sealed class RoutePlanRoutingWorkflowTests
             (request, _, _) => ValueTask.FromResult(Acquisition(request)));
         var plan = ThreeLegPlan();
         var repository = new RecordingRepository();
-        var progress = new RecordingProgress<RoutePlanRoutingProgress>();
+        var progressValues = new List<RoutePlanRoutingProgress>();
+        var progress = new InlineProgress<RoutePlanRoutingProgress>(progressValues.Add);
         var workflow = new RoutePlanRoutingWorkflow(
             new RoutingWorkflow(
                 [provider],
@@ -209,7 +210,7 @@ public sealed class RoutePlanRoutingWorkflowTests
             Assert.Contains("maximum route duration", leg.Detail);
         });
         Assert.Contains(
-            progress.Values,
+            progressValues,
             value => value.Status == RoutePlanRoutingUnitStatus.DurationLimited);
     }
 

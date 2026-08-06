@@ -1476,6 +1476,7 @@ public sealed class MainViewModelWorkflowTests
         var route = Assert.Single(viewModel.SuccessfulRoutes);
         Assert.True(route.IsDurationLimited);
         Assert.True(viewModel.HasTimeline);
+        Assert.Contains("partial route estimate", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
         viewModel.SelectRoutePoint(
             new RouteMapSelection(
                 route,
@@ -1491,7 +1492,6 @@ public sealed class MainViewModelWorkflowTests
         Assert.Contains("duration limit reached", viewModel.NoaaStatus, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("maximum route duration", viewModel.WarningMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("destination was not reached", viewModel.WarningMessage, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("partial route estimate", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Null(viewModel.ErrorMessage);
         Assert.Single(GetLayer(viewModel, "NOAA GFS isochrone fronts").Features);
         Assert.Single(GetLayer(viewModel, "NOAA GFS latest isochrone front").Features);
