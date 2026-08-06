@@ -12,9 +12,9 @@ It targets macOS, Windows, and Linux.
 - Open on a Salish Sea chart view and use resizable edge drawers plus
   right-click, long-press, or keyboard radial map actions to place endpoints,
   inspect routes, and start calculation without obscuring the chart.
-- Choose a local departure date/time, converted to UTC with DST validation; when calculation
-  starts with a past active-leg departure, Navtool rolls it forward to the current time and warns
-  without changing sailed-leg history.
+- Choose a local departure date/time, converted to UTC with DST validation; when
+  calculation starts with a past active-leg departure, Navtool rolls it forward
+  to the current time and warns without changing sailed-leg history.
 - Set the expected passage duration so only the required forecast times are
   acquired, up to the ten-day planning limit.
 - Download NOAA GFS or ECMWF IFS 0.25-degree 10 m wind fields, or choose an
@@ -242,11 +242,12 @@ also be installed or packaged according to the target platform.
 The selected display theme is stored in `preferences/theme.txt` beneath
 `NAVTOOL_APP_DATA_ROOT` (or Navtool's default local application-data directory).
 Route plans are stored atomically as JSON beneath `routes/` in the same root.
-Schema-v3 plan files contain waypoint, stopover, calculation-session, leg-outcome,
-sailed state, route-point metadata, solver attribution, and optional lattice
-diagnostics, but never forecast binaries or professional input settings. Schema
-v1 and v2 documents migrate forward; unknown future schemas or inconsistent
-IDs/references are rejected visibly.
+Schema-v5 plan files contain waypoint, stopover, calculation-session, leg-outcome,
+completion-reason, sailed state, route-point metadata, solver attribution,
+optional lattice diagnostics, and applied environmental metadata, but never
+forecast binaries or professional input settings. Schema v1-v4 documents migrate
+forward; unknown future schemas or inconsistent IDs/references are rejected
+visibly.
 Opening a saved plan restores full-route geometry, sailed history, per-model leg
 status, and the model-specific timeline. Weather overlays are not restored from
 route JSON.
