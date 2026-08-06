@@ -185,7 +185,20 @@ public enum RouteLegOutcomeReason
     StopoverChanged,
     WaypointAdded,
     WaypointRemoved,
-    CurrentPositionChanged
+    CurrentPositionChanged,
+    DurationExhausted
+}
+
+public static class RouteCompletionOutcome
+{
+    public static RouteLegOutcomeReason ToLegOutcomeReason(this RouteCompletion completion) =>
+        completion switch
+        {
+            RouteCompletion.DestinationReached => RouteLegOutcomeReason.CalculationSucceeded,
+            RouteCompletion.ForecastExhausted => RouteLegOutcomeReason.ForecastExhausted,
+            RouteCompletion.DurationExhausted => RouteLegOutcomeReason.DurationExhausted,
+            _ => throw new ArgumentOutOfRangeException(nameof(completion))
+        };
 }
 
 public sealed record RouteLegResult

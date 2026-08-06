@@ -1449,6 +1449,57 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public async Task DurationLimitedRouteRetainsTimelineAndShowsDistinctWarning()
+    {
+        var provider = new DelegateForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new StreamingRouteEngine((request, forecast, progress, _) =>
+        {
+            var snapshot = CreateSnapshot(request);
+            progress?.Report(new RouteCalculationProgress(1, "duration ended", snapshot));
+            return ValueTask.FromResult(new RouteResult(
+                request,
+                forecast.Request.Model,
+                snapshot.ProvisionalRoute,
+                snapshot.Diagnostics,
+                RouteCompletion.DurationExhausted));
+        });
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { provider }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+
+        await viewModel.CalculateRoutesAsync();
+        await Task.Delay(20);
+
+        var route = Assert.Single(viewModel.SuccessfulRoutes);
+        Assert.True(route.IsDurationLimited);
+        Assert.True(viewModel.HasTimeline);
+        viewModel.SelectRoutePoint(
+            new RouteMapSelection(
+                route,
+                route.Points.Length - 1,
+                route.Points[^1],
+                RouteHitKind.RoutePoint,
+                0),
+            focus: false);
+        Assert.Contains(
+            "duration-limited endpoint",
+            viewModel.SelectedRouteDetails,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("duration limit reached", viewModel.NoaaStatus, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("maximum route duration", viewModel.WarningMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("destination was not reached", viewModel.WarningMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("partial route estimate", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(viewModel.ErrorMessage);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS isochrone fronts").Features);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS latest isochrone front").Features);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS provisional route").Features);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS routes").Features);
+    }
+
+    [Fact]
     public async Task CancellingCalculationClearsStreamingOverlays()
     {
         var provider = new DelegateForecastProvider(

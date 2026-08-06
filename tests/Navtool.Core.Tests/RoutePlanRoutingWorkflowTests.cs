@@ -174,6 +174,46 @@ public sealed class RoutePlanRoutingWorkflowTests
     }
 
     [Fact]
+    public async Task Duration_exhaustion_accepts_partial_route_and_never_schedules_later_leg()
+    {
+        var provider = new RecordingProvider(
+            ForecastModel.NoaaGfs,
+            (request, _, _) => ValueTask.FromResult(Acquisition(request)));
+        var plan = ThreeLegPlan();
+        var repository = new RecordingRepository();
+        var progress = new RecordingProgress<RoutePlanRoutingProgress>();
+        var workflow = new RoutePlanRoutingWorkflow(
+            new RoutingWorkflow(
+                [provider],
+                new DelegateRouteEngine((request, forecast, _) =>
+                    ValueTask.FromResult(Route(
+                        request,
+                        forecast.Request.Model,
+                        TimeSpan.FromHours(4),
+                        RouteCompletion.DurationExhausted)))),
+            repository,
+            new FixedTimeProvider(Now));
+
+        var result = await workflow.ExecuteAsync(
+            Request(plan, Now.AddHours(1), Now.AddDays(8)),
+            progress);
+
+        Assert.Single(provider.Requests);
+        var model = Assert.Single(result.Models);
+        Assert.Equal(RoutePlanModelStatus.DurationLimited, model.Status);
+        Assert.Equal(RouteLegOutcomeReason.DurationExhausted, model.Legs[0].Reason);
+        Assert.All(model.Legs.Skip(1), leg =>
+        {
+            Assert.Equal(RouteLegOutcomeState.Blocked, leg.State);
+            Assert.Equal(RouteLegOutcomeReason.BlockedByPriorFailure, leg.Reason);
+            Assert.Contains("maximum route duration", leg.Detail);
+        });
+        Assert.Contains(
+            progress.Values,
+            value => value.Status == RoutePlanRoutingUnitStatus.DurationLimited);
+    }
+
+    [Fact]
     public async Task Failure_blocks_only_that_model_and_other_model_completes()
     {
         var noaa = new RecordingProvider(

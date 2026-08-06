@@ -15,17 +15,15 @@ set(
     "router-lib release repository used when SAILROUTE_SOURCE_DIR is unset")
 set(
     NAVTOOL_ROUTER_LIB_RELEASE_TAG
-    "a98d5651d2273044c22f5fb6f54e4355af90392b"
+    "v0.4.3"
     CACHE STRING
     "Immutable router-lib revision used when SAILROUTE_SOURCE_DIR is unset")
 set(_navtool_router_effective_source_dir "")
 set(NAVTOOL_ROUTER_PATCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/patches")
 set(NAVTOOL_ROUTER_PATCH_SCRIPT "${NAVTOOL_ROUTER_PATCH_DIR}/apply.cmake")
-# Fixes carried against the pinned router-lib revision. See patches/README.md;
-# drop entries here once NAVTOOL_ROUTER_LIB_RELEASE_TAG moves past them.
-set(
-    NAVTOOL_ROUTER_LIB_PATCHES
-    "0001-prune-out-of-coverage-midpoint-wind-probes.patch")
+# Optional fixes carried against the pinned router-lib revision. See
+# patches/README.md; drop entries once the release pin moves past them.
+set(NAVTOOL_ROUTER_LIB_PATCHES)
 
 if(NOT TARGET sailroute::sailroute)
     if(DEFINED SAILROUTE_SOURCE_DIR AND NOT "${SAILROUTE_SOURCE_DIR}" STREQUAL "")

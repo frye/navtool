@@ -324,20 +324,18 @@ uint8_t capture_v6_progress(
     capture->saw_lattice_counters =
         capture->saw_lattice_counters ||
         progress->lattice_search.settled_labels > 0U;
-    const int64_t route_end_time =
-        progress->provisional_route_point_count > 0U
-        ? progress->provisional_route_points[
-              progress->provisional_route_point_count - 1U]
-              .utc_epoch_seconds
-        : 0;
+    // Lattice progress time names the active settled label, while the provisional
+    // route tracks the globally closest label; A* does not order those by time.
     capture->valid =
         capture->valid &&
         progress->solver == capture->expected_solver &&
         progress->provisional_route_points != nullptr &&
         progress->provisional_route_point_count > 0U &&
-        (is_lattice
-             ? route_end_time <= progress->progress_utc_epoch_seconds
-             : route_end_time == progress->progress_utc_epoch_seconds) &&
+        (is_lattice ||
+         progress->provisional_route_points[
+             progress->provisional_route_point_count - 1U]
+                 .utc_epoch_seconds ==
+             progress->progress_utc_epoch_seconds) &&
         (is_lattice
              ? progress->contour_point_count == 0U &&
                    progress->front_point_count == 0U &&
@@ -1018,12 +1016,9 @@ int main() {
         route_json_length = 0U;
 
         // Regression: a lattice search that runs up against the forecast horizon
-        // must degrade to a forecast-limited route instead of aborting. router-lib
-        // v0.4.1 sampled the speculative midpoint wind of a long lattice edge
-        // before rejecting the edge for overrunning route_end, so the probe landed
-        // past the last forecast step and the search failed outright with
-        // OUTSIDE_FORECAST. The isochrone beam solver was unaffected because it
-        // clamps its time step to the horizon. See patches/README.md.
+        // must degrade to a forecast-limited route instead of aborting. This was
+        // fixed upstream for v0.4.3 after speculative midpoint wind probes could
+        // land past the final forecast step. See patches/README.md.
         for (const int32_t search_algorithm : {0, 1}) {  // 0 = A*, 1 = Dijkstra
             auto horizon_options = balanced_options;
             horizon_options.solver =

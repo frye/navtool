@@ -1087,6 +1087,8 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     {
         RouteLegOutcomeState.Succeeded
             when outcome.Reason == RouteLegOutcomeReason.ForecastExhausted => "forecast-limited",
+        RouteLegOutcomeState.Succeeded
+            when outcome.Reason == RouteLegOutcomeReason.DurationExhausted => "duration-limited",
         RouteLegOutcomeState.Succeeded => "complete",
         RouteLegOutcomeState.Failed => "failed",
         RouteLegOutcomeState.Cancelled => "cancelled",
