@@ -118,6 +118,25 @@ public sealed class SharedRouteTimelineTests
         Assert.False(timeline.Select(timeline.End).IsStopover);
     }
 
+    [Fact]
+    public void Duration_limited_leg_does_not_hold_at_unreached_stopover()
+    {
+        var start = new DateTimeOffset(2026, 7, 15, 0, 0, 0, TimeSpan.Zero);
+        var leg = CreateLeg(
+            new RoutePlanId(),
+            new RouteLegId(Guid.NewGuid()),
+            ForecastModel.NoaaGfs,
+            new RouteCalculationSessionId(),
+            start,
+            start.AddHours(2),
+            TimeSpan.FromHours(4),
+            reason: RouteLegOutcomeReason.DurationExhausted);
+        var timeline = SharedRouteTimeline.Create(ForecastModel.NoaaGfs, [leg]);
+
+        Assert.Equal(start.AddHours(2), timeline.End);
+        Assert.False(timeline.Select(timeline.End).IsStopover);
+    }
+
     private static RouteLegVisualization CreateLeg(
         RoutePlanId planId,
         RouteLegId legId,

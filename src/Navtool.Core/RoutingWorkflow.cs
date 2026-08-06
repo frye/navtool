@@ -109,7 +109,8 @@ public enum ModelRouteStatus
 {
     Succeeded,
     ForecastLimited,
-    Failed
+    Failed,
+    DurationLimited
 }
 
 public enum ModelRouteFailureStage
@@ -170,9 +171,13 @@ public sealed record ModelRouteOutcome
         string? solverFallback = null) =>
         new(
             model,
-            route.IsForecastLimited
-                ? ModelRouteStatus.ForecastLimited
-                : ModelRouteStatus.Succeeded,
+            route.Completion switch
+            {
+                RouteCompletion.DestinationReached => ModelRouteStatus.Succeeded,
+                RouteCompletion.ForecastExhausted => ModelRouteStatus.ForecastLimited,
+                RouteCompletion.DurationExhausted => ModelRouteStatus.DurationLimited,
+                _ => throw new ArgumentOutOfRangeException(nameof(route.Completion))
+            },
             acquisition,
             route,
             null,

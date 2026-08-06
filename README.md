@@ -102,9 +102,7 @@ validation, and use `scripts/publish.sh` or `scripts/publish.ps1` for
 distributable artifacts. For a custom bridge location, set
 `NAVTOOL_ROUTER_BRIDGE_PATH` to the shared library or its directory. Packaged
 applications discover their bridge under `runtimes/<RID>/native`. Native builds
-fetch and compile the immutable `router-lib` Stage 3 revision
-`a98d5651d2273044c22f5fb6f54e4355af90392b` by default; it will move to the
-`v0.4.2` release tag once `router-lib` publishes it. Set
+fetch and compile `router-lib` release `v0.4.3` by default. Set
 `SAILROUTE_SOURCE_DIR` to a local `router-lib` checkout when testing other
 revisions.
 
@@ -137,15 +135,23 @@ reset when Navtool exits and are never stored as application preferences or rout
 plan inputs. Completed results do retain solver attribution and lattice
 diagnostics.
 
+The beam remains the default after the v0.4.3 solver comparison. The release
+fixes the lattice arrival shortcut, tacking, dominance, duration-limited partial
+routes, and forecast-horizon probing, but the rerun still showed
+passage-dependent quality and higher lattice runtime. See
+`native/Navtool.RouterBridge/patches/README.md` for the measured matrix. A
+professional lattice request that fails is still retried with the beam and
+reported as a fallback rather than silently relabeled.
+
 ## Multi-point routes and visualization
 
 Each forecast model calculates itinerary legs sequentially. A successful leg's
 arrival plus the destination waypoint's optional stopover determines that
 model's next departure; NOAA and ECMWF may therefore reach the same leg at
-different UTC times. Failure, cancellation, forecast exhaustion, or a departure
-beyond the rolling forecast cutoff is recorded per model and leg. Later legs
-remain visibly listed with their status, but Navtool never draws invented
-optimized geometry between successful legs.
+different UTC times. Failure, cancellation, forecast exhaustion, duration
+exhaustion, or a departure beyond the rolling forecast cutoff is recorded per
+model and leg. Later legs remain visibly listed with their status, but Navtool
+never draws invented optimized geometry between successful legs.
 
 The map stores feature identity as plan, stable leg, model, calculation session,
 and route-result ID. This keeps revisions and parallel model results distinct
@@ -226,7 +232,7 @@ also be installed or packaged according to the target platform.
 | --- | --- |
 | `NAVTOOL_ROUTER_BRIDGE_PATH` | Native bridge file or directory |
 | `SAILROUTE_SOURCE_DIR` | Optional `router-lib` checkout override for native build/run scripts |
-| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default is the Stage 3 revision `a98d5651d2273044c22f5fb6f54e4355af90392b`) |
+| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default is `v0.4.3`) |
 | `NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY` | `router-lib` Git repository used when `SAILROUTE_SOURCE_DIR` is unset |
 | `NAVTOOL_NATIVE_BUILD_DIR` | Optional native bridge build directory |
 | `NAVTOOL_APP_DATA_ROOT` | Application data root |

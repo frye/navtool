@@ -319,6 +319,44 @@ public sealed class RoutingWorkflowTests
     }
 
     [Fact]
+    public async Task Workflow_classifies_duration_exhaustion_as_a_selectable_partial_result()
+    {
+        var provider = new StubForecastProvider(
+            ForecastModel.NoaaGfs,
+            (request, _, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var workflow = new RoutingWorkflow(
+            new[] { provider },
+            new StubRouteEngine((request, acquisition, _, _) =>
+                ValueTask.FromResult(new RouteResult(
+                    request,
+                    acquisition.Request.Model,
+                    new[]
+                    {
+                        new RoutePoint(request.Origin, request.DepartureTime, 90, 6, 15, 180, 0),
+                        new RoutePoint(
+                            new Coordinate(42, -60),
+                            request.DepartureTime.AddHours(12),
+                            90,
+                            6,
+                            15,
+                            180,
+                            60)
+                    },
+                    new RouteDiagnostics(10, 20, 5, 4),
+                    RouteCompletion.DurationExhausted))));
+        var request = new RoutingWorkflowRequest(
+            CreateRouteRequest(),
+            new[] { ForecastModel.NoaaGfs });
+
+        var result = await workflow.ExecuteAsync(request);
+
+        var outcome = Assert.Single(result.Outcomes);
+        Assert.Equal(ModelRouteStatus.DurationLimited, outcome.Status);
+        Assert.True(outcome.Route!.IsDurationLimited);
+        Assert.Single(result.SuccessfulRoutes);
+    }
+
+    [Fact]
     public async Task Workflow_passes_the_same_optimization_snapshot_to_route_engine()
     {
         var provider = new StubForecastProvider(

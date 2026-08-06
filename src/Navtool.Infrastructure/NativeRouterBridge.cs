@@ -1443,6 +1443,7 @@ internal static class NativeRouteJsonParser
             {
                 "destination_reached" => RouteCompletion.DestinationReached,
                 "forecast_exhausted" => RouteCompletion.ForecastExhausted,
+                "duration_exhausted" => RouteCompletion.DurationExhausted,
                 var value => throw new NativeRouteFormatException(
                     $"Native route JSON has unsupported completion '{value}'.")
             };

@@ -92,7 +92,31 @@ public sealed class NativeRouteJsonParserTests
             ForecastModel.NoaaGfs,
             TimeSpan.FromSeconds(1));
 
+        Assert.True(result.IsPartial);
         Assert.True(result.IsForecastLimited);
+        Assert.False(result.IsDurationLimited);
+    }
+
+    [Fact]
+    public void Parse_preserves_duration_exhausted_completion()
+    {
+        var request = CreateRequest(TimeSpan.FromHours(10));
+        var json = BuildJson(
+                (Departure, 40, -60, 0),
+                (Departure.AddHours(8), 44, -56, 35))
+            .Replace(
+                "\"completion\": \"destination_reached\"",
+                "\"completion\": \"duration_exhausted\"");
+
+        var result = NativeRouteJsonParser.Parse(
+            json,
+            request,
+            ForecastModel.NoaaGfs,
+            TimeSpan.FromSeconds(1));
+
+        Assert.True(result.IsPartial);
+        Assert.True(result.IsDurationLimited);
+        Assert.False(result.IsForecastLimited);
     }
 
     [Fact]
