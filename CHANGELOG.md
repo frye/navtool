@@ -51,6 +51,15 @@ bridge launch guidance and automated validation.
 
 ### Added
 
+- Added an always-visible calculation rail with aggregate weather/routing
+  progress and cancellation, plus automatic calculation when the final endpoint
+  is placed or an existing endpoint changes.
+  ([#47](https://github.com/frye/navtool/pull/47),
+  [#54](https://github.com/frye/navtool/pull/54))
+- Added an anchored route-point telemetry card with UTC arrival, boat speed,
+  true and apparent wind values, and compact port/starboard apparent wind angle.
+  ([#55](https://github.com/frye/navtool/pull/55),
+  [#68](https://github.com/frye/navtool/pull/68))
 - Added production ECMWF IFS 0.25-degree wind acquisition from ECMWF Open Data,
   including rolling-cycle discovery, indexed 10u/10v byte-range downloads,
   resumable persistent caching, native route-corridor loading, and normal
@@ -70,6 +79,11 @@ bridge launch guidance and automated validation.
 
 ### Improved
 
+- Synchronized route inspection, timeline selection, popup telemetry, active
+  weather model, and map wind overlays, and added a one-shot radial toggle to
+  refresh from the newest available forecast run.
+  ([#60](https://github.com/frye/navtool/pull/60),
+  [#61](https://github.com/frye/navtool/pull/61))
 - Added ABI-v6 solver-aware progress, lattice search markers and diagnostics,
   configured beam/lattice dispatch, and schema-v3 result attribution while
   preserving legacy bridge exports and route-plan migration.
@@ -111,11 +125,11 @@ bridge launch guidance and automated validation.
 ### Known limitations
 
 - Navtool is planning software, not navigation-certified guidance. Bundled
-  coastline data is generalized and can omit small or recent hazards; routing
-  still does not model currents, waves, traffic, restricted areas, depths, or
-  safety limits.
-- Online ECMWF support is wind-only. Routing still does not model waves or
-  currents, and ECMWF global field downloads can be larger than NOAA subsets.
+  coastline data is generalized and can omit small or recent hazards. Currents,
+  waves, and exclusion zones are modeled only when explicitly enabled with
+  user-supplied data; traffic, depths, and safety limits are not modeled.
+- Online ECMWF support is wind-only. Navtool does not acquire wave or current
+  forecasts, and ECMWF global field downloads can be larger than NOAA subsets.
 - Professional lattice routing is serial and does not produce beam-style
   isochrones or destination fronts; Navtool displays its search point and
   provisional route instead.
