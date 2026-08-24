@@ -55,6 +55,22 @@ public sealed class RoutePlanJsonRepositoryTests
     }
 
     [Fact]
+    public async Task Duration_limited_completion_and_reason_round_trip()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = WithResult(CreatePlan(), completion: RouteCompletion.DurationExhausted);
+
+        await repository.SaveAsync(plan);
+        var loaded = await repository.OpenAsync(plan.Id);
+
+        var leg = loaded.Results[0].Legs[0];
+        Assert.Equal(RouteLegOutcomeReason.DurationExhausted, leg.Reason);
+        Assert.Equal(RouteCompletion.DurationExhausted, leg.Route!.Completion);
+        Assert.True(leg.Route.IsDurationLimited);
+    }
+
+    [Fact]
     public async Task Future_and_malformed_schemas_fail_visibly()
     {
         using var directory = new TestDirectory();
@@ -371,6 +387,26 @@ public sealed class RoutePlanJsonRepositoryTests
     }
 
     [Fact]
+    public async Task Version_four_documents_are_migrated_without_data_changes()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = WithResult(CreatePlan());
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        root["schemaVersion"] = 4;
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+
+        var loaded = await repository.OpenAsync(plan.Id);
+
+        Assert.Equal(plan.Name, loaded.Name);
+        Assert.Equal(
+            plan.Results[0].Legs[0].Route!.Completion,
+            loaded.Results[0].Legs[0].Route!.Completion);
+    }
+
+    [Fact]
     public async Task Environment_metadata_diagnostics_and_point_audit_round_trip()
     {
         using var directory = new TestDirectory();
@@ -444,7 +480,8 @@ public sealed class RoutePlanJsonRepositoryTests
         RoutePlan plan,
         RouteSolver solver = RouteSolver.IsochroneBeam,
         RouteLatticeDiagnostics? latticeDiagnostics = null,
-        bool environment = false)
+        bool environment = false,
+        RouteCompletion completion = RouteCompletion.DestinationReached)
     {
         var pointEnvironment = environment
             ? new RoutePointEnvironment(
@@ -501,7 +538,7 @@ public sealed class RoutePlanJsonRepositoryTests
                     new RoutePoint(to.Coordinate, now.AddHours(1), 90, 6, 15, 180, 50, pointEnvironment)
                 ],
                 new RouteDiagnostics(1, 2, 1, 1, TimeSpan.FromSeconds(2)),
-                RouteCompletion.DestinationReached,
+                completion,
                 new RouteLandAvoidance(LandAvoidanceStatus.Applied, Attribution: "Test"),
                 solver,
                 latticeDiagnostics,
@@ -510,7 +547,7 @@ public sealed class RoutePlanJsonRepositoryTests
             return new RouteLegResult(
                 leg.Id,
                 RouteLegOutcomeState.Succeeded,
-                RouteLegOutcomeReason.CalculationSucceeded,
+                completion.ToLegOutcomeReason(),
                 route);
         });
         return plan.WithResult(new RoutePlanResult(session, outcomes));

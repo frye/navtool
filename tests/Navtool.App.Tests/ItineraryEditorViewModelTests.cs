@@ -279,6 +279,121 @@ public sealed class ItineraryEditorViewModelTests
         Assert.Equal(departure, reopened.CurrentPositionDepartureTimeUtc);
     }
 
+    [Fact]
+    public async Task Reopening_a_plan_projects_the_stored_utc_departure_onto_the_local_pickers()
+    {
+        var zone = CreateFixedZone(TimeSpan.FromHours(-7));
+        var repository = new MemoryRepository();
+        var editor = new ItineraryEditorViewModel(repository, zone);
+        editor.SetEndpoints(new Coordinate(0, 0), new Coordinate(0, 3));
+
+        var departure = new DateTimeOffset(2026, 8, 1, 9, 0, 0, TimeSpan.Zero);
+        Assert.True(editor.PlaceCurrentPosition(new Coordinate(0.1, 0.9), departure, out var placeError), placeError);
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        var reopened = new ItineraryEditorViewModel(repository, zone);
+        await reopened.RefreshSavedPlansCommand.ExecuteAsync(null);
+        reopened.SelectedSavedPlan = reopened.SavedPlans.Single();
+        await reopened.OpenCommand.ExecuteAsync(null);
+
+        Assert.Equal(departure, reopened.CurrentPositionDepartureTimeUtc);
+        Assert.Equal(new DateTime(2026, 8, 1), reopened.CurrentPositionDepartureDate!.Value.Date);
+        Assert.Equal(TimeSpan.FromHours(2), reopened.CurrentPositionDepartureTimeOfDay);
+        Assert.Contains("2026-08-01 02:00 local", reopened.CurrentPositionDepartureDisplay);
+        Assert.Contains("2026-08-01 09:00 UTC", reopened.CurrentPositionDepartureDisplay);
+    }
+
+    [Fact]
+    public void Editing_the_local_departure_pickers_rewrites_the_stored_utc_departure()
+    {
+        var zone = CreateFixedZone(TimeSpan.FromHours(-7));
+        var editor = new ItineraryEditorViewModel(localTimeZone: zone);
+        editor.SetEndpoints(new Coordinate(0, 0), new Coordinate(0, 3));
+        Assert.True(editor.PlaceCurrentPosition(
+            new Coordinate(0.1, 0.9),
+            new DateTimeOffset(2026, 8, 1, 9, 0, 0, TimeSpan.Zero),
+            out var placeError), placeError);
+
+        var revisionBeforeEdit = editor.CalculationRevision;
+        editor.IsDirty = false;
+
+        editor.CurrentPositionDepartureDate = new DateTimeOffset(2026, 8, 4, 0, 0, 0, TimeSpan.FromHours(-7));
+        editor.CurrentPositionDepartureTimeOfDay = TimeSpan.FromHours(11);
+
+        Assert.Equal(
+            new DateTimeOffset(2026, 8, 4, 18, 0, 0, TimeSpan.Zero),
+            editor.CurrentPositionDepartureTimeUtc);
+        Assert.True(editor.IsDirty);
+        Assert.True(editor.CalculationRevision > revisionBeforeEdit);
+        Assert.Null(editor.ValidationMessage);
+    }
+
+    [Fact]
+    public void Editing_the_local_departure_pickers_without_a_current_position_is_a_no_op()
+    {
+        var editor = new ItineraryEditorViewModel(
+            localTimeZone: CreateFixedZone(TimeSpan.FromHours(-7)));
+        editor.SetEndpoints(new Coordinate(0, 0), new Coordinate(0, 3));
+        editor.IsDirty = false;
+
+        editor.CurrentPositionDepartureTimeOfDay = TimeSpan.FromHours(11);
+
+        Assert.False(editor.HasCurrentPosition);
+        Assert.Null(editor.CurrentPositionDepartureTimeUtc);
+        Assert.False(editor.IsDirty);
+        Assert.Equal("Departs: not set", editor.CurrentPositionDepartureDisplay);
+    }
+
+    [Fact]
+    public void A_nonexistent_local_departure_time_is_reported_and_leaves_the_plan_unchanged()
+    {
+        var editor = new ItineraryEditorViewModel(localTimeZone: CreateDaylightZone());
+        editor.SetEndpoints(new Coordinate(0, 0), new Coordinate(0, 3));
+        var departure = new DateTimeOffset(2026, 8, 1, 9, 0, 0, TimeSpan.Zero);
+        Assert.True(editor.PlaceCurrentPosition(new Coordinate(0.1, 0.9), departure, out var placeError), placeError);
+
+        editor.CurrentPositionDepartureDate = new DateTimeOffset(2026, 3, 8, 0, 0, 0, TimeSpan.FromHours(-5));
+        var departureBeforeInvalidEdit = editor.CurrentPositionDepartureTimeUtc;
+
+        editor.CurrentPositionDepartureTimeOfDay = new TimeSpan(2, 30, 0);
+
+        Assert.Contains("does not exist", editor.ValidationMessage);
+        Assert.Equal(departureBeforeInvalidEdit, editor.CurrentPositionDepartureTimeUtc);
+    }
+
+    private static TimeZoneInfo CreateFixedZone(TimeSpan offset)
+    {
+        var id = $"Test {offset.TotalHours:+0;-0}";
+        return TimeZoneInfo.CreateCustomTimeZone(id, offset, id, id);
+    }
+
+    private static TimeZoneInfo CreateDaylightZone()
+    {
+        var daylightStart = TimeZoneInfo.TransitionTime.CreateFloatingDateRule(
+            new DateTime(1, 1, 1, 2, 0, 0),
+            3,
+            2,
+            DayOfWeek.Sunday);
+        var daylightEnd = TimeZoneInfo.TransitionTime.CreateFloatingDateRule(
+            new DateTime(1, 1, 1, 2, 0, 0),
+            11,
+            1,
+            DayOfWeek.Sunday);
+        var rule = TimeZoneInfo.AdjustmentRule.CreateAdjustmentRule(
+            new DateTime(2020, 1, 1),
+            new DateTime(2030, 12, 31),
+            TimeSpan.FromHours(1),
+            daylightStart,
+            daylightEnd);
+        return TimeZoneInfo.CreateCustomTimeZone(
+            "Itinerary Test Eastern",
+            TimeSpan.FromHours(-5),
+            "Itinerary Test Eastern",
+            "Itinerary Test Standard",
+            "Itinerary Test Daylight",
+            [rule]);
+    }
+
     private static RoutePlan CreatePlanWithPendingResult()
     {
         var plan = new RoutePlan(

@@ -97,7 +97,8 @@ public enum RoutePlanRoutingUnitStatus
     Failed,
     Cancelled,
     Blocked,
-    OutsideForecastWindow
+    OutsideForecastWindow,
+    DurationLimited
 }
 
 public sealed record RoutePlanRoutingProgress(
@@ -118,7 +119,8 @@ public enum RoutePlanModelStatus
     ForecastLimited,
     Failed,
     Cancelled,
-    OutsideForecastWindow
+    OutsideForecastWindow,
+    DurationLimited
 }
 
 public sealed record RoutePlanModelOutcome(
@@ -286,13 +288,33 @@ public sealed class RoutePlanRoutingWorkflow
 
                     if (outcome.Route is { } acceptedRoute)
                     {
-                        var limited = acceptedRoute.IsForecastLimited;
+                        var limited = acceptedRoute.IsPartial;
+                        var outcomeReason = acceptedRoute.Completion.ToLegOutcomeReason();
+                        var unitStatus = acceptedRoute.Completion switch
+                        {
+                            RouteCompletion.DestinationReached =>
+                                RoutePlanRoutingUnitStatus.Succeeded,
+                            RouteCompletion.ForecastExhausted =>
+                                RoutePlanRoutingUnitStatus.ForecastLimited,
+                            RouteCompletion.DurationExhausted =>
+                                RoutePlanRoutingUnitStatus.DurationLimited,
+                            _ => throw new ArgumentOutOfRangeException(
+                                nameof(acceptedRoute.Completion))
+                        };
+                        var limitationMessage = acceptedRoute.Completion switch
+                        {
+                            RouteCompletion.DestinationReached => null,
+                            RouteCompletion.ForecastExhausted =>
+                                "Forecast coverage ended before the destination.",
+                            RouteCompletion.DurationExhausted =>
+                                "The maximum route duration ended before the destination.",
+                            _ => throw new ArgumentOutOfRangeException(
+                                nameof(acceptedRoute.Completion))
+                        };
                         modelState.Legs[legIndex] = new RouteLegResult(
                             leg.Id,
                             RouteLegOutcomeState.Succeeded,
-                            limited
-                                ? RouteLegOutcomeReason.ForecastExhausted
-                                : RouteLegOutcomeReason.CalculationSucceeded,
+                            outcomeReason,
                             acceptedRoute);
                         if (!await PublishAsync(
                                 modelState,
@@ -305,20 +327,21 @@ public sealed class RoutePlanRoutingWorkflow
                         progressState.Report(
                             modelState.Selection.Model,
                             legIndex,
-                            limited
-                                ? RoutePlanRoutingUnitStatus.ForecastLimited
-                                : RoutePlanRoutingUnitStatus.Succeeded,
+                            unitStatus,
                             1,
-                            limited ? "Forecast coverage ended before the destination." : null);
+                            limitationMessage);
                         if (limited)
                         {
+                            var blockedDetail = acceptedRoute.IsForecastLimited
+                                ? "Blocked because the prior leg exhausted forecast coverage."
+                                : "Blocked because the prior leg exhausted the maximum route duration.";
                             await MarkRemainingAsync(
                                 modelState,
                                 legIndex + 1,
                                 RouteLegOutcomeState.Blocked,
                                 RouteLegOutcomeReason.BlockedByPriorFailure,
                                 RoutePlanRoutingUnitStatus.Blocked,
-                                "Blocked because the prior leg exhausted forecast coverage.",
+                                blockedDetail,
                                 PublishAsync,
                                 progressState).ConfigureAwait(false);
                             return;
@@ -528,6 +551,11 @@ public sealed class RoutePlanRoutingWorkflow
         if (legs.Any(leg => leg.Reason == RouteLegOutcomeReason.ForecastExhausted))
         {
             return RoutePlanModelStatus.ForecastLimited;
+        }
+
+        if (legs.Any(leg => leg.Reason == RouteLegOutcomeReason.DurationExhausted))
+        {
+            return RoutePlanModelStatus.DurationLimited;
         }
 
         if (legs.Any(leg => leg.State == RouteLegOutcomeState.Failed))

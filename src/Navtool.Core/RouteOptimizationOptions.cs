@@ -332,6 +332,29 @@ public sealed record RouteOptimizationOptions
             Lattice,
             environment);
 
+    /// <summary>
+    /// Returns a copy of these options that uses <paramref name="solver"/>, leaving every
+    /// other setting untouched. <see cref="Solver"/> is assigned in the constructor rather
+    /// than through an init accessor, so a <c>with</c> expression cannot change it.
+    /// </summary>
+    public RouteOptimizationOptions WithSolver(RouteSolver solver) =>
+        solver == Solver
+            ? this
+            : new RouteOptimizationOptions(
+                solver,
+                Maneuver,
+                HeadingAugmentation,
+                WindSampling,
+                MidpointWindSamplingThreshold,
+                PolarAngleInterpolation,
+                MaximumTrueWindSpeedKnots,
+                AbovePolarRange,
+                PruningStrategy,
+                PruningSectorDegrees,
+                DestinationFront,
+                Lattice,
+                Environment);
+
     public static RouteOptimizationOptions Balanced { get; } = new();
 
     public static RouteOptimizationOptions UpstreamCompatible { get; } = new(

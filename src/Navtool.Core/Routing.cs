@@ -854,8 +854,9 @@ public sealed record RouteCalculationSnapshot
 
 public enum RouteCompletion
 {
-    DestinationReached,
-    ForecastExhausted
+    DestinationReached = 0,
+    ForecastExhausted = 1,
+    DurationExhausted = 2
 }
 
 public enum LandAvoidanceStatus
@@ -1031,7 +1032,13 @@ public sealed record RouteResult
     /// </summary>
     public bool ExceedsRequestedArrival => ArrivalTime > Request.LatestArrivalTime;
 
+    public bool IsComplete => Completion == RouteCompletion.DestinationReached;
+
+    public bool IsPartial => !IsComplete;
+
     public bool IsForecastLimited => Completion == RouteCompletion.ForecastExhausted;
+
+    public bool IsDurationLimited => Completion == RouteCompletion.DurationExhausted;
 
     public RouteResult WithLandAvoidance(RouteLandAvoidance landAvoidance)
     {

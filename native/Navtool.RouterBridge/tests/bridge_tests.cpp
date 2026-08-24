@@ -324,20 +324,18 @@ uint8_t capture_v6_progress(
     capture->saw_lattice_counters =
         capture->saw_lattice_counters ||
         progress->lattice_search.settled_labels > 0U;
-    const int64_t route_end_time =
-        progress->provisional_route_point_count > 0U
-        ? progress->provisional_route_points[
-              progress->provisional_route_point_count - 1U]
-              .utc_epoch_seconds
-        : 0;
+    // Lattice progress time names the active settled label, while the provisional
+    // route tracks the globally closest label; A* does not order those by time.
     capture->valid =
         capture->valid &&
         progress->solver == capture->expected_solver &&
         progress->provisional_route_points != nullptr &&
         progress->provisional_route_point_count > 0U &&
-        (is_lattice
-             ? route_end_time <= progress->progress_utc_epoch_seconds
-             : route_end_time == progress->progress_utc_epoch_seconds) &&
+        (is_lattice ||
+         progress->provisional_route_points[
+             progress->provisional_route_point_count - 1U]
+                 .utc_epoch_seconds ==
+             progress->progress_utc_epoch_seconds) &&
         (is_lattice
              ? progress->contour_point_count == 0U &&
                    progress->front_point_count == 0U &&
@@ -1016,6 +1014,43 @@ int main() {
         navtool_router_bridge_free_v1(route_json);
         route_json = nullptr;
         route_json_length = 0U;
+
+        // Regression: a lattice search that runs up against the forecast horizon
+        // must degrade to a forecast-limited route instead of aborting. This was
+        // fixed upstream for v0.4.3 after speculative midpoint wind probes could
+        // land past the final forecast step. See patches/README.md.
+        for (const int32_t search_algorithm : {0, 1}) {  // 0 = A*, 1 = Dijkstra
+            auto horizon_options = balanced_options;
+            horizon_options.solver =
+                NAVTOOL_ROUTER_SOLVER_TIME_DEPENDENT_LATTICE_V6;
+            horizon_options.lattice_search_algorithm = search_algorithm;
+            int64_t late_departure =
+                metadata.last_valid_utc_epoch_seconds - 3600;
+            const int32_t horizon_status =
+                navtool_router_calculate_route_streaming_v6(
+                    forecast,
+                    48.0,
+                    -123.75,
+                    48.5,
+                    -123.25,
+                    &late_departure,
+                    &horizon_options,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    &route_json,
+                    &route_json_length);
+            require(
+                horizon_status != NAVTOOL_ROUTER_STATUS_OUTSIDE_FORECAST_V1,
+                "lattice search near the forecast horizon reported "
+                "OUTSIDE_FORECAST instead of degrading gracefully");
+            if (route_json != nullptr) {
+                navtool_router_bridge_free_v1(route_json);
+            }
+            route_json = nullptr;
+            route_json_length = 0U;
+        }
 
         size_t cancellation_progress_count = 0U;
         require(

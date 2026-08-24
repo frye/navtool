@@ -366,6 +366,33 @@ public sealed class NativeBridgeContractTests
     }
 
     [Fact]
+    public void Duration_limited_route_is_partial_but_not_forecast_limited()
+    {
+        var departure = new DateTimeOffset(2026, 7, 15, 0, 0, 0, TimeSpan.Zero);
+        var request = new RouteRequest(
+            "route-duration-limited",
+            new Coordinate(40, -60),
+            new Coordinate(45, -55),
+            departure,
+            departure.AddHours(10));
+        var result = new RouteResult(
+            request,
+            ForecastModel.NoaaGfs,
+            new[]
+            {
+                new RoutePoint(request.Origin, departure, 45, 6, 15, 200, 0),
+                new RoutePoint(new Coordinate(42, -58), departure.AddHours(8), 45, 6, 15, 200, 20)
+            },
+            new RouteDiagnostics(1, 2, 1, 2),
+            RouteCompletion.DurationExhausted);
+
+        Assert.True(result.IsPartial);
+        Assert.True(result.IsDurationLimited);
+        Assert.False(result.IsForecastLimited);
+        Assert.False(result.IsComplete);
+    }
+
+    [Fact]
     public void Route_result_still_rejects_empty_and_disordered_points()
     {
         var departure = new DateTimeOffset(2026, 7, 15, 0, 0, 0, TimeSpan.Zero);

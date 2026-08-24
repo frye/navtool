@@ -58,6 +58,40 @@ public sealed class MainWindowLayoutTests
     }
 
     [AvaloniaFact]
+    public void Departure_inputs_are_labelled_local_and_echo_the_resolved_utc_instant()
+    {
+        var window = CreateWindow();
+
+        try
+        {
+            window.Show();
+            window.SetPlanningDrawerOpen(true);
+            var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
+            var preview = Assert.IsType<TextBlock>(
+                window.FindControl<TextBlock>("DepartureUtcPreviewText"));
+            var currentPositionDeparture = Assert.IsType<TextBlock>(
+                window.FindControl<TextBlock>("CurrentPositionDepartureDisplay"));
+
+            Assert.NotNull(window.FindControl<DatePicker>("DepartureDatePicker"));
+            Assert.NotNull(window.FindControl<TimePicker>("DepartureTimePicker"));
+            Assert.NotNull(window.FindControl<DatePicker>("CurrentPositionDatePicker"));
+            Assert.NotNull(window.FindControl<TimePicker>("CurrentPositionTimePicker"));
+
+            viewModel.DepartureDate = new DateTimeOffset(2026, 8, 4, 0, 0, 0, TimeSpan.Zero);
+            viewModel.DepartureTime = TimeSpan.FromHours(11);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(viewModel.DepartureUtcPreview, preview.Text);
+            Assert.Contains("UTC", preview.Text);
+            Assert.Equal("Departs: not set", currentPositionDeparture.Text);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void Lattice_controls_require_explicit_professional_solver_selection()
     {
         var window = CreateWindow();

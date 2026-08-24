@@ -159,7 +159,7 @@ public sealed class SharedRouteTimeline
 
     private static TimeSpan? GetStopover(RouteLegVisualization leg) =>
         leg.Reason == RouteLegOutcomeReason.CalculationSucceeded &&
-        !leg.Route!.IsForecastLimited
+        leg.Route!.IsComplete
             ? leg.StopoverAfter
             : null;
 

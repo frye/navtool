@@ -18,25 +18,33 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
         if (currentVersion != RoutePlanJsonRepository.CurrentSchemaVersion)
         {
             throw new InvalidDataException(
-                $"Route plan schema version {fromVersion} is not supported by this application version.");
+                $"Route plan schema version {currentVersion} is not supported by this application version.");
+        }
+
+        if (fromVersion == 4)
+        {
+            return MigrateV4ToV5(document);
         }
 
         if (fromVersion == 3)
         {
-            return MigrateV3ToV4(document);
+            using var versionFour = MigrateV3ToV4(document);
+            return MigrateV4ToV5(versionFour);
         }
 
         if (fromVersion == 2)
         {
             using var versionThree = MigrateV2ToV3(document);
-            return MigrateV3ToV4(versionThree);
+            using var versionFour = MigrateV3ToV4(versionThree);
+            return MigrateV4ToV5(versionFour);
         }
 
         if (fromVersion == 1)
         {
             using var versionTwo = MigrateV1ToV2(document);
             using var versionThree = MigrateV2ToV3(versionTwo);
-            return MigrateV3ToV4(versionThree);
+            using var versionFour = MigrateV3ToV4(versionThree);
+            return MigrateV4ToV5(versionFour);
         }
 
         throw new InvalidDataException(
@@ -124,6 +132,14 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
         return JsonDocument.Parse(root.ToJsonString());
     }
 
+    private static JsonDocument MigrateV4ToV5(JsonDocument document)
+    {
+        var root = JsonNode.Parse(document.RootElement.GetRawText()) as JsonObject ??
+                   throw new InvalidDataException("A route plan document must be a JSON object.");
+        root["schemaVersion"] = 5;
+        return JsonDocument.Parse(root.ToJsonString());
+    }
+
     private static IEnumerable<JsonObject> EnumerateRoutes(JsonObject root)
     {
         if (root["plan"]?["results"] is not JsonArray results)
@@ -194,7 +210,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
 
 public sealed class RoutePlanJsonRepository : IRoutePlanRepository
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,

@@ -332,6 +332,9 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     private bool _hasEcmwfWeather;
 
+    [ObservableProperty]
+    private string? _departureUtcPreview;
+
     public MainViewModel()
         : this(null, null, TimeProvider.System, TimeZoneInfo.Local, new OsmTileOptions())
     {
@@ -465,7 +468,7 @@ public partial class MainViewModel : ViewModelBase
         var localNow = TimeZoneInfo.ConvertTime(_timeProvider.GetUtcNow(), _localTimeZone);
         _departureDate = new DateTimeOffset(localNow.Date, localNow.Offset);
         _departureTime = localNow.TimeOfDay;
-        Itinerary = new ItineraryEditorViewModel(routePlanRepository);
+        Itinerary = new ItineraryEditorViewModel(routePlanRepository, _localTimeZone);
         Itinerary.ItineraryChanged += OnItineraryChanged;
         Itinerary.EndpointChanged += OnEndpointChanged;
         Itinerary.MapPlacementStarted += OnMapPlacementStarted;
@@ -486,6 +489,7 @@ public partial class MainViewModel : ViewModelBase
         _mapLayers = new RouteMapLayers(Map);
         UpdateWaypointLayers();
         UtcOffsetDisplay = FormatUtcOffset(localTimeZone.GetUtcOffset(timeProvider.GetLocalNow()));
+        UpdateDepartureUtcPreview();
         Map.Navigator.ZoomToBox(CreateDefaultChartExtent());
         UpdateForecastAreaSummary();
     }
@@ -681,7 +685,7 @@ public partial class MainViewModel : ViewModelBase
                    $"true wind {point.TrueWindSpeedKnots:0.0} kt @ {point.TrueWindDirectionDegrees:0}° · " +
                    $"cumulative {point.CumulativeDistanceNauticalMiles:0.0} NM\n" +
                    $"{ModelName(selection.Route.Model)} · " +
-                   $"{(selection.Route.IsForecastLimited ? "forecast-limited endpoint" : "arrival")} " +
+                   $"{RouteEndpointLabel(selection.Route)} " +
                    $"{selection.Route.ArrivalTime:yyyy-MM-dd HH:mm} UTC · " +
                    $"distance {selection.Route.Points[^1].CumulativeDistanceNauticalMiles:0.0} NM · {forecast}" +
                    FormatEnvironmentAudit(selection.Route);
@@ -1355,8 +1359,23 @@ public partial class MainViewModel : ViewModelBase
 
     private void RefreshExpiredDeparture()
     {
-        if (Itinerary.HasCurrentPosition ||
-            !LocalDepartureConverter.TryConvertToUtc(
+        var nowUtc = _timeProvider.GetUtcNow();
+        if (Itinerary.HasCurrentPosition)
+        {
+            // A placed current position owns the active leg departure, so it needs the same
+            // roll-forward the plain departure fields already get. Without this a reopened plan
+            // keeps a stale UTC departure and the router is asked for weather it cannot have.
+            if (Itinerary.CurrentPositionDepartureTimeUtc is { } currentDeparture &&
+                currentDeparture < nowUtc &&
+                !Itinerary.UpdateCurrentPositionDeparture(nowUtc, _localTimeZone, out var error))
+            {
+                ErrorMessage = error;
+            }
+
+            return;
+        }
+
+        if (!LocalDepartureConverter.TryConvertToUtc(
                 DepartureDate,
                 DepartureTime,
                 _localTimeZone,
@@ -1366,7 +1385,6 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        var nowUtc = _timeProvider.GetUtcNow();
         if (departureUtc >= nowUtc)
         {
             return;
@@ -1568,6 +1586,7 @@ public partial class MainViewModel : ViewModelBase
                         $"{ModelName(outcome.Model)} failed: {leg.Detail ?? LegStatusName(leg)}");
                 }
                 else if (leg.Reason == RouteLegOutcomeReason.ForecastExhausted ||
+                         leg.Reason == RouteLegOutcomeReason.DurationExhausted ||
                          leg.State == RouteLegOutcomeState.OutsideForecastWindow)
                 {
                     warnings.Add(
@@ -1603,9 +1622,32 @@ public partial class MainViewModel : ViewModelBase
     partial void OnHasEcmwfWeatherChanged(bool value) =>
         ActivateEcmwfWeatherCommand.NotifyCanExecuteChanged();
 
-    partial void OnDepartureDateChanged(DateTimeOffset? value) => UpdateForecastAreaSummary();
+    partial void OnDepartureDateChanged(DateTimeOffset? value)
+    {
+        UpdateDepartureUtcPreview();
+        UpdateForecastAreaSummary();
+    }
 
-    partial void OnDepartureTimeChanged(TimeSpan? value) => UpdateForecastAreaSummary();
+    partial void OnDepartureTimeChanged(TimeSpan? value)
+    {
+        UpdateDepartureUtcPreview();
+        UpdateForecastAreaSummary();
+    }
+
+    /// <summary>
+    /// Echoes the UTC instant the local departure selection resolves to. The router and every
+    /// status message speak UTC, so showing both removes the ambiguity that lets a user pick a
+    /// departure that is already in the past.
+    /// </summary>
+    private void UpdateDepartureUtcPreview() =>
+        DepartureUtcPreview = LocalDepartureConverter.TryConvertToUtc(
+            DepartureDate,
+            DepartureTime,
+            _localTimeZone,
+            out var departureUtc,
+            out var error)
+            ? $"= {departureUtc:yyyy-MM-dd HH:mm} UTC"
+            : error;
 
     partial void OnPassageDaysChanged(int value) => UpdateForecastAreaSummary();
 
@@ -1903,6 +1945,8 @@ public partial class MainViewModel : ViewModelBase
                 AddNewerRunWarning(warnings, outcome.Model, [outcome.Acquisition]);
             }
 
+            AddSolverFallbackWarning(warnings, outcome.Model, outcome.SolverFallback);
+
             if (outcome.Route is not null)
             {
                 var route = outcome.Route;
@@ -1916,6 +1960,15 @@ public partial class MainViewModel : ViewModelBase
                         $"available forecast after {route.ArrivalTime:yyyy-MM-dd HH:mm} UTC. " +
                         "The displayed route to the latest forecast point is the best estimate for now; " +
                         "the destination was not reached.");
+                }
+                else if (route.IsDurationLimited)
+                {
+                    status =
+                        $"duration limit reached · best estimate through {route.ArrivalTime:MMM d HH:mm} UTC";
+                    warnings.Add(
+                        $"{ModelName(outcome.Model)} route calculation reached its maximum route duration " +
+                        $"at {route.ArrivalTime:yyyy-MM-dd HH:mm} UTC. The displayed partial route is the " +
+                        "best estimate within that duration; the destination was not reached.");
                 }
                 else
                 {
@@ -1964,9 +2017,7 @@ public partial class MainViewModel : ViewModelBase
         foreach (var outcome in result.Outcomes)
         {
             var reason = outcome.Route is not null
-                ? outcome.Route.IsForecastLimited
-                    ? RouteLegOutcomeReason.ForecastExhausted
-                    : RouteLegOutcomeReason.CalculationSucceeded
+                ? outcome.Route.Completion.ToLegOutcomeReason()
                 : outcome.Failure!.Stage switch
                 {
                     ModelRouteFailureStage.ForecastAcquisition =>
@@ -2002,19 +2053,42 @@ public partial class MainViewModel : ViewModelBase
         ErrorMessage = failures.Count == 0 ? null : string.Join(Environment.NewLine, failures);
         WarningMessage = warnings.Count == 0 ? null : string.Join(Environment.NewLine, warnings);
         var forecastLimitedCount = routes.Count(route => route.IsForecastLimited);
+        var durationLimitedCount = routes.Count(route => route.IsDurationLimited);
+        var partialCount = forecastLimitedCount + durationLimitedCount;
         UpdateLandAvoidanceWarning(routes);
-        StatusMessage = (routes.Length, forecastLimitedCount, failures.Count) switch
+        StatusMessage = (routes.Length, partialCount, failures.Count) switch
         {
             (0, _, _) => "No model produced a route.",
-            (1, 1, _) => "A route estimate is available through the latest forecast point.",
+            (1, 1, _) when forecastLimitedCount == 1 =>
+                "A route estimate is available through the latest forecast point.",
+            (1, 1, _) =>
+                "A partial route estimate is available through the maximum route duration.",
             (1, 0, > 0) => "One route is available; another selected model failed.",
             (1, 0, _) => "Route calculation complete.",
-            (_, > 0, > 0) => "Route estimates are available; forecast coverage or another model limited the result.",
-            (_, > 0, _) => "Routes are available; at least one ends at its latest forecast point.",
+            (_, > 0, > 0) =>
+                "Route estimates are available; a route limit or another model limited the result.",
+            (_, > 0, _) => "Routes are available; at least one is partial.",
             _ => "Both model routes are available."
         };
         OnPropertyChanged(nameof(SelectedRouteDetails));
         UpdateWeatherAvailability();
+    }
+
+    private static void AddSolverFallbackWarning(
+        List<string> warnings,
+        ForecastModel model,
+        string? solverFallback)
+    {
+        if (string.IsNullOrWhiteSpace(solverFallback))
+        {
+            return;
+        }
+
+        var message = $"{ModelName(model)}: {solverFallback}";
+        if (!warnings.Contains(message))
+        {
+            warnings.Add(message);
+        }
     }
 
     private static void AddCalculationWarning(List<string> warnings, string? warning)
@@ -2132,9 +2206,7 @@ public partial class MainViewModel : ViewModelBase
                 from,
                 to,
                 RouteLegOutcomeState.Succeeded,
-                route.IsForecastLimited
-                    ? RouteLegOutcomeReason.ForecastExhausted
-                    : RouteLegOutcomeReason.CalculationSucceeded,
+                route.Completion.ToLegOutcomeReason(),
                 route,
                 null,
                 plan?.SailedLegIds.Contains(legId) is true,
@@ -2178,7 +2250,7 @@ public partial class MainViewModel : ViewModelBase
         var outcome = leg.Route is not { } route
             ? $"{state}{sailed}{(string.IsNullOrWhiteSpace(leg.Detail) ? string.Empty : $" · {leg.Detail}")}"
             : $"{state}{sailed} · depart {route.Request.DepartureTime:yyyy-MM-dd HH:mm} UTC · " +
-              $"{(route.IsForecastLimited ? "forecast endpoint" : "arrive")} {route.ArrivalTime:yyyy-MM-dd HH:mm} UTC · " +
+              $"{RouteEndpointLabel(route)} {route.ArrivalTime:yyyy-MM-dd HH:mm} UTC · " +
               $"{FormatDuration(route.ArrivalTime - route.Request.DepartureTime)} · " +
               $"{route.Points[^1].CumulativeDistanceNauticalMiles:0.0} NM" +
               $"{(route.LandAvoidance.HasWarning ? $" · warning: {route.LandAvoidance.Warning}" : string.Empty)}";
@@ -2193,11 +2265,22 @@ public partial class MainViewModel : ViewModelBase
                $"{(comparison.Length == 0 ? string.Empty : $"\nComparison: {string.Join(" · ", comparison)}")}\n";
     }
 
+    private static string RouteEndpointLabel(RouteResult route) =>
+        route.Completion switch
+        {
+            RouteCompletion.DestinationReached => "arrival",
+            RouteCompletion.ForecastExhausted => "forecast-limited endpoint",
+            RouteCompletion.DurationExhausted => "duration-limited endpoint",
+            _ => throw new ArgumentOutOfRangeException(nameof(route.Completion))
+        };
+
     private static string VisualizationStatusName(RouteLegVisualization leg) =>
         leg.IsSailed ? "sailed" : leg.State switch
         {
             RouteLegOutcomeState.Succeeded
                 when leg.Reason == RouteLegOutcomeReason.ForecastExhausted => "forecast-limited",
+            RouteLegOutcomeState.Succeeded
+                when leg.Reason == RouteLegOutcomeReason.DurationExhausted => "duration-limited",
             RouteLegOutcomeState.Succeeded => "complete",
             RouteLegOutcomeState.Failed => "failed",
             RouteLegOutcomeState.Cancelled => "cancelled",
@@ -2876,6 +2959,7 @@ public partial class MainViewModel : ViewModelBase
         RoutePlanRoutingUnitStatus.CalculatingRoute => "routing",
         RoutePlanRoutingUnitStatus.Succeeded => "complete",
         RoutePlanRoutingUnitStatus.ForecastLimited => "forecast-limited",
+        RoutePlanRoutingUnitStatus.DurationLimited => "duration-limited",
         RoutePlanRoutingUnitStatus.Failed => "failed",
         RoutePlanRoutingUnitStatus.Cancelled => "cancelled",
         RoutePlanRoutingUnitStatus.Blocked => "blocked",
@@ -2894,6 +2978,8 @@ public partial class MainViewModel : ViewModelBase
         {
             RouteLegOutcomeState.Succeeded
                 when leg.Reason == RouteLegOutcomeReason.ForecastExhausted => "forecast-limited",
+            RouteLegOutcomeState.Succeeded
+                when leg.Reason == RouteLegOutcomeReason.DurationExhausted => "duration-limited",
             RouteLegOutcomeState.Succeeded => "complete",
             RouteLegOutcomeState.Failed => "failed",
             RouteLegOutcomeState.Cancelled => "cancelled",
