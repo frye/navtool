@@ -133,6 +133,46 @@ public sealed class ItineraryEditorViewModelTests
     }
 
     [Fact]
+    public async Task Contextual_waypoint_is_placed_selected_and_persisted_through_the_route_plan()
+    {
+        var repository = new MemoryRepository();
+        var editor = new ItineraryEditorViewModel(repository);
+        editor.SetEndpoints(new Coordinate(0, 0), new Coordinate(0, 2));
+
+        var waypoint = editor.AddWaypointAt(new Coordinate(0, 1));
+        waypoint.Name = "Lunch";
+
+        Assert.Same(waypoint, editor.SelectedWaypoint);
+        Assert.Equal(new Coordinate(0, 1), waypoint.Coordinate);
+        Assert.True(editor.IsDirty);
+        Assert.Contains("Lunch", waypoint.AccessibleName);
+        Assert.Contains("1.000° E", waypoint.AccessibleName);
+
+        await editor.SaveCommand.ExecuteAsync(null);
+        var reopened = new ItineraryEditorViewModel(repository);
+        await reopened.RefreshSavedPlansCommand.ExecuteAsync(null);
+        reopened.SelectedSavedPlan = reopened.SavedPlans.Single();
+        await reopened.OpenCommand.ExecuteAsync(null);
+
+        Assert.Equal(3, reopened.Waypoints.Count);
+        Assert.Equal("Lunch", reopened.Waypoints[1].Name);
+        Assert.Equal(new Coordinate(0, 1), reopened.Waypoints[1].Coordinate);
+    }
+
+    [Fact]
+    public void Removing_the_selected_waypoint_clears_selection()
+    {
+        var editor = new ItineraryEditorViewModel();
+        editor.SetEndpoints(new Coordinate(0, 0), new Coordinate(0, 2));
+        var waypoint = editor.AddWaypointAt(new Coordinate(0, 1));
+
+        waypoint.RemoveCommand.Execute(null);
+
+        Assert.Null(editor.SelectedWaypoint);
+        Assert.Equal(2, editor.Waypoints.Count);
+    }
+
+    [Fact]
     public async Task Save_completion_does_not_mark_concurrent_edits_clean()
     {
         var repository = new MemoryRepository

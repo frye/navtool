@@ -269,6 +269,7 @@ public sealed class MainWindowLayoutTests
             var layer = Assert.IsType<Canvas>(window.FindControl<Canvas>("RadialMenuLayer"));
             var buttons = new[]
             {
+                Assert.IsType<Button>(window.FindControl<Button>("AddWaypointRadialButton")),
                 Assert.IsType<Button>(window.FindControl<Button>("SetStartRadialButton")),
                 Assert.IsType<Button>(window.FindControl<Button>("SetDestinationRadialButton")),
                 Assert.IsType<Button>(window.FindControl<Button>("CalculateRadialButton")),
@@ -285,9 +286,13 @@ public sealed class MainWindowLayoutTests
                 Assert.Equal(VerticalAlignment.Center, button.VerticalContentAlignment);
             });
             var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
-            Assert.Same(viewModel.ForceRecalculateCommand, buttons[2].Command);
-            Assert.True(buttons[2].IsEffectivelyEnabled);
-            var refreshWeather = Assert.IsType<ToggleButton>(buttons[3]);
+            Assert.False(buttons[0].IsEffectivelyEnabled);
+            viewModel.SetEndpoints(new Coordinate(48, -123), new Coordinate(49, -124));
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(buttons[0].IsEffectivelyEnabled);
+            Assert.Same(viewModel.ForceRecalculateCommand, buttons[3].Command);
+            Assert.True(buttons[3].IsEffectivelyEnabled);
+            var refreshWeather = Assert.IsType<ToggleButton>(buttons[4]);
             Assert.True(refreshWeather.IsEffectivelyEnabled);
             Assert.False(refreshWeather.IsChecked);
             var refreshPoint = refreshWeather.TranslatePoint(
@@ -305,11 +310,14 @@ public sealed class MainWindowLayoutTests
             viewModel.UseNewestWeatherData = false;
             Dispatcher.UIThread.RunJobs();
             Assert.False(refreshWeather.IsChecked);
-            Assert.True(Canvas.GetLeft(buttons[2]) > Canvas.GetLeft(buttons[0]));
-            Assert.True(Canvas.GetTop(buttons[1]) > Canvas.GetTop(buttons[2]));
+            Assert.Equal(
+                5,
+                buttons.Select(button => (Canvas.GetLeft(button), Canvas.GetTop(button)))
+                    .Distinct()
+                    .Count());
             viewModel.ForecastInputMode = ForecastInputMode.LocalFile;
             Dispatcher.UIThread.RunJobs();
-            Assert.False(buttons[2].IsEffectivelyEnabled);
+            Assert.False(buttons[3].IsEffectivelyEnabled);
             Assert.False(refreshWeather.IsEffectivelyEnabled);
             Assert.Equal(
                 HorizontalAlignment.Center,
@@ -355,6 +363,43 @@ public sealed class MainWindowLayoutTests
             Assert.NotNull(viewModel.Start);
             Assert.False(window.IsRadialMenuOpen);
             Assert.Equal(MapInteractionMode.Browse, viewModel.InteractionMode);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void RadialWaypointActionUsesCapturedPointAndOpensSelectedItineraryRow()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.SetEndpoints(new Coordinate(48, -123), new Coordinate(49, -124));
+        var window = new MainWindow { DataContext = viewModel };
+
+        try
+        {
+            window.Show();
+            var map = Assert.IsType<MapControl>(window.FindControl<MapControl>("MapView"));
+            var point = map.TranslatePoint(map.Bounds.Center, window);
+            Assert.NotNull(point);
+            window.MouseDown(point.Value, MouseButton.Right, RawInputModifiers.None);
+            var add = Assert.IsType<Button>(
+                window.FindControl<Button>("AddWaypointRadialButton"));
+
+            add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(3, viewModel.Itinerary.Waypoints.Count);
+            Assert.NotNull(viewModel.Itinerary.Waypoints[1].Coordinate);
+            Assert.Same(
+                viewModel.Itinerary.Waypoints[1],
+                viewModel.Itinerary.SelectedWaypoint);
+            Assert.True(window.IsPlanningDrawerOpen);
+            Assert.False(window.IsRadialMenuOpen);
+            Assert.Same(
+                viewModel.Itinerary.SelectedWaypoint,
+                Assert.IsType<ListBox>(window.FindControl<ListBox>("WaypointList")).SelectedItem);
         }
         finally
         {

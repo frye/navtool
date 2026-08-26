@@ -32,9 +32,17 @@ public partial class MainViewModel : ViewModelBase
         Terminal
     }
 
+    private void OnWaypointSelectionChanged(
+        object? sender,
+        WaypointEditorItemViewModel? waypoint)
+    {
+        UpdateWaypointLayers();
+    }
+
     private const double DefaultChartBufferNauticalMiles = 10;
     private const double RouteHitTolerancePixels = 10;
     private const double RoutePointHitTolerancePixels = 14;
+    private const double WaypointHitTolerancePixels = 18;
     private static readonly Coordinate[] DefaultChartLocations =
     [
         new(48.1163, -122.7583), // Port Townsend
@@ -474,6 +482,7 @@ public partial class MainViewModel : ViewModelBase
         Itinerary.MapPlacementStarted += OnMapPlacementStarted;
         Itinerary.CurrentPositionPlacementStarted += OnCurrentPositionPlacementStarted;
         Itinerary.LegSelected += OnLegSelected;
+        Itinerary.WaypointSelectionChanged += OnWaypointSelectionChanged;
 
         Map = new Map
         {
@@ -604,6 +613,10 @@ public partial class MainViewModel : ViewModelBase
     public bool IsSettingWaypoint => InteractionMode == MapInteractionMode.SetWaypoint;
 
     public bool IsSettingCurrentPosition => InteractionMode == MapInteractionMode.SetCurrentPosition;
+
+    public bool CanAddContextualWaypoint =>
+        InteractionMode == MapInteractionMode.Browse &&
+        !Itinerary.HasPendingWaypoint;
 
     public string LocalGribDisplay => LocalForecast is null
         ? "No file selected"
@@ -754,6 +767,21 @@ public partial class MainViewModel : ViewModelBase
         CompleteEndpointPlacement();
     }
 
+    public bool AddWaypointAt(Coordinate coordinate)
+    {
+        try
+        {
+            var waypoint = Itinerary.AddWaypointAt(coordinate);
+            StatusMessage = $"{waypoint.Name} added.";
+            return true;
+        }
+        catch (InvalidOperationException exception)
+        {
+            ErrorMessage = exception.Message;
+            return false;
+        }
+    }
+
     public void DisplayRoutes(IEnumerable<RouteResult> routes)
     {
         var successful = routes.ToArray();
@@ -813,9 +841,36 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        var screenPoint = new ScreenPoint(screenPosition.X, screenPosition.Y);
+        var waypointHit = FindWaypointAt(worldPosition, screenPoint);
+        if (waypointHit is not null && Itinerary.SelectWaypoint(waypointHit.Id))
+        {
+            ClearRoutePointSelection();
+            StatusMessage = $"{waypointHit.Name} selected.";
+            return;
+        }
+
         InspectRouteAt(
             worldPosition,
-            new ScreenPoint(screenPosition.X, screenPosition.Y));
+            screenPoint);
+    }
+
+    public WaypointMapMarker? FindWaypointAt(
+        MPoint worldPosition,
+        ScreenPoint screenPosition)
+    {
+        ArgumentNullException.ThrowIfNull(worldPosition);
+        var viewport = Map.Navigator.Viewport;
+        return WaypointHitTester.FindNearest(
+            _mapLayers.Waypoints,
+            coordinate =>
+            {
+                var projected = viewport.WorldToScreen(
+                    MapProjection.ToMapPointNear(coordinate, worldPosition.X));
+                return new ScreenPoint(projected.X, projected.Y);
+            },
+            screenPosition,
+            WaypointHitTolerancePixels);
     }
 
     public RouteMapSelection? FindRouteAt(
@@ -2822,6 +2877,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsEndpointPlacementArmed));
         OnPropertyChanged(nameof(IsSettingWaypoint));
         OnPropertyChanged(nameof(IsSettingCurrentPosition));
+        OnPropertyChanged(nameof(CanAddContextualWaypoint));
         ClearCurrentPositionCommand.NotifyCanExecuteChanged();
         UpdateWaypointLayers();
         _mapLayers.SetCurrentPosition(Itinerary.CurrentPositionCoordinate);
@@ -3231,5 +3287,10 @@ public partial class MainViewModel : ViewModelBase
 
     private void UpdateWaypointLayers() =>
         _mapLayers.SetWaypoints(Itinerary.Waypoints.Select(waypoint =>
-            new WaypointMapMarker(waypoint.Position, waypoint.Name, waypoint.Coordinate)));
+            new WaypointMapMarker(
+                waypoint.Position,
+                waypoint.Name,
+                waypoint.Coordinate,
+                waypoint.Id,
+                ReferenceEquals(waypoint, Itinerary.SelectedWaypoint))));
 }

@@ -58,6 +58,8 @@ public sealed partial class WaypointEditorItemViewModel : ViewModelBase
           $"{Math.Abs(Coordinate.Value.Longitude):0.000}° " +
           $"{(Coordinate.Value.Longitude >= 0 ? "E" : "W")}";
 
+    public string AccessibleName => $"{Role} {Position}: {Name}, {CoordinateDisplay}";
+
     [RelayCommand]
     private void SetOnMap() => _owner.BeginMapPlacement(this);
 
@@ -74,11 +76,16 @@ public sealed partial class WaypointEditorItemViewModel : ViewModelBase
 
     private bool CanMoveDown() => IsIntermediate && Position < _owner.Waypoints.Count - 1;
 
-    partial void OnNameChanged(string value) => _owner.RenameWaypoint(this, value);
+    partial void OnNameChanged(string value)
+    {
+        OnPropertyChanged(nameof(AccessibleName));
+        _owner.RenameWaypoint(this, value);
+    }
 
     partial void OnCoordinateChanged(Coordinate? value)
     {
         OnPropertyChanged(nameof(CoordinateDisplay));
+        OnPropertyChanged(nameof(AccessibleName));
         _owner.ChangeCoordinate(this, value);
     }
 
@@ -99,6 +106,7 @@ public sealed partial class WaypointEditorItemViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsFinish));
         OnPropertyChanged(nameof(IsIntermediate));
         OnPropertyChanged(nameof(Role));
+        OnPropertyChanged(nameof(AccessibleName));
         RemoveCommand.NotifyCanExecuteChanged();
         MoveUpCommand.NotifyCanExecuteChanged();
         MoveDownCommand.NotifyCanExecuteChanged();
@@ -232,6 +240,9 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     private WaypointEditorItemViewModel? _activeWaypoint;
 
     [ObservableProperty]
+    private WaypointEditorItemViewModel? _selectedWaypoint;
+
+    [ObservableProperty]
     private bool _isAwaitingCurrentPositionPlacement;
 
     [ObservableProperty]
@@ -251,6 +262,8 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     public event EventHandler? EndpointChanged;
 
     public event EventHandler<WaypointEditorItemViewModel>? MapPlacementStarted;
+
+    public event EventHandler<WaypointEditorItemViewModel?>? WaypointSelectionChanged;
 
     public event EventHandler? CurrentPositionPlacementStarted;
 
@@ -325,6 +338,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         }
 
         IsAwaitingCurrentPositionPlacement = false;
+        SelectedWaypoint = waypoint;
         ActiveWaypoint = waypoint;
         MapPlacementStarted?.Invoke(this, waypoint);
     }
@@ -342,6 +356,45 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     }
 
     public void CancelMapPlacement() => ActiveWaypoint = null;
+
+    public WaypointEditorItemViewModel AddWaypointAt(Coordinate coordinate)
+    {
+        if (!CanAddWaypoint())
+        {
+            throw new InvalidOperationException(
+                "Place or remove the pending waypoint before adding another.");
+        }
+
+        var item = CreateWaypoint(coordinate);
+        var index = Waypoints.Count - 1;
+        if (!TryUpdatePlan(plan => plan.AddWaypoint(
+                new RouteWaypoint(item.Id, item.Name, coordinate),
+                index)))
+        {
+            throw new InvalidOperationException(
+                ValidationMessage ?? "The waypoint could not be added.");
+        }
+
+        Waypoints.Insert(index, item);
+        SelectedWaypoint = item;
+        CalculationRevision++;
+        MarkChanged();
+        RefreshPositions();
+        AddWaypointCommand.NotifyCanExecuteChanged();
+        return item;
+    }
+
+    public bool SelectWaypoint(RouteWaypointId id)
+    {
+        var waypoint = Waypoints.FirstOrDefault(candidate => candidate.Id == id);
+        if (waypoint is null)
+        {
+            return false;
+        }
+
+        SelectedWaypoint = waypoint;
+        return true;
+    }
 
     /// <summary>
     /// Arms the distinct current-position map placement mode. This is never confused with
@@ -511,13 +564,9 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanAddWaypoint))]
     private void AddWaypoint()
     {
-        var item = new WaypointEditorItemViewModel(
-            this,
-            new RouteWaypointId(),
-            $"Waypoint {Waypoints.Count}",
-            null,
-            null);
+        var item = CreateWaypoint(null);
         Waypoints.Insert(Waypoints.Count - 1, item);
+        SelectedWaypoint = item;
         CalculationRevision++;
         MarkChanged();
         RefreshPositions();
@@ -525,6 +574,14 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     }
 
     private bool CanAddWaypoint() => !HasPendingWaypoint;
+
+    private WaypointEditorItemViewModel CreateWaypoint(Coordinate? coordinate) =>
+        new(
+            this,
+            new RouteWaypointId(),
+            $"Waypoint {Waypoints.Count}",
+            coordinate,
+            null);
 
     [RelayCommand]
     private async Task RefreshSavedPlans()
@@ -783,6 +840,11 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             ActiveWaypoint = null;
         }
 
+        if (ReferenceEquals(SelectedWaypoint, waypoint))
+        {
+            SelectedWaypoint = null;
+        }
+
         Waypoints.RemoveAt(index);
         CalculationRevision++;
         MarkChanged();
@@ -906,6 +968,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             StorageError = null;
             ValidationMessage = null;
             ActiveWaypoint = null;
+            SelectedWaypoint = null;
             IsAwaitingCurrentPositionPlacement = false;
         }
         finally
@@ -944,6 +1007,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             StorageError = null;
             ValidationMessage = null;
             ActiveWaypoint = null;
+            SelectedWaypoint = null;
             IsAwaitingCurrentPositionPlacement = false;
         }
         finally
@@ -1023,6 +1087,9 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             waypoint.RefreshPosition();
         }
     }
+
+    partial void OnSelectedWaypointChanged(WaypointEditorItemViewModel? value) =>
+        WaypointSelectionChanged?.Invoke(this, value);
 
     /// <summary>
     /// Rebuilds the <see cref="Legs"/> collection from the current plan, reflecting each leg's

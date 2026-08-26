@@ -23,15 +23,19 @@ public sealed class RadialMenuPlacementTests
                 RadialMenuAction.SetStart,
                 RadialMenuAction.CalculateRoute,
                 RadialMenuAction.SetDestination,
-                RadialMenuAction.RefreshWeather
+                RadialMenuAction.RefreshWeather,
+                RadialMenuAction.AddWaypoint
             ],
             result.Actions.Select(action => action.Action));
         Assert.True(result.Actions[0].Center.Y < result.Center.Y);
         Assert.True(result.Actions[1].Center.X > result.Center.X);
-        Assert.Equal(result.Center.Y, result.Actions[1].Center.Y, 6);
+        Assert.True(result.Actions[1].Center.Y < result.Center.Y);
+        Assert.True(result.Actions[2].Center.X > result.Center.X);
         Assert.True(result.Actions[2].Center.Y > result.Center.Y);
         Assert.True(result.Actions[3].Center.X < result.Center.X);
-        Assert.Equal(result.Center.Y, result.Actions[3].Center.Y, 6);
+        Assert.True(result.Actions[3].Center.Y > result.Center.Y);
+        Assert.True(result.Actions[4].Center.X < result.Center.X);
+        Assert.True(result.Actions[4].Center.Y < result.Center.Y);
     }
 
     [Theory]
@@ -69,10 +73,10 @@ public sealed class RadialMenuPlacementTests
     }
 
     [Fact]
-    public void UsesFourActionHorizontalFallbackWhenRadialGeometryCannotFit()
+    public void UsesFiveActionHorizontalFallbackWhenRadialGeometryCannotFit()
     {
-        var visibleBounds = new ScreenRect(0, 0, 380, 90);
-        var safeBounds = new ScreenRect(8, 8, 364, 74);
+        var visibleBounds = new ScreenRect(0, 0, 460, 90);
+        var safeBounds = new ScreenRect(8, 8, 444, 74);
 
         var result = RadialMenuPlacement.Calculate(
             visibleBounds,
@@ -87,13 +91,14 @@ public sealed class RadialMenuPlacementTests
         Assert.True(result.Actions[0].Center.X < result.Actions[1].Center.X);
         Assert.True(result.Actions[1].Center.X < result.Actions[2].Center.X);
         Assert.True(result.Actions[2].Center.X < result.Actions[3].Center.X);
+        Assert.True(result.Actions[3].Center.X < result.Actions[4].Center.X);
         Assert.All(
             result.Actions,
             action => Assert.Equal(result.Center.Y, action.Center.Y, 6));
     }
 
     [Fact]
-    public void UsesFourActionVerticalFallbackWhenHorizontalCannotFit()
+    public void UsesFiveActionVerticalFallbackWhenHorizontalCannotFit()
     {
         var visibleBounds = new ScreenRect(0, 0, 110, 260);
         var safeBounds = new ScreenRect(8, 8, 94, 244);
@@ -111,8 +116,36 @@ public sealed class RadialMenuPlacementTests
         Assert.True(result.Actions[0].Center.Y < result.Actions[1].Center.Y);
         Assert.True(result.Actions[1].Center.Y < result.Actions[2].Center.Y);
         Assert.True(result.Actions[2].Center.Y < result.Actions[3].Center.Y);
+        Assert.True(result.Actions[3].Center.Y < result.Actions[4].Center.Y);
         Assert.All(
             result.Actions,
             action => Assert.Equal(result.Center.X, action.Center.X, 6));
     }
+
+    [Fact]
+    public void ApplicationSizedFiveActionMenuDoesNotOverlap()
+    {
+        var result = RadialMenuPlacement.Calculate(
+            new ScreenRect(0, 0, 1280, 800),
+            new ScreenPoint(640, 400),
+            new ScreenSize(112, 48),
+            radius: 104,
+            safeMargin: 16);
+
+        for (var first = 0; first < result.Actions.Length; first++)
+        {
+            for (var second = first + 1; second < result.Actions.Length; second++)
+            {
+                Assert.False(Intersects(
+                    result.Actions[first].Bounds,
+                    result.Actions[second].Bounds));
+            }
+        }
+    }
+
+    private static bool Intersects(ScreenRect first, ScreenRect second) =>
+        first.X < second.Right &&
+        first.Right > second.X &&
+        first.Y < second.Bottom &&
+        first.Bottom > second.Y;
 }
