@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Avalonia.Headless.XUnit;
 using Mapsui.Extensions;
 using Mapsui.Layers;
+using Mapsui.Manipulations;
 using Navtool.App.Models;
 using Navtool.App.Services;
 using Navtool.App.ViewModels;
@@ -1873,6 +1874,59 @@ public sealed class MainViewModelWorkflowTests
 
         Assert.Null(viewModel.SelectedRoutePoint);
         Assert.Same(selectedLeg, viewModel.SelectedLeg);
+    }
+
+    [Fact]
+    public void Map_click_on_waypoint_marker_selects_waypoint_before_route_inspection()
+    {
+        var viewModel = new MainViewModel(
+            null,
+            null,
+            new FixedTimeProvider(Now),
+            TimeZoneInfo.Utc,
+            new OsmTileOptions(Enabled: false));
+        var coordinate = new Coordinate(36, -58);
+        viewModel.SetEndpoints(new Coordinate(35, -59), new Coordinate(37, -57));
+        var waypoint = viewModel.AddWaypointAt(coordinate)
+            ? viewModel.Itinerary.Waypoints[1]
+            : throw new InvalidOperationException(viewModel.ErrorMessage);
+        viewModel.Itinerary.SelectedWaypoint = null;
+        var worldPoint = MapProjection.ToMapPoint(coordinate);
+        viewModel.Map.Navigator.SetViewport(new Mapsui.Viewport(
+            worldPoint.X,
+            worldPoint.Y,
+            10_000,
+            0,
+            1280,
+            800));
+        var projected = viewModel.Map.Navigator.Viewport.WorldToScreen(worldPoint);
+
+        viewModel.HandleMapClick(
+            worldPoint,
+            new ScreenPosition(projected.X, projected.Y));
+
+        Assert.Same(waypoint, viewModel.Itinerary.SelectedWaypoint);
+        Assert.Equal($"{waypoint.Name} selected.", viewModel.StatusMessage);
+        Assert.Null(viewModel.SelectedRoutePoint);
+    }
+
+    [Fact]
+    public void Contextual_add_is_disabled_while_an_existing_map_placement_is_armed()
+    {
+        var viewModel = new MainViewModel(
+            null,
+            null,
+            new FixedTimeProvider(Now),
+            TimeZoneInfo.Utc,
+            new OsmTileOptions(Enabled: false));
+        viewModel.SetEndpoints(new Coordinate(35, -59), new Coordinate(37, -57));
+
+        Assert.True(viewModel.CanAddContextualWaypoint);
+
+        viewModel.Itinerary.Waypoints[0].SetOnMapCommand.Execute(null);
+
+        Assert.Equal(MapInteractionMode.SetStart, viewModel.InteractionMode);
+        Assert.False(viewModel.CanAddContextualWaypoint);
     }
 
     [Fact]

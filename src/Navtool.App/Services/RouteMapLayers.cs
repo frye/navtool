@@ -29,7 +29,21 @@ public sealed record OsmTileOptions(
             : new FileCache(CacheDirectory, "png", CacheRetention);
 }
 
-public sealed record WaypointMapMarker(int Number, string Name, CoreCoordinate? Coordinate);
+public sealed record WaypointMapMarker(
+    int Number,
+    string Name,
+    CoreCoordinate? Coordinate,
+    RouteWaypointId Id = default,
+    bool IsSelected = false)
+{
+    public string AccessibleName => Coordinate is not { } coordinate
+        ? $"Waypoint {Number}: {Name}, coordinate not set"
+        : $"Waypoint {Number}: {Name}, " +
+          $"{Math.Abs(coordinate.Latitude):0.000} degrees " +
+          $"{(coordinate.Latitude >= 0 ? "north" : "south")}, " +
+          $"{Math.Abs(coordinate.Longitude):0.000} degrees " +
+          $"{(coordinate.Longitude >= 0 ? "east" : "west")}";
+}
 
 public sealed class RouteMapLayers
 {
@@ -101,6 +115,9 @@ public sealed class RouteMapLayers
 
     public IReadOnlyList<RouteLegVisualization> RouteLegs { get; private set; } =
         Array.Empty<RouteLegVisualization>();
+
+    public IReadOnlyList<WaypointMapMarker> Waypoints { get; private set; } =
+        Array.Empty<WaypointMapMarker>();
 
     public RouteVisualizationKey? SelectedRouteKey { get; private set; }
 
@@ -175,6 +192,7 @@ public sealed class RouteMapLayers
     {
         ArgumentNullException.ThrowIfNull(waypoints);
         var ordered = waypoints.OrderBy(waypoint => waypoint.Number).ToArray();
+        Waypoints = ordered;
         _waypointMarkers.Features = ordered
             .Where(waypoint => waypoint.Coordinate is not null)
             .Select(CreateWaypointMarker)
@@ -356,9 +374,11 @@ public sealed class RouteMapLayers
             Text = marker.Number.ToString(),
             Font = new Font { Size = 12, Bold = true },
             ForeColor = MapsuiColor.White,
-            BackColor = new Brush(MapsuiColor.FromString("#263238")),
-            BorderColor = MapsuiColor.White,
-            BorderThickness = 2,
+            BackColor = new Brush(MapsuiColor.FromString(
+                marker.IsSelected ? "#005A71" : "#263238")),
+            BorderColor = MapsuiColor.FromString(
+                marker.IsSelected ? "#FFB000" : "#FFFFFF"),
+            BorderThickness = marker.IsSelected ? 4 : 2,
             CornerRounding = 14
         });
         return feature;

@@ -247,6 +247,41 @@ public sealed class MapRenderingTests
     }
 
     [Fact]
+    public void Selected_waypoint_marker_is_emphasized_and_carries_accessible_details()
+    {
+        var map = new Map();
+        var layers = new RouteMapLayers(map);
+        layers.SetWaypoints(
+        [
+            new WaypointMapMarker(
+                1,
+                "Start",
+                new Coordinate(10, 20),
+                new RouteWaypointId(),
+                IsSelected: false),
+            new WaypointMapMarker(
+                2,
+                "Lunch",
+                new Coordinate(11, 21),
+                new RouteWaypointId(),
+                IsSelected: true)
+        ]);
+
+        var markerLayer = Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "Waypoint markers"));
+        var markers = markerLayer.Features.ToArray();
+        var normalStyle = Assert.IsType<LabelStyle>(Assert.Single(markers[0].Styles));
+        var selectedStyle = Assert.IsType<LabelStyle>(Assert.Single(markers[1].Styles));
+        var selected = Assert.IsType<WaypointMapMarker>(markers[1].Data);
+
+        Assert.True(selectedStyle.BorderThickness > normalStyle.BorderThickness);
+        Assert.NotEqual(selectedStyle.BorderColor, normalStyle.BorderColor);
+        Assert.Contains("Lunch", selected.AccessibleName);
+        Assert.Contains("11.000 degrees north", selected.AccessibleName);
+        Assert.Contains("21.000 degrees east", selected.AccessibleName);
+    }
+
+    [Fact]
     public void Current_position_marker_is_distinct_from_waypoint_markers_and_clears_on_null()
     {
         var map = new Map();

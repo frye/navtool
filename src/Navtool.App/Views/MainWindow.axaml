@@ -111,10 +111,16 @@
                                                   Command="{Binding SetDestinationCommand}"
                                                   ToolTip.Tip="Arm finish placement, then select the map" />
                                 </Grid>
-                                <ItemsControl ItemsSource="{Binding Itinerary.Waypoints}">
-                                    <ItemsControl.ItemTemplate>
+                                <ListBox x:Name="WaypointList"
+                                         Classes="waypoint-list"
+                                         ItemsSource="{Binding Itinerary.Waypoints}"
+                                         SelectedItem="{Binding Itinerary.SelectedWaypoint, Mode=TwoWay}"
+                                         SelectionMode="Single">
+                                    <ListBox.ItemTemplate>
                                         <DataTemplate x:DataType="vm:WaypointEditorItemViewModel">
-                                            <Border Classes="subtle" Margin="0,0,0,6">
+                                            <Border Classes="subtle waypoint-editor"
+                                                    Margin="0,0,0,6"
+                                                    AutomationProperties.Name="{Binding AccessibleName}">
                                                 <StackPanel Spacing="6">
                                                     <Grid ColumnDefinitions="28,*,Auto" ColumnSpacing="8">
                                                         <Border Width="24"
@@ -183,8 +189,8 @@
                                                 </StackPanel>
                                             </Border>
                                         </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
                                 <Button Content="Add waypoint"
                                         Command="{Binding Itinerary.AddWaypointCommand}" />
                                 <Grid x:Name="SaveRouteActions"
@@ -1066,6 +1072,15 @@
                          Stroke="{DynamicResource MarkerOutlineColor}"
                          StrokeThickness="2"
                          IsHitTestVisible="False" />
+                <Button x:Name="AddWaypointRadialButton"
+                        Classes="radial-action"
+                        Click="OnAddWaypointRadialClicked"
+                        IsEnabled="{Binding CanAddContextualWaypoint}"
+                        ToolTip.Tip="Add an itinerary waypoint at this map point"
+                        AutomationProperties.Name="Add waypoint here"
+                        Content="Add waypoint"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center" />
                 <Button x:Name="SetStartRadialButton"
                         Classes="radial-action"
                         Click="OnSetStartRadialClicked"

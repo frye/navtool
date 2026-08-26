@@ -87,9 +87,10 @@ public sealed class MapInputRoutingTests
                 RoutingStrategies.Bubble);
             viewModel.SetStartCommand.Execute(null);
 
-            var dismissPoint = point.Value + new Point(24, 24);
-            window.MouseDown(dismissPoint, MouseButton.Left, RawInputModifiers.None);
-            window.MouseUp(dismissPoint, MouseButton.Left, RawInputModifiers.None);
+            var dismissPoint = map.TranslatePoint(new Point(5, 5), window);
+            Assert.NotNull(dismissPoint);
+            window.MouseDown(dismissPoint.Value, MouseButton.Left, RawInputModifiers.None);
+            window.MouseUp(dismissPoint.Value, MouseButton.Left, RawInputModifiers.None);
 
             Assert.False(window.IsRadialMenuOpen);
             Assert.Equal(0, bubblePresses);
@@ -139,6 +140,92 @@ public sealed class MapInputRoutingTests
             Assert.False(window.IsRadialMenuOpen);
             Assert.Equal("Routing services are unavailable in the designer.", viewModel.ErrorMessage);
             Assert.Equal(0, mapPresses);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void KeyboardContextMenuFocusesAndExecutesAddWaypointAction()
+    {
+        var viewModel = new MainViewModel(
+            null,
+            null,
+            TimeProvider.System,
+            TimeZoneInfo.Utc,
+            new OsmTileOptions(Enabled: false));
+        viewModel.SetEndpoints(
+            new Navtool.Core.Coordinate(48, -123),
+            new Navtool.Core.Coordinate(49, -124));
+        var window = new MainWindow { DataContext = viewModel };
+
+        try
+        {
+            window.Show();
+            var map = Assert.IsType<MapControl>(window.FindControl<MapControl>("MapView"));
+            map.Focus();
+            window.KeyPress(
+                Key.Apps,
+                RawInputModifiers.None,
+                PhysicalKey.ContextMenu,
+                string.Empty);
+            var add = Assert.IsType<Button>(
+                window.FindControl<Button>("AddWaypointRadialButton"));
+
+            Assert.True(add.IsFocused);
+            window.KeyPress(
+                Key.Enter,
+                RawInputModifiers.None,
+                PhysicalKey.Enter,
+                "\r");
+
+            Assert.Equal(3, viewModel.Itinerary.Waypoints.Count);
+            Assert.False(window.IsRadialMenuOpen);
+            Assert.True(window.IsPlanningDrawerOpen);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void KeyboardContextMenuFocusesFirstEnabledActionWhenAddWaypointIsDisabled()
+    {
+        var viewModel = new MainViewModel(
+            null,
+            null,
+            TimeProvider.System,
+            TimeZoneInfo.Utc,
+            new OsmTileOptions(Enabled: false));
+        var window = new MainWindow { DataContext = viewModel };
+
+        try
+        {
+            window.Show();
+            var map = Assert.IsType<MapControl>(window.FindControl<MapControl>("MapView"));
+            map.Focus();
+            window.KeyPress(
+                Key.Apps,
+                RawInputModifiers.None,
+                PhysicalKey.ContextMenu,
+                string.Empty);
+
+            Assert.False(Assert.IsType<Button>(
+                window.FindControl<Button>("AddWaypointRadialButton")).IsEffectivelyEnabled);
+            Assert.True(Assert.IsType<Button>(
+                window.FindControl<Button>("SetStartRadialButton")).IsFocused);
+
+            window.KeyPress(
+                Key.Enter,
+                RawInputModifiers.None,
+                PhysicalKey.Enter,
+                "\r");
+
+            Assert.NotNull(viewModel.Start);
+            Assert.False(window.IsRadialMenuOpen);
         }
         finally
         {

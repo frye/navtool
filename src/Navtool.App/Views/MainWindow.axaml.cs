@@ -34,7 +34,7 @@ public partial class MainWindow : Window
 
     private const double RadialActionWidth = 112;
     private const double RadialActionHeight = 48;
-    private const double RadialRadius = 82;
+    private const double RadialRadius = 104;
     private const double RadialSafeMargin = 16;
     private const double RouteTelemetryWidth = 296;
     private const double RouteTelemetryHeight = 132;
@@ -59,6 +59,7 @@ public partial class MainWindow : Window
     private Canvas? _radialMenuLayer;
     private Button? _setStartRadialButton;
     private Button? _setDestinationRadialButton;
+    private Button? _addWaypointRadialButton;
     private Button? _calculateRadialButton;
     private ToggleButton? _refreshWeatherRadialToggle;
     private Line? _radialConnector;
@@ -67,6 +68,7 @@ public partial class MainWindow : Window
     private Button? _routeTelemetryCard;
     private Line? _routeTelemetryConnector;
     private Ellipse? _routeTelemetryAnchor;
+    private ListBox? _waypointList;
     private MainViewModel? _subscribedViewModel;
     private RouteMapSelection? _routeTelemetrySelection;
     private MPoint? _routeTelemetryProjection;
@@ -127,6 +129,7 @@ public partial class MainWindow : Window
         _radialMenuLayer = this.FindControl<Canvas>("RadialMenuLayer")!;
         _setStartRadialButton = this.FindControl<Button>("SetStartRadialButton")!;
         _setDestinationRadialButton = this.FindControl<Button>("SetDestinationRadialButton")!;
+        _addWaypointRadialButton = this.FindControl<Button>("AddWaypointRadialButton")!;
         _calculateRadialButton = this.FindControl<Button>("CalculateRadialButton")!;
         _refreshWeatherRadialToggle =
             this.FindControl<ToggleButton>("RefreshWeatherRadialToggle")!;
@@ -136,6 +139,7 @@ public partial class MainWindow : Window
         _routeTelemetryCard = this.FindControl<Button>("RouteTelemetryCard")!;
         _routeTelemetryConnector = this.FindControl<Line>("RouteTelemetryConnector")!;
         _routeTelemetryAnchor = this.FindControl<Ellipse>("RouteTelemetryAnchor")!;
+        _waypointList = this.FindControl<ListBox>("WaypointList")!;
         ApplyDrawerState();
     }
 
@@ -149,6 +153,7 @@ public partial class MainWindow : Window
         _subscribedViewModel = viewModel;
         _subscribedViewModel.RouteSelectionChanged += OnRouteSelectionChanged;
         _subscribedViewModel.RoutePointInspectionRequested += OnRoutePointInspectionRequested;
+        _subscribedViewModel.Itinerary.WaypointSelectionChanged += OnWaypointSelectionChanged;
         _subscribedNavigator = viewModel.Map.Navigator;
         _subscribedNavigator.ViewportChanged += OnViewportChanged;
         ScheduleRouteTelemetryRefresh();
@@ -174,6 +179,7 @@ public partial class MainWindow : Window
         {
             _subscribedViewModel.RouteSelectionChanged -= OnRouteSelectionChanged;
             _subscribedViewModel.RoutePointInspectionRequested -= OnRoutePointInspectionRequested;
+            _subscribedViewModel.Itinerary.WaypointSelectionChanged -= OnWaypointSelectionChanged;
         }
 
         Loaded -= OnLoaded;
@@ -280,6 +286,7 @@ public partial class MainWindow : Window
     private bool IsRadialAction(Visual visual) =>
         visual == _setStartRadialButton ||
         visual == _setDestinationRadialButton ||
+        visual == _addWaypointRadialButton ||
         visual == _calculateRadialButton ||
         visual == _refreshWeatherRadialToggle;
 
@@ -295,6 +302,7 @@ public partial class MainWindow : Window
         {
             _setStartRadialButton,
             _setDestinationRadialButton,
+            _addWaypointRadialButton,
             _calculateRadialButton,
             _refreshWeatherRadialToggle
         }.Any(control => control?.Bounds.Contains(position) is true);
@@ -354,6 +362,7 @@ public partial class MainWindow : Window
             _radialMenuLayer is null ||
             _setStartRadialButton is null ||
             _setDestinationRadialButton is null ||
+            _addWaypointRadialButton is null ||
             _calculateRadialButton is null ||
             _refreshWeatherRadialToggle is null ||
             _radialConnector is null ||
@@ -381,6 +390,9 @@ public partial class MainWindow : Window
             _setDestinationRadialButton,
             GetActionBounds(placement, RadialMenuAction.SetDestination));
         PositionRadialAction(
+            _addWaypointRadialButton,
+            GetActionBounds(placement, RadialMenuAction.AddWaypoint));
+        PositionRadialAction(
             _calculateRadialButton,
             GetActionBounds(placement, RadialMenuAction.CalculateRoute));
         PositionRadialAction(
@@ -388,7 +400,14 @@ public partial class MainWindow : Window
             GetActionBounds(placement, RadialMenuAction.RefreshWeather));
         ApplyConnector(placement);
         _radialMenuLayer.IsVisible = true;
-        _setStartRadialButton.Focus();
+        new Control[]
+        {
+            _addWaypointRadialButton,
+            _setStartRadialButton,
+            _setDestinationRadialButton,
+            _calculateRadialButton,
+            _refreshWeatherRadialToggle
+        }.First(control => control.IsEffectivelyEnabled).Focus();
     }
 
     private void ApplyConnector(RadialMenuPlacementResult placement)
@@ -448,6 +467,18 @@ public partial class MainWindow : Window
         CloseRadialMenu();
     }
 
+    private void OnAddWaypointRadialClicked(object? sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (_capturedWorldPoint is { } worldPoint &&
+            DataContext is MainViewModel viewModel)
+        {
+            viewModel.AddWaypointAt(MapProjection.ToCoordinate(worldPoint));
+        }
+
+        CloseRadialMenu();
+    }
+
     private void OnCalculateRadialClicked(object? sender, RoutedEventArgs e)
     {
         CloseRadialMenu();
@@ -477,6 +508,19 @@ public partial class MainWindow : Window
         }
 
         ScheduleRouteTelemetryRefresh();
+    }
+
+    private void OnWaypointSelectionChanged(
+        object? sender,
+        WaypointEditorItemViewModel? waypoint)
+    {
+        if (waypoint is null)
+        {
+            return;
+        }
+
+        SetPlanningDrawerOpen(true);
+        Dispatcher.UIThread.Post(() => _waypointList?.ScrollIntoView(waypoint));
     }
 
     private void OnRoutePointInspectionRequested(object? sender, RouteMapSelection selection)
