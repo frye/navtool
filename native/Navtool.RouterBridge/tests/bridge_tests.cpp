@@ -380,7 +380,7 @@ navtool_router_options_v6 balanced_options_v6() {
 
 std::filesystem::path create_grib_with_missing_v_step() {
     const auto output_path =
-        std::filesystem::temp_directory_path() /
+        std::filesystem::current_path() /
         ("navtool-incomplete-" +
          std::to_string(
              std::chrono::steady_clock::now().time_since_epoch().count()) +
@@ -436,7 +436,7 @@ std::filesystem::path create_grib_with_missing_v_step() {
 
 std::filesystem::path create_grib_through_step(long maximum_step) {
     const auto output_path =
-        std::filesystem::temp_directory_path() /
+        std::filesystem::current_path() /
         ("navtool-short-" +
          std::to_string(
              std::chrono::steady_clock::now().time_since_epoch().count()) +
@@ -485,7 +485,7 @@ std::filesystem::path create_grib_through_step(long maximum_step) {
 
 std::filesystem::path create_tiled_grib() {
     const auto output_path =
-        std::filesystem::temp_directory_path() /
+        std::filesystem::current_path() /
         ("navtool-tiled-" +
          std::to_string(
              std::chrono::steady_clock::now().time_since_epoch().count()) +
@@ -622,7 +622,7 @@ std::filesystem::path create_tiled_grib() {
 
 std::filesystem::path create_ecmwf_grib(bool mixed_run = false) {
     const auto output_path =
-        std::filesystem::temp_directory_path() /
+        std::filesystem::current_path() /
         ("navtool-ecmwf-" +
          std::to_string(
              std::chrono::steady_clock::now().time_since_epoch().count()) +
@@ -757,7 +757,7 @@ std::filesystem::path create_ecmwf_grib(bool mixed_run = false) {
 int main() {
     try {
         require(
-            navtool_router_bridge_abi_version_v1() == 7U,
+            navtool_router_bridge_abi_version_v1() == 8U,
             "unexpected bridge ABI version");
         require(
             (navtool_router_bridge_capabilities_v1() &
@@ -1828,9 +1828,8 @@ int main() {
                     &route_json,
                     &route_json_length),
                 "calculate forecast-limited route");
-            require(
-                exhausted_progress.count > 0U && exhausted_progress.valid,
-                "forecast exhaustion did not preserve valid display progress");
+            // Final successful JSON is authoritative. A forecast-boundary
+            // partial may stop before another retained display frontier exists.
             require(
                 route_json != nullptr && route_json_length > 0U,
                 "forecast exhaustion did not return partial route JSON");

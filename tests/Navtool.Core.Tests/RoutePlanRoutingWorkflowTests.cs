@@ -8,6 +8,263 @@ public sealed class RoutePlanRoutingWorkflowTests
     private static readonly DateTimeOffset Now =
         new(2026, 8, 1, 18, 0, 0, TimeSpan.Zero);
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Automatic_preflight_preserves_explicit_safety_options_without_overriding_native_defaults(
+        bool explicitOptions)
+    {
+        var plan = Plan(new("Start", new(30, -70)),
+                new("Stop", new(35, -60), TimeSpan.FromHours(1)), new("Finish", new(40, -50)))
+            .WithRoutingSetup(new RoutingSetup(RoutingSetupTests.Demo()));
+        var exclusions = new RouteExclusionOptions(
+            [new RouteExclusionZone("timed", "test",
+                [new RouteExclusionPolygon(new RouteExclusionRing([new(0, 0), new(1, 1), new(0, 2)]))])],
+            new RouteProviderMetadata("test", "source", "1"));
+        var requested = explicitOptions
+            ? new RouteOptimizationOptions(maximumTrueWindSpeedKnots: 22,
+                maneuver: new RouteManeuverOptions(TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10)),
+                environment: new RouteEnvironmentOptions(exclusions: exclusions))
+            : null;
+        var setupService = new RecordingSetupService();
+        var engine = new ConfiguredRecordingEngine();
+        var checker = new RecordingHoldValidator(RouteHoldCheckStatus.Clear);
+        var provider = new RecordingProvider(ForecastModel.NoaaGfs,
+            (request, _, _) => ValueTask.FromResult(Acquisition(request)));
+        var workflow = new RoutePlanRoutingWorkflow(new RoutingWorkflow([provider], engine),
+            new RecordingRepository(), new FixedTimeProvider(Now), checker, setupService);
+
+        var result = await workflow.ExecuteAsync(new RoutePlanRoutingRequest(
+            plan, Now, Now.AddDays(10), [ForecastSelection.OfficialDownload(ForecastModel.NoaaGfs)],
+            optimization: requested));
+
+        Assert.True(result.Status == RoutePlanRoutingStatus.Succeeded,
+            string.Join("; ", result.Models.SelectMany(model => model.Legs).Select(leg => leg.Detail)));
+        Assert.Equal(2, engine.Options.Count);
+        if (explicitOptions)
+        {
+            Assert.Same(requested, setupService.Overrides!.Optimization);
+            Assert.Same(exclusions, checker.Exclusions);
+            Assert.All(engine.Options, options =>
+            {
+                Assert.Equal(22, options.MaximumTrueWindSpeedKnots);
+                Assert.Equal(TimeSpan.FromSeconds(30), options.Maneuver.TackPenalty);
+                Assert.Same(exclusions, options.Environment!.Exclusions);
+            });
+        }
+        else
+        {
+            Assert.Null(setupService.Overrides);
+            Assert.Null(checker.Exclusions);
+            Assert.All(engine.Options, options =>
+                Assert.Equal(RouteHeadingAugmentation.VelocityMadeGood, options.HeadingAugmentation));
+        }
+    }
+
+    [Fact]
+    public async Task Failed_lattice_and_beam_attempts_survive_itinerary_publication_without_geometry()
+    {
+        var plan = ThreeLegPlan();
+        var calls = 0;
+        var engine = new DelegateRouteEngine((_, _, _) =>
+            throw (++calls == 1
+                ? new RoutingException(RoutingFailureKind.RecoverableSolver, "Lattice search disconnected")
+                : new RoutingException(RoutingFailureKind.ResourceLimit, "Beam resource limit")));
+        var repository = new RecordingRepository();
+        var provider = new RecordingProvider(ForecastModel.NoaaGfs,
+            (request, _, _) => ValueTask.FromResult(Acquisition(request)));
+        var workflow = new RoutePlanRoutingWorkflow(new RoutingWorkflow([provider], engine), repository);
+
+        var result = await workflow.ExecuteAsync(new RoutePlanRoutingRequest(
+            plan, Now, Now.AddDays(10), [ForecastSelection.OfficialDownload(ForecastModel.NoaaGfs)],
+            optimization: new RouteOptimizationOptions(solver: RouteSolver.TimeDependentLattice)));
+
+        var failed = Assert.Single(result.Models).Legs[0];
+        Assert.Null(failed.Route);
+        Assert.Equal(RouteLegOutcomeState.Failed, failed.State);
+        var failure = Assert.IsType<ModelRouteFailure>(failed.Failure);
+        Assert.Equal(RoutingFailureKind.ResourceLimit, failure.Kind);
+        Assert.Equal(2, failure.Attempts.Length);
+        Assert.Equal(RouteSolver.TimeDependentLattice, failure.Attempts[0].Solver);
+        Assert.Equal(RouteSolver.IsochroneBeam, failure.Attempts[1].Solver);
+        Assert.Equal("Lattice search disconnected", failure.Attempts[0].FailureMessage);
+        Assert.Equal("Beam resource limit", failure.Attempts[1].FailureMessage);
+        Assert.Contains("Lattice search disconnected", failed.Detail);
+        Assert.Contains("Beam resource limit", failed.Detail);
+        Assert.NotEqual(failure.Attempts[0].AttemptId, failure.Attempts[1].AttemptId);
+        Assert.NotNull(failed.ExecutionSession);
+        var persisted = await repository.OpenAsync(plan.Id);
+        Assert.Equal(failure.Attempts.ToArray(), persisted.LatestResult(ForecastModel.NoaaGfs)!.Legs[0].Failure!.Attempts.ToArray());
+        var copy = persisted.CopyAs(new RoutePlanId(), "Copied failure");
+        Assert.Equal(failure.Attempts.ToArray(), copy.LatestResult(ForecastModel.NoaaGfs)!.Legs[0].Failure!.Attempts.ToArray());
+        Assert.All(Assert.Single(result.Models).Legs.Skip(1), leg => Assert.Equal(RouteLegOutcomeState.Blocked, leg.State));
+    }
+
+    [Fact]
+    public async Task Models_chain_actual_distinct_endpoints_and_corridors_with_original_causal_references()
+    {
+        var plan = Plan(new("Start", new(30, -70)),
+            new("Stop", new(35, -60), TimeSpan.FromHours(2)), new("Finish", new(40, -50)));
+        var calls = new ConcurrentDictionary<ForecastModel, List<RouteRequest>>();
+        var providers = new[] { ForecastModel.NoaaGfs, ForecastModel.EcmwfIfs }.Select(model =>
+            new RecordingProvider(model, (request, _, _) => ValueTask.FromResult(Acquisition(request)))).ToArray();
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+        {
+            var list = calls.GetOrAdd(forecast.Run.Model, _ => []);
+            list.Add(request);
+            var endpoint = list.Count == 1
+                ? new Coordinate(forecast.Run.Model == ForecastModel.NoaaGfs ? 34.99 : 35.01, -60.01)
+                : request.Destination;
+            return ValueTask.FromResult(new RouteResult(request, forecast.Run.Model,
+                [new(request.Origin, request.DepartureTime, 90, 6, 15, 180, 0),
+                 new(endpoint, request.DepartureTime.AddHours(list.Count == 1 ? 4 : 2), 90, 6, 15, 180, 40)],
+                new(1, 2, 1, 1)));
+        });
+        var result = await new RoutePlanRoutingWorkflow(new RoutingWorkflow(providers, engine),
+            new RecordingRepository(), new FixedTimeProvider(Now)).ExecuteAsync(
+            new RoutePlanRoutingRequest(plan, Now, Now.AddDays(10),
+                providers.Select(provider => ForecastSelection.OfficialDownload(provider.Model))));
+
+        Assert.Equal(RoutePlanRoutingStatus.Succeeded, result.Status);
+        foreach (var model in result.Models)
+        {
+            var inbound = model.Legs[0];
+            var outbound = model.Legs[1];
+            Assert.Equal(inbound.Route!.Points[^1].Location, outbound.Route!.Request.Origin);
+            Assert.NotEqual(plan.Waypoints[1].Coordinate, outbound.Route.Request.Origin);
+            Assert.Equal(inbound.PlannedHold!.Until, outbound.Route.Request.DepartureTime);
+            Assert.Equal(inbound.ExecutionSession!.Id, outbound.Origin!.Predecessor!.SessionId);
+            Assert.Equal(inbound.Route.Request.RouteId, outbound.Origin.Predecessor.RouteId);
+            Assert.Equal(ForecastCorridor.Create(outbound.Route.Request.Origin, outbound.Route.Request.Destination),
+                model.Acquisitions[1].Request.Bounds);
+        }
+        Assert.NotEqual(calls[ForecastModel.NoaaGfs][1].Origin, calls[ForecastModel.EcmwfIfs][1].Origin);
+    }
+
+    [Theory]
+    [InlineData(RouteHoldCheckStatus.Conflict)]
+    [InlineData(RouteHoldCheckStatus.Unavailable)]
+    [InlineData(RouteHoldCheckStatus.Clear)]
+    [InlineData(null)]
+    public async Task Configured_stopover_checks_actual_arrival_over_whole_interval_and_blocks_conflicts(
+        RouteHoldCheckStatus? status)
+    {
+        var plan = Plan(new("Start", new(30, -70)),
+            new("Stop", new(35, -60), TimeSpan.FromHours(4)), new("Finish", new(40, -50)));
+        var provider = new RecordingProvider(ForecastModel.NoaaGfs,
+            (request, _, _) => ValueTask.FromResult(Acquisition(request)));
+        var exclusions = new RouteExclusionOptions(
+            [new RouteExclusionZone("timed", "test",
+                [new RouteExclusionPolygon(new RouteExclusionRing([new(0, 0), new(1, 1), new(0, 2)]))],
+                activeFrom: Now.AddHours(3), activeUntil: Now.AddHours(5))],
+            new RouteProviderMetadata("test", "test", "1"));
+        var checker = status is { } checkStatus ? new RecordingHoldValidator(checkStatus) : null;
+        var workflow = new RoutePlanRoutingWorkflow(new RoutingWorkflow([provider],
+            new DelegateRouteEngine((request, acquisition, _) =>
+                ValueTask.FromResult(Route(request, acquisition.Run.Model, TimeSpan.FromHours(2))))),
+            new RecordingRepository(), new FixedTimeProvider(Now), checker);
+        var result = await workflow.ExecuteAsync(new RoutePlanRoutingRequest(plan, Now, Now.AddDays(10),
+            [ForecastSelection.OfficialDownload(ForecastModel.NoaaGfs)],
+            optimization: new RouteOptimizationOptions(environment: new RouteEnvironmentOptions(exclusions: exclusions))));
+
+        var model = Assert.Single(result.Models);
+        var hold = Assert.IsType<RoutePlannedHold>(model.Legs[0].PlannedHold);
+        Assert.Equal(model.Legs[0].Route!.Points[^1].Location, hold.Location);
+        Assert.Equal(Now.AddHours(2), hold.From);
+        Assert.Equal(Now.AddHours(6), hold.Until);
+        if (checker is not null) Assert.Same(exclusions, checker.Exclusions);
+        if (status == RouteHoldCheckStatus.Clear)
+            Assert.Equal(RoutePlanRoutingStatus.Succeeded, result.Status);
+        else
+        {
+            Assert.Single(provider.Requests);
+            Assert.Equal(RoutePlanRoutingStatus.PartialSuccess, result.Status);
+            Assert.Equal(RouteLegOutcomeState.Succeeded, model.Legs[0].State);
+            Assert.Equal(RouteLegOutcomeState.Blocked, model.Legs[1].State);
+            Assert.Equal(status == RouteHoldCheckStatus.Conflict
+                ? RouteLegOutcomeReason.StopoverExclusionConflict : RouteLegOutcomeReason.StopoverValidationUnavailable,
+                model.Legs[1].Reason);
+        }
+    }
+
+    [Fact]
+    public async Task One_point_arrival_from_current_position_does_not_manufacture_connectors()
+    {
+        var plan = Plan(new("Start", new(30, -70)), new("Finish", new(35, -60)))
+            .SetCurrentPosition(new(35, -60), Now.AddHours(3));
+        var provider = new RecordingProvider(ForecastModel.NoaaGfs,
+            (request, _, _) => ValueTask.FromResult(Acquisition(request)));
+        var workflow = CreateWorkflow(provider, new DelegateRouteEngine((request, acquisition, _) =>
+            ValueTask.FromResult(new RouteResult(request, acquisition.Run.Model,
+                [new(request.Origin, request.DepartureTime, 0, 0, 10, 90, 0)], new(0, 0, 0, 0)))));
+        var result = await workflow.ExecuteAsync(Request(plan, Now, Now.AddDays(10)));
+        var leg = Assert.Single(Assert.Single(result.Models).Legs);
+        Assert.Equal(RoutePlanRoutingStatus.Succeeded, result.Status);
+        Assert.Single(leg.Route!.Points);
+        Assert.Equal(plan.CurrentPosition!.DepartureTime, leg.Route.Request.DepartureTime);
+        Assert.Equal(RouteLegOriginSource.CurrentPosition, leg.Origin!.Source);
+    }
+
+    [Fact]
+    public async Task Sailed_legs_after_active_index_are_never_recomputed_or_rebranded()
+    {
+        var plan = ThreeLegPlan();
+        var sailedLeg = plan.Legs[1];
+        var originalSession = new RouteCalculationSession(plan.Id, ForecastModel.NoaaGfs, Now.AddDays(-2));
+        var historicalRequest = new RouteRequest("original", plan.Waypoints[1].Coordinate,
+            plan.Waypoints[2].Coordinate, Now.AddDays(-2), Now.AddDays(1));
+        var historicalRoute = Route(historicalRequest, ForecastModel.NoaaGfs, TimeSpan.FromHours(2));
+        plan = plan.WithResult(new RoutePlanResult(originalSession, plan.Legs.Select(leg =>
+            leg.Id == sailedLeg.Id
+                ? new RouteLegResult(leg.Id, RouteLegOutcomeState.Succeeded,
+                    RouteLegOutcomeReason.CalculationSucceeded, historicalRoute)
+                : new RouteLegResult(leg.Id, RouteLegOutcomeState.Pending, RouteLegOutcomeReason.None))))
+            .MarkSailed(sailedLeg.Id);
+        var calls = new List<RouteRequest>();
+        var provider = new RecordingProvider(ForecastModel.NoaaGfs,
+            (request, _, _) => ValueTask.FromResult(Acquisition(request)));
+        var workflow = CreateWorkflow(provider, new DelegateRouteEngine((request, forecast, _) =>
+        {
+            calls.Add(request);
+            return ValueTask.FromResult(Route(request, forecast.Run.Model, TimeSpan.FromHours(2)));
+        }));
+        var result = await workflow.ExecuteAsync(Request(plan, Now, Now.AddDays(10)));
+        Assert.Single(calls);
+        var legs = Assert.Single(result.Models).Legs;
+        Assert.Same(historicalRoute, legs[1].Route);
+        Assert.Equal(originalSession.Id, legs[1].ExecutionSession!.Id);
+        Assert.Equal(RouteLegOutcomeState.Blocked, legs[2].State);
+        Assert.Equal(RouteLegOutcomeReason.PredecessorChanged, legs[2].Reason);
+    }
+
+    [Fact]
+    public async Task Cancellation_during_hold_validation_keeps_inbound_and_unvalidated_full_hold()
+    {
+        var plan = Plan(new("Start", new(30, -70)),
+            new("Stop", new(35, -60), TimeSpan.FromHours(4)), new("Finish", new(40, -50)));
+        var exclusions = new RouteExclusionOptions(
+            [new RouteExclusionZone("zone", "source",
+                [new RouteExclusionPolygon(new RouteExclusionRing([new(0, 0), new(1, 1), new(0, 2)]))])],
+            new RouteProviderMetadata("test", "source", "1"));
+        var provider = new RecordingProvider(ForecastModel.NoaaGfs,
+            (request, _, _) => ValueTask.FromResult(Acquisition(request)));
+        var workflow = new RoutePlanRoutingWorkflow(new RoutingWorkflow([provider],
+            new DelegateRouteEngine((request, forecast, _) =>
+                ValueTask.FromResult(Route(request, forecast.Run.Model, TimeSpan.FromHours(2))))),
+            new RecordingRepository(), new FixedTimeProvider(Now), new CancelledHoldValidator());
+        var result = await workflow.ExecuteAsync(new RoutePlanRoutingRequest(plan, Now, Now.AddDays(10),
+            [ForecastSelection.OfficialDownload(ForecastModel.NoaaGfs)],
+            optimization: new RouteOptimizationOptions(environment: new RouteEnvironmentOptions(exclusions: exclusions))));
+        Assert.Equal(RoutePlanRoutingStatus.Cancelled, result.Status);
+        var legs = Assert.Single(result.Models).Legs;
+        Assert.NotNull(legs[0].Route);
+        var hold = Assert.IsType<RoutePlannedHold>(legs[0].PlannedHold);
+        Assert.Equal(RouteHoldCheckStatus.Unavailable, hold.Status);
+        Assert.Equal(TimeSpan.FromHours(4), hold.Until - hold.From);
+        Assert.Equal(RouteLegOutcomeState.Cancelled, legs[1].State);
+        Assert.Single(provider.Requests);
+    }
+
     [Fact]
     public async Task Models_chain_independently_with_stopovers_one_cutoff_and_leg_corridors()
     {
@@ -610,6 +867,74 @@ public sealed class RoutePlanRoutingWorkflowTests
         }
     }
 
+    private sealed class RecordingSetupService : IRoutingSetupService
+    {
+        public RoutingProfessionalOverrides? Overrides { get; private set; }
+
+        public ValueTask<RoutingCalculationContext> FreezeAsync(RoutingSetup setup,
+            RoutingProfessionalOverrides? professionalOverrides = null, CancellationToken cancellationToken = default)
+        {
+            Overrides = professionalOverrides;
+            var baseline = RoutingSetupTests.Context();
+            var defaults = baseline.Resolved with
+            {
+                Optimization = new RouteOptimizationOptions(headingAugmentation: RouteHeadingAugmentation.VelocityMadeGood)
+            };
+            return ValueTask.FromResult(new RoutingCalculationContext(Guid.NewGuid(), setup,
+                new ResolvedBoatAsset(setup.Boat), baseline.NativeIdentity,
+                ResolvedRoutingOptions.FromNativeDefaults(setup, defaults, professionalOverrides), professionalOverrides));
+        }
+    }
+
+    private sealed class ConfiguredRecordingEngine : IConfiguredRouteEngine
+    {
+        public List<RouteOptimizationOptions> Options { get; } = [];
+
+        public ValueTask<RouteResult> CalculateAsync(RouteRequest request, ForecastAcquisition forecast,
+            IProgress<RouteCalculationProgress>? progress, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Configured requests cannot downgrade.");
+
+        public ValueTask<RouteResult> CalculateConfiguredAsync(RoutingCalculationContext context,
+            RouteRequest request, ForecastAcquisition forecast, RouteOptimizationOptions optimization,
+            IProgress<RouteCalculationProgress>? progress, CancellationToken cancellationToken)
+        {
+            Options.Add(optimization);
+            var route = Route(request, forecast.Run.Model, TimeSpan.FromHours(2));
+            return ValueTask.FromResult(new RouteResult(request, forecast.Run.Model, route.Points,
+                route.Diagnostics, route.Completion, route.LandAvoidance, solver: optimization.Solver,
+                nativeAudit: new RouteNativeRunAudit("route_result_v2", optimization.Solver,
+                    context.Resolved.ArrivalRadiusNauticalMiles,
+                    Routing: new RouteNativeRunMetadata(
+                        "earliest_arrival", "best_found", optimization.Solver, request.Destination,
+                        context.Resolved.ArrivalRadiusNauticalMiles, 0, context.Resolved.PerformanceFactor,
+                        context.Resolved.Search.HeadingStepDegrees, context.Resolved.Search.SpatialBucketNauticalMiles,
+                        context.Resolved.Search.MaximumIntegrationStep, context.Resolved.Search.StrategicRetention,
+                        false, optimization.WindSampling, optimization.AbovePolarRange,
+                        optimization.MaximumTrueWindSpeedKnots, optimization.Maneuver.TackPenalty,
+                        optimization.Maneuver.GybePenalty, forecast.Run.InitializedAt,
+                        forecast.Request.From, forecast.Request.Through, []))));
+        }
+    }
+
+    private sealed class RecordingHoldValidator(RouteHoldCheckStatus status) : IRouteStopoverValidator
+    {
+        public RouteExclusionOptions? Exclusions { get; private set; }
+        public ValueTask<RoutePlannedHold> CheckAsync(Coordinate location, DateTimeOffset from,
+            DateTimeOffset until, RouteExclusionOptions exclusions, CancellationToken cancellationToken = default)
+        {
+            Exclusions = exclusions;
+            return ValueTask.FromResult(new RoutePlannedHold(location, from, until, status,
+                status == RouteHoldCheckStatus.Conflict ? "timed" : null));
+        }
+    }
+
+    private sealed class CancelledHoldValidator : IRouteStopoverValidator
+    {
+        public ValueTask<RoutePlannedHold> CheckAsync(Coordinate location, DateTimeOffset from,
+            DateTimeOffset until, RouteExclusionOptions exclusions, CancellationToken cancellationToken = default) =>
+            throw new OperationCanceledException();
+    }
+
     private sealed class DelegateRouteEngine(
         Func<
             RouteRequest,
@@ -617,6 +942,14 @@ public sealed class RoutePlanRoutingWorkflowTests
             CancellationToken,
             ValueTask<RouteResult>> calculate) : IRouteEngine
     {
+        public ValueTask<RouteResult> CalculateAsync(
+            RouteRequest request,
+            ForecastAcquisition forecast,
+            RouteOptimizationOptions optimization,
+            IProgress<RouteCalculationProgress>? progress,
+            CancellationToken cancellationToken) =>
+            calculate(request, forecast, cancellationToken);
+
         public ValueTask<RouteResult> CalculateAsync(
             RouteRequest request,
             ForecastAcquisition forecast,

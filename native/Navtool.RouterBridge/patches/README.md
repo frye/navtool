@@ -1,14 +1,21 @@
 # router-lib build patches
 
-Navtool currently applies **no local router-lib patches**. The native bridge pins
-`router-lib` (`sailroute`) `v0.4.3`.
+The native bridge pins the router-lib 0.6 development snapshot
+`cd476a84ef3edea9582d77f21588a23af727e083` and carries one compatibility patch:
+`0001-utf8-asset-paths.patch` preserves UTF-8 in polar/GSHHG source metadata and
+path-bearing errors on Windows. The upstream loaders otherwise convert paths
+through the active filesystem code page, violating the bridge's UTF-8 contract.
+This patch changes path text, not routing physics, and is a candidate for a
+separate upstream fix.
 
 The reusable patch step remains in `native/Navtool.RouterBridge/CMakeLists.txt`.
 Any future patch must be listed in `NAVTOOL_ROUTER_LIB_PATCHES`, apply cleanly to
 the pinned tag with `git apply -p1`, and be documented here. The build applies
 listed patches idempotently. Remove a patch once its fix lands upstream and the
 release pin moves past it. Patches are not applied when `SAILROUTE_SOURCE_DIR`
-points at a developer checkout.
+points at a developer checkout; that checkout must include equivalent fixes
+to pass the Unicode-path tests. Build identity reports the resolved revision
+and patched/dirty source state honestly.
 
 ## Fixes incorporated by v0.4.3
 

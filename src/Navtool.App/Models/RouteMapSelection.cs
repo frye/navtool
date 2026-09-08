@@ -51,17 +51,29 @@ public sealed record RouteMapSelection
 
     public double DistancePixels { get; }
 
-    public DateTimeOffset TimelineTimestamp => Point.Timestamp;
+    public bool IsPlannedHold { get; init; }
+
+    public DateTimeOffset? HoldTimestamp { get; init; }
+
+    public bool HasEnvironmentTelemetry => !IsPlannedHold && Point.Environment is not null;
+
+    public bool HasBasicTelemetry => !IsPlannedHold && Point.Environment is null;
+
+    public DateTimeOffset TimelineTimestamp => HoldTimestamp ?? Point.Timestamp;
 
     public Coordinate FocusCoordinate => Point.Location;
 
     public string ApparentWindAngleText =>
-        FormatApparentWindAngle(Point.ApparentWindAngleSignedDegrees);
+        IsPlannedHold ? "unavailable" : FormatApparentWindAngle(Point.ApparentWindAngleSignedDegrees);
 
-    internal static string FormatApparentWindAngle(double signedAngleDegrees)
+    public string ApparentWindSpeedText => !IsPlannedHold && Point.ApparentWindSpeedKnots is { } speed
+        ? $"{speed:0.0} kt" : "unavailable";
+
+    internal static string FormatApparentWindAngle(double? signedAngleDegrees)
     {
+        if (signedAngleDegrees is not { } signedAngle) return "unavailable";
         var angle = (int)Math.Round(
-            Math.Abs(signedAngleDegrees),
+            Math.Abs(signedAngle),
             MidpointRounding.AwayFromZero);
         if (angle <= 0)
         {
@@ -73,6 +85,6 @@ public sealed record RouteMapSelection
             return "180°";
         }
 
-        return $"{angle}° {(signedAngleDegrees > 0d ? "S" : "P")}";
+        return $"{angle}° {(signedAngle > 0d ? "S" : "P")}";
     }
 }

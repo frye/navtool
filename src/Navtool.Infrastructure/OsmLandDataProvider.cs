@@ -129,6 +129,7 @@ public sealed record OsmLandDataOptions
 
 public sealed class OsmLandDataProvider : ILandDataProvider
 {
+    public bool IsConfigured => _options.Endpoint is not null;
     public const string OpenStreetMapAttribution =
         "© OpenStreetMap contributors (https://www.openstreetmap.org/copyright)";
 

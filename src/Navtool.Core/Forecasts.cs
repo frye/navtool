@@ -375,7 +375,8 @@ public sealed record ForecastAcquisition
         LocalGribArtifact artifact,
         ForecastAcquisitionSource source,
         CacheMetadata? cache = null,
-        ForecastCacheUsage? cacheUsage = null)
+        ForecastCacheUsage? cacheUsage = null,
+        ForecastCoverage? coverage = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(run);
@@ -391,6 +392,7 @@ public sealed record ForecastAcquisition
         Source = source;
         Cache = cache;
         CacheUsage = cacheUsage;
+        Coverage = coverage;
     }
 
     public ForecastRequest Request { get; }
@@ -406,6 +408,75 @@ public sealed record ForecastAcquisition
     public CacheMetadata? Cache { get; }
 
     public ForecastCacheUsage? CacheUsage { get; }
+
+    public ForecastCoverage? Coverage { get; }
+}
+
+public sealed record ForecastCoverage
+{
+    public ForecastCoverage(GeographicBounds effectiveBounds, IEnumerable<DateTimeOffset> validTimes,
+        TimeSpan? maximumInterpolationGap = null)
+    {
+        ArgumentNullException.ThrowIfNull(validTimes);
+        ValidTimes = validTimes.Select(time => time.ToUniversalTime()).Distinct().Order().ToImmutableArray();
+        if (ValidTimes.IsEmpty) throw new ArgumentException("Forecast coverage requires at least one valid time.", nameof(validTimes));
+        if (maximumInterpolationGap <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(maximumInterpolationGap));
+        EffectiveBounds = effectiveBounds;
+        MaximumInterpolationGap = maximumInterpolationGap;
+    }
+    public GeographicBounds EffectiveBounds { get; }
+    public ImmutableArray<DateTimeOffset> ValidTimes { get; private init; }
+    public DateTimeOffset ValidFrom => ValidTimes[0];
+    public DateTimeOffset ValidThrough => ValidTimes[^1];
+    public TimeSpan? MaximumInterpolationGap { get; }
+    public TimeSpan? MinimumTimeSpacing => ValidTimes.Length < 2
+        ? null : ValidTimes.Zip(ValidTimes.Skip(1)).Min(pair => pair.Second - pair.First);
+    public TimeSpan? MaximumTimeSpacing => ValidTimes.Length < 2
+        ? null : ValidTimes.Zip(ValidTimes.Skip(1)).Max(pair => pair.Second - pair.First);
+
+    internal bool HasSameContent(ForecastCoverage? other) =>
+        other is not null && ValidTimes.SequenceEqual(other.ValidTimes) &&
+        this == other with { ValidTimes = ValidTimes };
+}
+
+/// <summary>Validate official product cadence, not a single gap limit that hides missing early-hour fields.</summary>
+public static class ForecastTimePolicy
+{
+    public static void Validate(ForecastRun run, IEnumerable<DateTimeOffset> validTimes,
+        bool officialProduct, TimeSpan? localMaximumGap = null)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentNullException.ThrowIfNull(validTimes);
+        var times = validTimes.Select(time => time.ToUniversalTime()).Distinct().Order().ToArray();
+        if (times.Length == 0)
+            throw new RoutingException(RoutingFailureKind.InvalidForecast, "No forecast valid times were loaded.");
+        if (!officialProduct)
+        {
+            if (localMaximumGap is not { } gap || gap <= TimeSpan.Zero)
+                throw new RoutingException(RoutingFailureKind.InvalidConfiguration, "Local forecasts require an explicit interpolation gap policy.");
+            if (times.Zip(times.Skip(1)).Any(pair => pair.Second - pair.First > gap))
+                throw new RoutingException(RoutingFailureKind.InvalidForecast, "The local forecast contains a gap larger than the selected policy.");
+            return;
+        }
+        for (var index = 0; index < times.Length; index++)
+        {
+            var hours = (times[index] - run.InitializedAt).TotalHours;
+            var shortEcmwf = run.Model == ForecastModel.EcmwfIfs && run.InitializedAt.Hour is 6 or 18;
+            var maximum = run.Model == ForecastModel.NoaaGfs ? 384 : shortEcmwf ? 90 : 240;
+            var cadence = run.Model == ForecastModel.NoaaGfs
+                ? hours <= 120 ? 1 : 3
+                : hours <= 144 ? 3 : 6;
+            if (hours < 0 || hours > maximum || hours % cadence != 0)
+                throw new RoutingException(RoutingFailureKind.InvalidForecast, "Forecast valid time is outside the selected product schedule.");
+            if (index == 0) continue;
+            var previousHours = (times[index - 1] - run.InitializedAt).TotalHours;
+            var nextStep = run.Model == ForecastModel.NoaaGfs
+                ? previousHours < 120 ? 1 : 3
+                : previousHours < 144 ? 3 : 6;
+            if (hours != previousHours + nextStep)
+                throw new RoutingException(RoutingFailureKind.InvalidForecast, "The official forecast is missing an expected valid time.");
+        }
+    }
 }
 
 public sealed record ForecastCacheUsage

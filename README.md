@@ -19,8 +19,8 @@ It targets macOS, Windows, and Linux.
   acquired, up to the ten-day planning limit.
 - Download NOAA GFS or ECMWF IFS 0.25-degree 10 m wind fields, or choose an
   existing GRIB through the operating system's native file picker.
-- Calculate routes through the native `router-lib` v0.4 bridge with enhanced
-  beam-routing accuracy enabled by default.
+- Select an imported polar or explicitly labeled demo boat, then calculate with
+  the native `router-lib` 0.6 development snapshot and cruising-quality presets.
 - Apply bundled Natural Earth land geometry by default, with an optional
   higher-detail OSM-derived service override.
 - Watch historical destination-facing isochrone fronts, the emphasized latest
@@ -102,7 +102,9 @@ validation, and use `scripts/publish.sh` or `scripts/publish.ps1` for
 distributable artifacts. For a custom bridge location, set
 `NAVTOOL_ROUTER_BRIDGE_PATH` to the shared library or its directory. Packaged
 applications discover their bridge under `runtimes/<RID>/native`. Native builds
-fetch and compile `router-lib` release `v0.4.3` by default. Set
+fetch and compile `router-lib` commit
+`cd476a84ef3edea9582d77f21588a23af727e083` by default. This is a **0.6.0
+development snapshot**, not a published v0.6 release. Set
 `SAILROUTE_SOURCE_DIR` to a local `router-lib` checkout when testing other
 revisions.
 
@@ -120,38 +122,48 @@ fetch releases from a different fork.
 
 ## Routing profiles
 
-Standard calculations use Navtool's balanced isochrone-beam profile. It augments
-the normal heading set with destination-bearing and velocity-made-good headings,
-samples wind at segment midpoints, and uses monotone-cubic polar-angle
-interpolation. It intentionally adds no tack or gybe delay, no hard maximum-wind
-cutoff, and clamps wind above the polar's tabulated range.
+Choose an imported polar or the explicitly labeled demo boat before calculating.
+Imported boat assets are content-identified and managed by the application.
+Normal cruising inputs are saved with the plan; old plans remain viewable but
+require a boat selection before recalculation.
+
+Standard calculations start with router-lib's native Balanced quality preset,
+with Navtool's explicit monotone-cubic (PCHIP) polar-angle interpolation override.
+Above-range polar wind now uses the conservative `NoSpeed` policy rather than
+clamping. Boat performance defaults to 100% and scales the polar once, not the
+forecast wind. Arrival radius is distinct from land clearance.
 
 Enable **Professional routing features** in the planning drawer to reveal the
-temporary `router-lib` Stage 2.5 controls. Professional mode can select either the
+temporary numerical controls. Professional mode can select either the
 isochrone beam or deterministic time-dependent lattice solver and configure
 maneuver penalties, heading augmentation, wind sampling, polar interpolation,
 wind limits, pruning, and solver-specific settings. The toggle and edited values
-reset when Navtool exits and are never stored as application preferences or route
-plan inputs. Completed results do retain solver attribution and lattice
-diagnostics.
+reset when Navtool exits and are never restored as active professional inputs.
+Completed results retain their effective settings, solver attribution, warnings,
+and available diagnostics as historical run audit.
 
-The beam remains the default after the v0.4.3 solver comparison. The release
-fixes the lattice arrival shortcut, tacking, dominance, duration-limited partial
-routes, and forecast-horizon probing, but the rerun still showed
-passage-dependent quality and higher lattice runtime. See
-`native/Navtool.RouterBridge/patches/README.md` for the measured matrix. A
-professional lattice request that fails is still retried with the beam and
-reported as a fallback rather than silently relabeled.
+The beam remains the standard solver. The v0.4.3 comparison in
+`native/Navtool.RouterBridge/patches/README.md` is archival, not current 0.6
+quality evidence. Only classified recoverable lattice search failures can
+trigger the one beam retry. Invalid input, unavailable required data, resource
+limits, cancellation, and malformed results are not generic retry triggers.
+Fallback attribution is retained rather than silently relabeling the solver.
+
+See [the 0.6 migration guide](docs/router-lib-0.6-migration.md) for compatibility,
+native units and API limits, saved-plan recovery, and optional GSHHG constraints.
 
 ## Multi-point routes and visualization
 
-Each forecast model calculates itinerary legs sequentially. A successful leg's
-arrival plus the destination waypoint's optional stopover determines that
-model's next departure; NOAA and ECMWF may therefore reach the same leg at
-different UTC times. Failure, cancellation, forecast exhaustion, duration
+Each forecast model calculates itinerary legs sequentially. A completed leg's
+actual endpoint becomes that model's next physical origin; arrival plus the
+destination waypoint's optional stopover determines its next departure.
+Nominal waypoint markers and logical leg IDs stay unchanged. NOAA and ECMWF can
+therefore hand off at different coordinates and UTC times. Failure, cancellation, forecast exhaustion, duration
 exhaustion, or a departure beyond the rolling forecast cutoff is recorded per
 model and leg. Later legs remain visibly listed with their status, but Navtool
-never draws invented optimized geometry between successful legs.
+never draws invented optimized geometry between successful legs. Known timed
+exclusion conflicts during planned stopovers block subsequent legs; a stopover
+is not a certified anchorage or proof of station keeping.
 
 The map stores feature identity as plan, stable leg, model, calculation session,
 and route-result ID. This keeps revisions and parallel model results distinct
@@ -198,13 +210,12 @@ the final provisional route to a selectable forecast-limited estimate, retains
 the solver-appropriate search overlay, and displays an amber warning. Complete
 final routes remain authoritative and may differ from the last provisional route.
 
-The ABI-v6 bridge preserves the existing final-route and v1-v5 streaming
-functions. The v6 entry point adds fixed-layout routing options, solver identity,
-search points, and lattice counters while retaining optional pre-retention
-segment eligibility. Callback array and coordinate pointers are valid only for
-the duration of the synchronous callback and must be copied by consumers.
-Navtool rejects stale bridges so missing configuration or land-constraint
-support cannot silently degrade routing safety.
+The ABI-v8 bridge retains older exported layouts and adds explicit boat handles,
+native presets, forecast validity metadata, audited progress and configured
+calculation capabilities. Retained layouts do not promise old numerical output.
+Callback arrays and pointers are valid only during the synchronous callback and
+must be copied by consumers. Navtool rejects stale bridges before route forecast
+acquisition, rather than silently dropping configuration or land constraints.
 
 ## Publish
 
@@ -232,7 +243,7 @@ also be installed or packaged according to the target platform.
 | --- | --- |
 | `NAVTOOL_ROUTER_BRIDGE_PATH` | Native bridge file or directory |
 | `SAILROUTE_SOURCE_DIR` | Optional `router-lib` checkout override for native build/run scripts |
-| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default is `v0.4.3`) |
+| `NAVTOOL_ROUTER_LIB_RELEASE_TAG` | Immutable `router-lib` revision or release tag used when `SAILROUTE_SOURCE_DIR` is unset (default is `cd476a84ef3edea9582d77f21588a23af727e083`) |
 | `NAVTOOL_ROUTER_LIB_RELEASE_REPOSITORY` | `router-lib` Git repository used when `SAILROUTE_SOURCE_DIR` is unset |
 | `NAVTOOL_NATIVE_BUILD_DIR` | Optional native bridge build directory |
 | `NAVTOOL_APP_DATA_ROOT` | Application data root |
@@ -242,11 +253,13 @@ also be installed or packaged according to the target platform.
 The selected display theme is stored in `preferences/theme.txt` beneath
 `NAVTOOL_APP_DATA_ROOT` (or Navtool's default local application-data directory).
 Route plans are stored atomically as JSON beneath `routes/` in the same root.
-Schema-v3 plan files contain waypoint, stopover, calculation-session, leg-outcome,
-sailed state, route-point metadata, solver attribution, and optional lattice
-diagnostics, but never forecast binaries or professional input settings. Schema
-v1 and v2 documents migrate forward; unknown future schemas or inconsistent
-IDs/references are rejected visibly.
+Schema-6 plan files retain normal cruising setup, boat references, causal
+handoffs and per-result audit alongside waypoints, stopovers, sailed state and
+full route geometry. Professional settings are historical run audit, not
+restored active inputs. Forecast binaries are not embedded. Schema 1-5 documents
+migrate forward; missing historical context remains legacy/unknown. The first
+migrated overwrite preserves the original bytes in `routes/backups/`.
+Unknown future schemas or inconsistent IDs/references are rejected visibly.
 Opening a saved plan restores full-route geometry, sailed history, per-model leg
 status, and the model-specific timeline. Weather overlays are not restored from
 route JSON.
@@ -295,10 +308,13 @@ through ecCodes; the filename does not determine compatibility.
 
 Local files are referenced in place and are not copied into Navtool's cache or
 remembered after restart. A usable file must identify NOAA GFS or ECMWF IFS,
-contain compatible paired 10 m U/V fields, and cover both the buffered route
-area and the full departure-to-arrival interval. Choosing a local file performs
-no forecast HTTP request. If inspection or routing setup fails, the app reports
-that separately from online forecast acquisition.
+contain compatible paired 10 m U/V fields, include the requested departure, and
+cover the declared buffered route or explicitly selected regional study domain.
+Native loading also applies the configured interpolation-gap policy. Coverage
+may end before the expected passage target, producing an explicitly partial
+route rather than extrapolated weather. Choosing a local file performs no
+forecast HTTP request. Inspection or routing setup failures are reported
+separately from online forecast acquisition.
 
 Weather availability is scoped to the selected leg and forecast model. Navtool
 uses an in-memory acquisition only when its model, time range, and geographic
@@ -329,22 +345,25 @@ service must be suitable for production use and return OSM-derived data under
 the Open Database License; public Overpass endpoints are not used as a default.
 
 Land avoidance also requires router-lib's pre-retention segment-eligibility
-capability. Navtool's ABI-v7 bridge preserves the v1-v6 route entry points and
-adds configured beam and lattice dispatch plus the optional environment payload
-described under "Environmental physics". When land
-geometry is available, every candidate segment is checked before router-lib
-retains it. A configured service failure marks the route as unchecked rather
-than silently falling back to less detailed geometry. Direct lower-level bridge
-results are likewise marked as not evaluated unless the caller supplies a
-segment constraint. The existing raster basemap is never sampled as land
-geometry.
+capability. When polygon geometry is selected, candidate segments are checked
+before router-lib retains them. A required source failure blocks calculation
+rather than silently falling back or proceeding unchecked. Application polygon
+enforcement and native landmask audit are distinct: native `landAvoidance` can
+be false while a verified application polygon constraint is applied. A generic
+segment callback alone is not proof of land protection. The raster basemap is
+never sampled as land geometry.
+
+Optional local GSHHG uses router-lib's regional binary loader. Its grid, source
+work, halo and numerical-clearance limits must be considered before choosing a
+resolution or study domain; see the [migration guide](docs/router-lib-0.6-migration.md#land-protection-and-optional-gshhg).
+Navtool does not bundle or automatically download GSHHG.
 
 ## Environmental physics (opt-in)
 
 Navtool can enable router-lib's Stage 3 environmental providers from the
-professional routing panel. **Every one of them is off by default.** With none
-enabled, routing takes exactly the path it took before Stage 3 shipped, down to
-byte-identical route JSON, which both the native and managed test suites assert.
+professional routing panel. **Every one of them is off by default.** Unconfigured
+providers do not add environmental effects. This does not promise identical
+route physics or JSON across router-lib versions or different cruising presets.
 
 | Provider | What it adds | Default |
 | --- | --- | --- |
@@ -391,14 +410,11 @@ rather than layering on top of it, so the two land paths can never disagree
 about the same water. Navtool rasterizes the mask from the same Natural Earth or
 OSM-derived geometry described above, scoped to the route corridor.
 
-Distances are computed in a local equirectangular frame whose longitude is
-compressed by the cosine of the highest latitude in the corridor. Every row
-except the extreme one is therefore compressed slightly more than is strictly
-correct, which means reported distances are **lower bounds** on true distance.
-Under-reporting distance only ever makes segment certification more cautious.
-The sign comes from a separate point-in-polygon test against unscaled geometry,
-so which side of the coastline a node is on stays exact. Declared interpolation
-error is half the node diagonal.
+The managed builder uses a local equirectangular frame and declares a
+half-diagonal interpolation allowance. Its supported geographic and numerical
+limits are distinct from native GSHHG's allowance and halo rules. These are
+approximations of source geometry, not a global proof of navigational clearance;
+unsupported regions must not be treated as certified open water.
 
 If the landmask is selected and land geometry cannot be obtained, the route
 fails rather than proceeding over what would look like open water.
@@ -427,8 +443,9 @@ navigational guidance.
 
 **Navtool is planning software, not navigation-certified guidance.** Land
 avoidance depends on the bundled generalized dataset or configured OSM-derived
-service, cached data freshness, and router-lib capability. Any degraded route
-is explicitly marked as not checked for land. Even a land-aware route can omit
+service or explicitly selected local GSHHG, cached data freshness, and router-lib
+capability. Unavailable required sources block new calculations; old results
+retain their historical warning state. Even a land-aware route can omit
 recent, small, generalized, or inaccurately mapped hazards and must be verified
 independently. The routing engine models currents, waves, and exclusion zones only when
 you explicitly enable and supply them (see "Environmental physics"); it never

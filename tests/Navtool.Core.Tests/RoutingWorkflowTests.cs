@@ -387,7 +387,7 @@ public sealed class RoutingWorkflowTests
         StubRouteEngine? engine = null;
         engine = new StubRouteEngine((request, acquisition, _, _) =>
             engine!.Optimizations[^1].Solver == RouteSolver.TimeDependentLattice
-                ? throw new InvalidOperationException(
+                ? throw new RoutingException(RoutingFailureKind.RecoverableSolver,
                     "time-dependent lattice search exhausted every reachable state")
                 : ValueTask.FromResult(CreateRoute(request, acquisition.Request.Model)));
         var workflow = new RoutingWorkflow(
@@ -435,7 +435,7 @@ public sealed class RoutingWorkflowTests
                 // The lattice searches for a while before giving up, so the bar has
                 // already advanced when the fallback message is reported.
                 progress?.Report(new RouteCalculationProgress(0.8));
-                throw new InvalidOperationException("lattice failed");
+                throw new RoutingException(RoutingFailureKind.RecoverableSolver, "lattice failed");
             }
 
             progress?.Report(new RouteCalculationProgress(0.1));
@@ -505,7 +505,7 @@ public sealed class RoutingWorkflowTests
         StubRouteEngine? engine = null;
         engine = new StubRouteEngine((request, acquisition, _, _) =>
             engine!.Optimizations[^1].Solver == RouteSolver.TimeDependentLattice
-                ? throw new InvalidOperationException("lattice failed")
+                ? throw new RoutingException(RoutingFailureKind.RecoverableSolver, "lattice failed")
                 : ValueTask.FromResult(CreateRoute(request, acquisition.Request.Model)));
         var workflow = new RoutingWorkflow(
             new[]
@@ -576,7 +576,7 @@ public sealed class RoutingWorkflowTests
     public async Task Workflow_reports_the_original_failure_when_the_fallback_also_fails()
     {
         var engine = new StubRouteEngine((_, _, _, _) =>
-            throw new InvalidOperationException("solver failed"));
+            throw new RoutingException(RoutingFailureKind.RecoverableSolver, "solver failed"));
         var workflow = new RoutingWorkflow(
             new[]
             {

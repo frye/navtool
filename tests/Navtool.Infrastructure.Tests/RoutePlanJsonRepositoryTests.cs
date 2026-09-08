@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Collections.Immutable;
 using Navtool.Core;
 using Navtool.Infrastructure;
 
@@ -6,6 +8,483 @@ namespace Navtool.Infrastructure.Tests;
 
 public sealed class RoutePlanJsonRepositoryTests
 {
+    [Fact]
+    public async Task Failed_solver_attempts_round_trip_from_workflow_and_survive_copy_without_geometry()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = await CalculateFailedPlanAsync(repository, directory.Path);
+        var original = plan.LatestResult(ForecastModel.NoaaGfs)!.Legs[0];
+        var loaded = await repository.OpenAsync(plan.Id);
+        var restored = loaded.LatestResult(ForecastModel.NoaaGfs)!.Legs[0];
+        var copy = await repository.SaveAsAsync(loaded, "Copied unsuccessful calculation");
+        var copied = (await repository.OpenAsync(copy.Id)).LatestResult(ForecastModel.NoaaGfs)!.Legs[0];
+
+        Assert.Equal(RouteLegOutcomeState.Failed, original.State);
+        Assert.NotNull(original.Failure);
+        Assert.Equal(2, original.Failure.Attempts.Length);
+        Assert.Equal(RouteSolver.TimeDependentLattice, original.Failure.Attempts[0].Solver);
+        Assert.Equal(RouteSolver.IsochroneBeam, original.Failure.Attempts[1].Solver);
+        Assert.Equal(RoutingFailureKind.RecoverableSolver, original.Failure.Attempts[0].FailureKind);
+        Assert.Equal(RoutingFailureKind.ResourceLimit, original.Failure.Attempts[1].FailureKind);
+        foreach (var leg in new[] { restored, copied })
+        {
+            Assert.Null(leg.Route);
+            Assert.Equal(original.ExecutionSession, leg.ExecutionSession);
+            Assert.Equal(original.Failure.Kind, leg.Failure!.Kind);
+            Assert.Equal(original.Failure.Code, leg.Failure.Code);
+            Assert.Equal(original.Failure.Message, leg.Failure.Message);
+            Assert.Equal(original.Failure.Attempts.ToArray(), leg.Failure.Attempts.ToArray());
+            Assert.Contains("Disconnected lattice", leg.Detail);
+            Assert.Contains("Beam resource limit", leg.Detail);
+        }
+    }
+
+    [Theory]
+    [InlineData("missing-attempts")]
+    [InlineData("duplicate-attempt")]
+    [InlineData("unknown-kind")]
+    [InlineData("empty-code")]
+    public async Task Malformed_failed_attempt_audit_is_rejected(string corruption)
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = await CalculateFailedPlanAsync(repository, directory.Path);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        var failure = root["plan"]!["results"]![0]!["legs"]![0]!["failure"]!;
+        switch (corruption)
+        {
+            case "missing-attempts":
+                failure.AsObject().Remove("attempts");
+                break;
+            case "duplicate-attempt":
+                failure["attempts"]![1]!["attemptId"] = failure["attempts"]![0]!["attemptId"]!.DeepClone();
+                break;
+            case "unknown-kind":
+                failure["kind"] = "UnrecognizedFailure";
+                break;
+            case "empty-code":
+                failure["code"] = "";
+                break;
+        }
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+
+        await Assert.ThrowsAsync<RoutePlanRepositoryException>(async () => await repository.OpenAsync(plan.Id));
+    }
+
+    [Fact]
+    public async Task Legacy_failed_legs_do_not_gain_reconstructed_attempt_audit()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = await CalculateFailedPlanAsync(repository, directory.Path);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        root["schemaVersion"] = 5;
+        root["plan"]!["results"]![0]!["legs"]![0]!["reason"] = nameof(RouteLegOutcomeReason.RouteCalculationFailed);
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+
+        var restored = (await repository.OpenAsync(plan.Id)).LatestResult(ForecastModel.NoaaGfs)!.Legs[0];
+
+        Assert.Null(restored.Failure);
+        Assert.Null(restored.Route);
+        Assert.Equal(RouteLegOutcomeState.Failed, restored.State);
+    }
+
+    private static async Task<RoutePlan> CalculateFailedPlanAsync(RoutePlanJsonRepository repository, string directory)
+    {
+        var plan = CreatePlan();
+        plan = plan.UnmarkSailed(plan.Legs[0].Id);
+        var departure = DateTimeOffset.UtcNow;
+        var workflow = new RoutePlanRoutingWorkflow(
+            new RoutingWorkflow([new FailureForecastSource(directory)], new FailedSolvers()), repository);
+        var result = await workflow.ExecuteAsync(new RoutePlanRoutingRequest(
+            plan, departure, departure.AddDays(1), [ForecastSelection.OfficialDownload(ForecastModel.NoaaGfs)],
+            optimization: new RouteOptimizationOptions(solver: RouteSolver.TimeDependentLattice)));
+        return result.Plan;
+    }
+
+    private sealed class FailureForecastSource(string directory) : IForecastProvider
+    {
+        public ForecastProvider Provider => ForecastProvider.Noaa;
+        public ForecastModel Model => ForecastModel.NoaaGfs;
+        public ValueTask<ForecastAcquisition> AcquireAsync(ForecastRequest request,
+            IProgress<ForecastProgress>? progress, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new ForecastAcquisition(request,
+                new ForecastRun(Provider, Model, request.From.AddHours(-6)),
+                new LocalGribArtifact(Path.Combine(directory, "fixture.grib")), ForecastAcquisitionSource.Remote));
+    }
+
+    private sealed class FailedSolvers : IRouteEngine
+    {
+        public ValueTask<RouteResult> CalculateAsync(RouteRequest request, ForecastAcquisition forecast,
+            IProgress<RouteCalculationProgress>? progress, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Explicit solver settings are required.");
+
+        public ValueTask<RouteResult> CalculateAsync(RouteRequest request, ForecastAcquisition forecast,
+            RouteOptimizationOptions optimization, IProgress<RouteCalculationProgress>? progress, CancellationToken cancellationToken) =>
+            throw (optimization.Solver == RouteSolver.TimeDependentLattice
+                ? new RoutingException(RoutingFailureKind.RecoverableSolver, "Disconnected lattice")
+                : new RoutingException(RoutingFailureKind.ResourceLimit, "Beam resource limit"));
+    }
+
+    [Fact]
+    public async Task Schema_six_round_trips_setup_run_audit_causal_holds_and_all_native_fields()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path);
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var originalJson = await File.ReadAllTextAsync(path);
+        var loaded = await repository.OpenAsync(plan.Id);
+
+        Assert.Equal(plan.RoutingSetup, loaded.RoutingSetup);
+        Assert.Equal(plan.RoutingSetup!.RegionalLand, loaded.RoutingSetup!.RegionalLand);
+        Assert.Equal("GSHHG source attribution preserved", loaded.RoutingSetup.RegionalLand!.Attribution);
+        Assert.Equal(RouteMissingDataPolicy.RejectTransition, loaded.RoutingSetup.RegionalLand.MissingDataPolicy);
+        Assert.Equal(BoatAssetKind.Imported, loaded.RoutingSetup.Boat.Kind);
+        Assert.False(File.Exists(loaded.RoutingSetup.RegionalLand!.SourcePath));
+        Assert.Equal(plan.Results[0].Legs[0].ExecutionSession, loaded.Results[0].Legs[0].ExecutionSession);
+        Assert.NotEqual(loaded.Results[0].Session.Id, loaded.Results[0].Legs[0].ExecutionSession!.Id);
+        Assert.Equal(plan.Results[0].Legs[0].PlannedHold, loaded.Results[0].Legs[0].PlannedHold);
+        Assert.Equal(plan.Results[0].Legs[1].Origin, loaded.Results[0].Legs[1].Origin);
+        var route = loaded.Results[0].Legs[0].Route!;
+        Assert.Equal(3, route.Diagnostics.EligibilityEvaluations);
+        Assert.Equal(1, route.Diagnostics.PrunedCandidates);
+        Assert.Equal(0, route.Diagnostics.FutureProbeMisses);
+        Assert.Equal(13, route.Points[^1].PolarWindSpeedKnots);
+        Assert.Equal(170, route.Points[^1].Environment!.PolarWindDirectionDegrees);
+        Assert.Equal("native warning", Assert.Single(route.NativeAudit!.Routing!.Warnings));
+        Assert.Equal(2, route.RunAudit!.Attempts.Length);
+        Assert.Equal(RoutingFailureKind.RecoverableSolver, route.RunAudit.Attempts[0].FailureKind);
+        Assert.NotNull(route.RunAudit.ProfessionalOverrides);
+        Assert.Null(route.RunAudit.Resolved.Optimization.Environment);
+        Assert.Null(route.RunAudit.ProfessionalOverrides!.Optimization!.Environment);
+        Assert.Equal(TimeSpan.FromHours(240), route.RunAudit.Resolved.HardDuration);
+        Assert.Equal(3, route.RunAudit.Resolved.Search.Intervals.Length);
+        Assert.Equal(new GeographicBounds(34, 41, -66, -51), route.RunAudit.Forecast!.DeclaredBounds);
+        Assert.Equal(TimeSpan.FromHours(1), route.RunAudit.Forecast.MinimumTimeSpacing);
+        Assert.Equal(TimeSpan.FromHours(3), route.RunAudit.Forecast.MaximumTimeSpacing);
+        Assert.Equal(20, route.RunAudit.Forecast.ValidTimes.Length);
+        Assert.Equal(route.RunAudit.Forecast.ValidTimes.ToArray(), route.NativeAudit.ForecastCoverage!.ValidTimes.ToArray());
+        Assert.Equal(TimeSpan.FromHours(1), route.NativeAudit.ForecastCoverage.MinimumTimeSpacing);
+        Assert.Equal(TimeSpan.FromHours(3), route.NativeAudit.ForecastCoverage.MaximumTimeSpacing);
+        Assert.DoesNotContain("signedDistance", originalJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("polarBytes", originalJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"environment\"", JsonNode.Parse(originalJson)!["plan"]!["results"]![0]!["legs"]![0]!["route"]!["runAudit"]!.ToJsonString());
+
+        await repository.SaveAsync(loaded);
+        Assert.Equal(originalJson, await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
+    public async Task Save_as_remaps_plan_scoped_predecessors_without_relabeling_sailed_executions()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var original = CreateAuditedPlan(directory.Path);
+        var copied = await repository.SaveAsAsync(original, "Copied continuous voyage");
+        var loaded = await repository.OpenAsync(copied.Id);
+        Assert.NotEqual(original.Id, loaded.Id);
+        Assert.Equal(original.Legs.Where(leg => original.SailedLegIds.Contains(leg.Id)).Select(leg => leg.Index),
+            loaded.Legs.Where(leg => loaded.SailedLegIds.Contains(leg.Id)).Select(leg => leg.Index));
+        Assert.Equal(original.ActiveLegIndex, loaded.ActiveLegIndex);
+        Assert.NotEqual(original.ActiveLegId, loaded.ActiveLegId);
+        Assert.Equal(original.RoutingSetup, loaded.RoutingSetup);
+        var sailed = loaded.Results[0].Legs[0];
+        var next = loaded.Results[0].Legs[1];
+        Assert.Equal(original.Results[0].Legs[0].ExecutionSession, sailed.ExecutionSession);
+        Assert.Equal(original.Id, sailed.ExecutionSession!.PlanId);
+        Assert.Equal(original.Results[0].Legs[0].Route!.RunAudit!.CalculationId, sailed.Route!.RunAudit!.CalculationId);
+        Assert.Equal(copied.Id, next.Origin!.Predecessor!.PlanId);
+        Assert.Equal(sailed.LegId, next.Origin.Predecessor.LegId);
+        Assert.Equal(sailed.ExecutionSession.Id, next.Origin.Predecessor.SessionId);
+        Assert.Equal(sailed.Route.Request.RouteId, next.Origin.Predecessor.RouteId);
+        Assert.Equal(sailed.Route.Points[^1].Location, next.Route!.Request.Origin);
+        Assert.Equal(sailed.PlannedHold!.Until, next.Route.Request.DepartureTime);
+        Assert.NotEqual(original.Results[0].Session.Id, loaded.Results[0].Session.Id);
+        Assert.Equal(original.Results[0].Session.StartedAt, loaded.Results[0].Session.StartedAt);
+        Assert.Equal(original.Results[0].Session.CompletedAt, loaded.Results[0].Session.CompletedAt);
+        Assert.DoesNotContain(loaded.Legs, leg => original.Legs.Any(old => old.Id == leg.Id));
+    }
+
+    [Fact]
+    public async Task Version_five_history_remains_unconfigured_with_unknown_new_audit()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = WithResult(CreatePlan(), environment: true);
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        root["schemaVersion"] = 5;
+        root["plan"]!.AsObject().Remove("setup");
+        foreach (var leg in root["plan"]!["results"]![0]!["legs"]!.AsArray())
+        {
+            leg!.AsObject().Remove("executionSession");
+            leg.AsObject().Remove("origin");
+            leg.AsObject().Remove("plannedHold");
+            leg["route"]!.AsObject().Remove("runAudit");
+            leg["route"]!.AsObject().Remove("nativeAudit");
+        }
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+        var bytes = await File.ReadAllBytesAsync(path);
+        var loaded = await repository.OpenAsync(plan.Id);
+        Assert.Null(loaded.RoutingSetup);
+        Assert.Equal(plan.SailedLegIds, loaded.SailedLegIds);
+        Assert.Equal(plan.Results[0].Session.Id, loaded.Results[0].Legs[0].ExecutionSession!.Id);
+        foreach (var leg in loaded.Results[0].Legs)
+        {
+            Assert.Null(leg.Origin);
+            Assert.Null(leg.PlannedHold);
+            Assert.Null(leg.Route!.RunAudit);
+            Assert.Null(leg.Route.NativeAudit);
+            Assert.Null(leg.Route.Diagnostics.EligibilityEvaluations);
+            Assert.All(leg.Route.Points, point =>
+            {
+                Assert.Null(point.PolarWindSpeedKnots);
+                Assert.NotNull(point.Environment);
+                Assert.Null(point.Environment!.PolarWindSpeedKnots);
+            });
+        }
+        Assert.Equal(bytes, await File.ReadAllBytesAsync(path));
+        await repository.SaveAsync(loaded);
+        Assert.Equal(bytes, await File.ReadAllBytesAsync(Assert.Single(Directory.GetFiles(
+            Path.Combine(repository.RootDirectory, "backups"), "*.json"))));
+    }
+
+    [Theory]
+    [InlineData("unknown-native-schema")]
+    [InlineData("missing-native-field")]
+    [InlineData("unknown-audit-field")]
+    [InlineData("negative-counter")]
+    [InlineData("contradictory-native-counter")]
+    [InlineData("wrong-native-destination")]
+    [InlineData("wrong-attempt-solver")]
+    [InlineData("missing-execution")]
+    [InlineData("missing-origin")]
+    [InlineData("missing-regional-source")]
+    [InlineData("wrong-predecessor-plan")]
+    [InlineData("wrong-predecessor-session")]
+    [InlineData("wrong-predecessor-model")]
+    [InlineData("wrong-predecessor-route")]
+    [InlineData("partial-predecessor")]
+    [InlineData("conflicting-predecessor-hold")]
+    [InlineData("wrong-handoff-position")]
+    [InlineData("wrong-handoff-time")]
+    [InlineData("invalid-search-budget")]
+    [InlineData("invalid-routing-interval")]
+    [InlineData("invalid-polar-audit")]
+    [InlineData("future-build-abi")]
+    [InlineData("invalid-forecast-spacing")]
+    [InlineData("incomplete-forecast-spacing")]
+    [InlineData("excessive-forecast-gap")]
+    [InlineData("contradictory-forecast-validity")]
+    [InlineData("duplicate-native-valid-time")]
+    [InlineData("unordered-forecast-times")]
+    [InlineData("contradictory-forecast-spacing")]
+    [InlineData("missing-native-coverage-times")]
+    [InlineData("unknown-regional-missing-policy")]
+    [InlineData("missing-regional-attribution")]
+    public async Task Schema_six_rejects_malformed_audit_and_forged_handoffs(string mutation)
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path);
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        var first = root["plan"]!["results"]![0]!["legs"]![0]!;
+        var second = root["plan"]!["results"]![0]!["legs"]![1]!;
+        var route = first["route"]!;
+        switch (mutation)
+        {
+            case "unknown-native-schema": route["nativeAudit"]!["schema"] = "route_result_v999"; break;
+            case "missing-native-field": route["nativeAudit"]!["routing"]!.AsObject().Remove("boatSpeedFactor"); break;
+            case "unknown-audit-field": route["runAudit"]!["unknownFuturePolicy"] = true; break;
+            case "negative-counter": route["diagnostics"]!["eligibilityEvaluations"] = -1; break;
+            case "contradictory-native-counter": route["nativeAudit"]!["eligibilityEvaluations"] = 999; break;
+            case "wrong-native-destination": route["nativeAudit"]!["routing"]!["destinationLatitude"] = 0; break;
+            case "wrong-attempt-solver": route["runAudit"]!["attempts"]![1]!["solver"] = "TimeDependentLattice"; break;
+            case "missing-execution": first["executionSession"] = null; break;
+            case "missing-origin": first["origin"] = null; break;
+            case "missing-regional-source": root["plan"]!["setup"]!["regionalLand"] = null; break;
+            case "wrong-predecessor-plan": second["origin"]!["predecessor"]!["planId"] = Guid.NewGuid(); break;
+            case "wrong-predecessor-session": second["origin"]!["predecessor"]!["sessionId"] = Guid.NewGuid(); break;
+            case "wrong-predecessor-model": second["origin"]!["predecessor"]!["model"] = "EcmwfIfs"; break;
+            case "wrong-predecessor-route": second["origin"]!["predecessor"]!["routeId"] = "forged-route"; break;
+            case "partial-predecessor":
+                first["reason"] = "ForecastExhausted";
+                first["route"]!["completion"] = "ForecastExhausted";
+                first["plannedHold"] = null;
+                break;
+            case "conflicting-predecessor-hold":
+                first["plannedHold"]!["status"] = "Conflict";
+                first["plannedHold"]!["conflictZoneIdentifier"] = "activated-during-hold";
+                break;
+            case "wrong-handoff-position": second["route"]!["request"]!["originLatitude"] = 0; break;
+            case "wrong-handoff-time": second["route"]!["request"]!["departureTime"] = DateTimeOffset.Parse("2026-08-03T00:00:00Z"); break;
+            case "invalid-search-budget": route["runAudit"]!["resolved"]!["search"]!["maximumRetainedNodes"] = 0; break;
+            case "invalid-routing-interval": route["runAudit"]!["resolved"]!["search"]!["intervals"]![0]!["untilElapsedTicks"] = -1; break;
+            case "invalid-polar-audit": route["points"]![1]!["polarWindDirectionDegrees"] = 190; break;
+            case "future-build-abi": route["runAudit"]!["nativeIdentity"]!["bridgeAbiVersion"] = 999; break;
+            case "invalid-forecast-spacing": route["runAudit"]!["forecast"]!["minimumTimeSpacingTicks"] = -1; break;
+            case "incomplete-forecast-spacing": route["runAudit"]!["forecast"]!["minimumTimeSpacingTicks"] = null; break;
+            case "excessive-forecast-gap": route["runAudit"]!["forecast"]!["maximumTimeSpacingTicks"] = TimeSpan.FromHours(6).Ticks; break;
+            case "contradictory-forecast-validity": route["runAudit"]!["forecast"]!["validThrough"] = DateTimeOffset.Parse("2026-08-03T12:00:00Z"); break;
+            case "duplicate-native-valid-time":
+                route["nativeAudit"]!["forecastCoverage"]!["validTimes"]![1] =
+                    route["nativeAudit"]!["forecastCoverage"]!["validTimes"]![0]!.DeepClone();
+                break;
+            case "unordered-forecast-times":
+                route["runAudit"]!["forecast"]!["validTimes"]![1] = DateTimeOffset.Parse("2026-08-01T01:00:00Z");
+                break;
+            case "contradictory-forecast-spacing": route["runAudit"]!["forecast"]!["minimumTimeSpacingTicks"] = TimeSpan.FromHours(2).Ticks; break;
+            case "missing-native-coverage-times": route["nativeAudit"]!["forecastCoverage"]!["validTimes"] = new JsonArray(); break;
+            case "unknown-regional-missing-policy": root["plan"]!["setup"]!["regionalLand"]!["missingDataPolicy"] = "SilentOpenWater"; break;
+            case "missing-regional-attribution": root["plan"]!["setup"]!["regionalLand"]!.AsObject().Remove("attribution"); break;
+        }
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+        await Assert.ThrowsAsync<RoutePlanRepositoryException>(async () => await repository.OpenAsync(plan.Id));
+    }
+
+    [Fact]
+    public async Task Absent_historical_forecast_spacing_stays_unknown_when_reopened_and_resaved()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path);
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        foreach (var leg in root["plan"]!["results"]![0]!["legs"]!.AsArray())
+        {
+            var forecast = leg!["route"]!["runAudit"]!["forecast"]!.AsObject();
+            forecast.Remove("minimumTimeSpacingTicks");
+            forecast.Remove("maximumTimeSpacingTicks");
+        }
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+        var loaded = await repository.OpenAsync(plan.Id);
+        Assert.All(loaded.Results[0].Legs, leg =>
+        {
+            Assert.Null(leg.Route!.RunAudit!.Forecast!.MinimumTimeSpacing);
+            Assert.Null(leg.Route.RunAudit.Forecast.MaximumTimeSpacing);
+            Assert.Equal(TimeSpan.FromHours(3), leg.Route.RunAudit.Forecast.MaximumInterpolationGap);
+        });
+        await repository.SaveAsync(loaded);
+        Assert.Null((await repository.OpenAsync(plan.Id)).Results[0].Legs[0].Route!.RunAudit!.Forecast!.MinimumTimeSpacing);
+    }
+
+    [Fact]
+    public async Task Duplicate_known_audit_fields_are_rejected_instead_of_last_value_winning()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path);
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var json = await File.ReadAllTextAsync(path);
+        json = json.Replace("\"schema\": \"route_result_v2\"",
+            "\"schema\": \"route_result_v99\", \"schema\": \"route_result_v2\"", StringComparison.Ordinal);
+        await File.WriteAllTextAsync(path, json);
+        await Assert.ThrowsAsync<RoutePlanRepositoryException>(async () => await repository.OpenAsync(plan.Id));
+    }
+
+    [Fact]
+    public async Task Conflict_hold_and_blocked_suffix_remain_distinct_from_native_route_points()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var original = CreateAuditedPlan(directory.Path);
+        var first = original.Results[0].Legs[0];
+        var hold = first.PlannedHold!;
+        first = first.WithPlannedHold(new(hold.Location, hold.From, hold.Until,
+            RouteHoldCheckStatus.Conflict, "timed-restriction", "Following leg blocked"));
+        var result = new RoutePlanResult(original.Results[0].Session,
+            [first, new(original.Legs[1].Id, RouteLegOutcomeState.Blocked, RouteLegOutcomeReason.StopoverExclusionConflict)]);
+        var plan = new RoutePlan(original.Id, original.Name, original.Waypoints, [result],
+            original.SailedLegIds, routingSetup: original.RoutingSetup);
+        await repository.SaveAsync(plan);
+        var loaded = await repository.OpenAsync(plan.Id);
+        Assert.Equal(RouteHoldCheckStatus.Conflict, loaded.Results[0].Legs[0].PlannedHold!.Status);
+        Assert.Equal(2, loaded.Results[0].Legs[0].Route!.Points.Length);
+        Assert.Equal(first.Route!.ArrivalTime, loaded.Results[0].Legs[0].Route!.Points[^1].Timestamp);
+        Assert.Null(loaded.Results[0].Legs[1].Route);
+    }
+
+    private static RoutePlan CreateAuditedPlan(string root)
+    {
+        var boat = new BoatAsset(new string('a', 64), "Imported cruising polar.csv", BoatAssetKind.Imported,
+            BoatPolarFormat.NativeMatrix, new("Native validation accepted", MaximumWindSpeedKnots: 50), 35);
+        var regional = new RouteRegionalLandPolicy(Path.Combine(root, "missing-but-viewable.b"),
+            new string('b', 64), new GeographicBounds(34, 41, -66, -51), 20, .25, 120,
+            250000, 10000000, 100000000, attribution: "GSHHG source attribution preserved",
+            missingDataPolicy: RouteMissingDataPolicy.RejectTransition);
+        var setup = new RoutingSetup(boat, RoutingQuality.NativeAccurate, .85, 1,
+            RoutingLandSource.RegionalGshhg, hardDuration: TimeSpan.FromHours(240),
+            localForecastMaximumGap: TimeSpan.FromHours(3), regionalLand: regional);
+        var basePlan = CreatePlan();
+        var plan = new RoutePlan(basePlan.Id, basePlan.Name, basePlan.Waypoints, sailedLegIds: basePlan.SailedLegIds,
+            activeLegId: basePlan.Legs[1].Id, routingSetup: setup);
+        var date = DateTimeOffset.Parse("2026-08-01T18:00:00Z");
+        var execution = new RouteCalculationSession(plan.Id, ForecastModel.NoaaGfs, date).Complete(date.AddSeconds(2));
+        var outer = new RouteCalculationSession(plan.Id, ForecastModel.NoaaGfs, date.AddDays(1)).Complete(date.AddDays(1).AddSeconds(2));
+        var search = new RouteSearchSettings(TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(5),
+            5, 1, 20, 1, 5000000, 500000, 2, true, true, false, 1, .05,
+            [new(TimeSpan.FromMinutes(15), TimeSpan.FromHours(4)),
+             new(TimeSpan.FromMinutes(30), TimeSpan.FromHours(24)), new(TimeSpan.FromHours(1))]);
+        var optimization = new RouteOptimizationOptions(maneuver: new(TimeSpan.FromSeconds(40), TimeSpan.FromSeconds(30)),
+            maximumTrueWindSpeedKnots: 40, destinationFront: new(90, RouteDestinationFrontSegmentPolicy.AllMeaningfulComponents, 4));
+        var resolved = new ResolvedRoutingOptions(setup.Quality, optimization, search, .85, 1, TimeSpan.FromHours(240));
+        var build = new NativeRoutingIdentity(8, "0.6.0", "cd476a84ef3edea9582d77f21588a23af727e083", "fetched-clean", 8191);
+        var validTimes = new[] { date.AddHours(-6), date.AddHours(-5) }
+            .Concat(Enumerable.Range(1, 18).Select(index => date.AddHours(-6 + index * 3)))
+            .ToImmutableArray();
+        var coverage = new ForecastCoverage(new GeographicBounds(34, 41, -66, -51), validTimes, TimeSpan.FromHours(3));
+        var legs = new List<RouteLegResult>();
+        foreach (var leg in plan.Legs)
+        {
+            var previous = legs.LastOrDefault();
+            var origin = previous?.Route?.Points[^1].Location ?? plan.Waypoints[0].Coordinate;
+            var departure = previous?.PlannedHold?.Until ?? date;
+            var destination = plan.Waypoints[leg.Index + 1].Coordinate;
+            var endpoint = new Coordinate(destination.Latitude + .002, destination.Longitude);
+            var request = new RouteRequest($"audit-leg-{leg.Index}", origin, destination, departure, departure.AddDays(1));
+            var routing = new RouteNativeRunMetadata("earliest_arrival", "best_found", RouteSolver.IsochroneBeam,
+                destination, 1, .12, .85, 5, 1, TimeSpan.FromMinutes(5), true, true,
+                RouteWindSampling.Midpoint, RouteAbovePolarRangePolicy.NoSpeed, 40, TimeSpan.FromSeconds(40),
+                TimeSpan.FromSeconds(30), date.AddHours(-6), date.AddHours(-6), date.AddDays(2), ["native warning"]);
+            var native = new RouteNativeRunAudit("route_result_v2", RouteSolver.IsochroneBeam, 1, TimeSpan.FromHours(240),
+                true, 3, 1, 0, routing, "forecast-source", "explicit-polar-source", "explicit_time", coverage);
+            var audit = new RouteRunAudit(Guid.NewGuid(), setup, resolved, build, RouteSolver.TimeDependentLattice,
+                [new(Guid.NewGuid(), RouteSolver.TimeDependentLattice, date, date.AddSeconds(1), RoutingFailureKind.RecoverableSolver, "disconnected"),
+                 new(Guid.NewGuid(), RouteSolver.IsochroneBeam, date.AddSeconds(1), date.AddSeconds(2))],
+                new(new(ForecastProvider.Noaa, ForecastModel.NoaaGfs, date.AddHours(-6)),
+                    new GeographicBounds(34, 41, -66, -51), new GeographicBounds(34, 41, -66, -51),
+                    date.AddHours(-6), date.AddDays(2), TimeSpan.FromHours(3),
+                    TimeSpan.FromHours(1), TimeSpan.FromHours(3), validTimes),
+                native, new(optimization, search), new(LandAvoidanceStatus.Applied, Attribution: "GSHHG"));
+            var environment = new RoutePointEnvironment(7, 95, 6, 1, -.4, 1.5, 8, 180, 13, 170);
+            var route = new RouteResult(request, ForecastModel.NoaaGfs,
+                [new(origin, departure, 90, 6, 15, 180, 0, environment, 13, 170),
+                 new(endpoint, departure.AddHours(1), 90, 6, 15, 180, 50, environment, 13, 170)],
+                new RouteDiagnostics(1, 2, 1, 1, TimeSpan.FromSeconds(2), 3, 1, 0),
+                RouteCompletion.DestinationReached, new(LandAvoidanceStatus.Applied, Attribution: "GSHHG"),
+                RouteSolver.IsochroneBeam, null, null, null, audit, native);
+            var hold = leg.Index == 0 ? new RoutePlannedHold(endpoint, route.ArrivalTime,
+                route.ArrivalTime.AddHours(4), RouteHoldCheckStatus.Clear, detail: "Native interval exclusions clear") : null;
+            var provenance = previous is null ? new RouteLegOrigin(RouteLegOriginSource.DeclaredWaypoint) :
+                new(RouteLegOriginSource.AcceptedPredecessor, new(plan.Id, previous.LegId, ForecastModel.NoaaGfs,
+                    previous.ExecutionSession!.Id, previous.Route!.Request.RouteId));
+            legs.Add(new(leg.Id, RouteLegOutcomeState.Succeeded, RouteLegOutcomeReason.CalculationSucceeded,
+                route, executionSession: execution, origin: provenance, plannedHold: hold));
+        }
+        return new(plan.Id, plan.Name, plan.Waypoints, [new(outer, legs)], plan.SailedLegIds,
+            activeLegId: plan.ActiveLegId, routingSetup: setup);
+    }
+
     [Fact]
     public async Task Round_trip_list_save_as_and_delete_preserve_plan_data()
     {
@@ -52,6 +531,27 @@ public sealed class RoutePlanJsonRepositoryTests
         Assert.Single(await repository.ListAsync());
         await Assert.ThrowsAsync<RoutePlanRepositoryException>(async () =>
             await repository.OpenAsync(plan.Id));
+    }
+
+    [Fact]
+    public async Task Save_as_preserves_explicit_active_leg_and_current_position()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreatePlan();
+        plan = plan.SetActiveLeg(plan.Legs[^1].Id)
+            .SetCurrentPosition(new Coordinate(14, 24), DateTimeOffset.Parse("2026-08-01T12:00:00Z"));
+
+        var copy = await repository.SaveAsAsync(plan, "Copy with observed start");
+        var loaded = await repository.OpenAsync(copy.Id);
+
+        Assert.NotEqual(plan.Id, copy.Id);
+        Assert.Equal(plan.ActiveLegIndex, loaded.ActiveLegIndex);
+        Assert.NotEqual(plan.ActiveLegId, loaded.ActiveLegId);
+        Assert.Equal(plan.CurrentPosition, loaded.CurrentPosition);
+        Assert.Equal(plan.Waypoints.Select(point => (point.Name, point.Coordinate, point.Stopover)),
+            loaded.Waypoints.Select(point => (point.Name, point.Coordinate, point.Stopover)));
+        Assert.DoesNotContain(loaded.Waypoints, point => plan.Waypoints.Any(old => old.Id == point.Id));
     }
 
     [Fact]
@@ -176,6 +676,54 @@ public sealed class RoutePlanJsonRepositoryTests
 
         var loaded = await repository.OpenAsync(plan.Id);
         Assert.Equal(plan.Name, loaded.Name);
+        Assert.Empty(Directory.EnumerateFiles(repository.RootDirectory, "*.tmp"));
+    }
+
+    [Fact]
+    public async Task Migrated_overwrite_preserves_exact_original_once_without_listing_backup()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = WithResult(CreatePlan());
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        root["schemaVersion"] = RoutePlanJsonRepository.CurrentSchemaVersion - 1;
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+        var original = await File.ReadAllBytesAsync(path);
+
+        var migrated = await repository.OpenAsync(plan.Id);
+        Assert.Equal(original, await File.ReadAllBytesAsync(path));
+        await repository.SaveAsync(migrated);
+        var backup = Assert.Single(Directory.EnumerateFiles(
+            Path.Combine(repository.RootDirectory, "backups"), "*.json"));
+        Assert.Equal(original, await File.ReadAllBytesAsync(backup));
+        await repository.SaveAsync(migrated.Rename("Updated"));
+
+        Assert.Single(Directory.EnumerateFiles(Path.GetDirectoryName(backup)!, "*.json"));
+        Assert.Equal(original, await File.ReadAllBytesAsync(backup));
+        Assert.Single(await repository.ListAsync());
+        Assert.Empty(Directory.EnumerateFiles(repository.RootDirectory, "*.tmp", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public async Task Failed_migration_backup_does_not_replace_original()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreatePlan();
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        root["schemaVersion"] = RoutePlanJsonRepository.CurrentSchemaVersion - 1;
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+        var original = await File.ReadAllBytesAsync(path);
+        await File.WriteAllTextAsync(Path.Combine(repository.RootDirectory, "backups"), "not a directory");
+
+        await Assert.ThrowsAsync<RoutePlanRepositoryException>(async () =>
+            await repository.SaveAsync(plan.Rename("Must not replace")));
+
+        Assert.Equal(original, await File.ReadAllBytesAsync(path));
         Assert.Empty(Directory.EnumerateFiles(repository.RootDirectory, "*.tmp"));
     }
 

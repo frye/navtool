@@ -26,6 +26,10 @@ public sealed class AppCompositionTests
         {
             Assert.IsType<OsmLandDataProvider>(
                 services.GetRequiredService<ILandDataProvider>());
+            var viewModel = services.GetRequiredService<MainViewModel>();
+            Assert.Equal(RoutingLandSource.OpenStreetMap, viewModel.RoutingSetup.LandSource);
+            viewModel.Itinerary.NewCommand.Execute(null);
+            Assert.Equal(RoutingLandSource.OpenStreetMap, viewModel.RoutingSetup.LandSource);
         });
     }
 
@@ -50,6 +54,13 @@ public sealed class AppCompositionTests
                 services.GetServices<IForecastDownloadEstimator>()
                     .Select(estimator => estimator.Model));
             Assert.NotNull(services.GetRequiredService<MainViewModel>().Itinerary);
+            Assert.IsType<DeferredBoatAssetService>(services.GetRequiredService<IBoatAssetService>());
+            Assert.IsType<DeferredRoutingSetupService>(services.GetRequiredService<IRoutingSetupService>());
+            Assert.IsAssignableFrom<IConfiguredRouteEngine>(services.GetRequiredService<IRouteEngine>());
+            Assert.NotNull(services.GetRequiredService<IRouteStopoverValidator>());
+            Assert.IsType<DeferredRegionalLandPreviewService>(services.GetRequiredService<IRegionalLandPreviewService>());
+            Assert.IsAssignableFrom<IConfiguredLocalGribInspector>(services.GetRequiredService<ILocalGribInspector>());
+            Assert.Null(services.GetRequiredService<MainViewModel>().RoutingSetup.Boat);
             var tileOptions = services.GetRequiredService<OsmTileOptions>();
             Assert.Equal(
                 Path.Combine(root, "map-tile-cache"),

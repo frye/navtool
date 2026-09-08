@@ -23,6 +23,13 @@ or attribution is required. Navtool retains the recommended credit:
 "Made with Natural Earth."
 https://www.naturalearthdata.com/about/terms-of-use/
 
+GSHHG (optional user-supplied coastline data)
+Developed and maintained by Paul Wessel and Walter H. F. Smith.
+GSHHG releases since 2.2.2 are distributed under the GNU Lesser General
+Public License. Navtool does not bundle or automatically download this dataset.
+Users supplying local data must retain its accompanying license and notices.
+https://www.soest.hawaii.edu/pwessel/gshhg/
+
 SOFTWARE
 
 Mapsui 5.1.0

@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 project(NavtoolRouterBridge VERSION 1.0.0 LANGUAGES C CXX)
 
 option(NAVTOOL_ROUTER_BRIDGE_BUILD_TESTS "Build native bridge tests" ON)
+option(NAVTOOL_ROUTER_BRIDGE_RUN_DIAGNOSTICS "Run bounded controlled-action strategic diagnostics" OFF)
 set(
     SAILROUTE_SOURCE_DIR
     ""
@@ -15,7 +16,7 @@ set(
     "router-lib release repository used when SAILROUTE_SOURCE_DIR is unset")
 set(
     NAVTOOL_ROUTER_LIB_RELEASE_TAG
-    "v0.4.3"
+    "cd476a84ef3edea9582d77f21588a23af727e083"
     CACHE STRING
     "Immutable router-lib revision used when SAILROUTE_SOURCE_DIR is unset")
 set(_navtool_router_effective_source_dir "")
@@ -23,7 +24,9 @@ set(NAVTOOL_ROUTER_PATCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/patches")
 set(NAVTOOL_ROUTER_PATCH_SCRIPT "${NAVTOOL_ROUTER_PATCH_DIR}/apply.cmake")
 # Optional fixes carried against the pinned router-lib revision. See
 # patches/README.md; drop entries once the release pin moves past them.
-set(NAVTOOL_ROUTER_LIB_PATCHES)
+set(NAVTOOL_ROUTER_LIB_PATCHES 0001-utf8-asset-paths.patch)
+set(SAILROUTE_ENABLE_ENSEMBLE OFF CACHE BOOL "" FORCE)
+set(SAILROUTE_ENABLE_LAND_DATA ON CACHE BOOL "" FORCE)
 
 if(NOT TARGET sailroute::sailroute)
     if(DEFINED SAILROUTE_SOURCE_DIR AND NOT "${SAILROUTE_SOURCE_DIR}" STREQUAL "")
@@ -87,6 +90,29 @@ elseif(DEFINED SAILROUTE_SOURCE_DIR AND NOT "${SAILROUTE_SOURCE_DIR}" STREQUAL "
     set(_navtool_router_effective_source_dir "${SAILROUTE_SOURCE_DIR}")
 endif()
 
+set(NAVTOOL_ROUTER_RESOLVED_REVISION "unknown")
+set(NAVTOOL_ROUTER_RESOLVED_VERSION "unknown")
+set(NAVTOOL_ROUTER_SOURCE_KIND "unknown")
+set(NAVTOOL_ROUTER_SOURCE_DIR "${_navtool_router_effective_source_dir}")
+set(NAVTOOL_ROUTER_SOURCE_DIRTY "unknown")
+if(NOT "${_navtool_router_effective_source_dir}" STREQUAL "")
+    include(cmake/RouterSourceIdentity.cmake)
+    navtool_read_source_identity("${_navtool_router_effective_source_dir}"
+        NAVTOOL_ROUTER_RESOLVED_REVISION NAVTOOL_ROUTER_SOURCE_DIRTY)
+    file(STRINGS "${_navtool_router_effective_source_dir}/CMakeLists.txt" _version_line
+        REGEX "project\\(sailroute VERSION [0-9.]+")
+    if(_version_line MATCHES "VERSION ([0-9.]+)")
+        set(NAVTOOL_ROUTER_RESOLVED_VERSION "${CMAKE_MATCH_1}")
+    endif()
+    if("${SAILROUTE_SOURCE_DIR}" STREQUAL "")
+        set(NAVTOOL_ROUTER_SOURCE_KIND "fetched")
+    else()
+        set(NAVTOOL_ROUTER_SOURCE_KIND "local_override")
+    endif()
+endif()
+message(STATUS "Navtool router-lib: ${NAVTOOL_ROUTER_RESOLVED_VERSION} ${NAVTOOL_ROUTER_RESOLVED_REVISION} (${NAVTOOL_ROUTER_SOURCE_KIND}, dirty=${NAVTOOL_ROUTER_SOURCE_DIRTY}); ensemble=OFF land-data=ON")
+configure_file(src/bridge_build_info.h.in "${CMAKE_CURRENT_BINARY_DIR}/bridge_build_info.h" @ONLY)
+
 if(TARGET sailroute)
     set_target_properties(
         sailroute
@@ -125,7 +151,8 @@ target_compile_definitions(
 target_include_directories(
     NavtoolRouterBridge
     PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(
     NavtoolRouterBridge
     PRIVATE sailroute::sailroute ECCODES::eccodes)
@@ -146,8 +173,21 @@ else()
         PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 endif()
 
+add_executable(navtool_router_bridge_preflight tests/bridge_preflight.cpp)
+target_compile_features(navtool_router_bridge_preflight PRIVATE cxx_std_20)
+target_include_directories(navtool_router_bridge_preflight PRIVATE include)
+target_link_libraries(navtool_router_bridge_preflight PRIVATE ${CMAKE_DL_LIBS})
+
 if(NAVTOOL_ROUTER_BRIDGE_BUILD_TESTS)
     enable_testing()
+    add_test(NAME navtool_router_source_identity
+        COMMAND "${CMAKE_COMMAND}"
+            "-DIDENTITY_MODULE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/RouterSourceIdentity.cmake"
+            "-DSOURCE_TREE=${_navtool_router_effective_source_dir}"
+            "-DEXPECTED_REVISION=${NAVTOOL_ROUTER_RESOLVED_REVISION}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/source_identity_tests.cmake")
+    add_test(NAME navtool_router_bridge_preflight
+        COMMAND navtool_router_bridge_preflight $<TARGET_FILE:NavtoolRouterBridge> "${NAVTOOL_ROUTER_RESOLVED_REVISION}")
     add_executable(
         navtool_router_bridge_tests
         tests/bridge_tests.cpp)
@@ -163,4 +203,15 @@ if(NAVTOOL_ROUTER_BRIDGE_BUILD_TESTS)
     add_test(
         NAME navtool_router_bridge_tests
         COMMAND navtool_router_bridge_tests)
+    add_executable(navtool_router_bridge_v8_tests tests/bridge_v8_tests.cpp)
+    target_compile_features(navtool_router_bridge_v8_tests PRIVATE cxx_std_20)
+    target_compile_definitions(navtool_router_bridge_v8_tests PRIVATE
+        NAVTOOL_ROUTER_SAMPLE_GRIB="${_navtool_router_effective_source_dir}/samples/sample.grib")
+    target_link_libraries(navtool_router_bridge_v8_tests PRIVATE Navtool::RouterBridge sailroute::sailroute ECCODES::eccodes)
+    add_test(NAME navtool_router_bridge_v8_tests COMMAND navtool_router_bridge_v8_tests)
+    set_tests_properties(navtool_router_bridge_v8_tests PROPERTIES RESOURCE_LOCK navtool_v8_fixtures)
+    if(NAVTOOL_ROUTER_BRIDGE_RUN_DIAGNOSTICS)
+        add_test(NAME navtool_router_bridge_v8_diagnostics COMMAND navtool_router_bridge_v8_tests --diagnostics)
+        set_tests_properties(navtool_router_bridge_v8_diagnostics PROPERTIES RESOURCE_LOCK navtool_v8_fixtures)
+    endif()
 endif()

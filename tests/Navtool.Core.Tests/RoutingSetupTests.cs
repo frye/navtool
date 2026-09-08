@@ -1,0 +1,263 @@
+using System.Collections.Immutable;
+
+namespace Navtool.Core.Tests;
+
+public sealed class RoutingSetupTests
+{
+    internal static BoatAsset Demo() =>
+        new("demo:v1", "Explicit demo", BoatAssetKind.Demo, BoatPolarFormat.NativeMatrix,
+            new BoatValidationSummary("Native validated demo"));
+
+    internal static RoutingCalculationContext Context(
+        RouteOptimizationOptions? optimization = null, RouteEnvironmentOptions? environment = null)
+    {
+        var setup = new RoutingSetup(Demo());
+        var options = optimization ?? new RouteOptimizationOptions(environment: environment);
+        var resolved = new ResolvedRoutingOptions(setup.Quality, options,
+            new RouteSearchSettings(TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(5), 5, 5, 2, 1,
+                100000, 10000, 1, true, true, true, 1, 0,
+                [new RouteRoutingInterval(TimeSpan.FromMinutes(30))]),
+            1, 1, TimeSpan.FromDays(30));
+        return new(Guid.NewGuid(), setup, new ResolvedBoatAsset(setup.Boat),
+            new NativeRoutingIdentity(8, "0.6.0-dev", "pinned-sha", "build", 1), resolved);
+    }
+
+    [Fact]
+    public void Normal_setup_is_explicit_native_balanced_and_does_not_conflate_duration_and_acquisition()
+    {
+        Assert.Throws<ArgumentNullException>(() => new RoutingSetup(null!));
+        var setup = new RoutingSetup(Demo());
+        Assert.Equal(RoutingQuality.NativeBalanced, setup.Quality);
+        Assert.Equal(1, setup.PerformanceFactor);
+        Assert.Equal(RoutingLandSource.NaturalEarth, setup.LandSource);
+        Assert.Null(setup.HardDuration);
+        Assert.Equal(TimeSpan.FromDays(30), Context().Resolved.HardDuration);
+        Assert.Equal(TimeSpan.FromDays(10), RoutePlanRoutingRequest.MaximumForecastWindow);
+    }
+
+    [Fact]
+    public void Native_defaults_are_preserved_except_explicit_cruising_overrides()
+    {
+        var context = Context();
+        var native = context.Resolved with
+        {
+            Optimization = new RouteOptimizationOptions(
+                headingAugmentation: RouteHeadingAugmentation.VelocityMadeGood,
+                polarAngleInterpolation: RoutePolarAngleInterpolation.Linear,
+                abovePolarRange: RouteAbovePolarRangePolicy.Clamp,
+                lattice: new RouteLatticeOptions(subdivisionLevel: 5)),
+            PerformanceFactor = 0.7
+        };
+        var resolved = ResolvedRoutingOptions.FromNativeDefaults(context.Setup, native);
+        Assert.Same(native.Search, resolved.Search);
+        Assert.Same(native.Optimization.Lattice, resolved.Optimization.Lattice);
+        Assert.Equal(RouteHeadingAugmentation.VelocityMadeGood, resolved.Optimization.HeadingAugmentation);
+        Assert.Equal(RoutePolarAngleInterpolation.MonotoneCubic, resolved.Optimization.PolarAngleInterpolation);
+        Assert.Equal(RouteAbovePolarRangePolicy.NoSpeed, resolved.Optimization.AbovePolarRange);
+        Assert.Equal(1, resolved.PerformanceFactor);
+    }
+
+    [Fact]
+    public void Professional_edits_are_explicit_and_not_a_setup_property()
+    {
+        var context = Context();
+        var edits = new RoutingProfessionalOverrides(new RouteOptimizationOptions(
+            abovePolarRange: RouteAbovePolarRangePolicy.Clamp));
+        var resolved = ResolvedRoutingOptions.FromNativeDefaults(context.Setup, context.Resolved, edits);
+        var frozen = new RoutingCalculationContext(Guid.NewGuid(), context.Setup, context.Boat,
+            context.NativeIdentity, resolved, edits);
+        Assert.Same(edits, frozen.ProfessionalOverrides);
+        Assert.Equal(RouteAbovePolarRangePolicy.Clamp, frozen.Resolved.Optimization.AbovePolarRange);
+        Assert.Equal(context.Setup, frozen.Setup);
+        Assert.Throws<RoutingException>(() => new RoutingCalculationContext(Guid.NewGuid(),
+            context.Setup, context.Boat, context.NativeIdentity, resolved));
+    }
+
+    [Fact]
+    public void Imported_bytes_and_environment_collections_are_deeply_immutable()
+    {
+        var bytes = new byte[] { 1, 2, 3 };
+        var asset = new BoatAsset("hash", "import.pol", BoatAssetKind.Imported, BoatPolarFormat.Automatic,
+            new BoatValidationSummary("Accepted"));
+        var boat = new ResolvedBoatAsset(asset, bytes);
+        bytes[0] = 200;
+        Assert.Equal(1, boat.PolarBytes[0]);
+        var grid = new RouteEnvironmentGrid(0, 0, 1, 1, 2, 2);
+        var values = new[] { 1d, 2, 3, 4 };
+        var provider = new RouteProviderMetadata("test", "test", "1");
+        var currents = RouteCurrentOptions.FromGrid(grid, values, values, provider);
+        var waves = RouteWaveOptions.FromGrid(grid, values, values, values, provider);
+        var vertices = new List<Coordinate> { new(0, 0), new(1, 1), new(2, 0) };
+        var ring = new RouteExclusionRing(vertices);
+        var holes = new List<RouteExclusionRing> { ring };
+        var polygon = new RouteExclusionPolygon(ring, holes);
+        var polygons = new List<RouteExclusionPolygon> { polygon };
+        var zones = new List<RouteExclusionZone> { new("zone", "test", polygons) };
+        var exclusions = new RouteExclusionOptions(zones, provider);
+        var environment = new RouteEnvironmentOptions(currents: currents, waves: waves, exclusions: exclusions);
+        var context = Context(environment: environment);
+        values[0] = 100;
+        vertices.Clear();
+        holes.Clear();
+        polygons.Clear();
+        zones.Clear();
+        Assert.Equal(1, context.Resolved.Optimization.Environment!.Currents!.EastKnots![0]);
+        Assert.Equal(1, waves.SignificantHeightMetres![0]);
+        Assert.Equal(3, exclusions.Zones[0].Polygons[0].Outer.Vertices.Count);
+        Assert.Single(exclusions.Zones[0].Polygons[0].Holes);
+        Assert.False(currents.EastKnots is double[]);
+    }
+
+    [Fact]
+    public async Task Configured_engine_support_is_checked_before_forecast_acquisition()
+    {
+        var context = Context();
+        var now = DateTimeOffset.UtcNow;
+        var workflow = new RoutingWorkflow([], new LegacyEngine());
+        var request = new RoutingWorkflowRequest(new RouteRequest("r", new(0, 0), new(1, 1), now, now.AddDays(1)),
+            [ForecastModel.NoaaGfs], calculationContext: context);
+        var error = await Assert.ThrowsAsync<RoutingException>(() => workflow.ExecuteAsync(request));
+        Assert.Equal(RoutingFailureKind.InvalidConfiguration, error.Kind);
+        IRouteEngine engine = new LegacyEngine();
+        Assert.Throws<RoutingException>(() => engine.CalculateAsync(request.Route, null!,
+            request.Optimization, null, CancellationToken.None));
+    }
+
+    [Fact]
+    public void Search_interval_inputs_are_copied_and_run_audit_does_not_repeat_bulk_environment()
+    {
+        var intervals = new List<RouteRoutingInterval> { new(TimeSpan.FromMinutes(30)) };
+        var search = new RouteSearchSettings(TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(5),
+            5, 5, 2, 1, 0, 0, 1, true, true, true, 1, 0, intervals);
+        intervals.Clear();
+        Assert.Single(search.Intervals);
+        var context = Context(environment: new RouteEnvironmentOptions(currents: RouteCurrentOptions.Uniform(
+            1, 2, new RouteProviderMetadata("current", "source", "version"))));
+        var attempts = new List<RouteAttemptAudit>
+        {
+            new(Guid.NewGuid(), RouteSolver.IsochroneBeam, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch)
+        };
+        var audit = new RouteRunAudit(context.CalculationId, context.Setup, context.Resolved,
+            context.NativeIdentity, RouteSolver.IsochroneBeam, attempts,
+            professionalOverrides: new RoutingProfessionalOverrides(context.Resolved.Optimization));
+        attempts.Clear();
+        Assert.Single(audit.Attempts);
+        Assert.Null(audit.Resolved.Optimization.Environment);
+        Assert.Null(audit.ProfessionalOverrides!.Optimization!.Environment);
+        Assert.NotNull(context.Resolved.Optimization.Environment);
+    }
+
+    [Fact]
+    public void Legacy_telemetry_is_unknown_and_polar_or_ground_audit_uses_matching_frames()
+    {
+        var time = DateTimeOffset.UtcNow;
+        var legacy = new RoutePoint(new(0, 0), time, 90, 6, 15, 270, 0);
+        Assert.Null(legacy.ApparentWindSpeedKnots);
+        Assert.Null(legacy.ApparentWindAngleDegrees);
+        // Wind flows east at 15, current east at 4, through-water speed east at 6:
+        // water wind 11 - boat 6 == ground wind 15 - SOG 10 == apparent 5.
+        var environment = new RoutePointEnvironment(10, 90, 6, 4, 0);
+        var ground = new RoutePoint(new(0, 0), time, 90, 6, 15, 270, 0, environment);
+        var polar = new RoutePoint(new(0, 0), time, 90, 6, 15, 270, 0, environment, 11, 270);
+        Assert.Equal(5, ground.ApparentWindSpeedKnots!.Value, 9);
+        Assert.Equal(ground.ApparentWindSpeedKnots, polar.ApparentWindSpeedKnots);
+        Assert.Null(legacy.PolarWindSpeedKnots);
+    }
+
+    [Theory]
+    [InlineData(ForecastModel.NoaaGfs, 0, new[] { 119, 120, 123, 126 }, true)]
+    [InlineData(ForecastModel.NoaaGfs, 0, new[] { 118, 120, 123 }, false)]
+    [InlineData(ForecastModel.EcmwfIfs, 0, new[] { 141, 144, 150, 156 }, true)]
+    [InlineData(ForecastModel.EcmwfIfs, 0, new[] { 138, 144, 150 }, false)]
+    [InlineData(ForecastModel.EcmwfIfs, 6, new[] { 87, 90 }, true)]
+    [InlineData(ForecastModel.EcmwfIfs, 6, new[] { 90, 93 }, false)]
+    [InlineData(ForecastModel.NoaaGfs, 0, new[] { 120 }, true)]
+    public void Official_forecast_cadence_handles_transitions_and_rejects_true_gaps(
+        ForecastModel model, int hour, int[] offsets, bool valid)
+    {
+        var run = new ForecastRun(model.Provider(), model, new DateTimeOffset(2026, 8, 1, hour, 0, 0, TimeSpan.Zero));
+        var times = offsets.Select(offset => run.InitializedAt.AddHours(offset));
+        if (valid) ForecastTimePolicy.Validate(run, times, true);
+        else Assert.Throws<RoutingException>(() => ForecastTimePolicy.Validate(run, times, true));
+    }
+
+    [Fact]
+    public void Local_cadence_is_an_explicit_policy_and_metadata_single_time_is_valid()
+    {
+        var run = new ForecastRun(ForecastProvider.Noaa, ForecastModel.NoaaGfs, DateTimeOffset.UtcNow);
+        var times = new[] { run.InitializedAt, run.InitializedAt.AddHours(4) };
+        Assert.Throws<RoutingException>(() => ForecastTimePolicy.Validate(run, times, false));
+        Assert.Throws<RoutingException>(() => ForecastTimePolicy.Validate(run, times, false, TimeSpan.FromHours(3)));
+        ForecastTimePolicy.Validate(run, times, false, TimeSpan.FromHours(6));
+        var coverage = new ForecastCoverage(new(-1, 1, -1, 1), [run.InitializedAt]);
+        Assert.Equal(coverage.ValidFrom, coverage.ValidThrough);
+    }
+
+    [Fact]
+    public void Regional_land_requires_explicit_durable_source_domain_and_checked_budgets()
+    {
+        var path = Path.Combine(Directory.GetCurrentDirectory(), "regional.b");
+        var policy = new RouteRegionalLandPolicy(path, new string('a', 64), new(20, 50, -90, -40),
+            1, 0.5, 20, 100000, 1000000, 10000000);
+        var setup = new RoutingSetup(Demo(), landSource: RoutingLandSource.RegionalGshhg, regionalLand: policy);
+        var plan = new RoutePlan("Regional", [new("A", new(30, -70)), new("B", new(35, -60))])
+            .SetRoutingSetup(setup);
+        Assert.Same(policy, plan.RoutingSetup!.RegionalLand);
+        Assert.Equal(policy, plan.CopyAs(new RoutePlanId(), "Copy").RoutingSetup!.RegionalLand);
+        Assert.Throws<ArgumentException>(() => new RoutingSetup(Demo(), landSource: RoutingLandSource.RegionalGshhg));
+        Assert.Throws<ArgumentException>(() => new RouteRegionalLandPolicy(path, new string('a', 64),
+            new(-90, 90, -180, 180), 1, 0, 10, 100, 100, 100));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RouteRegionalLandPolicy(path, new string('a', 64),
+            new(20, 50, -90, -40), 1, 5, 5, 100, 100, 100));
+    }
+
+    [Fact]
+    public void Regional_selection_rejects_conflicting_native_landmask_source()
+    {
+        var baseline = Context(environment: new RouteEnvironmentOptions(landRequest: new RouteLandmaskRequest()));
+        var policy = new RouteRegionalLandPolicy(Path.Combine(Directory.GetCurrentDirectory(), "regional.b"),
+            new string('a', 64), new(20, 50, -90, -40), 1, 0, 20, 100000, 1000000, 10000000);
+        var setup = new RoutingSetup(baseline.Setup.Boat, landSource: RoutingLandSource.RegionalGshhg,
+            regionalLand: policy);
+        var error = Assert.Throws<RoutingException>(() => new RoutingCalculationContext(Guid.NewGuid(),
+            setup, baseline.Boat, baseline.NativeIdentity, baseline.Resolved));
+        Assert.Equal(RoutingFailureKind.InvalidConfiguration, error.Kind);
+    }
+
+    [Fact]
+    public void Regional_policy_preserves_attribution_missing_policy_and_normalized_fingerprint()
+    {
+        var path = Path.Combine(Directory.GetCurrentDirectory(), "regional.b");
+        var policy = new RouteRegionalLandPolicy(path, "sha256:" + new string('A', 64),
+            new(-10, 10, 170, -170), 0.05, 0, 600, 250000, 10000000, 100000000,
+            attribution: "GSHHG publication", missingDataPolicy: RouteMissingDataPolicy.RejectTransition);
+        Assert.Equal(new string('a', 64), policy.SourceIdentity);
+        Assert.True(policy.StudyBounds.CrossesAntimeridian);
+        Assert.Equal("GSHHG publication", policy.Attribution);
+        Assert.Equal(RouteMissingDataPolicy.RejectTransition, policy.MissingDataPolicy);
+        Assert.Throws<ArgumentException>(() => new RouteRegionalLandPolicy(path, "not-a-sha256",
+            new(0, 10, 0, 10), 1, 0, 10, 100, 100, 100));
+    }
+
+    [Theory]
+    [InlineData(0.01, 10, 250000, 10000000, 100000000)]
+    [InlineData(121, 10, 250000, 10000000, 100000000)]
+    [InlineData(1, 601, 250000, 10000000, 100000000)]
+    [InlineData(1, 10, 250001, 10000000, 100000000)]
+    [InlineData(1, 10, 250000, 10000001, 100000000)]
+    [InlineData(1, 10, 250000, 10000000, 100000001)]
+    public void Regional_hard_resource_caps_cannot_be_raised(double resolution, double cap,
+        int nodes, int points, int tests)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RouteRegionalLandPolicy(
+            Path.Combine(Directory.GetCurrentDirectory(), "regional.b"), new string('a', 64),
+            new(0, 10, 0, 10), resolution, 0, cap, (ulong)nodes, (ulong)points, (ulong)tests));
+    }
+
+    private sealed class LegacyEngine : IRouteEngine
+    {
+        public ValueTask<RouteResult> CalculateAsync(RouteRequest request, ForecastAcquisition forecast,
+            IProgress<RouteCalculationProgress>? progress, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("This legacy engine must not be called.");
+    }
+}

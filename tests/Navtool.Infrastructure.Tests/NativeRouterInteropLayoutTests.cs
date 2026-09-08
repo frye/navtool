@@ -43,9 +43,28 @@ public sealed class NativeRouterInteropLayoutTests
     }
 
     [Fact]
-    public void Supported_abi_version_is_seven()
+    public void Supported_abi_version_is_eight()
     {
-        Assert.Equal(7u, NativeRouterBridgeOptions.SupportedAbiVersion);
+        Assert.Equal(8u, NativeRouterBridgeOptions.SupportedAbiVersion);
+    }
+
+    [Fact]
+    public void Abi_v8_structs_preserve_fixed_width_layout_and_legacy_prefixes()
+    {
+        Assert.Equal(552, Marshal.SizeOf<NativeRoutingOptionsV8>());
+        Assert.Equal(16, Marshal.OffsetOf<NativeRoutingOptionsV8>(nameof(NativeRoutingOptionsV8.Common)).ToInt32());
+        Assert.Equal(296, Marshal.OffsetOf<NativeRoutingOptionsV8>(nameof(NativeRoutingOptionsV8.Intervals)).ToInt32());
+        Assert.Equal(24, Marshal.SizeOf<NativePolarOptionsV8>());
+        Assert.Equal(56, Marshal.SizeOf<NativeForecastOptionsV8>());
+        Assert.Equal(104, Marshal.SizeOf<NativeForecastMetadataV8>());
+        Assert.Equal(80, Marshal.SizeOf<NativeLandOptionsV8>());
+        Assert.Equal(88, Marshal.SizeOf<NativeLandEstimateV8>());
+        Assert.Equal(112, Marshal.SizeOf<NativeRoutingRequestV8>());
+        Assert.Equal(64, Marshal.OffsetOf<NativeRoutingRequestV8>(nameof(NativeRoutingRequestV8.Options)).ToInt32());
+        Assert.Equal(152, Marshal.SizeOf<NativeRoutePointV8>());
+        Assert.Equal(232, Marshal.SizeOf<NativeRoutingProgressV8>());
+        Assert.Equal(8, Marshal.OffsetOf<NativeRoutingProgressV8>(nameof(NativeRoutingProgressV8.Progress)).ToInt32());
+        Assert.Equal(192, Marshal.OffsetOf<NativeRoutingProgressV8>(nameof(NativeRoutingProgressV8.AuditedRoutePoints)).ToInt32());
     }
 
     [Fact]

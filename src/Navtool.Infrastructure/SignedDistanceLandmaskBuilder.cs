@@ -17,7 +17,7 @@ namespace Navtool.Infrastructure;
 /// </para>
 /// <para>
 /// Distances are measured in a local equirectangular frame that compresses
-/// longitude by the cosine of the highest absolute latitude in the corridor.
+/// longitude by the cosine of the highest absolute latitude in the 600 nm halo.
 /// Every other row is therefore compressed slightly more than it should be, so
 /// reported distances are never larger than the true distance. Under-reporting
 /// only makes segment certification more cautious; it can never round a
@@ -41,6 +41,24 @@ public static class SignedDistanceLandmaskBuilder
     /// <summary>Below this the longitude scale factor stops shrinking.</summary>
     private const double MinimumLatitudeCosine = 0.05;
 
+    public static GeographicBounds RequiredGeometryBounds(GeographicBounds bounds, double resolutionNauticalMiles)
+    {
+        if (!double.IsFinite(resolutionNauticalMiles) || resolutionNauticalMiles is < .05 or > 120)
+            throw new ArgumentOutOfRangeException(nameof(resolutionNauticalMiles));
+        ValidateDomain(bounds);
+        var grid = BuildGrid(bounds, resolutionNauticalMiles);
+        var pad = MaximumReportedDistanceNauticalMiles / NauticalMilesPerDegree;
+        var latitude = Math.Max(Math.Abs(grid.SouthLatitudeDegrees), Math.Abs(grid.NorthLatitudeDegrees)) + pad;
+        if (latitude > 85)
+            throw new InvalidOperationException("The optional landmask's geometry halo exceeds ±85°.");
+        var longitudePad = pad / Math.Cos(latitude * Math.PI / 180);
+        var west = grid.WestLongitudeDegrees - longitudePad;
+        var east = grid.EastLongitudeDegrees + longitudePad;
+        return new GeographicBounds(grid.SouthLatitudeDegrees - pad, grid.NorthLatitudeDegrees + pad,
+            east - west >= 360 ? -180 : Math.IEEERemainder(west, 360),
+            east - west >= 360 ? 180 : Math.IEEERemainder(east, 360));
+    }
+
     public static RouteLandmaskOptions Build(
         LandGeometryIndex geometry,
         GeographicBounds bounds,
@@ -53,17 +71,23 @@ public static class SignedDistanceLandmaskBuilder
     {
         ArgumentNullException.ThrowIfNull(geometry);
         ArgumentNullException.ThrowIfNull(metadata);
-        if (!double.IsFinite(resolutionNauticalMiles) || resolutionNauticalMiles <= 0)
+        if (!double.IsFinite(resolutionNauticalMiles) || resolutionNauticalMiles is < .05 or > 120)
         {
             throw new ArgumentOutOfRangeException(nameof(resolutionNauticalMiles));
         }
+        ValidateDomain(bounds);
 
         var grid = BuildGrid(bounds, resolutionNauticalMiles);
         var latitudeCosine = LongitudeScale(grid);
+        var haloLatitude = Math.Max(Math.Abs(grid.SouthLatitudeDegrees), Math.Abs(grid.NorthLatitudeDegrees)) +
+            MaximumReportedDistanceNauticalMiles / NauticalMilesPerDegree;
+        if (haloLatitude > 85)
+            throw new InvalidOperationException("The optional landmask's padded geometry domain exceeds its supported ±85° latitude limit.");
+        var distanceLatitudeCosine = Math.Cos(haloLatitude * Math.PI / 180);
         var samples = Rasterize(
             geometry,
             grid,
-            latitudeCosine,
+            distanceLatitudeCosine,
             resolutionNauticalMiles,
             cancellationToken);
 
@@ -87,11 +111,19 @@ public static class SignedDistanceLandmaskBuilder
             missingDataPolicy);
     }
 
+    private static void ValidateDomain(GeographicBounds bounds)
+    {
+        var longitudeSpan = bounds.CrossesAntimeridian ? bounds.East - bounds.West + 360 : bounds.East - bounds.West;
+        if (bounds.South < -75 || bounds.North > 75 || bounds.North - bounds.South > 120 ||
+            longitudeSpan > 120 || bounds.CrossesAntimeridian)
+            throw new InvalidOperationException(
+                "The optional managed landmask supports non-wrapping regional domains no wider than 120° within ±75° " +
+                "(including room for its 600 nm geometry halo). Keep polygon enforcement or explicitly select a supported regional source.");
+    }
+
     /// <summary>
-    /// Lays a grid over the corridor. Longitude keeps its west anchor inside
-    /// [-180, 180] and is allowed to run east past 180 for an antimeridian
-    /// corridor, which is how router-lib expects a wrapping span to be
-    /// expressed.
+    /// Lays a grid over a supported non-wrapping corridor. Its geometry halo
+    /// may wrap, but wrapping routing domains require the native GSHHG path.
     /// </summary>
     private static RouteEnvironmentGrid BuildGrid(
         GeographicBounds bounds,

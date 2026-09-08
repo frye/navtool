@@ -54,6 +54,9 @@ public sealed class RouteMapLayers
     public const float HistoricalFrontOpacity = 0.18f;
     public const double DestinationFrontLineWidth = 2.0;
     public const float DestinationFrontOpacity = 0.92f;
+    public const int MaximumHistoricalFrontFeatures = 128;
+    public const int MaximumLiveSearchPoints = 2048;
+    public const int MaximumDisplayFrontPoints = 2048;
     private const int IsochroneSmoothingIterations = 2;
 
     private readonly MemoryLayer _noaaRoutes = CreateRouteLayer("NOAA GFS routes");
@@ -87,6 +90,8 @@ public sealed class RouteMapLayers
     };
     private readonly MemoryLayer _waypointMarkers = new("Waypoint markers") { Style = null };
     private readonly MemoryLayer _currentPositionMarkers = new("Current position") { Style = null };
+    private readonly MemoryLayer _arrivalAreas = new("Nominal arrival areas") { Style = null };
+    private readonly MemoryLayer _actualEndpoints = new("Actual model endpoints") { Style = null };
 
     public RouteMapLayers(Map map)
     {
@@ -105,6 +110,8 @@ public sealed class RouteMapLayers
         map.Layers.Add(_ecmwfProvisionalRoute);
         map.Layers.Add(_noaaRoutes);
         map.Layers.Add(_ecmwfRoutes);
+        map.Layers.Add(_arrivalAreas);
+        map.Layers.Add(_actualEndpoints);
         map.Layers.Add(_waypointMarkers);
         map.Layers.Add(_currentPositionMarkers);
     }
@@ -161,6 +168,7 @@ public sealed class RouteMapLayers
             EcmwfColor);
         _noaaRoutes.FeaturesWereModified();
         _ecmwfRoutes.FeaturesWereModified();
+        UpdateEndpointMarkers();
         Map.Refresh(ChangeType.Discrete);
     }
 
@@ -182,7 +190,78 @@ public sealed class RouteMapLayers
             selectedKey);
         _noaaRoutes.FeaturesWereModified();
         _ecmwfRoutes.FeaturesWereModified();
+        UpdateEndpointMarkers();
         Map.Refresh(ChangeType.Discrete);
+    }
+
+    public void SetArrivalAreas(IEnumerable<(CoreCoordinate Center, double RadiusNauticalMiles)> areas)
+    {
+        _arrivalAreas.Features = areas
+            .Where(area => double.IsFinite(area.RadiusNauticalMiles) && area.RadiusNauticalMiles > 0)
+            .Distinct()
+            .Select(area =>
+            {
+                var matchingRoute = Routes.FirstOrDefault(route => route.Request.Destination.IsSameLocation(area.Center));
+                var referenceX = matchingRoute is null ? MapProjection.ToMapPoint(area.Center).X :
+                    ProjectEndpoint(matchingRoute).X;
+                var latitude = area.Center.Latitude * Math.PI / 180;
+                var longitude = area.Center.Longitude * Math.PI / 180;
+                var distance = area.RadiusNauticalMiles / 3440.065;
+                var ring = Enumerable.Range(0, 73).Select(index =>
+                {
+                    var bearing = index * 5 * Math.PI / 180;
+                    var lat = Math.Asin(Math.Sin(latitude) * Math.Cos(distance) +
+                                       Math.Cos(latitude) * Math.Sin(distance) * Math.Cos(bearing));
+                    var lon = longitude + Math.Atan2(
+                        Math.Sin(bearing) * Math.Sin(distance) * Math.Cos(latitude),
+                        Math.Cos(distance) - Math.Sin(latitude) * Math.Sin(lat));
+                    return new CoreCoordinate(lat * 180 / Math.PI,
+                        ((lon * 180 / Math.PI + 540) % 360) - 180);
+                });
+                var feature = new GeometryFeature(new LineString(
+                    MapProjection.ToContinuousMapPointsNear(ring, referenceX)
+                        .Select(point => new NtsCoordinate(point.X, point.Y)).ToArray()))
+                {
+                    Data = area
+                };
+                feature.Styles.Add(new VectorStyle
+                {
+                    Fill = null,
+                    Line = new Pen(MapsuiColor.FromString("#607D8B"), 1),
+                    Opacity = 0.6f
+                });
+                return feature;
+            }).ToArray();
+        _arrivalAreas.FeaturesWereModified();
+        Map.Refresh(ChangeType.Discrete);
+    }
+
+    private void UpdateEndpointMarkers()
+    {
+        _actualEndpoints.Features = Routes.Select(route =>
+        {
+            var point = ProjectEndpoint(route);
+            var feature = new GeometryFeature(new Point(point.X, point.Y)) { Data = route };
+            feature.Styles.Add(new LabelStyle
+            {
+                Text = $"{(route.Model == ForecastModel.NoaaGfs ? "NOAA" : "ECMWF")} " +
+                       (route.Completion == RouteCompletion.DestinationReached ? "arrival" : "partial"),
+                ForeColor = MapsuiColor.White,
+                BackColor = new Brush(route.Model == ForecastModel.NoaaGfs ? NoaaColor : EcmwfColor),
+                Font = new Font { Size = 10 },
+                CornerRounding = 3
+            });
+            return feature;
+        }).ToArray();
+        _actualEndpoints.FeaturesWereModified();
+    }
+
+    private MPoint ProjectEndpoint(RouteResult route)
+    {
+        var leg = RouteLegs.FirstOrDefault(item => ReferenceEquals(item.Route, route));
+        return leg is null
+            ? MapProjection.ToContinuousMapPoints(route.Points.Select(point => point.Location))[^1]
+            : GetProjectedRoutePoint(leg.Key, route.Points.Length - 1)!;
     }
 
     public void SelectRouteLeg(RouteVisualizationKey? key) =>
@@ -284,7 +363,12 @@ public sealed class RouteMapLayers
         ArgumentNullException.ThrowIfNull(snapshot);
         var frontFeatures = CreateIsochroneFrontFeatures(snapshot).ToArray();
         var historicalFronts = GetHistoricalFrontFeatures(model);
-        historicalFronts.AddRange(frontFeatures);
+        historicalFronts.AddRange(frontFeatures.Select(front => new GeometryFeature(
+            ((GeometryFeature)front).Geometry) { Data = snapshot.FrontierTime }));
+        if (historicalFronts.Count > MaximumHistoricalFrontFeatures)
+        {
+            historicalFronts.RemoveRange(0, historicalFronts.Count - MaximumHistoricalFrontFeatures);
+        }
         var historicalFrontLayer = GetHistoricalFrontLayer(model);
         historicalFrontLayer.Features = historicalFronts.ToArray();
         historicalFrontLayer.FeaturesWereModified();
@@ -295,12 +379,15 @@ public sealed class RouteMapLayers
 
         var searchPointLayer = GetSearchPointLayer(model);
         searchPointLayer.Features = snapshot.SearchPoints
+            .TakeLast(MaximumLiveSearchPoints)
             .Select(point => CreateSearchPoint(point, model, snapshot))
             .ToArray();
         searchPointLayer.FeaturesWereModified();
 
         var provisionalLayer = GetProvisionalRouteLayer(model);
-        var provisionalRoute = CreateRouteFeature(snapshot.ProvisionalRoute, snapshot);
+        var provisionalRoute = snapshot.ProvisionalRoute.Length < 2
+            ? null
+            : CreateRouteFeature(snapshot.ProvisionalRoute, snapshot);
         provisionalLayer.Features = provisionalRoute is null
             ? Array.Empty<IFeature>()
             : new[] { provisionalRoute };
@@ -568,7 +655,7 @@ public sealed class RouteMapLayers
         object data)
     {
         var routePoints = points.ToArray();
-        if (routePoints.Length < 2)
+        if (routePoints.Length == 0)
         {
             return null;
         }
@@ -577,7 +664,9 @@ public sealed class RouteMapLayers
                 routePoints.Select(point => point.Location))
             .Select(point => new NtsCoordinate(point.X, point.Y))
             .ToArray();
-        var feature = new GeometryFeature(new LineString(coordinates));
+        var feature = new GeometryFeature(coordinates.Length == 1
+            ? new Point(coordinates[0])
+            : new LineString(coordinates));
         feature.Data = data;
         return feature;
     }
@@ -586,14 +675,16 @@ public sealed class RouteMapLayers
         IReadOnlyList<MPoint> points,
         object data)
     {
-        if (points.Count < 2)
+        if (points.Count == 0)
         {
             return null;
         }
 
-        return new GeometryFeature(new LineString(points
-            .Select(point => new NtsCoordinate(point.X, point.Y))
-            .ToArray()))
+        return new GeometryFeature(points.Count == 1
+            ? new Point(points[0].X, points[0].Y)
+            : new LineString(points
+                .Select(point => new NtsCoordinate(point.X, point.Y))
+                .ToArray()))
         {
             Data = data
         };
@@ -615,8 +706,11 @@ public sealed class RouteMapLayers
                 continue;
             }
 
+            var stride = Math.Max(1, (int)Math.Ceiling(segment.Points.Length / (double)MaximumDisplayFrontPoints));
+            var displayPoints = segment.Points.Where((_, index) => index % stride == 0)
+                .Append(segment.Points[^1]).Distinct();
             var coordinates = MapProjection.ToContinuousMapPointsNear(
-                    segment.Points,
+                    displayPoints,
                     referenceX)
                 .Select(point => new NtsCoordinate(point.X, point.Y))
                 .ToArray();

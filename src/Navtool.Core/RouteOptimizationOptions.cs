@@ -210,7 +210,7 @@ public sealed record RouteOptimizationOptions
         RoutePolarAngleInterpolation polarAngleInterpolation =
             RoutePolarAngleInterpolation.MonotoneCubic,
         double? maximumTrueWindSpeedKnots = null,
-        RouteAbovePolarRangePolicy abovePolarRange = RouteAbovePolarRangePolicy.Clamp,
+        RouteAbovePolarRangePolicy abovePolarRange = RouteAbovePolarRangePolicy.NoSpeed,
         RoutePruningStrategy pruningStrategy = RoutePruningStrategy.DestinationDistanceGrid,
         double pruningSectorDegrees = 2,
         RouteDestinationFrontOptions? destinationFront = null,
@@ -354,6 +354,13 @@ public sealed record RouteOptimizationOptions
                 DestinationFront,
                 Lattice,
                 Environment);
+
+    public RouteOptimizationOptions WithPolarPolicies(
+        RoutePolarAngleInterpolation interpolation,
+        RouteAbovePolarRangePolicy aboveRange) =>
+        new(Solver, Maneuver, HeadingAugmentation, WindSampling, MidpointWindSamplingThreshold,
+            interpolation, MaximumTrueWindSpeedKnots, aboveRange, PruningStrategy,
+            PruningSectorDegrees, DestinationFront, Lattice, Environment);
 
     public static RouteOptimizationOptions Balanced { get; } = new();
 

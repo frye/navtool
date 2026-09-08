@@ -61,12 +61,15 @@ public partial class MainViewModel : ViewModelBase
     private readonly IWeatherSampler? _weatherSampler;
     private readonly ILocalGribInspector? _localGribInspector;
     private readonly INativeRoutingPreflight? _nativeRoutingPreflight;
+    private readonly IRoutingSetupService? _routingSetupService;
+    private bool _restoringRoutingInputs;
     private readonly IReadOnlyDictionary<ForecastModel, IForecastDownloadEstimator>
         _forecastEstimators;
     private readonly TimeProvider _timeProvider;
     private readonly TimeZoneInfo _localTimeZone;
     private readonly ILogger<MainViewModel> _logger;
     private readonly Dictionary<ForecastModel, double> _modelProgress = new();
+    private readonly Dictionary<ForecastModel, (int Leg, Guid? Attempt)> _displayedProgressUnits = new();
     private readonly Dictionary<(ForecastModel Model, int LegIndex), CalculationActivity>
         _calculationActivities = new();
     private readonly Dictionary<ForecastModel, ImmutableArray<ForecastAcquisition>> _acquisitions = new();
@@ -138,7 +141,7 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     private RouteAbovePolarRangePolicy _abovePolarRange =
-        RouteAbovePolarRangePolicy.Clamp;
+        RouteAbovePolarRangePolicy.NoSpeed;
 
     [ObservableProperty]
     private RoutePruningStrategy _pruningStrategy =
@@ -289,6 +292,9 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     private string _calculationModelLabel = string.Empty;
+
+    [ObservableProperty]
+    private string _liveSearchStatus = "Native search audit is unavailable until a calculation starts. Environment diagnostics are final-only.";
 
     [ObservableProperty]
     private string _statusMessage = "Set a start and destination to prepare a route.";
@@ -456,7 +462,11 @@ public partial class MainViewModel : ViewModelBase
         INativeRoutingPreflight? nativeRoutingPreflight = null,
         IRoutePlanRepository? routePlanRepository = null,
         RoutePlanRoutingWorkflow? routePlanWorkflow = null,
-        IEnumerable<IForecastDownloadEstimator>? forecastEstimators = null)
+        IEnumerable<IForecastDownloadEstimator>? forecastEstimators = null,
+        IBoatAssetService? boatAssetService = null,
+        IRoutingSetupService? routingSetupService = null,
+        RoutingLandSource defaultLandSource = RoutingLandSource.NaturalEarth,
+        IRegionalLandPreviewService? regionalLandPreviewService = null)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(localTimeZone);
@@ -468,6 +478,7 @@ public partial class MainViewModel : ViewModelBase
         _weatherSampler = weatherSampler;
         _localGribInspector = localGribInspector;
         _nativeRoutingPreflight = nativeRoutingPreflight;
+        _routingSetupService = routingSetupService;
         _forecastEstimators = (forecastEstimators ?? [])
             .ToDictionary(estimator => estimator.Model);
         _timeProvider = timeProvider;
@@ -477,6 +488,24 @@ public partial class MainViewModel : ViewModelBase
         _departureDate = new DateTimeOffset(localNow.Date, localNow.Offset);
         _departureTime = localNow.TimeOfDay;
         Itinerary = new ItineraryEditorViewModel(routePlanRepository, _localTimeZone);
+        RoutingSetup = new RoutingSetupViewModel(boatAssetService, defaultLandSource, regionalLandPreviewService);
+        RoutingSetup.SetupChanged += (_, _) =>
+        {
+            RoutingSetup.TryBuild(out var setup, out _);
+            Itinerary.SetRoutingSetup(setup);
+            UpdateArrivalAreas();
+            UpdateForecastAreaSummary();
+        };
+        Itinerary.RoutingSetupRestored += (_, _) =>
+        {
+            _restoringRoutingInputs = true;
+            try
+            {
+                RoutingSetup.Restore(Itinerary.RoutingSetup);
+                EnableProfessionalRouting = false;
+            }
+            finally { _restoringRoutingInputs = false; }
+        };
         Itinerary.ItineraryChanged += OnItineraryChanged;
         Itinerary.EndpointChanged += OnEndpointChanged;
         Itinerary.MapPlacementStarted += OnMapPlacementStarted;
@@ -501,6 +530,7 @@ public partial class MainViewModel : ViewModelBase
         UpdateDepartureUtcPreview();
         Map.Navigator.ZoomToBox(CreateDefaultChartExtent());
         UpdateForecastAreaSummary();
+        PropertyChanged += OnRoutingInputChanged;
     }
 
     private static Mapsui.Tiling.Layers.TileLayer CreateOpenStreetMapLayer(
@@ -529,6 +559,8 @@ public partial class MainViewModel : ViewModelBase
     public Map Map { get; }
 
     public ItineraryEditorViewModel Itinerary { get; }
+
+    public RoutingSetupViewModel RoutingSetup { get; }
 
     public string UtcOffsetDisplay { get; }
 
@@ -692,16 +724,23 @@ public partial class MainViewModel : ViewModelBase
                 : $"{_selectedStopoverLabel} · stationary hold\n";
             return $"{legDetails}{stopover}{point.Timestamp:yyyy-MM-dd HH:mm:ss} UTC\n" +
                   $"{point.Location.Latitude:0.0000}°, {point.Location.Longitude:0.0000}° · " +
-                   $"heading {point.HeadingDegrees:0}° · boat {point.BoatSpeedKnots:0.0} kt · " +
+                   (selection.IsPlannedHold
+                       ? $"Planned hold at {FormatCoordinate(point.Location, "unknown")} · no fresh native wind or motion sample.\n" +
+                         "Station keeping / anchorage safety is not certified.\n"
+                       : $"heading {point.HeadingDegrees:0}° · STW {point.BoatSpeedKnots:0.0} kt · " +
                    $"{FormatApparentWind(point)}\n" +
                    $"{FormatPointEnvironment(point)}" +
-                   $"true wind {point.TrueWindSpeedKnots:0.0} kt @ {point.TrueWindDirectionDegrees:0}° · " +
-                   $"cumulative {point.CumulativeDistanceNauticalMiles:0.0} NM\n" +
+                   $"route-applied ground-relative forecast wind {point.TrueWindSpeedKnots:0.0} kt @ {point.TrueWindDirectionDegrees:0}°\n" +
+                   (point.PolarWindSpeedKnots is { } polarSpeed && point.PolarWindDirectionDegrees is { } polarDirection
+                       ? $"effective water-relative polar wind {polarSpeed:0.0} kt @ {polarDirection:0}°\n"
+                       : "Effective water-relative polar wind unavailable\n") +
+                   $"cumulative {point.CumulativeDistanceNauticalMiles:0.0} NM\n") +
                    $"{ModelName(selection.Route.Model)} · " +
                    $"{RouteEndpointLabel(selection.Route)} " +
                    $"{selection.Route.ArrivalTime:yyyy-MM-dd HH:mm} UTC · " +
                    $"distance {selection.Route.Points[^1].CumulativeDistanceNauticalMiles:0.0} NM · {forecast}" +
-                   FormatEnvironmentAudit(selection.Route);
+                   FormatEnvironmentAudit(selection.Route) +
+                   FormatRunAudit(selection.Route);
         }
     }
 
@@ -1048,6 +1087,36 @@ public partial class MainViewModel : ViewModelBase
             }
         }
 
+        if (!RoutingSetup.TryBuild(out var setup, out validationError))
+        {
+            ErrorMessage = validationError;
+            StatusMessage = "No forecast was downloaded.";
+            return;
+        }
+        if (setup!.LandSource == RoutingLandSource.RegionalGshhg &&
+            setup.RegionalLand is { } regional &&
+            (Itinerary.Waypoints.Skip((sequentialPlan?.ActiveLegIndex ?? 0) +
+                                      (Itinerary.CurrentPositionCoordinate is null ? 0 : 1))
+                 .Any(waypoint => waypoint.Coordinate is { } coordinate && !regional.StudyBounds.Contains(coordinate)) ||
+             Itinerary.CurrentPositionCoordinate is { } current && !regional.StudyBounds.Contains(current)))
+        {
+            ErrorMessage = "The selected GSHHG study domain must contain all active itinerary endpoints and the current position. Expand the explicit region or select another source.";
+            StatusMessage = "No forecast was downloaded.";
+            return;
+        }
+
+        RoutingCalculationContext context;
+        var setupRevision = Itinerary.CalculationRevision;
+        var setupPlanId = Itinerary.PlanId;
+        var preparationGeneration = Interlocked.Increment(ref _calculationGeneration);
+        var cancellation = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _calculationCancellation, cancellation);
+        previous?.Cancel();
+        previous?.Dispose();
+        _activeCalculationPlanId = setupPlanId;
+        _activeCalculationRevision = setupRevision;
+        IsCalculating = true;
+        StatusMessage = "Validating boat, native capabilities and required land source…";
         try
         {
             _nativeRoutingPreflight?.EnsureAvailable();
@@ -1057,6 +1126,33 @@ public partial class MainViewModel : ViewModelBase
                     "Active land avoidance is unavailable with the installed router-lib. " +
                     "Route calculation is blocked to prevent unchecked land crossings.");
             }
+            if (_routingSetupService is null)
+                throw new NotSupportedException("Configured routing setup validation is unavailable. No unconfigured routing fallback is allowed.");
+            context = await _routingSetupService.FreezeAsync(
+                setup!,
+                EnableProfessionalRouting ? new RoutingProfessionalOverrides(request.Optimization) : null,
+                cancellation.Token);
+            if (setupRevision != Itinerary.CalculationRevision || setupPlanId != Itinerary.PlanId ||
+                preparationGeneration != Volatile.Read(ref _calculationGeneration) || cancellation.IsCancellationRequested)
+                return;
+            request = new RoutingWorkflowRequest(
+                request.Route, request.Selections,
+                context.Setup.LandSource == RoutingLandSource.RegionalGshhg
+                    ? context.Setup.RegionalLand!.StudyBounds : request.ForecastBounds,
+                request.RefreshPolicy,
+                context.Resolved.Optimization, context);
+            RoutingSetup.ResolvedStatus =
+                $"{context.NativeIdentity.LibraryVersion} · bridge ABI {context.NativeIdentity.BridgeAbiVersion}\n" +
+                $"{context.Resolved.Quality} · {context.Resolved.Optimization.Solver} · " +
+                $"performance {context.Resolved.PerformanceFactor:P0} · arrival {context.Resolved.ArrivalRadiusNauticalMiles:0.###} NM";
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception) when (!IsCurrentCalculation(preparationGeneration) || cancellation.IsCancellationRequested)
+        {
+            return;
         }
         catch (NativeBridgeUnavailableException exception)
             when (exception.InnerException is DllNotFoundException)
@@ -1086,6 +1182,14 @@ public partial class MainViewModel : ViewModelBase
             ErrorMessage = $"Routing engine unavailable: {exception.Message}";
             StatusMessage = "No forecast was downloaded.";
             return;
+        }
+        finally
+        {
+            if (IsCurrentCalculation(preparationGeneration))
+            {
+                IsCalculating = false;
+                _activeCalculationPlanId = null;
+            }
         }
 
         if (departureWarning is not null)
@@ -1120,7 +1224,8 @@ public partial class MainViewModel : ViewModelBase
                 request.Route.LatestArrivalTime,
                 request.Selections,
                 request.RefreshPolicy,
-                request.Optimization);
+                request.Optimization,
+                context);
         }
 
         var generation = Interlocked.Increment(ref _calculationGeneration);
@@ -1128,10 +1233,6 @@ public partial class MainViewModel : ViewModelBase
         var calculationRevision = Itinerary.CalculationRevision;
         _activeCalculationPlanId = calculationPlanId;
         _activeCalculationRevision = calculationRevision;
-        var cancellation = new CancellationTokenSource();
-        var previous = Interlocked.Exchange(ref _calculationCancellation, cancellation);
-        previous?.Cancel();
-        previous?.Dispose();
         CancelWeather();
 
         InitializeCalculationPresentation(request, planRequest);
@@ -1143,7 +1244,9 @@ public partial class MainViewModel : ViewModelBase
         }
         ProgressFraction = 0;
         StatusMessage = "Starting forecast acquisition and route calculations…";
+        LiveSearchStatus = "Waiting for native search progress. Candidate geometry is provisional.";
         _mapLayers.ClearCalculationOverlays();
+        _displayedProgressUnits.Clear();
         _modelProgress.Clear();
         foreach (var model in request.Models)
         {
@@ -1151,9 +1254,11 @@ public partial class MainViewModel : ViewModelBase
             SetModelStatus(model, "Queued");
         }
 
-        var progress = new Progress<RoutingProgress>(value =>
+        var acceptingProgress = true;
+        var progress = new CoalescingProgress<RoutingProgress, (ForecastModel, Guid?)>(
+            value => (value.Model, value.AttemptId), value => HandleCalculationProgress(generation, () =>
         {
-            if (!IsCurrentCalculation(generation) || !IsCalculating)
+            if (!acceptingProgress || !IsCurrentCalculation(generation) || !IsCalculating)
             {
                 return;
             }
@@ -1177,16 +1282,17 @@ public partial class MainViewModel : ViewModelBase
                 $"{(string.IsNullOrWhiteSpace(value.Message) ? string.Empty : $" · {value.Message}")}");
             if (value.Snapshot is not null)
             {
-                _mapLayers.AddCalculationSnapshot(value.Model, value.Snapshot);
+                DisplayCalculationSnapshot(value.Model, 0, value.AttemptId, value.Snapshot);
             }
             else if (value.Stage == RoutingProgressStage.Failed)
             {
                 _mapLayers.ClearCalculationOverlay(value.Model);
             }
-        });
-        var planProgress = new Progress<RoutePlanRoutingProgress>(value =>
+        }));
+        var planProgress = new CoalescingProgress<RoutePlanRoutingProgress, (ForecastModel, int, Guid?)>(
+            value => (value.Model, value.LegIndex, value.AttemptId), value => HandleCalculationProgress(generation, () =>
         {
-            if (!IsCurrentCalculation(generation) || !IsCalculating)
+            if (!acceptingProgress || !IsCurrentCalculation(generation) || !IsCalculating)
             {
                 return;
             }
@@ -1209,14 +1315,14 @@ public partial class MainViewModel : ViewModelBase
                 $"{(string.IsNullOrWhiteSpace(value.Message) ? string.Empty : $" · {value.Message}")}");
             if (value.Snapshot is not null)
             {
-                _mapLayers.AddCalculationSnapshot(value.Model, value.Snapshot);
+                DisplayCalculationSnapshot(value.Model, value.LegIndex, value.AttemptId, value.Snapshot);
             }
             else if (value.Status is RoutePlanRoutingUnitStatus.Failed or
                      RoutePlanRoutingUnitStatus.Cancelled)
             {
                 _mapLayers.ClearCalculationOverlay(value.Model);
             }
-        });
+        }));
 
         try
         {
@@ -1238,7 +1344,11 @@ public partial class MainViewModel : ViewModelBase
                     return;
                 }
 
-                ApplyPlanWorkflowResult(planResult, departureWarning);
+                lock (_progressGate)
+                {
+                    acceptingProgress = false;
+                    ApplyPlanWorkflowResult(planResult, departureWarning);
+                }
                 return;
             }
 
@@ -1255,7 +1365,11 @@ public partial class MainViewModel : ViewModelBase
                 return;
             }
 
-            ApplyWorkflowResult(result, departureWarning);
+            lock (_progressGate)
+            {
+                acceptingProgress = false;
+                ApplyWorkflowResult(result, departureWarning);
+            }
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -1284,6 +1398,31 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    private void HandleCalculationProgress(long generation, Action display)
+    {
+        lock (_progressGate)
+        {
+            if (IsCurrentCalculation(generation) && IsCalculating) display();
+        }
+    }
+
+    private void DisplayCalculationSnapshot(ForecastModel model, int leg, Guid? attempt,
+        RouteCalculationSnapshot snapshot)
+    {
+        if (!_displayedProgressUnits.TryGetValue(model, out var previous) || previous != (leg, attempt))
+            _mapLayers.ClearCalculationOverlay(model);
+        _displayedProgressUnits[model] = (leg, attempt);
+        _mapLayers.AddCalculationSnapshot(model, snapshot);
+        var diagnostics = snapshot.Diagnostics;
+        LiveSearchStatus =
+            $"{ModelShortName(model)} · leg {leg + 1} · {snapshot.Solver} · " +
+            $"expanded {diagnostics.ExpandedNodes:N0}, generated {diagnostics.GeneratedCandidates:N0}, retained {diagnostics.RetainedCandidates:N0}\n" +
+            $"Eligibility {diagnostics.EligibilityEvaluations?.ToString("N0") ?? "unavailable"} · " +
+            $"pruned {diagnostics.PrunedCandidates?.ToString("N0") ?? "unavailable"} · " +
+            $"future-probe misses {diagnostics.FutureProbeMisses?.ToString("N0") ?? "unavailable"}. " +
+            "Provisional search audit; environment totals are final-only.";
+    }
+
     public async Task SelectLocalGribAsync(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -1300,11 +1439,22 @@ public partial class MainViewModel : ViewModelBase
         previous?.Dispose();
         IsInspectingLocalGrib = true;
         LocalGribStatus = "Inspecting selected GRIB...";
+        var gapHours = RoutingSetup.LocalForecastMaximumGapHours;
         try
         {
-            var inspected = await _localGribInspector.InspectAsync(path, cancellation.Token);
+            var gap = TimeSpan.FromHours(gapHours);
+            var inspected = _localGribInspector is IConfiguredLocalGribInspector configured
+                ? await configured.InspectAsync(path, gap, cancellation.Token)
+                : gap == TimeSpan.FromHours(6)
+                    ? await _localGribInspector.InspectAsync(path, cancellation.Token)
+                    : throw new NotSupportedException("The local inspector cannot apply the selected interpolation-gap policy.");
             if (cancellation != Volatile.Read(ref _inspectionCancellation))
             {
+                return;
+            }
+            if (!gapHours.Equals(RoutingSetup.LocalForecastMaximumGapHours))
+            {
+                LocalGribStatus = "The gap policy changed during inspection; inspect the file again.";
                 return;
             }
 
@@ -1328,6 +1478,11 @@ public partial class MainViewModel : ViewModelBase
         {
             if (cancellation == Volatile.Read(ref _inspectionCancellation))
             {
+                if (!gapHours.Equals(RoutingSetup.LocalForecastMaximumGapHours))
+                {
+                    LocalGribStatus = "The gap policy changed during inspection; inspect the file again.";
+                    return;
+                }
                 LocalForecast = null;
                 LocalGribStatus = "Selected file is not usable.";
                 ErrorMessage = $"GRIB file rejected: {exception.Message}";
@@ -1860,7 +2015,7 @@ public partial class MainViewModel : ViewModelBase
             ForecastCorridor.Create(route.Origin, route.Destination),
             UseNewestWeatherData
                 ? ForecastRefreshPolicy.LatestAvailable
-                : ForecastRefreshPolicy.PreferCache,
+                : RoutingSetup.ForecastPolicy,
             optimization);
         error = null;
         return true;
@@ -2037,11 +2192,11 @@ public partial class MainViewModel : ViewModelBase
                     }
                 }
 
-                if (route.LandAvoidance.HasWarning)
+                if (AppliedLand(route).HasWarning)
                 {
                     status += " · land avoidance not applied";
                 }
-                else if (route.LandAvoidance.IsApplied)
+                else if (AppliedLand(route).IsApplied)
                 {
                     status += " · land avoidance applied";
                 }
@@ -2222,7 +2377,10 @@ public partial class MainViewModel : ViewModelBase
             return leg.Route is null;
         }
 
-        var validOrigin = route.Request.Origin.IsSameLocation(from) ||
+        var acceptedPredecessor = Itinerary.CurrentPlan?.LatestResult(leg.Key.Model)?.Legs
+            .FirstOrDefault(result => result.LegId == leg.Key.LegId)?.Origin;
+        var validOrigin = acceptedPredecessor?.Source == RouteLegOriginSource.AcceptedPredecessor ||
+                          route.Request.Origin.IsSameLocation(from) ||
                           (Itinerary.CurrentPositionCoordinate is { } current &&
                            route.Request.Origin.IsSameLocation(current));
         return validOrigin && route.Request.Destination.IsSameLocation(to);
@@ -2308,11 +2466,12 @@ public partial class MainViewModel : ViewModelBase
               $"{RouteEndpointLabel(route)} {route.ArrivalTime:yyyy-MM-dd HH:mm} UTC · " +
               $"{FormatDuration(route.ArrivalTime - route.Request.DepartureTime)} · " +
               $"{route.Points[^1].CumulativeDistanceNauticalMiles:0.0} NM" +
+              $"\nActual endpoint: {FormatCoordinate(route.Points[^1].Location, "unknown")}" +
               $"{(route.LandAvoidance.HasWarning ? $" · warning: {route.LandAvoidance.Warning}" : string.Empty)}";
         var comparison = _visualizationLegs
             .Where(other => other.Key.LegId == leg.Key.LegId && other.Key.Model != leg.Key.Model)
             .Select(other => $"{ModelShortName(other.Key.Model)} {VisualizationStatusName(other)}" +
-                (other.Route is null ? string.Empty : $" · arrival {other.Route.ArrivalTime:MMM d HH:mm} UTC"))
+                (other.Route is null ? string.Empty : $" · {RouteEndpointLabel(other.Route)} {other.Route.ArrivalTime:MMM d HH:mm} UTC"))
             .ToArray();
         return $"{leg.From.Name} ({FormatCoordinate(leg.From.Coordinate, "unknown")}) → " +
                $"{leg.To.Name} ({FormatCoordinate(leg.To.Coordinate, "unknown")})\n" +
@@ -2358,7 +2517,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (point.Environment is not { } environment)
         {
-            return string.Empty;
+            return "Ground-motion / current audit unavailable\n";
         }
 
         var parts = new List<string>
@@ -2385,7 +2544,7 @@ public partial class MainViewModel : ViewModelBase
 
             if (environment.RelativeWaveAngleDegrees is { } relative)
             {
-                sea += $" · {relative:0}° off the bow";
+                sea += $" · {relative:0}° relative ({(relative < 45 ? "following" : relative > 135 ? "head" : "beam")} seas; 0° following / 180° head)";
             }
 
             parts.Add(sea);
@@ -2403,7 +2562,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (route.Environment is not { } environment)
         {
-            return string.Empty;
+            return "\nEnvironment audit unavailable (not reported by this result).";
         }
 
         var lines = new List<string>
@@ -2443,7 +2602,7 @@ public partial class MainViewModel : ViewModelBase
         if (route.EnvironmentDiagnostics is { } diagnostics)
         {
             lines.Add(
-                $"  samples: current {diagnostics.CurrentSamples:N0} " +
+                $"  final-only samples: current {diagnostics.CurrentSamples:N0} " +
                 $"({diagnostics.CurrentRejections:N0} rejected) · " +
                 $"wave {diagnostics.WaveSamples:N0} " +
                 $"({diagnostics.WaveRejections:N0} rejected) · " +
@@ -2458,6 +2617,41 @@ public partial class MainViewModel : ViewModelBase
         }
 
         return "\n" + string.Join("\n", lines);
+    }
+
+    private static string FormatRunAudit(RouteResult route)
+    {
+        if (route.RunAudit is not { } audit)
+            return "\nEffective settings / native build audit unavailable for this historical result.";
+        var settings = audit.Resolved;
+        var search = settings.Search;
+        var native = route.NativeAudit ?? audit.Native;
+        return $"\nRecorded settings · {audit.Setup.Boat.SourceDisplayName} ({audit.Setup.Boat.ContentIdentity})\n" +
+               $"{settings.Quality} · requested {audit.RequestedSolver} · actual {route.Solver}\n" +
+               $"{settings.PerformanceFactor:P0} performance · arrival area {settings.ArrivalRadiusNauticalMiles:0.###} NM · " +
+               $"{settings.Optimization.PolarAngleInterpolation} · above polar {settings.Optimization.AbovePolarRange}\n" +
+               $"Time step {search.TimeStep.TotalMinutes:0.###} min · integration {search.MaximumIntegrationStep.TotalMinutes:0.###} min · " +
+               $"variable intervals {search.UseRoutingIntervals} · headings {search.HeadingStepDegrees:0.###}° · bucket {search.MaxNodesPerBucket} · strategic retention {search.StrategicRetention}\n" +
+               $"Budgets: retained {search.MaximumRetainedNodes:N0} · candidates {search.MaximumGeneratedCandidates:N0} · workers {search.WorkerCount}\n" +
+               $"Native {audit.NativeIdentity.LibraryVersion} · ABI {audit.NativeIdentity.BridgeAbiVersion} · {audit.NativeIdentity.SourceRevision}\n" +
+               $"Land source {audit.Setup.LandSource} · application {audit.ApplicationLand?.Status.ToString() ?? "unreported"} · " +
+               $"native landmask {native?.NativeLandmaskApplied?.ToString() ?? "unreported"}\n" +
+               (audit.Setup.LandSource == RoutingLandSource.RegionalGshhg && audit.Setup.RegionalLand is { } regional
+                   ? $"Regional source {regional.SourcePath} · SHA-256 {regional.SourceIdentity}\n" +
+                     $"{regional.Attribution} · study bounds {FormatBounds(regional.StudyBounds)} · requested spacing {regional.ResolutionNauticalMiles:0.###} NM · " +
+                     $"clearance {regional.ClearanceNauticalMiles:0.###} NM · outside coverage {regional.MissingDataPolicy}\n"
+                   : string.Empty) +
+               $"Attempts: {string.Join("; ", audit.Attempts.Select(attempt => $"{attempt.Solver}: {attempt.FailureKind?.ToString() ?? "accepted"} {attempt.FailureMessage}"))}" +
+               (audit.Forecast is { } forecast
+                   ? $"\nForecast initialized {forecast.Run.InitializedAt:yyyy-MM-dd HH:mm} UTC · valid {forecast.ValidFrom:O} – {forecast.ValidThrough:O} · bounds {forecast.EffectiveBounds ?? forecast.DeclaredBounds}"
+                   : "\nForecast coverage audit unavailable") +
+               (native is not null
+                   ? $"\nSearch audit · eligibility {native.EligibilityEvaluations?.ToString("N0") ?? "unavailable"} · pruned {native.PrunedCandidates?.ToString("N0") ?? "unavailable"} · future-probe misses {native.FutureProbeMisses?.ToString("N0") ?? "unavailable"}"
+                   : "\nNative search counters unavailable") +
+               (native?.Routing is { } observed
+                   ? $"\nNative objective {observed.Objective} · quality claim {observed.QualityClaim}" +
+                     (observed.Warnings.IsEmpty ? string.Empty : $"\nRaw native warnings: {string.Join("; ", observed.Warnings)}")
+                   : string.Empty);
     }
 
     private static void AppendProvider(
@@ -2518,7 +2712,7 @@ public partial class MainViewModel : ViewModelBase
     private void UpdateLandAvoidanceWarning(IEnumerable<RouteResult> routes)
     {
         var warnings = routes
-            .Select(route => route.LandAvoidance.Warning)
+            .Select(route => AppliedLand(route).Warning)
             .Where(warning => !string.IsNullOrWhiteSpace(warning))
             .Distinct(StringComparer.Ordinal)
             .ToArray();
@@ -2526,6 +2720,9 @@ public partial class MainViewModel : ViewModelBase
             ? null
             : string.Join(Environment.NewLine, warnings);
     }
+
+    private static RouteLandAvoidance AppliedLand(RouteResult route) =>
+        route.RunAudit?.ApplicationLand ?? route.LandAvoidance;
 
     private void BuildTimeline(ForecastModel? model, bool initializeSelection = true)
     {
@@ -2596,7 +2793,11 @@ public partial class MainViewModel : ViewModelBase
             Math.Max(0, pointIndex),
             candidate.Point,
             RouteHitKind.RoutePoint,
-            0);
+            0)
+        {
+            IsPlannedHold = candidate.IsStopover,
+            HoldTimestamp = candidate.IsStopover ? SelectedTimelineUtc : null
+        };
         SelectLegGeometry(candidate.Leg.Key);
         OnPropertyChanged(nameof(TimelineDisplay));
         UpdateWeatherAvailability();
@@ -2931,6 +3132,11 @@ public partial class MainViewModel : ViewModelBase
         var corridor = ForecastCorridor.Calculate(Start.Value, Destination.Value);
         var bounds = corridor.Bounds;
         var area = $"Buffered area {FormatBounds(bounds)} · {corridor.BufferNauticalMiles:0} NM buffer";
+        if (Itinerary.RoutingSetup is { LandSource: RoutingLandSource.RegionalGshhg, RegionalLand: { } regional })
+        {
+            bounds = regional.StudyBounds;
+            area = $"Explicit GSHHG study area {FormatBounds(bounds)} · routing restricted to this selected domain";
+        }
         if (ForecastInputMode == ForecastInputMode.LocalFile)
         {
             ForecastAreaSummary = LocalForecast is null
@@ -3074,7 +3280,7 @@ public partial class MainViewModel : ViewModelBase
     {
         RoutingProgressStage.AcquiringForecast => "acquiring",
         RoutingProgressStage.CalculatingRoute => "routing",
-        RoutingProgressStage.Completed => "complete",
+        RoutingProgressStage.Completed => "calculation finished",
         RoutingProgressStage.Failed => "failed",
         _ => stage.ToString()
     };
@@ -3106,7 +3312,8 @@ public partial class MainViewModel : ViewModelBase
 
     private static string FormatApparentWind(RoutePoint point)
     {
-        var signedAngle = point.ApparentWindAngleSignedDegrees;
+        if (point.ApparentWindAngleSignedDegrees is not { } signedAngle)
+            return "apparent wind unavailable (matching wind / velocity frame not reported)";
         var roundedAngle = (int)Math.Round(Math.Abs(signedAngle), MidpointRounding.AwayFromZero);
         if (roundedAngle <= 0)
         {
@@ -3260,6 +3467,47 @@ public partial class MainViewModel : ViewModelBase
         }
 
         NotifyInteractionChanged();
+        UpdateArrivalAreas();
+        UpdateForecastAreaSummary();
+    }
+
+    private void UpdateArrivalAreas()
+    {
+        if (_mapLayers is null) return;
+        var recorded = _mapLayers.Routes.Where(route => route.RunAudit is not null)
+            .Select(route => (route.Request.Destination,
+                route.RunAudit!.Resolved.ArrivalRadiusNauticalMiles)).ToArray();
+        _mapLayers.SetArrivalAreas(recorded.Length > 0 ? recorded :
+            Itinerary.Waypoints.Skip(1).Where(waypoint => waypoint.Coordinate is not null)
+                .Select(waypoint => (waypoint.Coordinate!.Value, RoutingSetup.ArrivalRadiusNauticalMiles)));
+    }
+
+    private void OnRoutingInputChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_restoringRoutingInputs) return;
+        if (e.PropertyName is nameof(DepartureDate) or nameof(DepartureTime))
+        {
+            if (!Itinerary.HasCurrentPosition) Itinerary.InvalidateDeparture();
+            return;
+        }
+        if (e.PropertyName is nameof(PassageDays) or nameof(PassageHours) or nameof(UseNoaa) or nameof(UseEcmwf) or
+            nameof(ForecastInputMode) or nameof(EnableProfessionalRouting) or
+            nameof(SelectedRouteSolver) or nameof(TackPenaltySeconds) or nameof(GybePenaltySeconds) or
+            nameof(DownwindTrueWindAngleDegrees) or nameof(HeadingAugmentation) or nameof(WindSampling) or
+            nameof(MidpointWindSamplingThresholdMinutes) or nameof(PolarAngleInterpolation) or
+            nameof(UseMaximumTrueWindSpeed) or nameof(MaximumTrueWindSpeedKnots) or nameof(AbovePolarRange) or
+            nameof(PruningStrategy) or nameof(PruningSectorDegrees) or nameof(DestinationFrontHalfAngleDegrees) or
+            nameof(DestinationFrontSegmentPolicy) or nameof(DestinationFrontMinimumSecondarySegmentPoints) or
+            nameof(LatticeSubdivisionLevel) or nameof(LatticeTimeBucketMinutes) or nameof(LatticeRefinementLevels) or
+            nameof(LatticeCorridorWidthNauticalMiles) or nameof(LatticeCorridorWideningRetries) or
+            nameof(LatticeProgressEveryExpansions) or nameof(LatticeSearchAlgorithm) or
+            nameof(EnableCurrentField) or nameof(CurrentEastKnots) or nameof(CurrentNorthKnots) or
+            nameof(CurrentMissingDataPolicy) or nameof(EnableSeaState) or nameof(SignificantWaveHeightMetres) or
+            nameof(WavePeriodSeconds) or nameof(WaveFromDirectionDegrees) or nameof(WaveMissingDataPolicy) or
+            nameof(LandAvoidanceMode) or nameof(LandmaskResolutionNauticalMiles) or nameof(LandmaskClearanceNauticalMiles) or
+            nameof(LandmaskMaximumSubdivisionDepth) or nameof(LandmaskMissingDataPolicy) or
+            nameof(EnableAntarcticExclusionZone) or nameof(ExclusionBoundaryPolicy) or nameof(EnvironmentSampling))
+            Itinerary.InvalidateRoutingInputs();
     }
 
     private async void OnEndpointChanged(object? sender, EventArgs e)

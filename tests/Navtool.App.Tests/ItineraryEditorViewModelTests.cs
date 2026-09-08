@@ -7,6 +7,25 @@ namespace Navtool.App.Tests;
 public sealed class ItineraryEditorViewModelTests
 {
     [Fact]
+    public async Task Departure_edit_invalidates_active_suffix_without_rewriting_skipped_earlier_legs()
+    {
+        var plan = CreatePlanWithPendingResult();
+        plan = plan.SetActiveLeg(plan.Legs[1].Id);
+        var repository = new MemoryRepository(plan);
+        var editor = new ItineraryEditorViewModel(repository);
+        await editor.RefreshSavedPlansCommand.ExecuteAsync(null);
+        await editor.OpenCommand.ExecuteAsync(null);
+        var earlier = editor.CurrentPlan!.LatestResult(ForecastModel.NoaaGfs)!.Legs[0];
+
+        editor.InvalidateDeparture();
+
+        var outcomes = editor.CurrentPlan!.LatestResult(ForecastModel.NoaaGfs)!.Legs;
+        Assert.Equal(earlier, outcomes[0]);
+        Assert.Equal(RouteLegOutcomeReason.DepartureChanged, outcomes[1].Reason);
+        Assert.True(editor.IsDirty);
+    }
+
+    [Fact]
     public void Add_place_rename_move_remove_and_stopover_preserve_fixed_boundaries()
     {
         var editor = new ItineraryEditorViewModel();
@@ -509,7 +528,7 @@ public sealed class ItineraryEditorViewModelTests
             CancellationToken cancellationToken = default)
         {
             ThrowIfFailed();
-            _plan = new RoutePlan(name, plan.Waypoints);
+            _plan = new RoutePlan(name, plan.Waypoints).WithRoutingSetup(plan.RoutingSetup);
             return ValueTask.FromResult(_plan);
         }
 

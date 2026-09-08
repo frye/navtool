@@ -189,6 +189,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     private readonly IRoutePlanRepository? _repository;
     private readonly TimeZoneInfo _localTimeZone;
     private RoutePlan? _plan;
+    private RoutingSetup? _routingSetup;
     private bool _suppressChanges;
     private bool _suppressEndpointChanged;
     private bool _suppressCurrentPositionDepartureSync;
@@ -210,6 +211,38 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     /// always UTC; the pickers are only ever a local-time projection of them.
     /// </summary>
     public TimeZoneInfo LocalTimeZone => _localTimeZone;
+
+    public RoutingSetup? RoutingSetup => _routingSetup;
+
+    public event EventHandler? RoutingSetupRestored;
+
+    public void SetRoutingSetup(RoutingSetup? setup)
+    {
+        if (_routingSetup == setup) return;
+        _routingSetup = setup;
+        if (_plan is not null) _plan = _plan.WithRoutingSetup(setup);
+        ResultsInvalidated = _plan?.HasInvalidatedResults is true;
+        CalculationRevision++;
+        MarkChanged();
+    }
+
+    public void InvalidateRoutingInputs()
+    {
+        if (_plan is not null && _routingSetup is not null)
+            _plan = _plan.WithRoutingSetup(null).WithRoutingSetup(_routingSetup);
+        ResultsInvalidated = _plan?.HasInvalidatedResults is true;
+        CalculationRevision++;
+        MarkChanged();
+    }
+
+    public void InvalidateDeparture()
+    {
+        if (_plan is not null)
+            _plan = _plan.InvalidateFromActiveLeg(RouteLegOutcomeReason.DepartureChanged);
+        ResultsInvalidated = _plan?.HasInvalidatedResults is true;
+        CalculationRevision++;
+        MarkChanged();
+    }
 
     public ObservableCollection<WaypointEditorItemViewModel> Waypoints { get; } = [];
 
@@ -734,7 +767,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             else
             {
                 plan = _plan is null
-                    ? new RoutePlan(PlanId, RouteName, waypoints)
+                    ? new RoutePlan(PlanId, RouteName, waypoints, routingSetup: _routingSetup)
                     : new RoutePlan(
                         PlanId,
                         RouteName,
@@ -742,7 +775,8 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
                         _plan.Results,
                         _plan.SailedLegIds,
                         _plan.CurrentPosition,
-                        _plan.ActiveLegId);
+                        _plan.ActiveLegId,
+                        _routingSetup);
             }
 
             ValidationMessage = null;
@@ -790,7 +824,9 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
                     state,
                     reason,
                     route,
-                    detail)
+                    detail,
+                    executionSession: session,
+                    origin: new RouteLegOrigin(RouteLegOriginSource.DeclaredWaypoint))
             ]));
         ResultsInvalidated = _plan.HasInvalidatedResults;
         IsDirty = true;
@@ -807,7 +843,8 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             throw new InvalidOperationException(error);
         }
 
-        if (plan.Id != PlanId || !plan.Waypoints.SequenceEqual(current!.Waypoints))
+        if (plan.Id != PlanId || !plan.Waypoints.SequenceEqual(current!.Waypoints) ||
+            plan.RoutingSetup != _routingSetup)
         {
             throw new InvalidOperationException(
                 "The calculation result does not match the current itinerary.");
@@ -948,6 +985,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             CalculationRevision++;
             EditRevision++;
             _plan = null;
+            _routingSetup = null;
             RouteName = "Untitled route";
             SaveAsName = "Untitled route copy";
             Waypoints.Clear();
@@ -977,6 +1015,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         }
 
         RefreshPositions();
+        RoutingSetupRestored?.Invoke(this, EventArgs.Empty);
         NotifyItineraryChanged();
     }
 
@@ -986,6 +1025,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         try
         {
             _plan = plan;
+            _routingSetup = plan.RoutingSetup;
             PlanId = plan.Id;
             CalculationRevision++;
             EditRevision++;
@@ -1016,6 +1056,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         }
 
         RefreshPositions();
+        RoutingSetupRestored?.Invoke(this, EventArgs.Empty);
         NotifyItineraryChanged();
     }
 

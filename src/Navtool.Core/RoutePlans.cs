@@ -186,7 +186,15 @@ public enum RouteLegOutcomeReason
     WaypointAdded,
     WaypointRemoved,
     CurrentPositionChanged,
-    DurationExhausted
+    DurationExhausted,
+    RoutingSetupChanged,
+    StopoverExclusionConflict,
+    StopoverValidationUnavailable,
+    PredecessorChanged,
+    ResourceLimit,
+    InvalidBoat,
+    MissingRequiredSource,
+    DepartureChanged
 }
 
 public static class RouteCompletionOutcome
@@ -209,7 +217,11 @@ public sealed record RouteLegResult
         RouteLegOutcomeReason reason,
         RouteResult? route = null,
         string? detail = null,
-        RouteLegOutcomeReason? deferredInvalidationReason = null)
+        RouteLegOutcomeReason? deferredInvalidationReason = null,
+        RouteCalculationSession? executionSession = null,
+        RouteLegOrigin? origin = null,
+        RoutePlannedHold? plannedHold = null,
+        ModelRouteFailure? failure = null)
     {
         if (legId.Value == Guid.Empty)
         {
@@ -235,6 +247,8 @@ public sealed record RouteLegResult
         {
             throw new ArgumentException("Only successful leg outcomes may contain a route.", nameof(route));
         }
+        if (route is not null && reason != route.Completion.ToLegOutcomeReason())
+            throw new ArgumentException("The outcome reason must match the native route completion.", nameof(reason));
 
         if ((state == RouteLegOutcomeState.Pending && reason != RouteLegOutcomeReason.None) ||
             (state != RouteLegOutcomeState.Pending && reason == RouteLegOutcomeReason.None))
@@ -257,6 +271,35 @@ public sealed record RouteLegResult
         Route = route;
         Detail = string.IsNullOrWhiteSpace(detail) ? null : detail.Trim();
         DeferredInvalidationReason = deferredInvalidationReason;
+        if (executionSession is not null && route is not null && executionSession.Model != route.Model)
+            throw new ArgumentException("Execution model does not match the route.", nameof(executionSession));
+        if (origin is not null &&
+            (!Enum.IsDefined(origin.Source) ||
+             (origin.Source == RouteLegOriginSource.AcceptedPredecessor) != (origin.Predecessor is not null)))
+            throw new ArgumentException("An accepted-predecessor origin requires exactly one predecessor reference.", nameof(origin));
+        if (plannedHold is not null &&
+            (route is null || !route.IsComplete ||
+             !plannedHold.Location.IsSameLocation(route.Points[^1].Location) ||
+             plannedHold.From != route.ArrivalTime))
+            throw new ArgumentException("A planned hold must follow the actual complete route arrival.", nameof(plannedHold));
+        ExecutionSession = executionSession;
+        Origin = origin;
+        PlannedHold = plannedHold;
+        if (failure is not null)
+        {
+            if (state is not (RouteLegOutcomeState.Failed or RouteLegOutcomeState.Cancelled) ||
+                (state == RouteLegOutcomeState.Cancelled) != (failure.Kind == RoutingFailureKind.Cancelled) ||
+                !Enum.IsDefined(failure.Stage) || !Enum.IsDefined(failure.Kind) ||
+                string.IsNullOrWhiteSpace(failure.Code) || string.IsNullOrWhiteSpace(failure.Message))
+                throw new ArgumentException("Failure audit must describe a failed or cancelled leg.", nameof(failure));
+            var attempts = failure.Attempts.IsDefault ? ImmutableArray<RouteAttemptAudit>.Empty : failure.Attempts;
+            if (attempts.Any(attempt => attempt is null || attempt.AttemptId == Guid.Empty ||
+                    !Enum.IsDefined(attempt.Solver) || attempt.CompletedAt < attempt.StartedAt ||
+                    (attempt.FailureKind is { } kind && !Enum.IsDefined(kind))) ||
+                attempts.Select(attempt => attempt.AttemptId).Distinct().Count() != attempts.Length)
+                throw new ArgumentException("Failure attempt identities and times must be consistent.", nameof(failure));
+            Failure = failure with { Attempts = attempts };
+        }
     }
 
     public RouteLegId LegId { get; }
@@ -271,13 +314,24 @@ public sealed record RouteLegResult
 
     public RouteLegOutcomeReason? DeferredInvalidationReason { get; }
 
+    public RouteCalculationSession? ExecutionSession { get; }
+    public RouteLegOrigin? Origin { get; }
+    public RoutePlannedHold? PlannedHold { get; }
+    public ModelRouteFailure? Failure { get; }
+
+    public RouteLegResult WithExecutionSession(RouteCalculationSession session) =>
+        new(LegId, State, Reason, Route, Detail, DeferredInvalidationReason, session, Origin, PlannedHold, Failure);
+
+    public RouteLegResult WithPlannedHold(RoutePlannedHold? hold) =>
+        new(LegId, State, Reason, Route, Detail, DeferredInvalidationReason, ExecutionSession, Origin, hold, Failure);
+
     public RouteLegResult Invalidate(RouteLegOutcomeReason reason) =>
         new(LegId, RouteLegOutcomeState.Invalidated, reason);
 
     public RouteLegResult DeferInvalidation(RouteLegOutcomeReason reason) =>
         State == RouteLegOutcomeState.Invalidated
             ? this
-            : new(LegId, State, Reason, Route, Detail, reason);
+            : new(LegId, State, Reason, Route, Detail, reason, ExecutionSession, Origin, PlannedHold, Failure);
 }
 
 public sealed record RoutePlanResult
@@ -288,7 +342,10 @@ public sealed record RoutePlanResult
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(legs);
-        var immutableLegs = legs.ToImmutableArray();
+        var immutableLegs = legs.Select(leg =>
+            (leg.Route is not null || leg.Failure is not null) && leg.ExecutionSession is null
+                ? leg.WithExecutionSession(session)
+                : leg).ToImmutableArray();
         if (immutableLegs.Select(leg => leg.LegId).Distinct().Count() != immutableLegs.Length)
         {
             throw new ArgumentException("A route plan result cannot contain duplicate leg IDs.", nameof(legs));
@@ -340,7 +397,8 @@ public sealed record RoutePlan
         IEnumerable<RoutePlanResult>? results = null,
         IEnumerable<RouteLegId>? sailedLegIds = null,
         RouteCurrentPosition? currentPosition = null,
-        RouteLegId? activeLegId = null)
+        RouteLegId? activeLegId = null,
+        RoutingSetup? routingSetup = null)
     {
         if (id.Value == Guid.Empty)
         {
@@ -371,6 +429,7 @@ public sealed record RoutePlan
         SailedLegIds = immutableSailed;
         CurrentPosition = currentPosition;
         ActiveLegId = activeLegId;
+        RoutingSetup = routingSetup;
     }
 
     public RoutePlan(string name, IEnumerable<RouteWaypoint> waypoints)
@@ -389,6 +448,27 @@ public sealed record RoutePlan
     public ImmutableArray<RoutePlanResult> Results { get; }
 
     public ImmutableHashSet<RouteLegId> SailedLegIds { get; }
+
+    public RoutingSetup? RoutingSetup { get; }
+
+    public RoutePlan WithRoutingSetup(RoutingSetup? setup)
+    {
+        if (RoutingSetup == setup) return this;
+        var results = Results.Select(result =>
+            RebuildResult(result, Legs, 0, RouteLegOutcomeReason.RoutingSetupChanged));
+        return new(Id, Name, Waypoints, results, SailedLegIds, CurrentPosition, ActiveLegId, setup);
+    }
+
+    public RoutePlan SetRoutingSetup(RoutingSetup? setup) => WithRoutingSetup(setup);
+
+    public RoutePlan InvalidateFromActiveLeg(RouteLegOutcomeReason reason)
+    {
+        if (reason == RouteLegOutcomeReason.None || !Enum.IsDefined(reason))
+            throw new ArgumentOutOfRangeException(nameof(reason));
+        return new(Id, Name, Waypoints,
+            Results.Select(result => RebuildResult(result, Legs, ActiveLegIndex, reason)),
+            SailedLegIds, CurrentPosition, ActiveLegId, RoutingSetup);
+    }
 
     /// <summary>
     /// The user-placed current position and explicit departure time, or <c>null</c> when routing
@@ -426,7 +506,31 @@ public sealed record RoutePlan
         Results.SingleOrDefault(result => result.Model == model);
 
     public RoutePlan Rename(string name) =>
-        new(Id, name, Waypoints, Results, SailedLegIds, CurrentPosition, ActiveLegId);
+        new(Id, name, Waypoints, Results, SailedLegIds, CurrentPosition, ActiveLegId, RoutingSetup);
+
+    public RoutePlan CopyAs(RoutePlanId id, string name)
+    {
+        var copiedWaypoints = Waypoints.Select(point =>
+            new RouteWaypoint(point.Name, point.Coordinate, point.Stopover)).ToImmutableArray();
+        var copiedLegs = CreateLegs(copiedWaypoints);
+        var legMap = Legs.ToDictionary(leg => leg.Id, leg => copiedLegs[leg.Index].Id);
+        var results = Results.Select(result => new RoutePlanResult(
+            new RouteCalculationSession(new RouteCalculationSessionId(), id, result.Model,
+                result.Session.StartedAt, result.Session.CompletedAt),
+            result.Legs.Select(outcome => new RouteLegResult(
+                legMap[outcome.LegId], outcome.State, outcome.Reason, outcome.Route,
+                outcome.Detail, outcome.DeferredInvalidationReason, outcome.ExecutionSession,
+                outcome.Origin?.Predecessor is { } predecessor
+                    ? outcome.Origin with
+                    {
+                        Predecessor = predecessor with { PlanId = id, LegId = legMap[predecessor.LegId] }
+                    }
+                    : outcome.Origin,
+                outcome.PlannedHold, outcome.Failure))));
+        return new RoutePlan(id, name, copiedWaypoints, results,
+            SailedLegIds.Select(legId => legMap[legId]), CurrentPosition,
+            ActiveLegId is { } active ? legMap[active] : null, RoutingSetup);
+    }
 
     public RoutePlan RenameWaypoint(RouteWaypointId waypointId, string name)
     {
@@ -544,7 +648,8 @@ public sealed record RoutePlan
             retained.Append(result),
             SailedLegIds,
             CurrentPosition,
-            ActiveLegId);
+            ActiveLegId,
+            RoutingSetup);
     }
 
     /// <summary>
@@ -563,7 +668,8 @@ public sealed record RoutePlan
             Results,
             SailedLegIds.Add(legId),
             CurrentPosition,
-            newActiveLegId);
+            newActiveLegId,
+            RoutingSetup);
     }
 
     public RoutePlan UnmarkSailed(RouteLegId legId)
@@ -597,9 +703,19 @@ public sealed record RoutePlan
                 var originMatchesCurrentPosition =
                     CurrentPosition is not null &&
                     leg.Index == newActiveIndex &&
-                    outcome.Route.Request.Origin.IsSameLocation(CurrentPosition.Coordinate);
+                    outcome.Route.Request.Origin.IsSameLocation(CurrentPosition.Coordinate) &&
+                    (outcome.Origin is null || outcome.Route.Request.DepartureTime == NormalizeDeparture(CurrentPosition.DepartureTime));
+                var originMatchesPredecessor = HasValidPredecessor(outcome, result, leg, Id,
+                    leg.Index > 0 ? Legs[leg.Index - 1].Id : null);
                 var destinationMatches = outcome.Route.Request.Destination.IsSameLocation(to.Coordinate);
-                if ((originMatchesWaypoint || originMatchesCurrentPosition) && destinationMatches)
+                var validOrigin = outcome.Origin?.Source switch
+                {
+                    RouteLegOriginSource.DeclaredWaypoint => originMatchesWaypoint,
+                    RouteLegOriginSource.CurrentPosition => originMatchesCurrentPosition,
+                    RouteLegOriginSource.AcceptedPredecessor => originMatchesPredecessor,
+                    _ => originMatchesWaypoint || originMatchesCurrentPosition
+                };
+                if (validOrigin && destinationMatches)
                 {
                     return outcome;
                 }
@@ -611,7 +727,14 @@ public sealed record RoutePlan
                 return outcome.Invalidate(usedCurrentPosition
                     ? RouteLegOutcomeReason.CurrentPositionChanged
                     : RouteLegOutcomeReason.WaypointCoordinateChanged);
-            })));
+            }))).ToArray();
+        updatedResults = updatedResults.Select(result =>
+        {
+            var changed = result.Legs.Single(item => item.LegId == legId);
+            return changed.State == RouteLegOutcomeState.Invalidated
+                ? RebuildResult(result, Legs, leg.Index + 1, RouteLegOutcomeReason.PredecessorChanged)
+                : result;
+        }).ToArray();
         return new RoutePlan(
             Id,
             Name,
@@ -619,7 +742,8 @@ public sealed record RoutePlan
             updatedResults,
             newSailed,
             CurrentPosition,
-            ActiveLegId);
+            ActiveLegId,
+            RoutingSetup);
     }
 
     /// <summary>
@@ -650,7 +774,8 @@ public sealed record RoutePlan
             updatedResults,
             SailedLegIds,
             updatedPosition,
-            ActiveLegId);
+            ActiveLegId,
+            RoutingSetup);
     }
 
     /// <summary>
@@ -674,7 +799,7 @@ public sealed record RoutePlan
                 ActiveLegIndex,
                 RouteLegOutcomeReason.CurrentPositionChanged))
             .ToArray();
-        return new RoutePlan(Id, Name, Waypoints, updatedResults, SailedLegIds, null, ActiveLegId);
+        return new RoutePlan(Id, Name, Waypoints, updatedResults, SailedLegIds, null, ActiveLegId, RoutingSetup);
     }
 
     /// <summary>
@@ -712,7 +837,7 @@ public sealed record RoutePlan
         var updatedResults = Results
             .Select(result => InvalidateStaleCurrentPositionOrigin(result, newActiveIndex))
             .ToArray();
-        return new RoutePlan(Id, Name, Waypoints, updatedResults, SailedLegIds, CurrentPosition, activeLegId);
+        return new RoutePlan(Id, Name, Waypoints, updatedResults, SailedLegIds, CurrentPosition, activeLegId, RoutingSetup);
     }
 
     /// <summary>
@@ -723,32 +848,34 @@ public sealed record RoutePlan
     /// </summary>
     private RoutePlanResult InvalidateStaleCurrentPositionOrigin(RoutePlanResult result, int newActiveIndex)
     {
-        if (CurrentPosition is null)
-        {
-            return result;
-        }
-
-        var updated = result.Legs.Select(outcome =>
+        var firstInvalid = Legs.Length;
+        foreach (var outcome in result.Legs)
         {
             if (outcome.Route is null || SailedLegIds.Contains(outcome.LegId))
             {
-                return outcome;
+                continue;
             }
 
             var leg = Legs.Single(item => item.Id == outcome.LegId);
+            var from = Waypoints[leg.Index];
             if (leg.Index == newActiveIndex)
             {
-                return outcome;
+                var expectedOrigin = CurrentPosition?.Coordinate ?? from.Coordinate;
+                if (!outcome.Route.Request.Origin.IsSameLocation(expectedOrigin))
+                    firstInvalid = Math.Min(firstInvalid, leg.Index);
+                continue;
             }
 
-            var from = Waypoints.Single(item => item.Id == leg.FromWaypointId);
-            var originIsCurrentPosition = outcome.Route.Request.Origin.IsSameLocation(CurrentPosition.Coordinate);
+            var originIsCurrentPosition = CurrentPosition is not null &&
+                outcome.Route.Request.Origin.IsSameLocation(CurrentPosition.Coordinate);
             var originIsOwnWaypoint = outcome.Route.Request.Origin.IsSameLocation(from.Coordinate);
-            return originIsCurrentPosition && !originIsOwnWaypoint
-                ? outcome.Invalidate(RouteLegOutcomeReason.CurrentPositionChanged)
-                : outcome;
-        });
-        return new RoutePlanResult(result.Session, updated);
+            if (outcome.Origin?.Source == RouteLegOriginSource.CurrentPosition ||
+                (outcome.Origin is null && originIsCurrentPosition && !originIsOwnWaypoint))
+                firstInvalid = Math.Min(firstInvalid, leg.Index);
+        }
+        return firstInvalid < Legs.Length
+            ? RebuildResult(result, Legs, firstInvalid, RouteLegOutcomeReason.CurrentPositionChanged)
+            : result;
     }
 
     private RoutePlan ReplaceWaypoint(
@@ -759,7 +886,7 @@ public sealed record RoutePlan
     {
         var updated = Waypoints.SetItem(index, waypoint);
         return invalidFromLeg is null
-            ? new RoutePlan(Id, Name, updated, Results, SailedLegIds, CurrentPosition, ActiveLegId)
+            ? new RoutePlan(Id, Name, updated, Results, SailedLegIds, CurrentPosition, ActiveLegId, RoutingSetup)
             : Rebuild(updated, invalidFromLeg.Value, reason);
     }
 
@@ -793,7 +920,8 @@ public sealed record RoutePlan
             updatedResults,
             SailedLegIds,
             CurrentPosition,
-            ActiveLegId);
+            ActiveLegId,
+            RoutingSetup);
     }
 
     private RoutePlanResult RebuildResult(
@@ -957,14 +1085,55 @@ public sealed record RoutePlan
                 var originMatchesCurrentPosition =
                     currentPosition is not null &&
                     leg.Index == activeIndex &&
-                    legResult.Route.Request.Origin.IsSameLocation(currentPosition.Coordinate);
-                if (!originMatchesWaypoint && !originMatchesCurrentPosition)
+                    legResult.Route.Request.Origin.IsSameLocation(currentPosition.Coordinate) &&
+                    (legResult.Origin is null ||
+                     legResult.Route.Request.DepartureTime == NormalizeDeparture(currentPosition.DepartureTime));
+                var originMatchesPredecessor = HasValidPredecessor(legResult, result, leg, planId,
+                    leg.Index > 0 ? legs[leg.Index - 1].Id : null);
+                if (legResult.Origin is { } origin)
+                {
+                    var valid = origin.Source switch
+                    {
+                        RouteLegOriginSource.DeclaredWaypoint => originMatchesWaypoint,
+                        RouteLegOriginSource.CurrentPosition => originMatchesCurrentPosition,
+                        RouteLegOriginSource.AcceptedPredecessor => originMatchesPredecessor,
+                        _ => false
+                    };
+                    if (!valid)
+                        throw new ArgumentException("A route origin has invalid physical or causal provenance.", nameof(results));
+                }
+                if (!originMatchesWaypoint && !originMatchesCurrentPosition && !originMatchesPredecessor)
                 {
                     throw new ArgumentException("A route result does not match its referenced leg endpoints.", nameof(results));
                 }
             }
         }
     }
+
+    private static bool HasValidPredecessor(
+        RouteLegResult outcome, RoutePlanResult result, RouteLeg leg, RoutePlanId planId,
+        RouteLegId? expectedPredecessor)
+    {
+        if (outcome.Origin?.Predecessor is not { } reference ||
+            reference.PlanId != planId || reference.Model != result.Model || leg.Index == 0 ||
+            reference.LegId != expectedPredecessor)
+            return false;
+        // Result order is not an authority: callers restore arrays in arbitrary order.
+        var predecessor = result.Legs.SingleOrDefault(item => item.LegId == reference.LegId);
+        if (predecessor?.Route is not { IsComplete: true } route ||
+            predecessor.DeferredInvalidationReason is not null ||
+            predecessor.ExecutionSession?.Id != reference.SessionId ||
+            route.Request.RouteId != reference.RouteId ||
+            predecessor.PlannedHold is { AllowsHandoff: false })
+            return false;
+        var departure = predecessor.PlannedHold?.Until ?? route.ArrivalTime;
+        return outcome.Route is { } next &&
+            next.Request.Origin.IsSameLocation(route.Points[^1].Location) &&
+            next.Request.DepartureTime == NormalizeDeparture(departure);
+    }
+
+    internal static DateTimeOffset NormalizeDeparture(DateTimeOffset value) =>
+        DateTimeOffset.FromUnixTimeSeconds(value.ToUnixTimeSeconds());
 
     private static int ResolveActiveLegIndex(
         ImmutableArray<RouteLeg> legs,

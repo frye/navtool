@@ -1002,7 +1002,8 @@ public sealed class MainWindowLayoutTests
             destination,
             departure,
             departure.AddHours(6));
-        var point = new RoutePoint(coordinate, departure, 90, 6, 15, 180, 0);
+        var point = new RoutePoint(coordinate, departure, 90, 6, 15, 180, 0,
+            environment: null, polarWindSpeedKnots: 15, polarWindDirectionDegrees: 180);
         var route = new RouteResult(
             request,
             ForecastModel.NoaaGfs,

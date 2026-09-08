@@ -70,8 +70,10 @@ public sealed class SharedRouteTimelineTests
         Assert.True(hold.IsStopover);
         Assert.Equal("Stopover at Waypoint 1", hold.StopoverLabel);
         Assert.Equal(first.Route!.Points[^1].Location, hold.Point.Location);
-        Assert.Equal(0, hold.Point.BoatSpeedKnots);
-        Assert.Equal(start.AddHours(3), hold.Point.Timestamp);
+        Assert.Same(first.Route.Points[^1], hold.Point);
+        Assert.Equal(start.AddHours(2), hold.Point.Timestamp);
+        Assert.Equal(TimeSpan.FromHours(-1), hold.OffsetFromRequestedTime);
+        Assert.False(hold.HasNativeSampleAtSelection);
         Assert.Contains(start.AddHours(4), timeline.Timestamps);
         Assert.True(timeline.TryGetPreviousTimestamp(start.AddHours(4), out var previous));
         Assert.Equal(start.AddHours(2), previous);
