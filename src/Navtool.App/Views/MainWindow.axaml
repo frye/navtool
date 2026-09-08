@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Navtool.App.ViewModels"
+        xmlns:views="using:Navtool.App.Views"
         xmlns:core="using:Navtool.Core"
         xmlns:mapsui="using:Mapsui.UI.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -218,16 +219,18 @@
                             </StackPanel>
                         </Border>
 
+                        <views:RoutingSetupView x:Name="CruisingSetupPanel" DataContext="{Binding RoutingSetup}" />
                         <Border Classes="card">
                             <StackPanel Spacing="8">
                                 <TextBlock Classes="section-title"
                                            Text="ROUTING ENGINE" />
+                                <TextBlock Text="{Binding LiveSearchStatus}" Classes="muted" TextWrapping="Wrap" />
                                 <CheckBox x:Name="ProfessionalRoutingToggle"
                                           Content="Professional routing features"
                                           IsChecked="{Binding EnableProfessionalRouting}"
                                           IsEnabled="{Binding !IsCalculating}" />
                                 <TextBlock Classes="muted"
-                                           Text="Off uses Navtool's balanced beam profile: destination and VMG headings, midpoint wind, and monotone-cubic polar interpolation."
+                                           Text="Off uses the selected native quality preset with explicit PCHIP polar interpolation and NoSpeed above the polar range. Professional changes are session-only."
                                            TextWrapping="Wrap" />
                                 <StackPanel IsVisible="{Binding EnableProfessionalRouting}"
                                             IsEnabled="{Binding !IsCalculating}"
@@ -946,7 +949,7 @@
                                 <TextBlock Text="ROUTE POINT"
                                            Classes="telemetry-label" />
                                 <TextBlock x:Name="RouteTelemetryTime"
-                                           Text="{Binding SelectedRoutePoint.Point.Timestamp, StringFormat={}{0:dd MMM · HH:mm} UTC}"
+                                           Text="{Binding SelectedRoutePoint.TimelineTimestamp, StringFormat={}{0:dd MMM · HH:mm} UTC}"
                                            FontSize="14"
                                            FontWeight="SemiBold" />
                             </StackPanel>
@@ -961,7 +964,7 @@
                         <Grid Grid.Row="2"
                               ColumnDefinitions="*,*,*,*,*,*"
                               ColumnSpacing="6"
-                              IsVisible="{Binding SelectedRoutePoint.Point.Environment, Converter={x:Static ObjectConverters.IsNull}}">
+                              IsVisible="{Binding SelectedRoutePoint.HasBasicTelemetry}">
                             <StackPanel>
                                 <TextBlock Text="BOAT"
                                            Classes="telemetry-label" />
@@ -987,7 +990,7 @@
                                 <TextBlock Text="AWS"
                                            Classes="telemetry-label" />
                                 <TextBlock x:Name="RouteTelemetryApparentWind"
-                                           Text="{Binding SelectedRoutePoint.Point.ApparentWindSpeedKnots, StringFormat={}{0:0.0} kt}"
+                                           Text="{Binding SelectedRoutePoint.ApparentWindSpeedText}"
                                            Classes="telemetry-value" />
                             </StackPanel>
                             <StackPanel Grid.Column="4">
@@ -1008,7 +1011,7 @@
                         <Grid Grid.Row="2"
                               ColumnDefinitions="*,*,*,*,*,*"
                               ColumnSpacing="6"
-                              IsVisible="{Binding SelectedRoutePoint.Point.Environment, Converter={x:Static ObjectConverters.IsNotNull}}">
+                              IsVisible="{Binding SelectedRoutePoint.HasEnvironmentTelemetry}">
                             <StackPanel>
                                 <TextBlock Text="SOG"
                                            Classes="telemetry-label" />
@@ -1049,6 +1052,8 @@
                                            Classes="telemetry-value" />
                             </StackPanel>
                         </Grid>
+                        <TextBlock Grid.Row="2" IsVisible="{Binding SelectedRoutePoint.IsPlannedHold}"
+                                   Text="Planned hold · no fresh native wind / motion sample" TextWrapping="Wrap" />
                         <TextBlock Grid.Row="3"
                                    Text="Tap to close"
                                    Classes="telemetry-hint"

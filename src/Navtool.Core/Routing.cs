@@ -171,8 +171,22 @@ public sealed record RoutePointEnvironment
         double? currentNorthKnots = null,
         double? significantWaveHeightMetres = null,
         double? wavePeriodSeconds = null,
-        double? relativeWaveAngleDegrees = null)
+        double? relativeWaveAngleDegrees = null,
+        double? polarWindSpeedKnots = null,
+        double? polarWindDirectionDegrees = null)
     {
+        if (!double.IsFinite(speedOverGroundKnots) || speedOverGroundKnots < 0 ||
+            !double.IsFinite(flatWaterSpeedKnots) || flatWaterSpeedKnots < 0 ||
+            !double.IsFinite(courseOverGroundDegrees) || courseOverGroundDegrees is < 0 or >= 360)
+            throw new ArgumentOutOfRangeException(nameof(speedOverGroundKnots));
+        foreach (var value in new[] { currentEastKnots, currentNorthKnots, significantWaveHeightMetres,
+                     wavePeriodSeconds, relativeWaveAngleDegrees, polarWindSpeedKnots, polarWindDirectionDegrees })
+            if (value is { } number && !double.IsFinite(number))
+                throw new ArgumentOutOfRangeException(nameof(currentEastKnots));
+        if (significantWaveHeightMetres < 0 || wavePeriodSeconds < 0 ||
+            relativeWaveAngleDegrees is < 0 or > 180 || polarWindSpeedKnots < 0 ||
+            polarWindDirectionDegrees is < 0 or >= 360)
+            throw new ArgumentOutOfRangeException(nameof(polarWindSpeedKnots));
         SpeedOverGroundKnots = speedOverGroundKnots;
         CourseOverGroundDegrees = courseOverGroundDegrees;
         FlatWaterSpeedKnots = flatWaterSpeedKnots;
@@ -181,6 +195,8 @@ public sealed record RoutePointEnvironment
         SignificantWaveHeightMetres = significantWaveHeightMetres;
         WavePeriodSeconds = wavePeriodSeconds;
         RelativeWaveAngleDegrees = relativeWaveAngleDegrees;
+        PolarWindSpeedKnots = polarWindSpeedKnots;
+        PolarWindDirectionDegrees = polarWindDirectionDegrees;
     }
 
     public double SpeedOverGroundKnots { get; }
@@ -207,6 +223,10 @@ public sealed record RoutePointEnvironment
     /// and 180 a head sea.
     /// </summary>
     public double? RelativeWaveAngleDegrees { get; }
+
+    public double? PolarWindSpeedKnots { get; }
+
+    public double? PolarWindDirectionDegrees { get; }
 
     /// <summary>
     /// True when a current provider contributed to this point. router-lib emits
@@ -244,6 +264,10 @@ public sealed record RouteEnvironmentDiagnostics
         long exclusionGeometryTests = 0,
         long exclusionRejections = 0)
     {
+        if (new[] { currentSamples, currentRejections, waveSamples, waveRejections,
+                seaStateEvaluations, landChecks, landDistanceQueries, landRejections,
+                exclusionChecks, exclusionGeometryTests, exclusionRejections }.Any(value => value < 0))
+            throw new ArgumentOutOfRangeException(nameof(currentSamples), "Audit counters cannot be negative.");
         CurrentSamples = currentSamples;
         CurrentRejections = currentRejections;
         WaveSamples = waveSamples;
@@ -382,13 +406,19 @@ public sealed record RoutePoint
         double trueWindSpeedKnots,
         double trueWindDirectionDegrees,
         double cumulativeDistanceNauticalMiles,
-        RoutePointEnvironment? environment)
+        RoutePointEnvironment? environment,
+        double? polarWindSpeedKnots = null,
+        double? polarWindDirectionDegrees = null)
     {
         ValidateDirection(headingDegrees, nameof(headingDegrees));
         ValidateNonNegative(boatSpeedKnots, nameof(boatSpeedKnots));
         ValidateNonNegative(trueWindSpeedKnots, nameof(trueWindSpeedKnots));
         ValidateDirection(trueWindDirectionDegrees, nameof(trueWindDirectionDegrees));
         ValidateNonNegative(cumulativeDistanceNauticalMiles, nameof(cumulativeDistanceNauticalMiles));
+        if (polarWindSpeedKnots is { } polarSpeed)
+            ValidateNonNegative(polarSpeed, nameof(polarWindSpeedKnots));
+        if (polarWindDirectionDegrees is { } polarDirection)
+            ValidateDirection(polarDirection, nameof(polarWindDirectionDegrees));
 
         Location = location;
         Timestamp = timestamp.ToUniversalTime();
@@ -398,6 +428,8 @@ public sealed record RoutePoint
         TrueWindDirectionDegrees = trueWindDirectionDegrees;
         CumulativeDistanceNauticalMiles = cumulativeDistanceNauticalMiles;
         Environment = environment;
+        PolarWindSpeedKnots = polarWindSpeedKnots ?? environment?.PolarWindSpeedKnots;
+        PolarWindDirectionDegrees = polarWindDirectionDegrees ?? environment?.PolarWindDirectionDegrees;
     }
 
     public Coordinate Location { get; }
@@ -422,11 +454,16 @@ public sealed record RoutePoint
     /// </summary>
     public RoutePointEnvironment? Environment { get; }
 
-    public double ApparentWindAngleSignedDegrees
+    public double? PolarWindSpeedKnots { get; }
+
+    public double? PolarWindDirectionDegrees { get; }
+
+    public double? ApparentWindAngleSignedDegrees
     {
         get
         {
-            var (apparentEast, apparentNorth) = GetApparentWindVector();
+            if (GetApparentWindVector() is not { } vector) return null;
+            var (apparentEast, apparentNorth) = vector;
             if (Math.Abs(apparentEast) < 1e-9 && Math.Abs(apparentNorth) < 1e-9)
             {
                 return 0d;
@@ -438,25 +475,37 @@ public sealed record RoutePoint
         }
     }
 
-    public double ApparentWindAngleDegrees => Math.Abs(ApparentWindAngleSignedDegrees);
+    public double? ApparentWindAngleDegrees =>
+        ApparentWindAngleSignedDegrees is { } angle ? Math.Abs(angle) : null;
 
-    public double ApparentWindSpeedKnots
+    public double? ApparentWindSpeedKnots
     {
         get
         {
-            var (apparentEast, apparentNorth) = GetApparentWindVector();
+            if (GetApparentWindVector() is not { } vector) return null;
+            var (apparentEast, apparentNorth) = vector;
             return Math.Sqrt(
                 (apparentEast * apparentEast) +
                 (apparentNorth * apparentNorth));
         }
     }
 
-    private (double East, double North) GetApparentWindVector()
+    private (double East, double North)? GetApparentWindVector()
     {
+        // The polar wind is water-relative. Without it, only an audited ground
+        // velocity allows a frame-consistent subtraction from forecast wind.
+        if (PolarWindSpeedKnots is { } speed && PolarWindDirectionDegrees is { } direction)
+        {
+            var wind = ToVectorToward(speed, NormalizeDirection(direction + 180d));
+            var boat = ToVectorToward(BoatSpeedKnots, HeadingDegrees);
+            return (wind.East - boat.East, wind.North - boat.North);
+        }
+        if (Environment is null) return null;
         var (trueWindEast, trueWindNorth) = ToVectorToward(
             TrueWindSpeedKnots,
             NormalizeDirection(TrueWindDirectionDegrees + 180d));
-        var (boatEast, boatNorth) = ToVectorToward(BoatSpeedKnots, HeadingDegrees);
+        var (boatEast, boatNorth) = ToVectorToward(
+            Environment.SpeedOverGroundKnots, Environment.CourseOverGroundDegrees);
         return (trueWindEast - boatEast, trueWindNorth - boatNorth);
     }
 
@@ -510,7 +559,10 @@ public sealed record RouteDiagnostics
         long generatedCandidates,
         long retainedCandidates,
         int timeSteps,
-        TimeSpan? calculationDuration = null)
+        TimeSpan? calculationDuration = null,
+        long? eligibilityEvaluations = null,
+        long? prunedCandidates = null,
+        long? futureProbeMisses = null)
     {
         if (expandedNodes < 0)
         {
@@ -536,12 +588,17 @@ public sealed record RouteDiagnostics
         {
             throw new ArgumentOutOfRangeException(nameof(calculationDuration));
         }
+        if (eligibilityEvaluations < 0 || prunedCandidates < 0 || futureProbeMisses < 0)
+            throw new ArgumentOutOfRangeException(nameof(eligibilityEvaluations));
 
         ExpandedNodes = expandedNodes;
         GeneratedCandidates = generatedCandidates;
         RetainedCandidates = retainedCandidates;
         TimeSteps = timeSteps;
         CalculationDuration = calculationDuration;
+        EligibilityEvaluations = eligibilityEvaluations;
+        PrunedCandidates = prunedCandidates;
+        FutureProbeMisses = futureProbeMisses;
     }
 
     public long ExpandedNodes { get; }
@@ -553,6 +610,10 @@ public sealed record RouteDiagnostics
     public int TimeSteps { get; }
 
     public TimeSpan? CalculationDuration { get; }
+
+    public long? EligibilityEvaluations { get; }
+    public long? PrunedCandidates { get; }
+    public long? FutureProbeMisses { get; }
 }
 
 public sealed record RouteLatticeSearchProgress
@@ -934,7 +995,9 @@ public sealed record RouteResult
         RouteSolver solver = RouteSolver.IsochroneBeam,
         RouteLatticeDiagnostics? latticeDiagnostics = null,
         RouteEnvironmentMetadata? environment = null,
-        RouteEnvironmentDiagnostics? environmentDiagnostics = null)
+        RouteEnvironmentDiagnostics? environmentDiagnostics = null,
+        RouteRunAudit? runAudit = null,
+        RouteNativeRunAudit? nativeAudit = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(points);
@@ -955,12 +1018,34 @@ public sealed record RouteResult
                 "Lattice diagnostics are valid only for lattice results.",
                 nameof(latticeDiagnostics));
         }
+        if (nativeAudit is not null &&
+            (nativeAudit.Schema != "route_result_v2" || nativeAudit.Solver != solver ||
+             (nativeAudit.EffectiveArrivalRadiusNauticalMiles is { } radius && (!double.IsFinite(radius) || radius <= 0)) ||
+             nativeAudit.HardDuration <= TimeSpan.Zero ||
+             nativeAudit.EligibilityEvaluations < 0 || nativeAudit.PrunedCandidates < 0 ||
+             nativeAudit.FutureProbeMisses < 0))
+            throw new ArgumentException("The native result audit is malformed or inconsistent.", nameof(nativeAudit));
+        if (runAudit is not null && (runAudit.Attempts.IsEmpty || runAudit.Attempts[^1].Solver != solver ||
+                                    runAudit.Attempts[^1].FailureKind is not null))
+            throw new ArgumentException("A result requires a successful final attempt from the actual solver.", nameof(runAudit));
+        if (runAudit?.Native is not null && !runAudit.Native.HasSameContent(nativeAudit))
+            throw new ArgumentException("Run and native audit must describe the same accepted output.", nameof(runAudit));
 
         var immutablePoints = points.ToImmutableArray();
         if (immutablePoints.IsEmpty)
         {
             throw new ArgumentException("A route must contain at least one point.", nameof(points));
         }
+        if (nativeAudit?.Routing is { } observed &&
+            (observed.Solver != solver ||
+             !observed.RequestedDestination.IsSameLocation(request.Destination) ||
+             Math.Abs(observed.RemainingDistanceNauticalMiles -
+                 ForecastCorridor.GreatCircleDistanceNauticalMiles(immutablePoints[^1].Location, request.Destination)) > 0.001 ||
+             (completion == RouteCompletion.DestinationReached &&
+              observed.RemainingDistanceNauticalMiles > observed.ArrivalRadiusNauticalMiles + 1e-6) ||
+             (nativeAudit.EffectiveArrivalRadiusNauticalMiles is { } nativeRadius &&
+              Math.Abs(nativeRadius - observed.ArrivalRadiusNauticalMiles) > 1e-9)))
+            throw new ArgumentException("Native routing metadata does not describe the accepted route.", nameof(nativeAudit));
 
         // LatestArrivalTime is a planning TARGET (it sizes the forecast window), not a
         // hard ceiling on the achieved arrival. Keep only the genuine lower bound: a
@@ -996,6 +1081,8 @@ public sealed record RouteResult
         LatticeDiagnostics = latticeDiagnostics;
         Environment = environment;
         EnvironmentDiagnostics = environmentDiagnostics;
+        RunAudit = runAudit;
+        NativeAudit = nativeAudit;
     }
 
     public RouteRequest Request { get; }
@@ -1022,6 +1109,13 @@ public sealed record RouteResult
 
     /// <summary>Environmental work counters, or null when no environment applied.</summary>
     public RouteEnvironmentDiagnostics? EnvironmentDiagnostics { get; }
+
+    public RouteRunAudit? RunAudit { get; }
+    public RouteNativeRunAudit? NativeAudit { get; }
+
+    public RouteResult WithRunAudit(RouteRunAudit audit) =>
+        new(Request, Model, Points, Diagnostics, Completion, LandAvoidance, Solver,
+            LatticeDiagnostics, Environment, EnvironmentDiagnostics, audit, NativeAudit);
 
     public DateTimeOffset ArrivalTime => Points[^1].Timestamp;
 
@@ -1053,7 +1147,9 @@ public sealed record RouteResult
             Solver,
             LatticeDiagnostics,
             Environment,
-            EnvironmentDiagnostics);
+            EnvironmentDiagnostics,
+            RunAudit?.WithApplicationLand(landAvoidance),
+            NativeAudit);
     }
 }
 
@@ -1062,7 +1158,8 @@ public sealed record RouteCalculationProgress
     public RouteCalculationProgress(
         double fraction,
         string? message = null,
-        RouteCalculationSnapshot? snapshot = null)
+        RouteCalculationSnapshot? snapshot = null,
+        Guid? attemptId = null)
     {
         if (!double.IsFinite(fraction) || fraction is < 0 or > 1)
         {
@@ -1072,6 +1169,7 @@ public sealed record RouteCalculationProgress
         Fraction = fraction;
         Message = message;
         Snapshot = snapshot;
+        AttemptId = attemptId;
     }
 
     public double Fraction { get; }
@@ -1079,6 +1177,8 @@ public sealed record RouteCalculationProgress
     public string? Message { get; }
 
     public RouteCalculationSnapshot? Snapshot { get; }
+
+    public Guid? AttemptId { get; }
 }
 
 public interface IRouteEngine
@@ -1095,5 +1195,7 @@ public interface IRouteEngine
         RouteOptimizationOptions optimization,
         IProgress<RouteCalculationProgress>? progress,
         CancellationToken cancellationToken) =>
-        CalculateAsync(request, forecast, progress, cancellationToken);
+        throw new RoutingException(
+            RoutingFailureKind.InvalidConfiguration,
+            "This route engine does not support configured optimization options.");
 }

@@ -82,11 +82,14 @@ public sealed class NativeBridgeContractTests
             boatSpeedKnots,
             trueWindSpeedKnots,
             trueWindDirectionDegrees,
-            81.2);
+            81.2,
+            environment: null,
+            polarWindSpeedKnots: trueWindSpeedKnots,
+            polarWindDirectionDegrees: trueWindDirectionDegrees);
 
-        Assert.Equal(expectedSignedAngle, point.ApparentWindAngleSignedDegrees, 6);
-        Assert.Equal(Math.Abs(expectedSignedAngle), point.ApparentWindAngleDegrees, 6);
-        Assert.Equal(expectedSpeed, point.ApparentWindSpeedKnots, 6);
+        Assert.Equal(expectedSignedAngle, point.ApparentWindAngleSignedDegrees!.Value, 6);
+        Assert.Equal(Math.Abs(expectedSignedAngle), point.ApparentWindAngleDegrees!.Value, 6);
+        Assert.Equal(expectedSpeed, point.ApparentWindSpeedKnots!.Value, 6);
     }
 
     [Fact]

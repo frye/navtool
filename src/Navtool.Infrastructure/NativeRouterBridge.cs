@@ -1,8 +1,6 @@
 using System.Collections.Immutable;
-using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
-using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -15,7 +13,7 @@ namespace Navtool.Infrastructure;
 
 public sealed record NativeRouterBridgeOptions
 {
-    public const uint SupportedAbiVersion = 7;
+    public const uint SupportedAbiVersion = 8;
 
     public int MaximumTextBytes { get; init; } = 64 * 1024 * 1024;
 
@@ -49,7 +47,10 @@ public enum NativeRouterStatus
     /// A configured provider had no usable sample and its missing-data policy
     /// fails the route.
     /// </summary>
-    EnvironmentDataUnavailable = 13
+    EnvironmentDataUnavailable = 13,
+    InvalidPolar = 14,
+    ResourceLimit = 15,
+    Cancelled = 16
 }
 
 [Flags]
@@ -61,13 +62,20 @@ public enum NativeRouterCapabilities : ulong
     CurrentProvider = 1UL << 2,
     SeaState = 1UL << 3,
     SignedDistanceLandmask = 1UL << 4,
-    ExclusionZones = 1UL << 5
+    ExclusionZones = 1UL << 5,
+    ConfiguredRouting = 1UL << 6,
+    ExplicitPolar = 1UL << 7,
+    ForecastPolicy = 1UL << 8,
+    AuditedProgress = 1UL << 9,
+    Gshhg = 1UL << 10,
+    ActionReplay = 1UL << 11,
+    PlannedHold = 1UL << 12
 }
 
-public sealed class NativeRouterException : Exception
+public sealed class NativeRouterException : RoutingException
 {
     public NativeRouterException(NativeRouterStatus status, string operation, string nativeMessage)
-        : base($"{operation} failed ({status}): {nativeMessage}")
+        : base(Classify(status), $"{operation} failed ({status}): {nativeMessage}")
     {
         Status = status;
         Operation = operation;
@@ -79,7 +87,7 @@ public sealed class NativeRouterException : Exception
         string operation,
         string nativeMessage,
         string explanation)
-        : base($"{operation} failed ({status}): {nativeMessage}. {explanation}")
+        : base(Classify(status), $"{operation} failed ({status}): {nativeMessage}. {explanation}")
     {
         Status = status;
         Operation = operation;
@@ -91,12 +99,27 @@ public sealed class NativeRouterException : Exception
     public string Operation { get; }
 
     public string NativeMessage { get; }
+
+    internal static RoutingFailureKind Classify(NativeRouterStatus status) => status switch
+    {
+        NativeRouterStatus.InvalidPolar => RoutingFailureKind.InvalidBoat,
+        NativeRouterStatus.ResourceLimit or NativeRouterStatus.AllocationFailure => RoutingFailureKind.ResourceLimit,
+        NativeRouterStatus.Cancelled => RoutingFailureKind.Cancelled,
+        NativeRouterStatus.InvalidArgument or NativeRouterStatus.InvalidEnvironment => RoutingFailureKind.InvalidConfiguration,
+        NativeRouterStatus.ForecastDecode or NativeRouterStatus.UnsupportedForecast or
+            NativeRouterStatus.IncompleteForecast or NativeRouterStatus.OutsideForecast or
+            NativeRouterStatus.ForecastExhausted or NativeRouterStatus.FileIo => RoutingFailureKind.InvalidForecast,
+        NativeRouterStatus.EnvironmentDataUnavailable => RoutingFailureKind.MissingRequiredSource,
+        NativeRouterStatus.OutputError => RoutingFailureKind.InvalidNativeOutput,
+        NativeRouterStatus.NoRoute => RoutingFailureKind.RecoverableSolver,
+        _ => RoutingFailureKind.Unknown
+    };
 }
 
-public sealed class NativeBridgeUnavailableException : Exception
+public sealed class NativeBridgeUnavailableException : RoutingException
 {
     public NativeBridgeUnavailableException(string message, Exception innerException)
-        : base(message, innerException)
+        : base(RoutingFailureKind.NativeUnavailable, message, innerException)
     {
     }
 }
@@ -115,7 +138,15 @@ public sealed record NativeForecastMetadata(
     ulong LatitudeCount,
     ulong LongitudeCount,
     bool HasGlobalLongitudeCoverage,
-    string Source);
+    string Source)
+{
+    public DateTimeOffset InitializedAt { get; init; }
+    public GeographicBounds? EffectiveBounds { get; init; }
+    public TimeSpan? MinimumTimeSpacing { get; init; }
+    public TimeSpan? MaximumTimeSpacing { get; init; }
+    public ImmutableArray<DateTimeOffset> ValidTimes { get; init; } = [];
+    public TimeSpan? MaximumInterpolationGap { get; init; }
+}
 
 public enum NativeGribModelId
 {
@@ -176,7 +207,7 @@ public sealed class NativeForecast : IDisposable
     public void Dispose() => Handle.Dispose();
 }
 
-public sealed class NativeRouterBridge
+public sealed partial class NativeRouterBridge : INativeRoutingPreflight
 {
     private readonly NativeRouterBridgeOptions _options;
     private readonly NativeRouterCapabilities _capabilities;
@@ -238,9 +269,29 @@ public sealed class NativeRouterBridge
         {
             _capabilities = NativeRouterCapabilities.None;
         }
+        const NativeRouterCapabilities required = NativeRouterCapabilities.ConfiguredRouting |
+            NativeRouterCapabilities.ExplicitPolar | NativeRouterCapabilities.ForecastPolicy |
+            NativeRouterCapabilities.AuditedProgress | NativeRouterCapabilities.PlannedHold |
+            NativeRouterCapabilities.LandSegmentConstraint;
+        if ((_capabilities & required) != required)
+        {
+            throw new NotSupportedException($"Native ABI 8 is missing mandatory capabilities: {required & ~_capabilities}.");
+        }
+        BuildIdentity = ReadBuildIdentity();
     }
 
     public uint AbiVersion => NativeRouterBridgeOptions.SupportedAbiVersion;
+
+    public NativeRoutingIdentity BuildIdentity { get; }
+
+    public bool LandAvoidanceAvailable => LandConstraintAvailable;
+
+    public void EnsureAvailable()
+    {
+        if (NativeMethods.Preflight() != NativeRouterBridgeOptions.SupportedAbiVersion ||
+            NativeMethods.Capabilities() != _capabilities || ReadBuildIdentity() != BuildIdentity)
+            throw new RoutingException(RoutingFailureKind.NativeUnavailable, "Native bridge identity or capabilities changed after preflight.");
+    }
 
     public NativeRouterCapabilities Capabilities => _capabilities;
 
@@ -286,7 +337,7 @@ public sealed class NativeRouterBridge
             return "sea state derating";
         }
 
-        if (environment.Land is not null &&
+        if ((environment.Land is not null || environment.LandRequest is not null) &&
             (capabilities & NativeRouterCapabilities.SignedDistanceLandmask) == 0)
         {
             return "signed distance landmasks";
@@ -312,25 +363,30 @@ public sealed class NativeRouterBridge
     public NativeForecast LoadForecast(
         string gribPath,
         GeographicBounds? bounds = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeSpan? maximumInterpolationGap = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gribPath);
         var fullPath = Path.GetFullPath(gribPath);
+        ValidateNativeText(fullPath);
         if (!File.Exists(fullPath))
         {
             throw new FileNotFoundException("The forecast artifact does not exist.", fullPath);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        var status = bounds is { } requestedBounds
-            ? NativeMethods.ForecastLoadBounded(
-                fullPath,
-                requestedBounds.South,
-                requestedBounds.West,
-                requestedBounds.North,
-                requestedBounds.East,
-                out var rawHandle)
-            : NativeMethods.ForecastLoad(fullPath, out rawHandle);
+        var gap = maximumInterpolationGap ?? TimeSpan.FromHours(6);
+        if (gap <= TimeSpan.Zero || gap.Ticks % TimeSpan.TicksPerSecond != 0)
+            throw new ArgumentOutOfRangeException(nameof(maximumInterpolationGap));
+        var options = new NativeForecastOptionsV8
+        {
+            StructSize = checked((uint)Marshal.SizeOf<NativeForecastOptionsV8>()),
+            Flags = bounds.HasValue ? 3UL : 2UL,
+            South = bounds?.South ?? 0, West = bounds?.West ?? 0,
+            North = bounds?.North ?? 0, East = bounds?.East ?? 0,
+            MaximumInterpolationGapSeconds = checked((long)gap.TotalSeconds)
+        };
+        var status = NativeMethods.ForecastLoadV8(fullPath, ref options, out var rawHandle);
         NativeForecastSafeHandle? handle =
             rawHandle == IntPtr.Zero ? null : new NativeForecastSafeHandle(rawHandle);
         try
@@ -342,7 +398,7 @@ public sealed class NativeRouterBridge
                 throw new NativeRouteFormatException("The native bridge reported success but returned a null forecast.");
             }
 
-            var metadata = ReadMetadata(handle);
+            var metadata = ReadMetadata(handle) with { MaximumInterpolationGap = gap };
             cancellationToken.ThrowIfCancellationRequested();
             return new NativeForecast(handle, metadata);
         }
@@ -486,203 +542,9 @@ public sealed class NativeRouterBridge
         RouteOptimizationOptions optimization,
         Action<RouteCalculationSnapshot>? onProgress,
         Func<Coordinate, Coordinate, bool>? isSegmentEligible,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(forecast);
-        ArgumentNullException.ThrowIfNull(request);
-        ArgumentNullException.ThrowIfNull(optimization);
-        _ = model.Provider();
-        ThrowIfDisposed(forecast);
-        if (isSegmentEligible is not null && !LandConstraintAvailable)
-        {
-            throw new NotSupportedException(
-                "The native router bridge does not support pre-retention segment constraints.");
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        var departure = request.DepartureTime.ToUnixTimeSeconds();
-        var nativeOptions = NativeRoutingOptions.From(optimization);
-        var stopwatch = Stopwatch.StartNew();
-        ExceptionDispatchInfo? callbackFailure = null;
-        NativeMethods.RoutingProgressCallback callback;
-        NativeMethods.SegmentEligibilityCallback? eligibilityCallback = null;
-        RouteCalculationSnapshot? lastSnapshot = null;
-        NativeRouterStatus status;
-        IntPtr routePointer;
-        nuint routeLength;
-        callback = (progressPointer, _) =>
-        {
-            if (callbackFailure is not null)
-            {
-                return 0;
-            }
-
-            try
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                lastSnapshot = CopyProgress(progressPointer);
-                if (onProgress is not null)
-                {
-                    onProgress(lastSnapshot);
-                }
-                cancellationToken.ThrowIfCancellationRequested();
-            }
-            catch (Exception exception)
-            {
-                Interlocked.CompareExchange(
-                    ref callbackFailure,
-                    ExceptionDispatchInfo.Capture(exception),
-                    null);
-            }
-            return callbackFailure is null ? (byte)1 : (byte)0;
-        };
-        if (isSegmentEligible is not null)
-        {
-            eligibilityCallback = (
-                ref NativeCoordinate parent,
-                ref NativeCoordinate candidate,
-                IntPtr _) =>
-            {
-                if (callbackFailure is not null)
-                {
-                    return 0;
-                }
-
-                try
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    return isSegmentEligible(
-                        new Coordinate(
-                            parent.LatitudeDegrees,
-                            parent.LongitudeDegrees),
-                        new Coordinate(
-                            candidate.LatitudeDegrees,
-                            candidate.LongitudeDegrees))
-                        ? (byte)1
-                        : (byte)0;
-                }
-                catch (Exception exception)
-                {
-                    Interlocked.CompareExchange(
-                        ref callbackFailure,
-                        ExceptionDispatchInfo.Capture(exception),
-                        null);
-                    return 0;
-                }
-            };
-        }
-        try
-        {
-            // v7 is only invoked when there is something to configure, so the
-            // default path stays on the exact v6 entry point it always used.
-            if (optimization.Environment is { IsActive: true } environmentOptions)
-            {
-                if (DescribeMissingCapability(_capabilities, environmentOptions)
-                    is { } missingCapability)
-                {
-                    throw new NotSupportedException(
-                        "The native router bridge does not support " +
-                        $"{missingCapability}.");
-                }
-
-                using var environmentScope =
-                    NativeEnvironmentScope.Create(environmentOptions);
-                var nativeEnvironment = environmentScope.Environment;
-                status = NativeMethods.CalculateRouteStreamingWithEnvironment(
-                    forecast.Handle,
-                    request.Origin.Latitude,
-                    request.Origin.Longitude,
-                    request.Destination.Latitude,
-                    request.Destination.Longitude,
-                    ref departure,
-                    ref nativeOptions,
-                    ref nativeEnvironment,
-                    callback,
-                    IntPtr.Zero,
-                    eligibilityCallback,
-                    IntPtr.Zero,
-                    out routePointer,
-                    out routeLength);
-            }
-            else
-            {
-                status = NativeMethods.CalculateRouteStreaming(
-                    forecast.Handle,
-                    request.Origin.Latitude,
-                    request.Origin.Longitude,
-                    request.Destination.Latitude,
-                    request.Destination.Longitude,
-                    ref departure,
-                    ref nativeOptions,
-                    callback,
-                    IntPtr.Zero,
-                    eligibilityCallback,
-                    IntPtr.Zero,
-                    out routePointer,
-                    out routeLength);
-            }
-
-            Volatile.Write(ref _streamingProgressAvailability, 1);
-        }
-        catch (EntryPointNotFoundException exception)
-        {
-            Volatile.Write(ref _streamingProgressAvailability, -1);
-            throw new NativeBridgeUnavailableException(
-                "The Navtool router bridge ABI reports isochrone-front streaming support but does not export it.",
-                exception);
-        }
-
-        GC.KeepAlive(callback);
-        GC.KeepAlive(eligibilityCallback);
-        stopwatch.Stop();
-        using var routeBuffer = new NativeAllocatedBufferSafeHandle(routePointer);
-        callbackFailure?.Throw();
-        cancellationToken.ThrowIfCancellationRequested();
-        if (status != NativeRouterStatus.Ok)
-        {
-            var nativeMessage = NativeMethods.GetLastError();
-            if (status == NativeRouterStatus.ForecastExhausted &&
-                lastSnapshot is not null)
-            {
-                var partial = new RouteResult(
-                    request,
-                    model,
-                    lastSnapshot.ProvisionalRoute,
-                    new RouteDiagnostics(
-                        lastSnapshot.Diagnostics.ExpandedNodes,
-                        lastSnapshot.Diagnostics.GeneratedCandidates,
-                        lastSnapshot.Diagnostics.RetainedCandidates,
-                        lastSnapshot.Diagnostics.TimeSteps,
-                        stopwatch.Elapsed),
-                    RouteCompletion.ForecastExhausted,
-                    landAvoidance: null,
-                    optimization.Solver);
-                EnsureWithinForecastHorizon(partial, forecast.Metadata);
-                return ApplyLandAvoidanceCapability(
-                    partial,
-                    isSegmentEligible is not null);
-            }
-
-            throw new NativeRouterException(
-                status,
-                "Calculating route",
-                nativeMessage,
-                DescribeFailure(status, request, forecast.Metadata));
-        }
-
-        var json = CopyUtf8(routePointer, routeLength, _options.MaximumTextBytes, "route JSON");
-        cancellationToken.ThrowIfCancellationRequested();
-        var result = NativeRouteJsonParser.Parse(
-            json,
-            request,
-            model,
-            stopwatch.Elapsed,
-            optimization.Solver);
-        EnsureWithinForecastHorizon(result, forecast.Metadata);
-        return ApplyLandAvoidanceCapability(
-            result,
-            isSegmentEligible is not null);
-    }
+        CancellationToken cancellationToken) =>
+        throw new RoutingException(RoutingFailureKind.InvalidBoat,
+            "Configured routing requires an explicitly selected imported or demo polar. Use the explicit-polar ABI 8 overload.");
 
     // The native layer reports a bare sailroute diagnostic such as "requested time is
     // after forecast coverage", which says nothing about the departure the user chose
@@ -714,18 +576,6 @@ public sealed class NativeRouterBridge
             _ => coverage + "."
         };
     }
-
-    private RouteResult ApplyLandAvoidanceCapability(
-        RouteResult result,
-        bool constraintApplied) =>
-        !LandConstraintAvailable
-            ? result.WithLandAvoidance(new RouteLandAvoidance(
-                LandAvoidanceStatus.RouterUnsupported,
-                "Land avoidance was not applied because the routing engine does not support pre-retention segment constraints."))
-            : constraintApplied
-                ? result.WithLandAvoidance(new RouteLandAvoidance(
-                    LandAvoidanceStatus.Applied))
-                : result;
 
     // Mandatory postcondition: a route must never rely on weather past the loaded
     // forecast's real validity. RouteResult (Core) is deliberately ignorant of forecast
@@ -774,7 +624,13 @@ public sealed class NativeRouterBridge
             throw new NativeRouteFormatException("The native progress callback returned a null snapshot.");
         }
 
-        var progress = Marshal.PtrToStructure<NativeRoutingProgress>(progressPointer);
+        var auditedProgress = Marshal.PtrToStructure<NativeRoutingProgressV8>(progressPointer);
+        if (auditedProgress.StructSize != Marshal.SizeOf<NativeRoutingProgressV8>() ||
+            auditedProgress.Reserved != 0)
+            throw new NativeRouteFormatException("Native progress ABI 8 size/reserved fields are invalid.");
+        var progress = auditedProgress.Progress;
+        if (auditedProgress.AuditedRoutePointCount != progress.ProvisionalRoutePointCount)
+            throw new NativeRouteFormatException("Native progress audit and physical point counts disagree.");
         var solver = progress.Solver switch
         {
             0 => RouteSolver.IsochroneBeam,
@@ -868,25 +724,19 @@ public sealed class NativeRouterBridge
             .Select(point => new Coordinate(
                 point.LatitudeDegrees,
                 point.LongitudeDegrees));
-        var provisionalRoute = CopyArray<NativeRoutePoint>(
-                progress.ProvisionalRoutePoints,
-                progress.ProvisionalRoutePointCount,
+        var provisionalRoute = CopyArray<NativeRoutePointV8>(
+                auditedProgress.AuditedRoutePoints,
+                auditedProgress.AuditedRoutePointCount,
                 "provisional route points")
-            .Select(point => new RoutePoint(
-                new Coordinate(
-                    point.Position.LatitudeDegrees,
-                    point.Position.LongitudeDegrees),
-                DateTimeOffset.FromUnixTimeSeconds(point.UtcEpochSeconds),
-                point.HeadingDegrees,
-                point.BoatSpeedKnots,
-                point.TrueWindSpeedKnots,
-                point.TrueWindDirectionDegrees,
-                point.CumulativeDistanceNauticalMiles));
+            .Select(CopyAuditedPoint);
         var diagnostics = new RouteDiagnostics(
             checked((long)progress.Diagnostics.ExpandedNodes),
             checked((long)progress.Diagnostics.GeneratedCandidates),
             checked((long)progress.Diagnostics.RetainedCandidates),
-            checked((int)progress.Diagnostics.TimeSteps));
+            checked((int)progress.Diagnostics.TimeSteps),
+            eligibilityEvaluations: checked((long)auditedProgress.EligibilityEvaluations),
+            prunedCandidates: checked((long)auditedProgress.PrunedCandidates),
+            futureProbeMisses: checked((long)auditedProgress.FutureProbeMisses));
         var latticeSearch = solver == RouteSolver.TimeDependentLattice
             ? new RouteLatticeSearchProgress(
                 checked((long)progress.LatticeSearch.SettledLabels),
@@ -1027,9 +877,13 @@ public sealed class NativeRouterBridge
 
     private NativeForecastMetadata ReadMetadata(NativeForecastSafeHandle handle)
     {
-        var status = NativeMethods.ForecastGetMetadata(
+        var native = new NativeForecastMetadataV8
+        {
+            StructSize = checked((uint)Marshal.SizeOf<NativeForecastMetadataV8>())
+        };
+        var status = NativeMethods.ForecastMetadataV8(
             handle,
-            out var native,
+            ref native,
             out var sourcePointer,
             out var sourceLength);
         using var sourceBuffer = new NativeAllocatedBufferSafeHandle(sourcePointer);
@@ -1038,20 +892,41 @@ public sealed class NativeRouterBridge
         if (native.LastValidEpochSeconds < native.FirstValidEpochSeconds ||
             native.LatitudeCount == 0 ||
             native.LongitudeCount == 0 ||
-            native.GlobalLongitudeCoverage > 1)
+            (native.Flags & ~3U) != 0 ||
+            native.ValidTimeCount == 0 || native.ValidTimeCount > 100_000 ||
+            native.InitializationEpochSeconds > native.FirstValidEpochSeconds)
         {
             throw new NativeRouteFormatException("The native bridge returned inconsistent forecast metadata.");
         }
 
         try
         {
+            var times = new long[checked((int)native.ValidTimeCount)];
+            ThrowIfFailed(NativeMethods.ForecastValidTimes(handle, times, native.ValidTimeCount, out var count),
+                "Reading forecast valid times");
+            if (count != native.ValidTimeCount || times[0] != native.FirstValidEpochSeconds ||
+                times[^1] != native.LastValidEpochSeconds ||
+                times.Zip(times.Skip(1)).Any(pair => pair.First >= pair.Second))
+                throw new NativeRouteFormatException("Native forecast valid times are inconsistent.");
+            var spacings = times.Zip(times.Skip(1)).Select(pair => pair.Second - pair.First).ToArray();
+            if (((native.Flags & 1) != 0) != (spacings.Length > 0) ||
+                spacings.Length > 0 && (native.MinimumTimeSpacingSeconds != spacings.Min() ||
+                    native.MaximumTimeSpacingSeconds != spacings.Max()))
+                throw new NativeRouteFormatException("Native forecast cadence metadata disagrees with the exact valid times.");
             return new NativeForecastMetadata(
                 DateTimeOffset.FromUnixTimeSeconds(native.FirstValidEpochSeconds),
                 DateTimeOffset.FromUnixTimeSeconds(native.LastValidEpochSeconds),
                 native.LatitudeCount,
                 native.LongitudeCount,
-                native.GlobalLongitudeCoverage != 0,
-                source);
+                (native.Flags & 2) != 0,
+                source)
+            {
+                InitializedAt = DateTimeOffset.FromUnixTimeSeconds(native.InitializationEpochSeconds),
+                EffectiveBounds = new GeographicBounds(native.South, native.North, native.West, native.East),
+                MinimumTimeSpacing = (native.Flags & 1) != 0 ? TimeSpan.FromSeconds(native.MinimumTimeSpacingSeconds) : null,
+                MaximumTimeSpacing = (native.Flags & 1) != 0 ? TimeSpan.FromSeconds(native.MaximumTimeSpacingSeconds) : null,
+                ValidTimes = times.Select(DateTimeOffset.FromUnixTimeSeconds).ToImmutableArray()
+            };
         }
         catch (ArgumentOutOfRangeException exception)
         {
@@ -1108,20 +983,23 @@ public sealed class NativeRouterBridge
         count == 1 ? (first + last) / 2d : first + ((last - first) * index / (count - 1d));
 }
 
-public sealed class NativeRouteEngine : IRouteEngine
+public sealed partial class NativeRouteEngine : IConfiguredRouteEngine
 {
     private readonly NativeRouterBridge _bridge;
     private readonly ILogger<NativeRouteEngine> _logger;
     private readonly ILandDataProvider? _landDataProvider;
+    private readonly string _executionDirectory;
 
     public NativeRouteEngine(
         NativeRouterBridge? bridge = null,
         ILogger<NativeRouteEngine>? logger = null,
-        ILandDataProvider? landDataProvider = null)
+        ILandDataProvider? landDataProvider = null,
+        string? executionDirectory = null)
     {
         _bridge = bridge ?? new NativeRouterBridge();
         _logger = logger ?? NullLogger<NativeRouteEngine>.Instance;
-        _landDataProvider = landDataProvider;
+        _landDataProvider = landDataProvider ?? new NaturalEarthLandDataProvider();
+        _executionDirectory = executionDirectory ?? NativeBoatExecution.DefaultDirectory;
     }
 
     public bool LandAvoidanceAvailable => _bridge.LandConstraintAvailable;
@@ -1138,118 +1016,15 @@ public sealed class NativeRouteEngine : IRouteEngine
             progress,
             cancellationToken);
 
-    public async ValueTask<RouteResult> CalculateAsync(
+    public ValueTask<RouteResult> CalculateAsync(
         RouteRequest request,
         ForecastAcquisition forecast,
         RouteOptimizationOptions optimization,
         IProgress<RouteCalculationProgress>? progress,
         CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        ArgumentNullException.ThrowIfNull(forecast);
-        ArgumentNullException.ThrowIfNull(optimization);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!LandAvoidanceAvailable)
-        {
-            throw new NotSupportedException(
-                "Active land avoidance is unavailable with the installed router-lib; route calculation was blocked.");
-        }
-
-        progress?.Report(new RouteCalculationProgress(0, "Acquiring land data"));
-        var landData = _landDataProvider is null
-            ? LandDataAcquisition.Unconfigured()
-            : await _landDataProvider
-                .AcquireAsync(GetLoadBounds(forecast), cancellationToken)
-                .ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        // The signed-distance landmask replaces the callback rather than
-        // layering on top of it, so the two land paths never disagree.
-        var usesSignedDistanceLandmask =
-            optimization.Environment?.LandRequest is not null;
-        Func<Coordinate, Coordinate, bool>? isSegmentEligible =
-            landData.Geometry is null || usesSignedDistanceLandmask
-                ? null
-                : (parent, candidate) =>
-                    !landData.Geometry.IntersectsSegment(parent, candidate);
-
-        var effectiveOptimization = optimization;
-        if (usesSignedDistanceLandmask)
-        {
-            progress?.Report(new RouteCalculationProgress(0.05, "Building landmask"));
-            effectiveOptimization = ResolveLandmask(
-                optimization,
-                landData,
-                GetLoadBounds(forecast),
-                cancellationToken);
-        }
-
-        progress?.Report(new RouteCalculationProgress(0, "Loading forecast"));
-
-        try
-        {
-            var loadBounds = GetLoadBounds(forecast);
-            _logger.LogInformation(
-                "Loading native forecast artifact {ArtifactPath} with effective bounds {Bounds}",
-                forecast.Artifact.Path,
-                loadBounds);
-            using var loaded = _bridge.LoadForecast(
-                forecast.Artifact.Path,
-                loadBounds,
-                cancellationToken: cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report(new RouteCalculationProgress(0.2, "Optimizing route"));
-            RouteResult result;
-            Action<RouteCalculationSnapshot>? reportSnapshot = null;
-            if (progress is not null)
-            {
-                var reportedElapsed = TimeSpan.Zero;
-                reportSnapshot = snapshot =>
-                {
-                    var fraction = AdvanceProgressFraction(
-                        request,
-                        snapshot,
-                        ref reportedElapsed);
-                    progress.Report(new RouteCalculationProgress(
-                        0.2 + (fraction * 0.79),
-                        snapshot.Solver == RouteSolver.TimeDependentLattice
-                            ? $"{snapshot.LatticeSearch!.SettledLabels:N0} settled · " +
-                              $"refinement {snapshot.LatticeSearch.RefinementIndex:N0}"
-                            : $"Step {snapshot.Diagnostics.TimeSteps:N0} · " +
-                              $"{snapshot.Diagnostics.RetainedCandidates:N0} retained",
-                        snapshot));
-                };
-            }
-            result = _bridge.CalculateRoute(
-                loaded,
-                request,
-                forecast.Request.Model,
-                effectiveOptimization,
-                reportSnapshot,
-                isSegmentEligible,
-                cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report(new RouteCalculationProgress(1, "Route complete"));
-            result = ApplyLandData(result, landData, usesSignedDistanceLandmask);
-            _logger.LogInformation(
-                "Completed route {RouteId} using {Model} with {PointCount} points",
-                request.RouteId,
-                forecast.Request.Model,
-                result.Points.Length);
-            return result;
-        }
-        catch (Exception exception) when (
-            exception is not OperationCanceledException ||
-            !cancellationToken.IsCancellationRequested)
-        {
-            _logger.LogError(
-                exception,
-                "Native route calculation failed for route {RouteId} and artifact {ArtifactPath}",
-                request.RouteId,
-                forecast.Artifact.Path);
-            throw;
-        }
-    }
+        =>
+        throw new RoutingException(RoutingFailureKind.InvalidBoat,
+            "This route engine requires a frozen routing setup with an explicitly selected boat before forecast acquisition.");
 
     internal static double AdvanceProgressFraction(
         RouteRequest request,
@@ -1413,7 +1188,7 @@ public sealed class NativeRouteEngine : IRouteEngine
             : forecast.Request.Bounds;
 }
 
-internal static class NativeRouteJsonParser
+internal static partial class NativeRouteJsonParser
 {
     public static RouteResult Parse(
         string json,
@@ -1426,6 +1201,7 @@ internal static class NativeRouteJsonParser
         RouteLatticeDiagnostics? latticeDiagnostics = null;
         RouteEnvironmentMetadata? environmentMetadata = null;
         RouteEnvironmentDiagnostics? environmentDiagnostics = null;
+        RouteNativeRunAudit? nativeAudit = null;
         RouteCompletion completion;
         var raw = ImmutableArray.CreateBuilder<RawRoutePoint>();
 
@@ -1439,7 +1215,10 @@ internal static class NativeRouteJsonParser
                 new JsonDocumentOptions { MaxDepth = 32 });
             var root = document.RootElement;
             RequireKind(root, JsonValueKind.Object, "root");
-            completion = RequiredString(root, "completion") switch
+            ValidateSchema(root, request, solver);
+            completion = (root.TryGetProperty("completion", out _)
+                ? RequiredString(root, "completion")
+                : RequiredString(root, "partial_reason")) switch
             {
                 "destination_reached" => RouteCompletion.DestinationReached,
                 "forecast_exhausted" => RouteCompletion.ForecastExhausted,
@@ -1453,7 +1232,24 @@ internal static class NativeRouteJsonParser
                 RequiredInt64(diagnosticsElement, "generatedCandidates"),
                 RequiredInt64(diagnosticsElement, "retainedCandidates"),
                 RequiredInt32(diagnosticsElement, "timeSteps"),
-                calculationDuration);
+                calculationDuration,
+                NullableInt64(diagnosticsElement, "eligibilityEvaluations"),
+                NullableInt64(diagnosticsElement, "prunedCandidates"),
+                NullableInt64(diagnosticsElement, "futureProbeMisses"));
+            if (root.TryGetProperty("schema", out var schema) && schema.GetString() == "route_result_v2")
+            {
+                var routing = Required(root, "routing", JsonValueKind.Object);
+                nativeAudit = new RouteNativeRunAudit("route_result_v2", solver,
+                    RequiredDouble(routing, "arrivalRadiusNm"),
+                    NativeLandmaskApplied: RequiredBoolean(routing, "landAvoidance"),
+                    EligibilityEvaluations: diagnostics.EligibilityEvaluations,
+                    PrunedCandidates: diagnostics.PrunedCandidates,
+                    FutureProbeMisses: diagnostics.FutureProbeMisses,
+                    Routing: ParseNativeRunMetadata(routing, solver),
+                    ForecastSource: RequiredString(Required(root, "forecast", JsonValueKind.Object), "source"),
+                    PolarSource: RequiredString(Required(root, "polar", JsonValueKind.Object), "source"),
+                    DepartureSource: RequiredString(Required(root, "departure", JsonValueKind.Object), "source"));
+            }
             if (root.TryGetProperty("latticeDiagnostics", out var latticeElement))
             {
                 RequireKind(latticeElement, JsonValueKind.Object, "latticeDiagnostics");
@@ -1538,9 +1334,10 @@ internal static class NativeRouteJsonParser
         catch (Exception exception) when (
             exception is JsonException or
             InvalidOperationException or
-            OverflowException)
+            OverflowException or
+            ArgumentException)
         {
-            throw new NativeRouteFormatException("The native route JSON did not match the v1 contract.", exception);
+            throw new NativeRouteFormatException("The native route JSON did not match its schema contract.", exception);
         }
 
         // Native OUTPUT semantics: the JSON is well-formed, but the values must still
@@ -1585,7 +1382,8 @@ internal static class NativeRouteJsonParser
                 solver,
                 latticeDiagnostics,
                 environmentMetadata,
-                environmentDiagnostics);
+                environmentDiagnostics,
+                nativeAudit: nativeAudit);
         }
         catch (ArgumentException exception)
         {
@@ -1627,7 +1425,9 @@ internal static class NativeRouteJsonParser
             OptionalDouble(element, "currentNorthKnots"),
             OptionalDouble(element, "significantWaveHeightMetres"),
             OptionalDouble(element, "wavePeriodSeconds"),
-            OptionalDouble(element, "relativeWaveAngleDegrees"));
+            OptionalDouble(element, "relativeWaveAngleDegrees"),
+            OptionalDouble(element, "polarWindSpeedKnots"),
+            OptionalDouble(element, "polarWindDirectionDegrees"));
     }
 
     private static RouteEnvironmentDiagnostics? ParseEnvironmentDiagnostics(JsonElement root)
@@ -2052,8 +1852,13 @@ internal struct NativeRoutingOptions
     public ulong LatticeProgressEveryExpansions;
     public ulong Flags;
 
-    public static NativeRoutingOptions From(RouteOptimizationOptions options) => new()
+    public static NativeRoutingOptions From(RouteOptimizationOptions options)
     {
+        if (options.Maneuver.TackPenalty.Ticks % TimeSpan.TicksPerSecond != 0 ||
+            options.Maneuver.GybePenalty.Ticks % TimeSpan.TicksPerSecond != 0)
+            throw new RoutingException(RoutingFailureKind.InvalidConfiguration, "Native maneuver penalties must be whole seconds.");
+        return new()
+        {
         Solver = (int)options.Solver,
         HeadingAugmentation = (int)options.HeadingAugmentation,
         WindSampling = (int)options.WindSampling,
@@ -2080,8 +1885,9 @@ internal struct NativeRoutingOptions
             checked((ulong)options.Lattice.CorridorWideningRetries),
         LatticeProgressEveryExpansions =
             checked((ulong)options.Lattice.ProgressEveryExpansions),
-        Flags = options.MaximumTrueWindSpeedKnots.HasValue ? 1UL : 0UL
-    };
+            Flags = options.MaximumTrueWindSpeedKnots.HasValue ? 1UL : 0UL
+        };
+    }
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -2514,6 +2320,7 @@ internal sealed class NativeEnvironmentScope : IDisposable
 
     private IntPtr AllocateUtf8(string value)
     {
+        NativeRouterBridge.ValidateNativeText(value);
         var pointer = Marshal.StringToCoTaskMemUTF8(value);
         _allocations.Add(pointer);
         return pointer;
@@ -2570,7 +2377,7 @@ internal sealed class NativeEnvironmentScope : IDisposable
     }
 }
 
-internal static class NativeMethods
+internal static partial class NativeMethods
 {
     private const string LibraryName = "navtool_router_bridge";
     private const int MaximumErrorBytes = 64 * 1024;
@@ -2734,6 +2541,8 @@ internal static class NativeMethods
             }
         }
 
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("NAVTOOL_ROUTER_BRIDGE_PATH")))
+            throw new DllNotFoundException("The explicitly configured native bridge could not be loaded; fallback to another bridge is disabled.");
         return IntPtr.Zero;
     }
 
@@ -2769,6 +2578,7 @@ internal static class NativeMethods
                     yield return Path.Combine(Path.GetFullPath(configured), name);
                 }
             }
+            yield break;
         }
 
         var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -2783,6 +2593,7 @@ internal static class NativeMethods
         for (var depth = 0; depth < 8 && ancestor is not null; depth++, ancestor = ancestor.Parent)
         {
             directories.Add(Path.Combine(ancestor.FullName, "native", "Navtool.RouterBridge", "build"));
+            directories.Add(Path.Combine(ancestor.FullName, "native", "Navtool.RouterBridge", "build", "Release"));
         }
 
         foreach (var directory in directories)

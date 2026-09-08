@@ -22,6 +22,61 @@ namespace Navtool.App.Tests;
 
 public sealed class MapRenderingTests
 {
+    [Fact]
+    public void Progress_history_is_bounded_and_does_not_retain_route_snapshots()
+    {
+        var map = new Map();
+        var layers = new RouteMapLayers(map);
+        var time = DateTimeOffset.UtcNow;
+        for (var index = 0; index < 500; index++)
+            layers.AddCalculationSnapshot(ForecastModel.NoaaGfs,
+                CreateSnapshot(time.AddMinutes(index), [new Coordinate(10, 171), new Coordinate(11, 172)]));
+        Assert.Equal(RouteMapLayers.MaximumHistoricalFrontFeatures,
+            layers.GetIsochroneFrontCount(ForecastModel.NoaaGfs));
+        var history = Assert.IsType<MemoryLayer>(map.Layers.Single(layer => layer.Name == "NOAA GFS isochrone fronts"));
+        Assert.All(history.Features, feature => Assert.IsType<DateTimeOffset>(feature.Data));
+    }
+
+    [Fact]
+    public void Nominal_arrival_area_is_separate_from_actual_endpoint_and_never_connects_to_it()
+    {
+        var layers = new RouteMapLayers(new Map());
+        var leg = CreateVisualizationLeg(ForecastModel.NoaaGfs, 0, new Coordinate(10, 179), new Coordinate(10, -179));
+        layers.SetRouteLegs([leg]);
+        layers.SetArrivalAreas([(leg.Route!.Request.Destination, 1d)]);
+        var endpointLayer = Assert.IsType<MemoryLayer>(layers.Map.Layers.Single(layer => layer.Name == "Actual model endpoints"));
+        var point = Assert.IsType<Point>(Assert.IsType<GeometryFeature>(Assert.Single(endpointLayer.Features)).Geometry);
+        var expected = MapProjection.ToContinuousMapPoints(leg.Route!.Points.Select(p => p.Location))[^1];
+        Assert.Equal(expected.X, point.X);
+        var arrivalLayer = Assert.IsType<MemoryLayer>(layers.Map.Layers.Single(layer => layer.Name == "Nominal arrival areas"));
+        var circle = Assert.IsType<LineString>(Assert.IsType<GeometryFeature>(Assert.Single(arrivalLayer.Features)).Geometry);
+        Assert.Equal(73, circle.NumPoints);
+        Assert.True(circle.EnvelopeInternal.Width < 10000);
+        Assert.InRange(Math.Abs(circle.Centroid.X - point.X), 0, 10000);
+        Assert.Equal(leg.Route.Points, Assert.Single(layers.Routes).Points);
+    }
+
+    [Fact]
+    public void One_point_arrival_is_an_actual_point_not_a_connector_to_the_nominal_waypoint()
+    {
+        var departure = DateTimeOffset.UtcNow;
+        var request = new RouteRequest("already-in-area", new Coordinate(0, 0),
+            new Coordinate(0, 0.01), departure, departure.AddHours(1));
+        var route = new RouteResult(request, ForecastModel.NoaaGfs,
+            [new RoutePoint(request.Origin, departure, 90, 0, 12, 180, 0)],
+            new RouteDiagnostics(0, 0, 0, 0));
+        var layers = new RouteMapLayers(new Map());
+        layers.SetRoutes([route]);
+        var routeLayer = Assert.IsType<MemoryLayer>(layers.Map.Layers.Single(layer => layer.Name == "NOAA GFS routes"));
+        var feature = Assert.IsType<GeometryFeature>(Assert.Single(routeLayer.Features));
+        var point = Assert.IsType<Point>(feature.Geometry);
+        Assert.Equal(0, point.X);
+        Assert.Single(Assert.Single(layers.Routes).Points);
+        var endpointLayer = Assert.IsType<MemoryLayer>(layers.Map.Layers.Single(layer => layer.Name == "Actual model endpoints"));
+        var endpoint = Assert.IsType<GeometryFeature>(Assert.Single(endpointLayer.Features));
+        Assert.Equal("NOAA arrival", Assert.IsType<LabelStyle>(Assert.Single(endpoint.Styles)).GetLabelText(endpoint));
+    }
+
     [AvaloniaFact]
     public void MainWindowOpensOnBufferedSalishSeaRegion()
     {
@@ -170,6 +225,8 @@ public sealed class MapRenderingTests
                 "ECMWF IFS provisional route",
                 "NOAA GFS routes",
                 "ECMWF IFS routes",
+                "Nominal arrival areas",
+                "Actual model endpoints",
                 "Waypoint markers",
                 "Current position"
             ],
@@ -595,8 +652,9 @@ public sealed class MapRenderingTests
             map.Layers.Single(layer => layer.Name == "NOAA GFS latest isochrone front")).Features);
         Assert.Empty(Assert.IsType<MemoryLayer>(
             map.Layers.Single(layer => layer.Name == "NOAA GFS provisional route")).Features);
-        Assert.Empty(Assert.IsType<MemoryLayer>(
-            map.Layers.Single(layer => layer.Name == "NOAA GFS routes")).Features);
+        var finalPoint = Assert.IsType<GeometryFeature>(Assert.Single(Assert.IsType<MemoryLayer>(
+            map.Layers.Single(layer => layer.Name == "NOAA GFS routes")).Features));
+        Assert.IsType<Point>(finalPoint.Geometry);
         Assert.DoesNotContain(map.Layers, layer => layer.Name == "Route endpoints");
         Assert.DoesNotContain(map.Layers, layer => layer.Name == "Timeline route points");
         Assert.DoesNotContain(map.Layers, layer => layer.Name == "Selected route point");
@@ -649,7 +707,7 @@ public sealed class MapRenderingTests
         Assert.Equal(expected[0].X, line.Coordinates[0].X, 6);
         Assert.Equal(expected[1].X, line.Coordinates[1].X, 6);
         Assert.NotEqual(line.Coordinates[0], line.Coordinates[^1]);
-        Assert.Same(snapshot, feature.Data);
+        Assert.Equal(snapshot.FrontierTime, feature.Data);
     }
 
     [Fact]

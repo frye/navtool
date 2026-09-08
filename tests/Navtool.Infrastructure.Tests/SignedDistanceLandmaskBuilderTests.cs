@@ -7,6 +7,21 @@ namespace Navtool.Infrastructure.Tests;
 
 public sealed class SignedDistanceLandmaskBuilderTests
 {
+    [Fact]
+    public void Required_geometry_coverage_includes_the_full_conservative_distance_halo()
+    {
+        var bounds = new GeographicBounds(69, 71, 0, 2);
+        var coverage = SignedDistanceLandmaskBuilder.RequiredGeometryBounds(bounds, 30);
+        Assert.True(coverage.Contains(bounds));
+        Assert.True(coverage.South <= 59);
+        Assert.True(coverage.North >= 81);
+        Assert.True(coverage.Contains(new Navtool.Core.Coordinate(70, 15)));
+        Assert.Throws<InvalidOperationException>(() =>
+            SignedDistanceLandmaskBuilder.RequiredGeometryBounds(new GeographicBounds(-1, 1, 179, -179), 5));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            SignedDistanceLandmaskBuilder.RequiredGeometryBounds(bounds, .00001));
+    }
+
     private static readonly GeometryFactory Factory =
         NetTopologySuite.NtsGeometryServices.Instance.CreateGeometryFactory(srid: 4326);
 

@@ -20,7 +20,7 @@
 extern "C" {
 #endif
 
-#define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 7u
+#define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 8u
 
 enum {
     NAVTOOL_ROUTER_CAPABILITY_LAND_SEGMENT_CONSTRAINT_V1 = 1ull << 0,
@@ -29,7 +29,14 @@ enum {
     NAVTOOL_ROUTER_CAPABILITY_CURRENT_PROVIDER_V7 = 1ull << 2,
     NAVTOOL_ROUTER_CAPABILITY_SEA_STATE_V7 = 1ull << 3,
     NAVTOOL_ROUTER_CAPABILITY_SIGNED_DISTANCE_LAND_V7 = 1ull << 4,
-    NAVTOOL_ROUTER_CAPABILITY_EXCLUSION_ZONES_V7 = 1ull << 5
+    NAVTOOL_ROUTER_CAPABILITY_EXCLUSION_ZONES_V7 = 1ull << 5,
+    NAVTOOL_ROUTER_CAPABILITY_CONFIGURED_ROUTING_V8 = 1ull << 6,
+    NAVTOOL_ROUTER_CAPABILITY_EXPLICIT_POLAR_V8 = 1ull << 7,
+    NAVTOOL_ROUTER_CAPABILITY_FORECAST_POLICY_V8 = 1ull << 8,
+    NAVTOOL_ROUTER_CAPABILITY_AUDITED_PROGRESS_V8 = 1ull << 9,
+    NAVTOOL_ROUTER_CAPABILITY_GSHHG_V8 = 1ull << 10,
+    NAVTOOL_ROUTER_CAPABILITY_ACTION_REPLAY_V8 = 1ull << 11,
+    NAVTOOL_ROUTER_CAPABILITY_PLANNED_HOLD_V8 = 1ull << 12
 };
 
 typedef int32_t navtool_router_status_v1;
@@ -58,7 +65,10 @@ enum {
      * fails the route. Never reinterpreted as zero current, calm sea, or open
      * water.
      */
-    NAVTOOL_ROUTER_STATUS_ENVIRONMENT_DATA_UNAVAILABLE_V7 = 13
+    NAVTOOL_ROUTER_STATUS_ENVIRONMENT_DATA_UNAVAILABLE_V7 = 13,
+    NAVTOOL_ROUTER_STATUS_INVALID_POLAR_V8 = 14,
+    NAVTOOL_ROUTER_STATUS_RESOURCE_LIMIT_V8 = 15,
+    NAVTOOL_ROUTER_STATUS_CANCELLED_V8 = 16
 };
 
 typedef struct navtool_router_forecast_v1 navtool_router_forecast_v1;
@@ -723,6 +733,250 @@ NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
 navtool_router_inspect_grib_v1(
     const char* grib_path_utf8,
     navtool_router_grib_descriptor_v1* out_descriptor);
+
+/* ---- ABI 8: explicit immutable assets and checked native-derived options ----
+ * Pre-v8 layouts/exports stay frozen: binary compatibility is not a promise of
+ * historical physics or historical JSON. All v8 structs require struct_size ==
+ * sizeof(struct). Reserved fields must be zero; unknown flags are errors.
+ * Handles are immutable and may be reused, but must outlive every synchronous
+ * operation/callback. No operation transfers ownership of input handles.
+ * Strings are strict NUL-terminated UTF-8. JSON outputs use bridge_free_v1.
+ */
+typedef struct navtool_router_polar_v8 navtool_router_polar_v8;
+typedef struct navtool_router_land_v8 navtool_router_land_v8;
+
+enum {
+    NAVTOOL_ROUTER_QUALITY_FAST_V8 = 0,
+    NAVTOOL_ROUTER_QUALITY_BALANCED_V8 = 1,
+    NAVTOOL_ROUTER_QUALITY_HIGH_V8 = 2,
+    NAVTOOL_ROUTER_POLAR_AUTOMATIC_V8 = 0,
+    NAVTOOL_ROUTER_POLAR_MATRIX_V8 = 1,
+    NAVTOOL_ROUTER_POLAR_EXPEDITION_V8 = 2
+};
+
+/* Grouped overrides replace the entire selected group, not only nonzero fields.
+ * Get defaults, edit selected values, then set the corresponding bits. Common
+ * contains every v6 option; no historical default constants are reapplied.
+ */
+enum {
+    NAVTOOL_ROUTER_OVERRIDE_COMMON_V8 = 1ull << 0,
+    NAVTOOL_ROUTER_OVERRIDE_TIME_STEP_V8 = 1ull << 1,
+    NAVTOOL_ROUTER_OVERRIDE_INTERVALS_V8 = 1ull << 2,
+    NAVTOOL_ROUTER_OVERRIDE_SEARCH_GEOMETRY_V8 = 1ull << 3,
+    NAVTOOL_ROUTER_OVERRIDE_BUCKET_CAPACITY_V8 = 1ull << 4,
+    NAVTOOL_ROUTER_OVERRIDE_WORKERS_V8 = 1ull << 5,
+    NAVTOOL_ROUTER_OVERRIDE_DURATION_V8 = 1ull << 6,
+    NAVTOOL_ROUTER_OVERRIDE_MINIMUM_SPEED_V8 = 1ull << 7,
+    NAVTOOL_ROUTER_OVERRIDE_INTEGRATION_V8 = 1ull << 8,
+    NAVTOOL_ROUTER_OVERRIDE_BOAT_FACTOR_V8 = 1ull << 9,
+    NAVTOOL_ROUTER_OVERRIDE_ARRIVAL_V8 = 1ull << 10,
+    NAVTOOL_ROUTER_OVERRIDE_BUDGETS_V8 = 1ull << 11,
+    NAVTOOL_ROUTER_OVERRIDE_STRATEGIC_RETENTION_V8 = 1ull << 12,
+    NAVTOOL_ROUTER_OVERRIDE_PROGRESS_V8 = 1ull << 13,
+    NAVTOOL_ROUTER_OVERRIDE_ALL_V8 = (1ull << 14) - 1
+};
+
+typedef struct navtool_router_interval_v8 {
+    int64_t interval_minutes;
+    /* -1 means the final unbounded tier; otherwise positive elapsed minutes. */
+    int64_t until_elapsed_minutes;
+} navtool_router_interval_v8;
+
+#define NAVTOOL_ROUTER_MAX_INTERVALS_V8 16u
+typedef struct navtool_router_options_v8 {
+    uint32_t struct_size;
+    int32_t quality;
+    uint64_t override_flags;
+    navtool_router_options_v6 common;
+    int64_t time_step_minutes;
+    int64_t maximum_route_duration_hours;
+    int64_t maximum_integration_step_minutes;
+    double heading_step_degrees;
+    double spatial_bucket_nautical_miles;
+    double arrival_radius_nautical_miles;
+    double minimum_boat_speed_knots;
+    double boat_speed_factor;
+    uint64_t max_nodes_per_bucket;
+    uint64_t worker_count;
+    uint64_t maximum_generated_candidates;
+    uint64_t maximum_retained_nodes;
+    uint64_t progress_every_n_steps;
+    uint32_t use_routing_intervals;
+    uint32_t strategic_retention;
+    uint32_t capture_isochrones;
+    int32_t destination_front_mode;
+    uint32_t interval_count;
+    uint32_t reserved;
+    navtool_router_interval_v8 intervals[NAVTOOL_ROUTER_MAX_INTERVALS_V8];
+} navtool_router_options_v8;
+
+typedef struct navtool_router_polar_options_v8 {
+    uint32_t struct_size;
+    int32_t format;
+    uint64_t flags; /* bit 0: minimum sailing angle present */
+    double minimum_sailing_angle_degrees;
+} navtool_router_polar_options_v8;
+
+typedef struct navtool_router_forecast_options_v8 {
+    uint32_t struct_size;
+    uint32_t reserved;
+    uint64_t flags; /* bit 0: bounds; bit 1: maximum interpolation gap */
+    double south_latitude_degrees;
+    double west_longitude_degrees;
+    double north_latitude_degrees;
+    double east_longitude_degrees;
+    int64_t maximum_interpolation_gap_seconds;
+} navtool_router_forecast_options_v8;
+
+typedef struct navtool_router_forecast_metadata_v8 {
+    uint32_t struct_size;
+    uint32_t flags; /* bit 0: spacings present; bit 1: global longitude */
+    int64_t initialization_utc_epoch_seconds;
+    int64_t first_valid_utc_epoch_seconds;
+    int64_t last_valid_utc_epoch_seconds;
+    int64_t minimum_time_spacing_seconds;
+    int64_t maximum_time_spacing_seconds;
+    uint64_t latitude_count;
+    uint64_t longitude_count;
+    double south_latitude_degrees;
+    double west_longitude_degrees;
+    double north_latitude_degrees;
+    double east_longitude_degrees;
+    uint64_t valid_time_count;
+} navtool_router_forecast_metadata_v8;
+
+typedef struct navtool_router_land_options_v8 {
+    uint32_t struct_size;
+    uint32_t reserved;
+    double south_latitude_degrees;
+    double west_longitude_degrees;
+    double north_latitude_degrees;
+    double east_longitude_degrees;
+    double resolution_nautical_miles;
+    double distance_cap_nautical_miles;
+    uint64_t maximum_grid_nodes;
+    uint64_t maximum_source_points;
+    uint64_t maximum_geometry_tests;
+} navtool_router_land_options_v8;
+
+typedef struct navtool_router_land_estimate_v8 {
+    uint32_t struct_size;
+    uint32_t reserved;
+    uint64_t latitude_count;
+    uint64_t longitude_count;
+    uint64_t grid_nodes;
+    double latitude_step_degrees;
+    double longitude_step_degrees;
+    double interpolation_error_nautical_miles;
+    double halo_south_latitude_degrees;
+    double halo_north_latitude_degrees;
+    /* Unwrapped longitudes: this is a geometry halo, not canonical coverage. */
+    double halo_west_longitude_degrees;
+    double halo_east_longitude_degrees;
+} navtool_router_land_estimate_v8;
+
+typedef struct navtool_router_request_v8 {
+    uint32_t struct_size;
+    uint32_t flags; /* bit 0: explicit departure time */
+    const navtool_router_forecast_v1* forecast;
+    const navtool_router_polar_v8* polar; /* required, including explicit demo */
+    navtool_router_coordinate_v1 start;
+    navtool_router_coordinate_v1 destination;
+    int64_t departure_utc_epoch_seconds;
+    const navtool_router_options_v8* options; /* required */
+    const navtool_router_environment_v7* environment;
+    const navtool_router_land_v8* land;
+    double land_clearance_nautical_miles;
+    uint64_t land_maximum_subdivision_depth;
+    int32_t land_missing_data_policy;
+    uint32_t reserved;
+} navtool_router_request_v8;
+
+typedef struct navtool_router_route_point_v8 {
+    navtool_router_route_point_v1 point;
+    uint64_t flags; /* bit 0 environment; bit 1 current; bit 2 wave */
+    double speed_over_ground_knots;
+    double course_over_ground_degrees;
+    double current_east_knots;
+    double current_north_knots;
+    double flat_water_speed_knots;
+    double significant_wave_height_metres;
+    double wave_period_seconds;
+    double relative_wave_angle_degrees;
+    double polar_wind_speed_knots;
+    double polar_wind_direction_degrees;
+} navtool_router_route_point_v8;
+
+typedef struct navtool_router_progress_v8 {
+    uint32_t struct_size;
+    uint32_t reserved;
+    /* v6 arrays/counters preserve fronts and solver-specific search geometry. */
+    navtool_router_progress_v6 progress;
+    const navtool_router_route_point_v8* audited_route_points;
+    uint64_t audited_route_point_count;
+    uint64_t eligibility_evaluations;
+    uint64_t pruned_candidates;
+    uint64_t future_probe_misses;
+} navtool_router_progress_v8;
+typedef uint8_t (*navtool_router_progress_callback_v8)(
+    const navtool_router_progress_v8* progress, void* user_data);
+
+typedef struct navtool_router_action_v8 {
+    double heading_degrees;
+    int64_t duration_seconds;
+} navtool_router_action_v8;
+
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_build_info_v8(char** out_json_utf8, size_t* out_length);
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_quality_defaults_v8(int32_t quality, navtool_router_options_v8* out_options);
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_resolve_options_v8(const navtool_router_options_v8* options, navtool_router_options_v8* out_effective);
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_polar_load_v8(const char* path_utf8, const navtool_router_polar_options_v8* options, navtool_router_polar_v8** out_polar);
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_polar_create_demo_v8(navtool_router_polar_v8** out_polar);
+/* Metadata reports requested format only: native auto-detection has no resolved format API. */
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_polar_metadata_v8(const navtool_router_polar_v8* polar, char** out_json_utf8, size_t* out_length);
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_polar_destroy_v8(navtool_router_polar_v8** polar);
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_forecast_load_v8(const char* path_utf8, const navtool_router_forecast_options_v8* options, navtool_router_forecast_v1** out_forecast);
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_forecast_get_metadata_v8(const navtool_router_forecast_v1* forecast, navtool_router_forecast_metadata_v8* out_metadata, char** out_source_utf8, size_t* out_source_length);
+/* Exact valid times, written to caller storage; required_count always reports capacity needed. */
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_forecast_valid_times_v8(const navtool_router_forecast_v1* forecast, int64_t* times, uint64_t capacity, uint64_t* required_count);
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_land_estimate_v8_fn(const navtool_router_land_options_v8* options, navtool_router_land_estimate_v8* out_estimate);
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_land_load_gshhg_v8(const char* path_utf8, const navtool_router_land_options_v8* options, navtool_router_land_v8** out_land);
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_land_metadata_v8(const navtool_router_land_v8* land, char** out_json_utf8, size_t* out_length);
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_land_destroy_v8(navtool_router_land_v8** land);
+/* Only successful final native route_result_v2 JSON authorizes geometry. */
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_calculate_route_streaming_v8(
+    const navtool_router_request_v8* request,
+    navtool_router_progress_callback_v8 on_progress, void* progress_user_data,
+    navtool_router_segment_eligibility_callback_v1 is_segment_eligible, void* eligibility_user_data,
+    char** out_json_utf8, size_t* out_length);
+/* Bounded supplied timed-heading policies only; does not infer actions from route vertices. */
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_evaluate_actions_v8(
+    const navtool_router_request_v8* request, const navtool_router_action_v8* actions, uint64_t action_count,
+    navtool_router_segment_eligibility_callback_v1 is_segment_eligible, void* eligibility_user_data,
+    char** out_json_utf8, size_t* out_length);
+/* Equal-position timed segment check, NOT anchorage/station-keeping certification.
+ * Unconfigured/null exclusions are rejected. Conflict identifier is bridge-owned UTF-8.
+ */
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_check_planned_hold_v8(
+    const navtool_router_exclusion_settings_v7* exclusions,
+    navtool_router_coordinate_v1 position, int64_t arrival_epoch_seconds, int64_t departure_epoch_seconds,
+    uint8_t* out_conflict, uint64_t* out_geometry_tests, char** out_zone_utf8, size_t* out_zone_length);
 
 #ifdef __cplusplus
 }

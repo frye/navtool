@@ -8,29 +8,17 @@ public sealed class NativeRouterBridgeIntegrationTests
     [Fact]
     public void Native_contract_loads_metadata_samples_and_route_when_artifacts_are_available()
     {
-        var configuredSample = Environment.GetEnvironmentVariable(
-            "NAVTOOL_ROUTER_SAMPLE_GRIB");
-        var repository = FindAncestor(AppContext.BaseDirectory, "Navtool.sln");
-        var sample = !string.IsNullOrWhiteSpace(configuredSample)
-            ? Path.GetFullPath(configuredSample)
-            : ResolveSampleGrib(repository);
+        var sample = NativeIntegration.Sample();
         if (!File.Exists(sample))
         {
             return;
         }
 
-        NativeRouterBridge bridge;
-        try
-        {
-            bridge = new NativeRouterBridge();
-        }
-        catch (NativeBridgeUnavailableException)
-        {
-            return;
-        }
+        var bridge = NativeIntegration.Bridge();
+        if (bridge is null) return;
 
         using var forecast = bridge.LoadForecast(sample);
-        Assert.Equal(7u, bridge.AbiVersion);
+        Assert.Equal(8u, bridge.AbiVersion);
         Assert.True(bridge.LandConstraintAvailable);
         Assert.True(bridge.EnvironmentAvailable);
         Assert.True(bridge.SignedDistanceLandmaskAvailable);
@@ -55,7 +43,7 @@ public sealed class NativeRouterBridgeIntegrationTests
             forecast.Metadata.FirstValidAt,
             forecast.Metadata.FirstValidAt.AddHours(10));
         var snapshots = new List<RouteCalculationSnapshot>();
-        var route = bridge.CalculateRoute(
+        var route = bridge.CalculateDemoRoute(
             forecast,
             request,
             ForecastModel.NoaaGfs,
@@ -67,7 +55,7 @@ public sealed class NativeRouterBridgeIntegrationTests
         Assert.Equal(LandAvoidanceStatus.NotEvaluated, route.LandAvoidance.Status);
         var eligibilityCalls = 0;
         var rejected = Assert.Throws<NativeRouterException>(() =>
-            bridge.CalculateRoute(
+            bridge.CalculateDemoRoute(
                 forecast,
                 request,
                 ForecastModel.NoaaGfs,
@@ -120,7 +108,7 @@ public sealed class NativeRouterBridgeIntegrationTests
                 refinementLevels: 0,
                 progressEveryExpansions: 1));
         var latticeSnapshots = new List<RouteCalculationSnapshot>();
-        var latticeRoute = bridge.CalculateRoute(
+        var latticeRoute = bridge.CalculateDemoRoute(
             forecast,
             latticeRequest,
             ForecastModel.NoaaGfs,
@@ -150,7 +138,7 @@ public sealed class NativeRouterBridgeIntegrationTests
         using var cancellation = new CancellationTokenSource();
         var cancellationProgressCount = 0;
         Assert.Throws<OperationCanceledException>(() =>
-            bridge.CalculateRoute(
+            bridge.CalculateDemoRoute(
                 forecast,
                 latticeRequest,
                 ForecastModel.NoaaGfs,
@@ -177,11 +165,11 @@ public sealed class NativeRouterBridgeIntegrationTests
             forecast.Metadata.LastValidAt.AddHours(-1),
             forecast.Metadata.LastValidAt.AddHours(10));
         var limitedSnapshots = new List<RouteCalculationSnapshot>();
-        var limitedRouteWithoutProgress = bridge.CalculateRoute(
+        var limitedRouteWithoutProgress = bridge.CalculateDemoRoute(
             forecast,
             limitedRequest,
             ForecastModel.NoaaGfs);
-        var limitedRoute = bridge.CalculateRoute(
+        var limitedRoute = bridge.CalculateDemoRoute(
             forecast,
             limitedRequest,
             ForecastModel.NoaaGfs,
@@ -225,7 +213,7 @@ public sealed class NativeRouterBridgeIntegrationTests
                     searchAlgorithm: searchAlgorithm));
             RouteResult? horizonRoute = null;
             var horizonFailure = Record.Exception(() =>
-                horizonRoute = bridge.CalculateRoute(
+                horizonRoute = bridge.CalculateDemoRoute(
                     forecast,
                     limitedRequest,
                     ForecastModel.NoaaGfs,
@@ -261,25 +249,14 @@ public sealed class NativeRouterBridgeIntegrationTests
     [Fact]
     public void Environment_payload_round_trips_through_the_real_native_bridge()
     {
-        var configuredSample = Environment.GetEnvironmentVariable("NAVTOOL_ROUTER_SAMPLE_GRIB");
-        var repository = FindAncestor(AppContext.BaseDirectory, "Navtool.sln");
-        var sample = !string.IsNullOrWhiteSpace(configuredSample)
-            ? Path.GetFullPath(configuredSample)
-            : ResolveSampleGrib(repository);
+        var sample = NativeIntegration.Sample();
         if (!File.Exists(sample))
         {
             return;
         }
 
-        NativeRouterBridge bridge;
-        try
-        {
-            bridge = new NativeRouterBridge();
-        }
-        catch (NativeBridgeUnavailableException)
-        {
-            return;
-        }
+        var bridge = NativeIntegration.Bridge();
+        if (bridge is null) return;
 
         using var forecast = bridge.LoadForecast(sample);
         var request = new RouteRequest(
@@ -289,7 +266,7 @@ public sealed class NativeRouterBridgeIntegrationTests
             forecast.Metadata.FirstValidAt,
             forecast.Metadata.FirstValidAt.AddHours(10));
 
-        var baseline = bridge.CalculateRoute(
+        var baseline = bridge.CalculateDemoRoute(
             forecast,
             request,
             ForecastModel.NoaaGfs,
@@ -302,7 +279,7 @@ public sealed class NativeRouterBridgeIntegrationTests
 
         // An environment object that configures nothing must take the same code
         // path as passing none at all.
-        var inert = bridge.CalculateRoute(
+        var inert = bridge.CalculateDemoRoute(
             forecast,
             request,
             ForecastModel.NoaaGfs,
@@ -315,7 +292,7 @@ public sealed class NativeRouterBridgeIntegrationTests
             inert.Points.Select(point => (point.Location, point.Timestamp, point.BoatSpeedKnots)));
 
         var metadata = new RouteProviderMetadata("integration-current", "test", "1");
-        var withCurrent = bridge.CalculateRoute(
+        var withCurrent = bridge.CalculateDemoRoute(
             forecast,
             request,
             ForecastModel.NoaaGfs,
@@ -356,25 +333,14 @@ public sealed class NativeRouterBridgeIntegrationTests
     [Fact]
     public void An_all_land_signed_distance_mask_refuses_to_produce_a_route()
     {
-        var configuredSample = Environment.GetEnvironmentVariable("NAVTOOL_ROUTER_SAMPLE_GRIB");
-        var repository = FindAncestor(AppContext.BaseDirectory, "Navtool.sln");
-        var sample = !string.IsNullOrWhiteSpace(configuredSample)
-            ? Path.GetFullPath(configuredSample)
-            : ResolveSampleGrib(repository);
+        var sample = NativeIntegration.Sample();
         if (!File.Exists(sample))
         {
             return;
         }
 
-        NativeRouterBridge bridge;
-        try
-        {
-            bridge = new NativeRouterBridge();
-        }
-        catch (NativeBridgeUnavailableException)
-        {
-            return;
-        }
+        var bridge = NativeIntegration.Bridge();
+        if (bridge is null) return;
 
         using var forecast = bridge.LoadForecast(sample);
         var request = new RouteRequest(
@@ -399,7 +365,7 @@ public sealed class NativeRouterBridgeIntegrationTests
             interpolationErrorNauticalMiles: 30,
             new RouteProviderMetadata("all-land", "test", "1"));
 
-        var failure = Assert.Throws<NativeRouterException>(() => bridge.CalculateRoute(
+        var failure = Assert.Throws<NativeRouterException>(() => bridge.CalculateDemoRoute(
             forecast,
             request,
             ForecastModel.NoaaGfs,
@@ -411,50 +377,4 @@ public sealed class NativeRouterBridgeIntegrationTests
         Assert.Equal(NativeRouterStatus.NoRoute, failure.Status);
     }
 
-    /// <summary>
-    /// Locates router-lib's sample GRIB. It normally lives in the copy CMake
-    /// fetches into the native build tree; a sibling router-lib checkout is
-    /// accepted as a fallback for developers who keep one.
-    /// </summary>
-    private static string ResolveSampleGrib(string? repository)
-    {
-        if (repository is null)
-        {
-            return string.Empty;
-        }
-
-        string[] candidates =
-        [
-            Path.Combine(
-                repository,
-                "native",
-                "Navtool.RouterBridge",
-                "build",
-                "_deps",
-                "sailroute-src",
-                "samples",
-                "sample.grib"),
-            Path.Combine(repository, "..", "router-lib", "samples", "sample.grib")
-        ];
-
-        return candidates
-            .Select(Path.GetFullPath)
-            .FirstOrDefault(File.Exists) ?? string.Empty;
-    }
-
-    private static string? FindAncestor(string start, string marker)
-    {
-        var directory = new DirectoryInfo(start);
-        while (directory is not null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, marker)))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        return null;
-    }
 }

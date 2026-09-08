@@ -12,7 +12,8 @@ public sealed record RoutePlanRoutingRequest
         DateTimeOffset forecastCutoff,
         IEnumerable<ForecastSelection> selections,
         ForecastRefreshPolicy refreshPolicy = ForecastRefreshPolicy.PreferCache,
-        RouteOptimizationOptions? optimization = null)
+        RouteOptimizationOptions? optimization = null,
+        RoutingCalculationContext? calculationContext = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(selections);
@@ -31,7 +32,9 @@ public sealed record RoutePlanRoutingRequest
                 nameof(selections));
         }
 
-        var departureUtc = departureTime.ToUniversalTime();
+        if (plan.IsItineraryComplete)
+            throw new InvalidOperationException("The itinerary has no active unsailed leg.");
+        var departureUtc = RoutePlan.NormalizeDeparture(plan.CurrentPosition?.DepartureTime ?? departureTime);
         var cutoffUtc = forecastCutoff.ToUniversalTime();
         if (cutoffUtc <= departureUtc)
         {
@@ -53,7 +56,11 @@ public sealed record RoutePlanRoutingRequest
         Selections = immutableSelections;
         Models = immutableSelections.Select(selection => selection.Model).ToImmutableArray();
         RefreshPolicy = refreshPolicy;
-        Optimization = optimization ?? RouteOptimizationOptions.Balanced;
+        if (calculationContext is not null && plan.RoutingSetup != calculationContext.Setup)
+            throw new ArgumentException("The frozen setup does not match the plan.", nameof(calculationContext));
+        CalculationContext = calculationContext;
+        RequestedOptimization = optimization;
+        Optimization = optimization ?? calculationContext?.Resolved.Optimization ?? RouteOptimizationOptions.Balanced;
         StartLegIndex = plan.ActiveLegIndex;
         StartOrigin = plan.CurrentPosition?.Coordinate ??
             plan.Waypoints[StartLegIndex].Coordinate;
@@ -72,6 +79,10 @@ public sealed record RoutePlanRoutingRequest
     public ForecastRefreshPolicy RefreshPolicy { get; }
 
     public RouteOptimizationOptions Optimization { get; }
+
+    public RouteOptimizationOptions? RequestedOptimization { get; }
+
+    public RoutingCalculationContext? CalculationContext { get; }
 
     /// <summary>
     /// The index of the leg routing should resume from: <see cref="RoutePlan.ActiveLegIndex"/> at
@@ -110,7 +121,8 @@ public sealed record RoutePlanRoutingProgress(
     double UnitFraction,
     double OverallFraction,
     string? Message = null,
-    RouteCalculationSnapshot? Snapshot = null);
+    RouteCalculationSnapshot? Snapshot = null,
+    Guid? AttemptId = null);
 
 public enum RoutePlanModelStatus
 {
@@ -149,19 +161,25 @@ public sealed class RoutePlanRoutingWorkflow
     private readonly RoutingWorkflow _singleLegWorkflow;
     private readonly IRoutePlanRepository _repository;
     private readonly TimeProvider _timeProvider;
+    private readonly IRouteStopoverValidator? _stopoverValidator;
+    private readonly IRoutingSetupService? _setupService;
     private readonly SemaphoreSlim _publicationGate = new(1, 1);
     private readonly Dictionary<RoutePlanId, Guid> _activeOperations = [];
 
     public RoutePlanRoutingWorkflow(
         RoutingWorkflow singleLegWorkflow,
         IRoutePlanRepository repository,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IRouteStopoverValidator? stopoverValidator = null,
+        IRoutingSetupService? setupService = null)
     {
         ArgumentNullException.ThrowIfNull(singleLegWorkflow);
         ArgumentNullException.ThrowIfNull(repository);
         _singleLegWorkflow = singleLegWorkflow;
         _repository = repository;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _stopoverValidator = stopoverValidator;
+        _setupService = setupService;
     }
 
     public async Task<RoutePlanRoutingResult> ExecuteAsync(
@@ -170,6 +188,17 @@ public sealed class RoutePlanRoutingWorkflow
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (request.Plan.RoutingSetup is { } setup && request.CalculationContext is null)
+        {
+            if (_setupService is null)
+                throw new RoutingException(RoutingFailureKind.InvalidConfiguration, "Routing setup preflight is unavailable.");
+            var overrides = request.RequestedOptimization is { } requested
+                ? new RoutingProfessionalOverrides(requested)
+                : null;
+            var context = await _setupService.FreezeAsync(setup, overrides, cancellationToken).ConfigureAwait(false);
+            request = new RoutePlanRoutingRequest(request.Plan, request.DepartureTime, request.ForecastCutoff,
+                request.Selections, setup.ForecastPolicy, context.Resolved.Optimization, context);
+        }
         var operationId = Guid.NewGuid();
         var currentPlan = request.Plan;
         await _publicationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
@@ -191,7 +220,8 @@ public sealed class RoutePlanRoutingWorkflow
                     request.Plan.Id,
                     selection.Model,
                     _timeProvider.GetUtcNow()),
-                BuildInitialLegs(request, selection.Model)));
+                BuildInitialLegs(request, selection.Model),
+                request.Plan.SailedLegIds));
 
         async Task<bool> PublishAsync(ModelExecutionState modelState, bool completeSession)
         {
@@ -222,11 +252,40 @@ public sealed class RoutePlanRoutingWorkflow
         async Task RunModelAsync(ModelExecutionState modelState)
         {
             var departure = request.DepartureTime;
+            var origin = request.StartOrigin;
+            RouteLegOrigin routeOrigin = new(request.Plan.CurrentPosition is null
+                ? RouteLegOriginSource.DeclaredWaypoint
+                : RouteLegOriginSource.CurrentPosition);
             try
             {
                 for (var legIndex = request.StartLegIndex; legIndex < request.Plan.Legs.Length; legIndex++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    if (modelState.SailedLegIds.Contains(request.Plan.Legs[legIndex].Id))
+                    {
+                        var history = modelState.Legs[legIndex];
+                        if (history.Route is not { IsComplete: true } historicalRoute ||
+                            history.ExecutionSession is null ||
+                            !historicalRoute.Request.Origin.IsSameLocation(origin) ||
+                            historicalRoute.Request.DepartureTime != RoutePlan.NormalizeDeparture(departure) ||
+                            history.PlannedHold is { AllowsHandoff: false } ||
+                            history.DeferredInvalidationReason is not null)
+                        {
+                            await MarkRemainingAsync(modelState, legIndex + 1, RouteLegOutcomeState.Blocked,
+                                RouteLegOutcomeReason.PredecessorChanged, RoutePlanRoutingUnitStatus.Blocked,
+                                "Retained sailed history cannot authorize a physically continuous handoff from this calculation.",
+                                PublishAsync, progressState).ConfigureAwait(false);
+                            return;
+                        }
+                        origin = historicalRoute.Points[^1].Location;
+                        departure = RoutePlan.NormalizeDeparture(history.PlannedHold?.Until ?? historicalRoute.ArrivalTime);
+                        routeOrigin = new(RouteLegOriginSource.AcceptedPredecessor,
+                            new(request.Plan.Id, history.LegId, modelState.Selection.Model,
+                                history.ExecutionSession.Id, historicalRoute.Request.RouteId));
+                        progressState.Report(modelState.Selection.Model, legIndex,
+                            RoutePlanRoutingUnitStatus.Succeeded, 1, "Retained original sailed history.");
+                        continue;
+                    }
                     if (departure >= request.ForecastCutoff)
                     {
                         await MarkRemainingAsync(
@@ -242,9 +301,6 @@ public sealed class RoutePlanRoutingWorkflow
                     }
 
                     var leg = request.Plan.Legs[legIndex];
-                    var origin = legIndex == request.StartLegIndex
-                        ? request.StartOrigin
-                        : request.Plan.Waypoints[legIndex].Coordinate;
                     var to = request.Plan.Waypoints[legIndex + 1];
                     var route = new RouteRequest(
                         $"{request.Plan.Id}-leg-{legIndex}-{modelState.Session.Id}",
@@ -255,9 +311,13 @@ public sealed class RoutePlanRoutingWorkflow
                     var workflowRequest = new RoutingWorkflowRequest(
                         route,
                         [modelState.Selection],
-                        ForecastCorridor.Create(route.Origin, route.Destination),
+                        request.CalculationContext?.Setup is
+                            { LandSource: RoutingLandSource.RegionalGshhg, RegionalLand: { } regional }
+                            ? regional.StudyBounds
+                            : ForecastCorridor.Create(route.Origin, route.Destination),
                         request.RefreshPolicy,
-                        request.Optimization);
+                        request.Optimization,
+                        request.CalculationContext);
                     var legProgress = new InlineProgress<RoutingProgress>(value =>
                         progressState.Report(
                             value.Model,
@@ -274,7 +334,8 @@ public sealed class RoutePlanRoutingWorkflow
                             },
                             value.Fraction,
                             value.Message,
-                            value.Snapshot));
+                            value.Snapshot,
+                            value.AttemptId));
                     var workflowResult = await _singleLegWorkflow.ExecuteAsync(
                         workflowRequest,
                         legProgress,
@@ -315,7 +376,17 @@ public sealed class RoutePlanRoutingWorkflow
                             leg.Id,
                             RouteLegOutcomeState.Succeeded,
                             outcomeReason,
-                            acceptedRoute);
+                            acceptedRoute,
+                            executionSession: modelState.Session.Complete(_timeProvider.GetUtcNow()),
+                            origin: routeOrigin,
+                            plannedHold: acceptedRoute.IsComplete && to.Stopover is { } plannedStopover
+                                ? new RoutePlannedHold(acceptedRoute.Points[^1].Location, acceptedRoute.ArrivalTime,
+                                    acceptedRoute.ArrivalTime + plannedStopover,
+                                    request.Optimization.Environment?.Exclusions is { Zones.Count: > 0 }
+                                        ? RouteHoldCheckStatus.Unavailable : RouteHoldCheckStatus.NoExclusionsConfigured,
+                                    detail: request.Optimization.Environment?.Exclusions is { Zones.Count: > 0 }
+                                        ? "Planned hold; exclusion validation has not completed." : null)
+                                : null);
                         if (!await PublishAsync(
                                 modelState,
                                 completeSession: legIndex == request.Plan.Legs.Length - 1)
@@ -347,16 +418,75 @@ public sealed class RoutePlanRoutingWorkflow
                             return;
                         }
 
-                        departure = acceptedRoute.ArrivalTime + (to.Stopover ?? TimeSpan.Zero);
+                        RoutePlannedHold? hold = null;
+                        if (to.Stopover is { } stopover)
+                        {
+                            var endpoint = acceptedRoute.Points[^1].Location;
+                            var until = acceptedRoute.ArrivalTime + stopover;
+                            var exclusions = request.Optimization.Environment?.Exclusions;
+                            if (exclusions is null || exclusions.Zones.Count == 0)
+                                hold = new RoutePlannedHold(endpoint, acceptedRoute.ArrivalTime, until,
+                                    RouteHoldCheckStatus.NoExclusionsConfigured);
+                            else
+                            {
+                                try
+                                {
+                                    hold = _stopoverValidator is null
+                                        ? new RoutePlannedHold(endpoint, acceptedRoute.ArrivalTime, until,
+                                            RouteHoldCheckStatus.Unavailable, detail: "Configured exclusions cannot be checked.")
+                                        : await _stopoverValidator.CheckAsync(endpoint, acceptedRoute.ArrivalTime,
+                                            until, exclusions, cancellationToken).ConfigureAwait(false);
+                                    if (!hold.Location.IsSameLocation(endpoint) || hold.From != acceptedRoute.ArrivalTime ||
+                                        hold.Until != until || hold.Status == RouteHoldCheckStatus.NoExclusionsConfigured)
+                                        throw new InvalidOperationException("Stopover validation did not cover the requested interval and exclusions.");
+                                }
+                                catch (Exception exception) when (exception is not OperationCanceledException)
+                                {
+                                    hold = new RoutePlannedHold(endpoint, acceptedRoute.ArrivalTime, until,
+                                        RouteHoldCheckStatus.Unavailable, detail: exception.Message);
+                                }
+                            }
+                            modelState.Legs[legIndex] = modelState.Legs[legIndex].WithPlannedHold(hold);
+                            if (!await PublishAsync(modelState, false).ConfigureAwait(false)) return;
+                        }
+                        if (hold is { AllowsHandoff: false })
+                        {
+                            await MarkRemainingAsync(modelState, legIndex + 1, RouteLegOutcomeState.Blocked,
+                                hold.Status == RouteHoldCheckStatus.Conflict
+                                    ? RouteLegOutcomeReason.StopoverExclusionConflict
+                                    : RouteLegOutcomeReason.StopoverValidationUnavailable,
+                                RoutePlanRoutingUnitStatus.Blocked,
+                                hold.Detail ?? $"Stopover conflicts with exclusion '{hold.ConflictZoneIdentifier}'.",
+                                PublishAsync, progressState).ConfigureAwait(false);
+                            return;
+                        }
+                        departure = RoutePlan.NormalizeDeparture(hold?.Until ?? acceptedRoute.ArrivalTime);
+                        origin = acceptedRoute.Points[^1].Location;
+                        routeOrigin = new RouteLegOrigin(RouteLegOriginSource.AcceptedPredecessor,
+                            new RoutePredecessorReference(request.Plan.Id, leg.Id, modelState.Selection.Model,
+                                modelState.Session.Id, acceptedRoute.Request.RouteId));
                         continue;
                     }
 
                     var failure = outcome.Failure!;
                     modelState.Legs[legIndex] = new RouteLegResult(
                         leg.Id,
-                        RouteLegOutcomeState.Failed,
-                        FailureReason(failure.Stage),
-                        detail: failure.Message);
+                        failure.Kind == RoutingFailureKind.Cancelled ? RouteLegOutcomeState.Cancelled : RouteLegOutcomeState.Failed,
+                        failure.Kind switch
+                        {
+                            RoutingFailureKind.Cancelled => RouteLegOutcomeReason.CalculationCancelled,
+                            RoutingFailureKind.ResourceLimit => RouteLegOutcomeReason.ResourceLimit,
+                            RoutingFailureKind.InvalidBoat => RouteLegOutcomeReason.InvalidBoat,
+                            RoutingFailureKind.MissingRequiredSource => RouteLegOutcomeReason.MissingRequiredSource,
+                            _ => FailureReason(failure.Stage)
+                        },
+                        detail: !failure.Attempts.IsDefaultOrEmpty && failure.Attempts.Length > 1
+                            ? $"{failure.Message}\nAttempts: " + string.Join("; ", failure.Attempts.Select(attempt =>
+                                $"{attempt.Solver}: {attempt.FailureMessage ?? attempt.FailureKind?.ToString() ?? "completed"}"))
+                            : failure.Message,
+                        executionSession: modelState.Session,
+                        origin: routeOrigin,
+                        failure: failure);
                     if (!await PublishAsync(
                             modelState,
                             completeSession: legIndex == request.Plan.Legs.Length - 1)
@@ -383,7 +513,7 @@ public sealed class RoutePlanRoutingWorkflow
                     return;
                 }
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
                 await MarkCancelledAsync(
                     modelState,
@@ -445,6 +575,7 @@ public sealed class RoutePlanRoutingWorkflow
     {
         for (var index = firstLegIndex; index < modelState.Legs.Length; index++)
         {
+            if (modelState.SailedLegIds.Contains(modelState.Legs[index].LegId)) continue;
             modelState.Legs[index] = new RouteLegResult(
                 modelState.Legs[index].LegId,
                 state,
@@ -466,7 +597,8 @@ public sealed class RoutePlanRoutingWorkflow
         ProgressState progress)
     {
         var pending = Enumerable.Range(firstLegIndex, modelState.Legs.Length - firstLegIndex)
-            .Where(index => modelState.Legs[index].State == RouteLegOutcomeState.Pending)
+            .Where(index => !modelState.SailedLegIds.Contains(modelState.Legs[index].LegId) &&
+                            modelState.Legs[index].State == RouteLegOutcomeState.Pending)
             .ToArray();
         for (var pendingIndex = 0; pendingIndex < pending.Length; pendingIndex++)
         {
@@ -504,6 +636,9 @@ public sealed class RoutePlanRoutingWorkflow
         var existingByLeg = plan.LatestResult(model)?.Legs.ToDictionary(leg => leg.LegId);
         return plan.Legs.Select(leg =>
         {
+            if (plan.SailedLegIds.Contains(leg.Id) && existingByLeg is not null &&
+                existingByLeg.TryGetValue(leg.Id, out var sailed))
+                return sailed;
             if (leg.Index >= request.StartLegIndex)
             {
                 return new RouteLegResult(leg.Id, RouteLegOutcomeState.Pending, RouteLegOutcomeReason.None);
@@ -524,10 +659,9 @@ public sealed class RoutePlanRoutingWorkflow
                 return carried;
             }
 
-            var from = plan.Waypoints[leg.Index];
-            return carried.Route.Request.Origin.IsSameLocation(from.Coordinate)
-                ? carried
-                : carried.Invalidate(RouteLegOutcomeReason.CurrentPositionChanged);
+            // The plan validated physical origins and predecessor identities on construction.
+            // Do not discard a legitimate off-waypoint accepted predecessor origin.
+            return carried;
         }).ToArray();
     }
 
@@ -558,7 +692,7 @@ public sealed class RoutePlanRoutingWorkflow
             return RoutePlanModelStatus.DurationLimited;
         }
 
-        if (legs.Any(leg => leg.State == RouteLegOutcomeState.Failed))
+        if (legs.Any(leg => leg.State is RouteLegOutcomeState.Failed or RouteLegOutcomeState.Blocked))
         {
             return hasAccepted ? RoutePlanModelStatus.PartialSuccess : RoutePlanModelStatus.Failed;
         }
@@ -597,13 +731,16 @@ public sealed class RoutePlanRoutingWorkflow
     private sealed class ModelExecutionState(
         ForecastSelection selection,
         RouteCalculationSession session,
-        RouteLegResult[] legs)
+        RouteLegResult[] legs,
+        ImmutableHashSet<RouteLegId> sailedLegIds)
     {
         public ForecastSelection Selection { get; } = selection;
 
         public RouteCalculationSession Session { get; } = session;
 
         public RouteLegResult[] Legs { get; } = legs;
+
+        public ImmutableHashSet<RouteLegId> SailedLegIds { get; } = sailedLegIds;
 
         public List<ForecastAcquisition> Acquisitions { get; } = [];
     }
@@ -635,7 +772,8 @@ public sealed class RoutePlanRoutingWorkflow
             RoutePlanRoutingUnitStatus status,
             double fraction,
             string? message = null,
-            RouteCalculationSnapshot? snapshot = null)
+            RouteCalculationSnapshot? snapshot = null,
+            Guid? attemptId = null)
         {
             lock (_gate)
             {
@@ -649,7 +787,8 @@ public sealed class RoutePlanRoutingWorkflow
                     fraction,
                     _fractions.Values.Average(),
                     message,
-                    snapshot);
+                    snapshot,
+                    attemptId);
                 _progress?.Report(report);
             }
         }

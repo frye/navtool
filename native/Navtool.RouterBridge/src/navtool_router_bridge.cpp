@@ -1,6 +1,8 @@
 #include "navtool_router_bridge.h"
 
 #include "sailroute/sailroute.hpp"
+#include "sailroute/land_data.hpp"
+#include "bridge_build_info.h"
 
 #include <eccodes.h>
 
@@ -15,7 +17,10 @@
 #include <filesystem>
 #include <limits>
 #include <new>
+#include <numbers>
 #include <optional>
+#include <sstream>
+#include <iomanip>
 #include <set>
 #include <string>
 #include <utility>
@@ -79,6 +84,9 @@ navtool_router_status_v1 map_error(const sailroute::Error& error) {
             break;
         case ErrorCode::invalid_polar:
             status = NAVTOOL_ROUTER_STATUS_INTERNAL_ERROR_V1;
+            break;
+        case ErrorCode::resource_limit:
+            status = NAVTOOL_ROUTER_STATUS_RESOURCE_LIMIT_V8;
             break;
         case ErrorCode::invalid_environment:
             status = NAVTOOL_ROUTER_STATUS_INVALID_ENVIRONMENT_V7;
@@ -1553,7 +1561,14 @@ uint64_t navtool_router_bridge_capabilities_v1(void) {
         NAVTOOL_ROUTER_CAPABILITY_CURRENT_PROVIDER_V7 |
         NAVTOOL_ROUTER_CAPABILITY_SEA_STATE_V7 |
         NAVTOOL_ROUTER_CAPABILITY_SIGNED_DISTANCE_LAND_V7 |
-        NAVTOOL_ROUTER_CAPABILITY_EXCLUSION_ZONES_V7;
+        NAVTOOL_ROUTER_CAPABILITY_EXCLUSION_ZONES_V7 |
+        NAVTOOL_ROUTER_CAPABILITY_CONFIGURED_ROUTING_V8 |
+        NAVTOOL_ROUTER_CAPABILITY_EXPLICIT_POLAR_V8 |
+        NAVTOOL_ROUTER_CAPABILITY_FORECAST_POLICY_V8 |
+        NAVTOOL_ROUTER_CAPABILITY_AUDITED_PROGRESS_V8 |
+        NAVTOOL_ROUTER_CAPABILITY_GSHHG_V8 |
+        NAVTOOL_ROUTER_CAPABILITY_ACTION_REPLAY_V8 |
+        NAVTOOL_ROUTER_CAPABILITY_PLANNED_HOLD_V8;
 }
 
 const char* navtool_router_last_error_v1(void) {
@@ -2266,6 +2281,8 @@ navtool_router_status_v1 navtool_router_inspect_grib_v1(
 }
 
 }  // extern "C"
+
+#include "bridge_v8.inc"
 
 static_assert(sizeof(navtool_router_grib_descriptor_v1) == 64U);
 

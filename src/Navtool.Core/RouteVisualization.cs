@@ -20,9 +20,13 @@ public sealed record RouteLegVisualization(
     string? Detail,
     bool IsSailed,
     DateTimeOffset SessionStartedAt,
-    DateTimeOffset? SessionCompletedAt)
+    DateTimeOffset? SessionCompletedAt,
+    RoutePlannedHold? PlannedHold = null,
+    bool HasHistoricalHoldContext = false)
 {
-    public TimeSpan? StopoverAfter => To.Stopover;
+    public TimeSpan? StopoverAfter => HasHistoricalHoldContext
+        ? PlannedHold is null ? null : PlannedHold.Until - PlannedHold.From
+        : To.Stopover;
 
     public bool HasOptimizedGeometry =>
         Route is not null &&
@@ -40,12 +44,13 @@ public static class RoutePlanVisualization
             .SelectMany(result => result.Legs.Select(outcome =>
             {
                 var leg = legs[outcome.LegId];
+                var execution = outcome.ExecutionSession ?? result.Session;
                 return new RouteLegVisualization(
                     new RouteVisualizationKey(
                         plan.Id,
                         leg.Id,
                         result.Model,
-                        result.Session.Id,
+                        execution.Id,
                         outcome.Route?.Request.RouteId ?? string.Empty),
                     leg.Index,
                     waypoints[leg.FromWaypointId],
@@ -55,8 +60,10 @@ public static class RoutePlanVisualization
                     outcome.Route,
                     outcome.Detail,
                     plan.SailedLegIds.Contains(leg.Id),
-                    result.Session.StartedAt,
-                    result.Session.CompletedAt);
+                    execution.StartedAt,
+                    execution.CompletedAt,
+                    outcome.PlannedHold,
+                    outcome.Origin is not null || outcome.PlannedHold is not null);
             }))
             .OrderBy(item => item.LegIndex)
             .ThenBy(item => item.Key.Model)

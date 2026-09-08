@@ -7,7 +7,11 @@ public sealed record RoutePointSelection(
     RoutePoint Point,
     TimeSpan OffsetFromRequestedTime,
     bool IsStopover,
-    string? StopoverLabel);
+    string? StopoverLabel,
+    RoutePlannedHold? PlannedHold = null)
+{
+    public bool HasNativeSampleAtSelection => !IsStopover && OffsetFromRequestedTime == TimeSpan.Zero;
+}
 
 public sealed class SharedRouteTimeline
 {
@@ -87,20 +91,13 @@ public sealed class SharedRouteTimeline
             selected <= previous.Route!.ArrivalTime + stopover)
         {
             var arrival = previous.Route.Points[^1];
-            var hold = new RoutePoint(
-                arrival.Location,
-                selected,
-                arrival.HeadingDegrees,
-                0,
-                arrival.TrueWindSpeedKnots,
-                arrival.TrueWindDirectionDegrees,
-                arrival.CumulativeDistanceNauticalMiles);
             return new RoutePointSelection(
                 previous,
-                hold,
-                TimeSpan.Zero,
+                arrival,
+                arrival.Timestamp - selected,
                 true,
-                $"Stopover at {previous.To.Name}");
+                $"Stopover at {previous.To.Name}",
+                previous.PlannedHold);
         }
 
         var nearestLeg = _legs
