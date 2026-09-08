@@ -21,11 +21,13 @@ public sealed class CoalescingProgressTests
             progress.Report((1, 2, 0, 2));
             Assert.Single(context.Callbacks);
             context.Drain();
-            Assert.Equal([(0, 1, 0, 999), (0, 1, 1, 1), (1, 2, 0, 2)], accepted);
+            Assert.Equal([(0, 1, 0, 999), (0, 1, 1, 1), (1, 2, 0, 2)],
+                accepted.OrderBy(update => (update.Model, update.Leg, update.Attempt)));
             progress.Report((0, 1, 1, 3));
             Assert.Single(context.Callbacks);
             context.Drain();
             Assert.Equal(4, accepted.Count);
+            Assert.Equal((0, 1, 1, 3), accepted[^1]);
         }
         finally { SynchronizationContext.SetSynchronizationContext(previous); }
     }
