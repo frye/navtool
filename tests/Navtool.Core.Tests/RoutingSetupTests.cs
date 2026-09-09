@@ -171,6 +171,24 @@ public sealed class RoutingSetupTests
         Assert.Equal(0, audit.ClearanceNauticalMiles);
     }
 
+    [Theory]
+    [InlineData(-0.001)]
+    [InlineData(-1)]
+    [InlineData(360)]
+    [InlineData(720)]
+    public void Coastal_seed_actions_reject_headings_outside_the_compass_range(double heading)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RouteCoastalSeedAction(heading, TimeSpan.FromSeconds(1)));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(359.999)]
+    public void Coastal_seed_actions_accept_canonical_heading_boundaries(double heading)
+    {
+        Assert.Equal(heading, new RouteCoastalSeedAction(heading, TimeSpan.FromSeconds(1)).HeadingDegrees);
+    }
+
     [Fact]
     public void Coastal_seed_actions_are_immutable_and_preserve_unknown_versus_empty()
     {

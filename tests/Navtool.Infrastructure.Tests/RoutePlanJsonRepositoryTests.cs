@@ -159,6 +159,32 @@ public sealed class RoutePlanJsonRepositoryTests
     }
 
     [Theory]
+    [InlineData(-0.001, false)]
+    [InlineData(-1, false)]
+    [InlineData(360, false)]
+    [InlineData(720, false)]
+    [InlineData(0, true)]
+    [InlineData(359.999, true)]
+    public async Task Stored_seed_headings_require_the_canonical_compass_range(double heading, bool valid)
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path, CoastalAudit());
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        var route = root["plan"]!["results"]![0]!["legs"]![0]!["route"]!;
+        route["nativeAudit"]!["coastalSeedActions"]![0]!["headingDegrees"] = heading;
+        route["runAudit"]!["native"]!["coastalSeedActions"]![0]!["headingDegrees"] = heading;
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+        if (!valid)
+            await Assert.ThrowsAsync<RoutePlanRepositoryException>(async () => await repository.OpenAsync(plan.Id));
+        else
+            Assert.Equal(heading, (await repository.OpenAsync(plan.Id)).Results[0].Legs[0].Route!
+                .NativeAudit!.CoastalSeedActions[0].HeadingDegrees);
+    }
+
+    [Theory]
     [InlineData("negative")]
     [InlineData("overflow")]
     [InlineData("fractional")]
