@@ -29,12 +29,13 @@ internal sealed class TestRoutingSetupService : IBoatAssetService, IRoutingSetup
     internal static RoutingCalculationContext CreateContext(
         RoutingSetup setup, RoutingProfessionalOverrides? professionalOverrides = null) =>
         new(Guid.NewGuid(), setup, new ResolvedBoatAsset(setup.Boat),
-            new NativeRoutingIdentity(8, "test-native", "test-revision", "test-build", ulong.MaxValue),
+            new NativeRoutingIdentity(setup.CoastalPruning == RouteCoastalPruningMode.Off ? 8 : 9,
+                "test-native", "test-revision", "test-build", ulong.MaxValue),
             new ResolvedRoutingOptions(setup.Quality,
                 professionalOverrides?.Optimization ?? RouteOptimizationOptions.Balanced,
                 new RouteSearchSettings(TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(10), 5, 1,
                     4, 1, 100000, 10000, 1, false, true, true, 0, 0, []),
-                setup.PerformanceFactor, setup.ArrivalRadiusNauticalMiles, setup.HardDuration),
+                setup.PerformanceFactor, setup.ArrivalRadiusNauticalMiles, setup.HardDuration, setup.CoastalPruning),
             professionalOverrides);
 
     internal static RouteResult WithConfiguredAudit(RouteResult route,
@@ -54,5 +55,6 @@ internal sealed class TestRoutingSetupService : IBoatAssetService, IRoutingSetup
                     optimization.WindSampling, optimization.AbovePolarRange,
                     optimization.MaximumTrueWindSpeedKnots, optimization.Maneuver.TackPenalty, optimization.Maneuver.GybePenalty,
                     forecast.Run.InitializedAt, forecast.Request.From,
-                    route.ArrivalTime > forecast.Request.Through ? route.ArrivalTime : forecast.Request.Through, [])));
+                    route.ArrivalTime > forecast.Request.Through ? route.ArrivalTime : forecast.Request.Through, []),
+                CoastalPruning: route.Diagnostics.CoastalPruning));
 }

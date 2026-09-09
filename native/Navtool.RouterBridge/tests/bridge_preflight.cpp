@@ -28,8 +28,9 @@ int main(int argc, char** argv) {
     const auto capabilities = reinterpret_cast<uint64_t (*)()>(symbol("navtool_router_bridge_capabilities_v1"));
     const auto info = reinterpret_cast<int32_t (*)(char**, size_t*)>(symbol("navtool_router_build_info_v8"));
     const auto release = reinterpret_cast<void (*)(void*)>(symbol("navtool_router_bridge_free_v1"));
-    bool valid = abi && capabilities && info && release && abi() == 8 &&
-        (capabilities() & ((1ULL << 13) - 1)) == ((1ULL << 13) - 1);
+    bool valid = abi && capabilities && info && release && abi() == NAVTOOL_ROUTER_BRIDGE_ABI_VERSION &&
+        (capabilities() & ((1ULL << 14) - 1)) == ((1ULL << 14) - 1) &&
+        symbol("navtool_router_calculate_route_streaming_v9");
     char* json = nullptr; size_t size = 0;
     if (valid) valid = info(&json, &size) == 0 && json;
     if (valid) {
@@ -53,6 +54,6 @@ int main(int argc, char** argv) {
 #else
     dlclose(handle);
 #endif
-    if (!valid) std::cerr << "Routing engine unavailable: mandatory ABI8 capabilities, features or revision mismatch\n";
+    if (!valid) std::cerr << "Routing engine unavailable: mandatory bridge ABI, capabilities, features or revision mismatch\n";
     return valid ? 0 : 1;
 }

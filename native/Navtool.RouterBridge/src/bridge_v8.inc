@@ -396,11 +396,14 @@ navtool_router_status_v1 navtool_router_build_info_v8(char** text, size_t* lengt
     return protect([&]() -> navtool_router_status_v1 {
         if (!json_outputs(text, length)) return fail(NAVTOOL_ROUTER_STATUS_INVALID_ARGUMENT_V1, "build info outputs required");
         std::ostringstream s;
-        s << "{\"abi_version\":8,\"route_json_schema\":\"route_result_v2\",\"library_version\":" << json_string(NAVTOOL_ROUTER_RESOLVED_VERSION)
+        s << "{\"abi_version\":" << NAVTOOL_ROUTER_BRIDGE_ABI_VERSION
+          << ",\"route_json_schema\":\"route_result_v2\",\"library_version\":" << json_string(NAVTOOL_ROUTER_RESOLVED_VERSION)
           << ",\"library_revision\":" << json_string(NAVTOOL_ROUTER_RESOLVED_REVISION)
           << ",\"source_kind\":" << json_string(NAVTOOL_ROUTER_SOURCE_KIND)
           << ",\"source_path\":" << json_string(NAVTOOL_ROUTER_SOURCE_PATH)
           << ",\"source_dirty\":" << json_string(NAVTOOL_ROUTER_SOURCE_DIRTY)
+          << ",\"patch_set_sha256\":"
+          << (std::string_view{NAVTOOL_ROUTER_PATCH_SET_SHA256}.empty() ? "null" : json_string(NAVTOOL_ROUTER_PATCH_SET_SHA256))
           << ",\"architecture\":" << json_string(NAVTOOL_ROUTER_BUILD_ARCH)
           << ",\"development_snapshot\":" << (std::string_view{NAVTOOL_ROUTER_RESOLVED_REVISION} == "cd476a84ef3edea9582d77f21588a23af727e083" ? "true" : "null")
           << ",\"capabilities\":" << navtool_router_bridge_capabilities_v1()

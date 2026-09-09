@@ -28,6 +28,10 @@ public sealed class NativeRoutingSetupService : IRoutingSetupService
         _bridge.EnsureAvailable();
         var resolved = _bridge.ResolveRoutingOptions(setup, professionalOverrides);
         ValidateLandConfiguration(setup, resolved.Optimization);
+        _bridge.ValidateCoastalPruning(resolved);
+        if (setup.CoastalPruning != RouteCoastalPruningMode.Off && setup.LandSource == RoutingLandSource.None)
+            throw new RoutingException(RoutingFailureKind.InvalidConfiguration,
+                "Conservative coastal pruning requires an explicitly selected land source.");
         if (resolved.Optimization.Environment is { } environment &&
             NativeRouterBridge.DescribeMissingCapability(_bridge.Capabilities, environment) is { } missing)
             throw new RoutingException(RoutingFailureKind.NativeUnavailable, $"The native bridge does not provide configured {missing}.");

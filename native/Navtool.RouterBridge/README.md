@@ -1,4 +1,4 @@
-# Native ABI 8 boundary
+# Native ABI 9 boundary
 
 The default router-lib revision is the immutable
 `cd476a84ef3edea9582d77f21588a23af727e083` **0.6.0 development snapshot**.
@@ -10,7 +10,7 @@ release. Dirty state is captured at configure time.
 
 ## Compatibility and ownership
 
-All pre-v8 layouts and export names remain frozen. Their compatibility is
+All v8 and older layouts and export names remain frozen. Their compatibility is
 binary, not a guarantee of historical physics or byte-identical old JSON.
 ABI, native JSON (`route_result_v2`) and managed plan schema are independent.
 Configured v8 requests require an explicit loaded polar or explicitly-created
@@ -46,6 +46,24 @@ Forecast gap limits are explicit inclusive seconds; exact native valid times and
 minimum/maximum spacing are exposed. Single-time files have no cadence.
 Declared crop and actual loaded interpolation bounds are separate concepts.
 There is no extrapolation beyond native forecast coverage.
+
+## Conservative coastal pruning
+
+ABI 9 adds an explicit configured request and progress envelope for conservative
+coastal pruning; v8 options, request and progress layouts do not grow. The new
+capability is required for opt-in calls. Polygon callers certify forbidden caps
+against their existing callback; native SDF/GSHHG requests derive topology from
+the exact selected land owner. Neither path replaces collision enforcement.
+
+Request geometry is borrowed during the synchronous call. The bridge prepares
+an immutable native topology owned by that request and releases it after search.
+Cancellation is checked during topology and seed work. Progress text/arrays are
+callback-scoped; copy them before returning. Seed progress has no provisional
+geometry. Main fronts are post-proof retained nodes, not pre-prune candidates.
+
+The native JSON addition is `diagnostics.coastalPruning` schema 1 inside
+`route_result_v2`. See the [coastal guide](../../docs/coastal-route-pruning.md)
+for counters, persistence and the intentionally conservative limitations.
 
 ## GSHHG and planned holds
 

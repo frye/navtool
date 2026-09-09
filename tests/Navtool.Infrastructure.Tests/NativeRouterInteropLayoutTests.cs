@@ -43,9 +43,9 @@ public sealed class NativeRouterInteropLayoutTests
     }
 
     [Fact]
-    public void Supported_abi_version_is_eight()
+    public void Latest_supported_abi_version_is_nine()
     {
-        Assert.Equal(8u, NativeRouterBridgeOptions.SupportedAbiVersion);
+        Assert.Equal(9u, NativeRouterBridgeOptions.SupportedAbiVersion);
     }
 
     [Fact]
@@ -65,6 +65,17 @@ public sealed class NativeRouterInteropLayoutTests
         Assert.Equal(232, Marshal.SizeOf<NativeRoutingProgressV8>());
         Assert.Equal(8, Marshal.OffsetOf<NativeRoutingProgressV8>(nameof(NativeRoutingProgressV8.Progress)).ToInt32());
         Assert.Equal(192, Marshal.OffsetOf<NativeRoutingProgressV8>(nameof(NativeRoutingProgressV8.AuditedRoutePoints)).ToInt32());
+    }
+
+    [Fact]
+    public void Abi_v9_coastal_structures_leave_v8_layouts_unchanged()
+    {
+        Assert.Equal(160, Marshal.SizeOf<NativeCoastalDiagnosticsV9>());
+        Assert.Equal(400, Marshal.SizeOf<NativeRoutingProgressV9>());
+        Assert.Equal(96, Marshal.SizeOf<NativeCoastalTopologyV9>());
+        Assert.Equal(136, Marshal.SizeOf<NativeRoutingRequestV9>());
+        Assert.Equal(8, Marshal.OffsetOf<NativeRoutingProgressV9>(nameof(NativeRoutingProgressV9.Base)).ToInt32());
+        Assert.Equal(8, Marshal.OffsetOf<NativeRoutingRequestV9>(nameof(NativeRoutingRequestV9.Base)).ToInt32());
     }
 
     [Fact]

@@ -58,15 +58,30 @@ public sealed partial class NativeRouteEngine
                 throw new RoutingException(RoutingFailureKind.InvalidForecast, "The GRIB model no longer matches the selected forecast.");
             using var loaded = _bridge.LoadForecast(forecast.Artifact.Path, bounds, cancellationToken, gap);
             NativeForecastPolicy.Validate(loaded.Metadata, forecast);
+            CoastalTopologyPreparation? topology = null;
+            if (effective.CoastalPruning != RouteCoastalPruningMode.Off)
+            {
+                progress?.Report(new RouteCalculationProgress(.15, "Preparing conservative coastal bounds"));
+                var mask = effective.Optimization.Environment?.Land;
+                var sourceIdentity = eligible is not null ? land!.Geometry!.GeometryIdentity
+                    : nativeLand?.SourceFingerprint ??
+                      (mask is not null ? CoastalTopologyPreparation.IdentifyLandmask(mask, cancellationToken) :
+                          throw new RoutingException(RoutingFailureKind.InvalidConfiguration,
+                              "Coastal pruning requires the selected land enforcement source."));
+                topology = CoastalTopologyPreparation.Create(
+                    loaded.Metadata.EffectiveBounds ?? throw new NativeRouteFormatException("Missing forecast bounds."),
+                    request, eligible is not null ? land!.Geometry : null, sourceIdentity, cancellationToken);
+            }
             var elapsed = TimeSpan.Zero;
             var started = DateTimeOffset.UtcNow;
             var attemptId = Guid.NewGuid();
-            var result = _bridge.CalculateRoute(loaded, polar, request, forecast.Run.Model, effective,
+            var result = _bridge.CalculateWithCoastalTopology(loaded, polar, request, forecast.Run.Model, effective,
                 snapshot =>
                 {
                     var fraction = AdvanceProgressFraction(request, snapshot, ref elapsed);
                     progress?.Report(new RouteCalculationProgress(.2 + .79 * fraction, "Optimizing route", snapshot));
-                }, eligible, cancellationToken, nativeLand);
+                }, eligible, cancellationToken, nativeLand, topology,
+                status => progress?.Report(new RouteCalculationProgress(.18, status)));
             if (land is not null) result = ApplyLandData(result, land, usesMask);
             else if (nativeLand is not null)
             {

@@ -20,7 +20,7 @@
 extern "C" {
 #endif
 
-#define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 8u
+#define NAVTOOL_ROUTER_BRIDGE_ABI_VERSION 9u
 
 enum {
     NAVTOOL_ROUTER_CAPABILITY_LAND_SEGMENT_CONSTRAINT_V1 = 1ull << 0,
@@ -36,7 +36,8 @@ enum {
     NAVTOOL_ROUTER_CAPABILITY_AUDITED_PROGRESS_V8 = 1ull << 9,
     NAVTOOL_ROUTER_CAPABILITY_GSHHG_V8 = 1ull << 10,
     NAVTOOL_ROUTER_CAPABILITY_ACTION_REPLAY_V8 = 1ull << 11,
-    NAVTOOL_ROUTER_CAPABILITY_PLANNED_HOLD_V8 = 1ull << 12
+    NAVTOOL_ROUTER_CAPABILITY_PLANNED_HOLD_V8 = 1ull << 12,
+    NAVTOOL_ROUTER_CAPABILITY_COASTAL_PRUNING_V9 = 1ull << 13
 };
 
 typedef int32_t navtool_router_status_v1;
@@ -977,6 +978,89 @@ navtool_router_check_planned_hold_v8(
     const navtool_router_exclusion_settings_v7* exclusions,
     navtool_router_coordinate_v1 position, int64_t arrival_epoch_seconds, int64_t departure_epoch_seconds,
     uint8_t* out_conflict, uint64_t* out_geometry_tests, char** out_zone_utf8, size_t* out_zone_length);
+
+/* ABI 9 additions. All ABI 8 structures above remain frozen. Text and arrays
+ * in progress are borrowed only for the synchronous callback invocation.
+ */
+typedef struct navtool_router_coastal_diagnostics_v9 {
+    uint32_t struct_size;
+    int32_t mode; /* 0 off; 1 conservative_land_aware */
+    const char* status_utf8;
+    const char* unavailable_reason_utf8;
+    uint64_t skipped_parents;
+    uint64_t disconnected_candidates;
+    uint64_t horizon_candidates;
+    uint64_t incumbent_candidates;
+    uint64_t bound_unavailable;
+    uint64_t seed_evaluations;
+    uint64_t topology_work;
+    int64_t incumbent_arrival_epoch_seconds;
+    uint32_t has_incumbent_arrival;
+    uint32_t reserved;
+    const char* source_identity_utf8;
+    const char* domain_identity_utf8;
+    const char* seed_status_utf8;
+    double speed_upper_knots;
+    uint64_t topology_caps;
+    double numerical_margin_nautical_miles;
+    double clearance_nautical_miles;
+    int32_t requested_mode;
+    uint32_t has_speed_upper;
+} navtool_router_coastal_diagnostics_v9;
+
+typedef struct navtool_router_progress_v9 {
+    uint32_t struct_size;
+    uint32_t reserved;
+    navtool_router_progress_v8 base;
+    navtool_router_coastal_diagnostics_v9 coastal;
+} navtool_router_progress_v9;
+
+typedef uint8_t (*navtool_router_progress_callback_v9)(
+    const navtool_router_progress_v9* progress, void* user_data);
+
+typedef struct navtool_router_coastal_cap_v9 {
+    navtool_router_coordinate_v1 center;
+    double radius_nautical_miles;
+} navtool_router_coastal_cap_v9;
+
+/* Caps must be certified permanently forbidden by the supplied segment
+ * callback, including its sampling/error allowance. They are a relaxation,
+ * not replacement collision geometry. Native land requests instead derive
+ * their caps from that exact native land owner; supplied caps must be empty.
+ */
+typedef struct navtool_router_coastal_topology_v9 {
+    uint32_t struct_size;
+    uint32_t reserved;
+    double south, west, north, east;
+    const char* source_identity_utf8;
+    const char* domain_identity_utf8;
+    const navtool_router_coastal_cap_v9* caps;
+    uint64_t cap_count;
+    const navtool_router_coordinate_v1* probes;
+    uint64_t probe_count;
+    uint64_t application_geometry_work;
+} navtool_router_coastal_topology_v9;
+
+typedef struct navtool_router_request_v9 {
+    uint32_t struct_size;
+    int32_t coastal_pruning_mode;
+    navtool_router_request_v8 base;
+    const navtool_router_coastal_topology_v9* topology;
+    uint64_t maximum_seed_transitions;
+} navtool_router_request_v9;
+
+/* Return nonzero to continue. Also invoked during topology/seed preparation.
+ * Request arrays remain borrowed throughout this synchronous operation.
+ */
+typedef uint8_t (*navtool_router_continue_callback_v9)(void* user_data);
+
+NAVTOOL_ROUTER_BRIDGE_API navtool_router_status_v1
+navtool_router_calculate_route_streaming_v9(
+    const navtool_router_request_v9* request,
+    navtool_router_progress_callback_v9 on_progress, void* progress_user_data,
+    navtool_router_segment_eligibility_callback_v1 is_segment_eligible, void* eligibility_user_data,
+    navtool_router_continue_callback_v9 should_continue, void* control_user_data,
+    char** out_json_utf8, size_t* out_length);
 
 #ifdef __cplusplus
 }

@@ -22,7 +22,8 @@ public sealed partial class NativeRouterBridge
         ThrowIfFailed(NativeMethods.ResolveOptions(ref native, ref effective), "Validating configured routing options");
         return FromNativeOptions(effective) with
         {
-            Optimization = FromNativeCommon(effective.Common, requested.Optimization.Environment)
+            Optimization = FromNativeCommon(effective.Common, requested.Optimization.Environment),
+            CoastalPruning = requested.CoastalPruning
         };
     }
 

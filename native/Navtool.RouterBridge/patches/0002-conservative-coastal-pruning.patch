@@ -1,0 +1,2208 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d77113f..e95d67f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -37,6 +37,7 @@ add_library(sailroute STATIC
+     src/environment/landmask.cpp
+     src/environment/spherical.cpp
+     src/routing/contours.cpp
++    src/routing/coastal_pruning.cpp
+     src/routing/front.cpp
+     src/routing/geodesy.cpp
+     src/routing/intervals.cpp
+@@ -99,6 +100,7 @@ if(SAILROUTE_BUILD_TESTS)
+     add_executable(sailroute_tests
+         tests/test_main.cpp
+         tests/test_contours.cpp
++        tests/test_coastal_pruning.cpp
+         tests/test_environment.cpp
+         tests/test_exclusions.cpp
+         tests/test_front.cpp
+diff --git a/docs/coastal-pruning.md b/docs/coastal-pruning.md
+new file mode 100644
+index 0000000..71251f9
+--- /dev/null
++++ b/docs/coastal-pruning.md
+@@ -0,0 +1,325 @@
++# Conservative coastal pruning (API 1)
++
++This is an **explicit opt-in**, single-forecast isochrone-beam feature. It adds
++sound rejection bounds to an approximate beam, not global optimality. Off is
++unchanged. Lattice and ensemble requests with the option enabled are rejected;
++no solver switch or heuristic fallback occurs.
++
++## Public contract
++
++Include `sailroute/coastal_pruning.hpp` and `sailroute/router.hpp`.
++
++* `coastal_pruning_api_version == 1`;
++  `supports_coastal_pruning(RoutingSolver)` accepts only `isochrone_beam`.
++* `CoastalPruningMode`: `off=0`, `conservative=1`.
++* `CoastalPolygonEdges`: `great_circle=0`,
++  `linear_latitude_longitude=1`.
++* `CoastalBoundStatus`: `available=0`, `unavailable=1`, `disabled=2`.
++* `CoastalTopologyOptions`: `source_identity`, `domain_identity`,
++  `domain` (`EnvironmentCoverage`, static geographic bounds),
++  `polygon_edges`, `clearance_nautical_miles`,
++  `numerical_margin_nautical_miles` (default/minimum 0.0001 nm),
++  `maximum_work` (default 1,000,000 units), `maximum_caps` (1024),
++  `maximum_bytes` (4 MiB), `cancelled`.
++* `CoastalTopology::from_polygons(vector<ExclusionPolygon>,
++  span<const Coordinate> probes, CoastalTopologyOptions)` and
++  `CoastalTopology::from_landmask(const SignedDistanceLandmask&,
++  span<const Coordinate> probes, CoastalTopologyOptions)` return
++  `Result<shared_ptr<const CoastalTopology>>`.
++  Probes are proposals, not asserted land: each is independently certified.
++  Empty polygons/probes give an empty, still valid relaxation.
++* `CoastalTopology::from_certified_caps(vector<CoastalTopology::Cap>,
++  CoastalTopologyOptions)` accepts a caller-certified forbidden subset.
++  `Cap` has `Coordinate center` and `double radius_nautical_miles`.
++  No polygon conversion or secondary enforcement source is required.
++  `caller_certified_caps()` identifies this representation; `native_landmask()`
++  is false and the existing application callback remains final authority.
++* Handle queries: `options()`, `construction_work()`, `cap_count()`,
++  `construction_limited()`, `native_landmask()`, `provider()`,
++  `matches_landmask(mask)`, and
++  `optimistic_distance_nautical_miles(from, destination, arrival_radius,
++  transition_relaxation_nautical_miles=0)`.
++* `SignedDistanceLandmask::shares_data_with(other)` tests exact shared immutable
++  data identity (not merely equal provider strings).
++* `RoutingOptions::coastal_pruning` is a `CoastalPruningOptions` with `mode`,
++  `topology`, `source_identity`, `domain_identity`,
++  `clearance_nautical_miles`, `seed_actions` (`vector<SailingAction>`),
++  `maximum_seed_transitions` (512; zero disables the seed),
++  and optional thread-safe `cancelled` probe.
++* `Router::coastal_remaining_bound(request, position)` returns
++  `Result<CoastalRemainingBound>` with `optimistic_seconds`, `status`,
++  `reason`, and optional `speed_upper_knots`. It validates source/solver
++  compatibility. Unknown speed yields zero and **unavailable**, not infinity.
++* `RouteDiagnostics::coastal_pruning` is optional
++  `CoastalPruningDiagnostics`; absent in Off runs.
++* `RoutingProgressView::post_proof_retained_front` and its owning equivalent
++  explicitly distinguish the new retained population.
++* `RouteResult::coastal_seed_actions` preserves the seed control proposal.
++  `seed_status` says whether the proposal completed validation. Replay uses
++  `evaluate_actions` with the same inputs and pruning Off; do not infer headings
++  from displayed route vertices. Arrival terminates the proposal early.
++
++The C++ additions require rebuilding consumers. They do not authorize growing
++an application's frozen C ABI structures in place.
++
++### Identity, topology, and ownership
++
++The polygon caller certifies that the declared permanently forbidden geometry
++is a subset of the selected enforcement contract. Keep the application callback
++as final authority. Extra application restrictions and timed exclusions can be
++omitted from the proof, **never** from seed/transition validation. A Boolean
++callback alone cannot establish topology. The request's source/domain identity
++and clearance must match the handle; keys must change with geometry revision,
++edge semantics, source uncertainty, domain, or clearance.
++
++Great-circle polygons use the same validated, hemisphere-contained rings and
++holes as exclusions. Multipolygons are accepted. Ambiguous probe containment
++does not produce a cap. Linear latitude/longitude polygons use shortest wrapped
++longitude interpolation and additional certified erosion described below.
++Linear-mode callbacks must reject forbidden **endpoints at every physical
++integration step**; this is satisfied by ordinary polygon segment-intersection
++enforcement. Callbacks that inspect only some steps, ignore land endpoints, or
++use a different projection need a separately certified subset: do not relabel
++them as supported.
++
++Exclusion validation and polygon proof preparation share ring normalization:
++consecutive angular duplicates and repeated closing vertices are removed before
++computing the centroid, winding, or boundary distances. The hemisphere guarantee
++applies to that normalized centroid, never to a duplicate-weighted input ring.
++
++### Caller-certified caps for sampled polygon enforcement
++
++`from_certified_caps` is the preferred adapter when the application can prove
++blocked regions directly with its own polygon library. For example, it can
++prove an axis-aligned wrapped-lonlat rectangle is wholly covered by selected
++land (respecting holes), derive a genuinely inscribed spherical disk, then
++shrink it to account for the enforcement callback's sampling uncertainty.
++The upstream factory does **not** certify that the application's geometric
++proof is true; the caller must certify each submitted open or closed cap is
++permanently forbidden by the actual selected enforcement contract.
++
++If the callback includes segment endpoints and checks samples on the accepted
++spherical connector with a guaranteed maximum along-arc gap of one nautical
++mile, eroding the inscribed disk by at least one nautical mile plus numerical
++uncertainty is sufficient: any connector entering the eroded disk has a sample
++within one nautical mile, inside the original forbidden disk. This requires
++a genuine sampling-gap bound; a nominal spacing setting without that guarantee
++is not a certificate. A Boolean callback or polygon bounding-box intersection
++alone is insufficient. Do not certify rectangles merely because their corners
++are on land, and do not fill holes or unknown coverage.
++
++Native checks canonical finite centers, finite radii strictly between zero and
++a hemisphere (`pi*R/2` nm), nonempty source/domain identity, static domain,
++cancellation, and cap/work/retained-byte budgets. It subtracts the configured
++numerical margin **additionally** from every radius, so open-cap certificates
++are sufficient; caps reduced to zero contribute nothing. Stored caps must lie
++inside the declared preparation coverage. Oversized arrays fail explicitly
++with `resource_limit`, rather than silently dropping input. Each submitted cap
++costs one topology work unit. An empty array is a valid empty relaxation.
++
++Already certified caps do **not** receive polygon-edge homotopy erosion or
++additional full-integration-step erosion, regardless of `options.polygon_edges`:
++the caller has certified the actual enforcement contract already.
++Audit `polygonEdgeModel` is `"caller_certified_caps"`. The existing source/domain
++identity and clearance checks still apply, including every seed transition.
++Outside supplied caps remains relaxed water; there are no disconnection claims.
++
++Native SDF/GSHHG handles share the exact immutable enforcing mask. All signed
++distance errors must be genuine bounds as required by the landmask API.
++Uncertified conservative occupancy raster values are not signed-distance
++certificates and cannot be used as such. Native caps are clipped to both source
++grid coverage and declared preparation coverage. Missing samples add no caps.
++Clearance is relaxed away geometrically but remains part of identity and exact
++enforcement.
++
++The handle is immutable and thread-safe after preparation; it owns caps, keys,
++and a shared reference to native source data when applicable. It has no
++destination-specific cache, forecast state, incumbent, or callback. Preparation
++callbacks are discarded. Keep the handle alive through a request, and share it
++across independent destinations/models only with matching identities.
++
++Work is explicitly bounded in conservative accounting units: polygon validation
++charges 64 per outer vertex and `64 + 8*outer_vertex_count` per hole vertex;
++each polygon probe charges `32*total_vertex_count + 1`; SDF probes charge one.
++The byte setting limits retained logical storage (including reserved caps and
++identity text) and separately bounds estimated polygon preparation storage.
++It is not a process-RSS limit and excludes already supplied source data,
++allocator overhead, and caller allocations. Work-budget exhaustion is a
++`resource_limit` error; cap/retained-byte truncation returns a safe incomplete
++relaxation with `construction_limited()==true`. Unknown regions stay open.
++Cancellation is checked before preparation and between bounded work items.
++
++## Why the bound is admissible
++
++Let the earth be the same sphere used by routing, radius `R=3440.065 nm`.
++
++1. **Certified land subset.** At a proven interior polygon probe `c`, the
++   minimum distance to every outer/hole boundary, less numerical margin, is a
++   spherical cap lying in forbidden land. Winding classification is required
++   to be unambiguous; holes are never filled. SDF probes use
++   `-sample - declared_interpolation_error - margin`. A nonpositive radius
++   contributes nothing. Incomplete coverage cannot create a barrier.
++2. **Linear polygon relaxation.** For each wrapped linear-lonlat edge,
++   `R*(abs(delta_lat)+abs(wrapped_delta_lon))` in radians bounds its length.
++   The linear edge and its minor spherical counterpart have a homotopy inside
++   the first endpoint's cap of that radius, when it is less than a hemisphere.
++   Eroding by the maximum of these radii avoids every swept boundary; membership
++   cannot change there. Longer/ambiguous edges produce no land caps. This is
++   deliberately loose, especially for sparsely sampled coastlines.
++   Routing additionally erodes linear-mode caps by
++   `V_upper * maximum_integration_step`. Every accepted physical segment has
++   legal endpoints and length at most that amount; triangle inequality then
++   prevents its spherical trajectory entering the eroded cap even if the
++   callback tested a linear-lonlat connector.
++3. **Ambient-space relaxation, not a water-node graph.** A cap of radius `r`
++   around surface point `c` is the sphere's intersection with a Euclidean ball
++   centered at `R*c`, radius `q=2R*sin(r/(2R))`. Every legal spherical trajectory
++   lies outside this ball. Allowing paths anywhere in three-dimensional space
++   can only shorten the optimum.
++4. **Exact single-ball formula.** With endpoint distances `x,y` from the ball
++   center and included angle `theta`, an unobstructed segment has its ordinary
++   chord length. Otherwise the shortest ambient detour has length
++
++       sqrt(x*x-q*q) + sqrt(y*y-q*q)
++         + q*(theta-acos(q/x)-acos(q/y)).
++
++   This is two tangent segments and a boundary arc. If an endpoint is inside
++   the relaxed ball, discard that ball's contribution instead of claiming
++   disconnection.
++5. **Whole arrival region.** A spherical arrival circle is inside a Euclidean
++   ball of the same numerical radius around its center. Use a cap contribution
++   only if that entire arrival ball is disjoint from the obstacle ball.
++   A legal arrival endpoint can then be connected to the center within the
++   arrival ball, adding at most the arrival radius. Subtracting that radius is
++   therefore a lower bound. For overlapping arrival balls, omit the cap.
++6. **Combine by maximum.** Take the maximum, **not the sum**, of all single-ball
++   bounds and `max(0, great_circle_distance - arrival_radius)`, then subtract
++   numerical margin. No grid, corridor restriction, interpolation of graph
++   distances, or finite-node shortest path is treated as a lower bound.
++7. **Time.** Without a current provider, `V_upper` is the polar's global
++   interpolated maximum multiplied by the boat factor. Both supported angle
++   interpolants and wind range policies cannot increase that maximum. Sea-state
++   acceleration is an error in exact physics, not an allowed speed; nonnegative
++   maneuver penalties are ignored. With **any current provider**, this version
++   returns zero/unavailable rather than guessing a favorable-current cap.
++   `h=L/V_upper` is thus optimistic over evolving weather. Overflow/unusable
++   speed is also unavailable, never infinity.
++
++Numerical handling uses at least 0.0001 nm geometric erosion, the existing
++arrival acceptance slack, and a strict two-second comparison tolerance for
++whole-second arrival quantization. Ties survive. No geographic commitment,
++bearing cutoff, detour ratio, or current boat speed is used.
++
++## Seed, search, and failure semantics
++
++The default bounded seed proposes one destination-bearing timed heading. A
++caller may instead supply a timed heading policy (including detours). Exact
++`evaluate_heading_transition` integration validates departure, boat/polar,
++evolving forecast, currents, waves, maneuver state, arrival region, horizon,
++callback, native land, and timed exclusions. A geometric path alone is **never**
++an incumbent. Successful complete validation preserves the feasible result.
++Infeasible seeds or an exhausted seed budget are normal, audited outcomes.
++Malformed actions and encountered provider/resource/cancellation errors remain
++errors. The simple default seed is not a general coastal planner.
++
++Parents are checked before worker expansion/resource admission; children are
++checked after exact eligibility and before strategic probes/beam retention.
++Reject only if `state_time + h > horizon + 2s` or
++`state_time + h > validated_incumbent_arrival + 2s`. No disconnection rejection
++is implemented. Reuse a faster validated seed instead of a later main arrival.
++Otherwise keep the existing arrival ordering. Proof exhaustion returns the
++incumbent if present, or a legal best-known partial with the existing
++forecast/duration distinction. Encountered errors are not converted to results.
++Reducing a beam's surviving population can change later beam choices; this
++does not imply general Off/On route equivalence.
++
++## Audit and progress
++
++All counts are cumulative/nondecreasing within one run:
++
++* `parent_expansions_skipped`: parent states rejected before expansion.
++* `candidates_disconnected`: reserved, always zero in API 1.
++* `candidates_horizon`, `candidates_incumbent`: child states rejected for the
++  stated reason; horizon takes precedence if both apply.
++* `bound_unavailable`: parent/child bound attempts using unavailable speed or
++  numeric fallback. It is not a count of unique geographic positions.
++* `seed_transition_evaluations`: attempted heading integration iterations plus
++  maneuver-drift integration intervals, including unsuccessful attempts.
++  This is separate from all main-search counters.
++* `topology_work`: fixed preparation accounting units, not per-route expansions.
++* Existing `pruned_candidates` remains **ordinary beam pruning only**; existing
++  expanded/generated/retained counts remain main-search work only.
++
++The audit also includes requested/effective mode, source/domain identities,
++domain coordinates and longitude coverage, polygon edge model, topology cap
++count, limited flag, clearance, numerical margin, seed budget/status,
++bound status, optional speed bound, and optional incumbent arrival.
++
++Seed progress has `seed_status="running"` and no main frontier geometry.
++Conservative main progress always constructs `destination_front` from the
++post-proof/post-beam retained nodes, even when eligible-pre-prune display mode
++was requested. `post_proof_retained_front=true` makes that semantic change
++explicit. Segment boundaries remain in the existing segment arrays. Captured
++isochrones remain historical retained populations; they are not current search.
++
++`route_result_v2` has a compatible optional addition:
++`diagnostics.coastalPruning` (`schemaVersion:1`), including `seedActions`.
++Existing Off JSON is unchanged. Missing incumbent/speed are JSON `null`, not
++zero. Consumers should capability-negotiate the C++/bridge feature separately
++from JSON/saved-plan versions.
++
++## Evidence and limits
++
++`test_coastal_pruning.cpp` covers analytic cap bounds against independent legal
++spherical paths, arrival regions, holes, narrow channels, incomplete domains,
++antimeridian symmetry, linear-polygon erosion, signed-distance uncertainty and
++identity, seed replay/failure/budgets, horizon partials, opening exclusions,
++unknown favorable currents, cancellation, audit, and deterministic workers.
++The duplicate-hole regression uses the review counterexample (400 repeated SW
++hole vertices), repeated outer/closing vertices, and near-duplicates. All variants
++preserve the water hole and the legal 1080.73 nm meridian bound; the pre-fix
++implementation incorrectly returned 1204.08 nm.
++The four existing strategic exhaustive-reference scenarios now also exercise
++Conservative with validated winning actions and bound checks: both mirrored
++delayed-wind and losing-first-tack/island cases retain the superior detour.
++The island tests explicitly verify that the default destination-bearing seed
++fails, while the supplied bounded `seed_actions` detour validates successfully.
++
++Controlled fixed-worker strait fixture, Release on AppleClang 21:
++
++| Work | Off | Conservative |
++| --- | ---: | ---: |
++| Main expanded nodes | 37,334 | 1,180 |
++| Northern frontier parents | 6,081 | 9 |
++| Northern eligible-segment evaluations | 277,382 | 406 |
++| Seed integration work | 0 | 25 |
++| Native certified-cap admission units | 0 | 1 |
++| Paired measured wall time | about 1,980 ms | about 69 ms |
++
++The fixture asserts no ETA regression beyond two seconds, over 50% reduction
++in northern parents, fewer total main expansions, successful action replay,
++and deterministic two-worker results. Timings include seed/preparation and the
++requested progress payloads, but are not a universal performance promise.
++This version of the strait fixture supplies an analytically certified cap.
++Application-side NTS/rectangle certification is not timed here and must be
++reported separately in an application end-to-end benchmark.
++The separate `/usr/bin/time -l` paired-fixture process measured roughly 540 MB
++maximum RSS, including both runs, GRIB loading, replay, and a two-worker repeat;
++this is **not** a per-mode memory comparison.
++
++Validation:
++
++```sh
++cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSAILROUTE_ENABLE_ENSEMBLE=ON
++cmake --build build -j 4
++cd build
++./sailroute_tests coastal strategic cruising JSON progress isochrone environment landmask beam
++./sailroute_tests exclusion
++```
++
++93 selected routing tests and the eight-test exclusion group passed. Native/GSHHG real-world assets and a saved Juan de
++Fuca request were not supplied; synthetic fixtures are not reproduction of the
++screenshot. Certified disconnection, land-guided automatic seed construction,
++current-provider speed certificates, tight sparse-linear-coast bounds,
++destination caches, and per-mode RSS benchmarking remain unsupported/deferred.
++Incomplete or weak proofs retain states; they never enable aggressive pruning.
+diff --git a/include/sailroute/coastal_pruning.hpp b/include/sailroute/coastal_pruning.hpp
+new file mode 100644
+index 0000000..9ff44a7
+--- /dev/null
++++ b/include/sailroute/coastal_pruning.hpp
+@@ -0,0 +1,80 @@
++#pragma once
++
++#include "sailroute/environment.hpp"
++
++namespace sailroute {
++
++inline constexpr unsigned coastal_pruning_api_version = 1U;
++[[nodiscard]] constexpr bool supports_coastal_pruning(RoutingSolver solver) noexcept {
++    return solver == RoutingSolver::isochrone_beam;
++}
++
++enum class CoastalPolygonEdges { great_circle, linear_latitude_longitude };
++
++struct CoastalTopologyOptions {
++    std::string source_identity;
++    std::string domain_identity;
++    /// Preparation coverage only; outside remains potentially navigable.
++    EnvironmentCoverage domain{-90.0, 90.0, {}, {}, {}, {}, true};
++    CoastalPolygonEdges polygon_edges{CoastalPolygonEdges::great_circle};
++    double clearance_nautical_miles{};
++    double numerical_margin_nautical_miles{1.0e-4};
++    std::size_t maximum_work{1'000'000U};
++    std::size_t maximum_caps{1024U};
++    std::size_t maximum_bytes{4U * 1024U * 1024U};
++    std::function<bool()> cancelled;
++};
++
++/// Immutable, concurrently queryable relaxation. No disconnection claims or
++/// implicit domain clipping. Regions not represented by caps remain open.
++/// Polygon edges MUST select the same semantics as enforcement; linear edges
++/// use shortest wrapped longitude interpolation. In linear mode enforcement
++/// must reject endpoints in these polygons at every physical integration step.
++/// Caller certifies source/domain identity and that polygons are permanently
++/// forbidden by its callback; arbitrary callback topology cannot be inferred.
++class CoastalTopology {
++public:
++    struct Cap { Coordinate center; double radius_nautical_miles; };
++    /// Caller certifies every cap is permanently forbidden by the selected
++    /// enforcement contract, including its sampling/numerical uncertainty.
++    /// Native validation checks shape, identity, domain and budgets, NOT that
++    /// the application's geometric proof is true. The numerical margin is
++    /// additionally subtracted so an open-cap certificate suffices.
++    [[nodiscard]] static Result<std::shared_ptr<const CoastalTopology>> from_certified_caps(
++        std::vector<Cap> caps, CoastalTopologyOptions options);
++    [[nodiscard]] static Result<std::shared_ptr<const CoastalTopology>> from_polygons(
++        std::vector<ExclusionPolygon> polygons,
++        std::span<const Coordinate> probes,
++        CoastalTopologyOptions options);
++    [[nodiscard]] static Result<std::shared_ptr<const CoastalTopology>> from_landmask(
++        const SignedDistanceLandmask& landmask,
++        std::span<const Coordinate> probes,
++        CoastalTopologyOptions options);
++    [[nodiscard]] double optimistic_distance_nautical_miles(
++        Coordinate from, Coordinate destination, double arrival_radius,
++        double transition_relaxation_nautical_miles = 0.0) const noexcept;
++    [[nodiscard]] const CoastalTopologyOptions& options() const noexcept { return options_; }
++    [[nodiscard]] std::size_t construction_work() const noexcept { return work_; }
++    [[nodiscard]] std::size_t cap_count() const noexcept { return caps_.size(); }
++    [[nodiscard]] bool construction_limited() const noexcept { return limited_; }
++    [[nodiscard]] bool native_landmask() const noexcept { return native_; }
++    [[nodiscard]] bool caller_certified_caps() const noexcept { return certified_caps_; }
++    [[nodiscard]] const ProviderMetadata& provider() const noexcept {
++        return landmask_ ? landmask_->metadata().provider : provider_;
++    }
++    [[nodiscard]] bool matches_landmask(const SignedDistanceLandmask& mask) const noexcept {
++        return landmask_ && landmask_->shares_data_with(mask);
++    }
++
++private:
++    CoastalTopologyOptions options_;
++    std::vector<Cap> caps_;
++    std::size_t work_{};
++    bool native_{};
++    bool certified_caps_{};
++    bool limited_{};
++    ProviderMetadata provider_;
++    std::optional<SignedDistanceLandmask> landmask_;
++};
++
++} // namespace sailroute
+diff --git a/include/sailroute/environment.hpp b/include/sailroute/environment.hpp
+index baff007..a1a534a 100644
+--- a/include/sailroute/environment.hpp
++++ b/include/sailroute/environment.hpp
+@@ -317,6 +317,10 @@ public:
+ 
+     [[nodiscard]] const LandmaskMetadata& metadata() const noexcept;
+     [[nodiscard]] const EnvironmentGridSpec& grid() const noexcept;
++    /// Exact immutable data identity, including uncertainty and coverage.
++    [[nodiscard]] bool shares_data_with(const SignedDistanceLandmask& other) const noexcept {
++        return impl_ == other.impl_;
++    }
+     /// Bilinearly interpolates signed distance at a canonical coordinate.
+     [[nodiscard]] EnvironmentSample<double> signed_distance_nautical_miles(
+         Coordinate coordinate) const;
+diff --git a/include/sailroute/router.hpp b/include/sailroute/router.hpp
+index 681162e..002b1f6 100644
+--- a/include/sailroute/router.hpp
++++ b/include/sailroute/router.hpp
+@@ -50,6 +50,10 @@ public:
+ 
+     /// Returns the environment this router applies, empty when unconfigured.
+     [[nodiscard]] const RoutingEnvironment& environment() const noexcept;
++    /// Queries the same admissible bound as conservative beam pruning.
++    /// Missing speed certification yields zero with unavailable status.
++    [[nodiscard]] Result<CoastalRemainingBound> coastal_remaining_bound(
++        const RouteRequest& request, Coordinate position) const;
+ 
+     /// Optimizes a route without intermediate progress delivery.
+     [[nodiscard]] Result<RouteResult> optimize(const RouteRequest& request) const;
+diff --git a/include/sailroute/types.hpp b/include/sailroute/types.hpp
+index 635b900..f7ded78 100644
+--- a/include/sailroute/types.hpp
++++ b/include/sailroute/types.hpp
+@@ -4,6 +4,7 @@
+ #include <cstddef>
+ #include <cstdint>
+ #include <functional>
++#include <memory>
+ #include <optional>
+ #include <span>
+ #include <string>
+@@ -356,6 +357,63 @@ enum class PruningStrategy {
+     bearing_sectors,
+ };
+ 
++class CoastalTopology;
++enum class CoastalPruningMode { off, conservative };
++enum class CoastalBoundStatus { available, unavailable, disabled };
++struct CoastalRemainingBound {
++    double optimistic_seconds{};
++    CoastalBoundStatus status{CoastalBoundStatus::unavailable};
++    std::string reason;
++    std::optional<double> speed_upper_knots;
++};
++
++/// Hold a water-relative heading for a bounded duration; maneuver time is
++/// included in that duration. Arrival may terminate the action early.
++struct SailingAction {
++    double heading_degrees{};
++    std::chrono::seconds duration{};
++};
++
++struct CoastalPruningOptions {
++    CoastalPruningMode mode{CoastalPruningMode::off};
++    std::shared_ptr<const CoastalTopology> topology;
++    std::string source_identity;
++    std::string domain_identity;
++    double clearance_nautical_miles{};
++    /// Empty proposes one destination-bearing action; failure is normal.
++    std::vector<SailingAction> seed_actions;
++    std::size_t maximum_seed_transitions{512U};
++    /// Optional thread-safe cancellation probe, including seed validation.
++    std::function<bool()> cancelled;
++};
++
++struct CoastalPruningDiagnostics {
++    CoastalPruningMode requested{CoastalPruningMode::off};
++    CoastalPruningMode effective{CoastalPruningMode::off};
++    std::string source_identity;
++    std::string domain_identity;
++    std::string bound_status;
++    std::string seed_status;
++    std::optional<double> speed_upper_knots;
++    std::optional<TimePoint> incumbent_arrival;
++    std::size_t parent_expansions_skipped{};
++    std::size_t candidates_disconnected{};
++    std::size_t candidates_horizon{};
++    std::size_t candidates_incumbent{};
++    std::size_t bound_unavailable{};
++    std::size_t seed_transition_evaluations{};
++    std::size_t topology_work{};
++    std::size_t topology_caps{};
++    double topology_numerical_margin_nautical_miles{};
++    double clearance_nautical_miles{};
++    Coordinate topology_domain_southwest{-90.0, -180.0};
++    Coordinate topology_domain_northeast{90.0, 180.0};
++    bool topology_domain_global_longitude{true};
++    std::string polygon_edge_model;
++    std::size_t maximum_seed_transitions{};
++    bool topology_limited{};
++};
++
+ /// Search resolution, pruning, concurrency, progress, and eligibility controls.
+ struct RoutingOptions {
+     std::chrono::minutes time_step{30};
+@@ -413,6 +471,7 @@ struct RoutingOptions {
+     std::size_t maximum_retained_nodes{500'000U};
+     /// Preserve separated positions as well as headings within a beam bucket.
+     bool strategic_retention{true};
++    CoastalPruningOptions coastal_pruning;
+ };
+ 
+ enum class RoutingQuality { fast, balanced, high };
+@@ -428,13 +487,6 @@ struct RouteRequest {
+     RoutingOptions options;
+ };
+ 
+-/// Hold a water-relative heading for a bounded duration; maneuver time is
+-/// included in that duration. Arrival may terminate the action early.
+-struct SailingAction {
+-    double heading_degrees{};
+-    std::chrono::seconds duration{};
+-};
+-
+ /// Cumulative search-work counters.
+ struct RouteDiagnostics {
+     std::size_t expanded_nodes{};
+@@ -444,6 +496,7 @@ struct RouteDiagnostics {
+     std::size_t eligibility_evaluations{};
+     std::size_t pruned_candidates{};
+     std::size_t future_probe_misses{};
++    std::optional<CoastalPruningDiagnostics> coastal_pruning;
+ };
+ 
+ /// Cumulative environmental sampling, evaluation, and rejection counters.
+@@ -542,6 +595,9 @@ struct RoutingProgress {
+     RoutingSolver solver{RoutingSolver::isochrone_beam};
+     std::vector<Coordinate> search_points;
+     LatticeSearchProgress search;
++    /// True only for conservative mode: destination_front uses post-proof,
++    /// post-beam retained nodes, never eligible pre-prune candidates.
++    bool post_proof_retained_front{};
+ };
+ 
+ /// Callback-scoped progress data used by Router::optimize_view.
+@@ -555,6 +611,7 @@ struct RoutingProgressView {
+     RoutingSolver solver{RoutingSolver::isochrone_beam};
+     std::span<const Coordinate> search_points;
+     LatticeSearchProgress search;
++    bool post_proof_retained_front{};
+ };
+ 
+ struct RouteRunMetadata {
+@@ -595,6 +652,9 @@ struct RouteResult {
+     std::optional<EnvironmentDiagnostics> environment_diagnostics;
+     std::optional<RouteEnvironmentMetadata> environment;
+     std::optional<RouteRunMetadata> run;
++    /// Seed control proposal; seed_status says whether validation completed.
++    /// Preserved for validated seeds even when main search improves the result.
++    std::vector<SailingAction> coastal_seed_actions;
+ };
+ 
+ /// Checks coordinate finiteness and canonical latitude/longitude bounds.
+diff --git a/src/ensemble/lattice_solver.cpp b/src/ensemble/lattice_solver.cpp
+index d8c1159..7ce7932 100644
+--- a/src/ensemble/lattice_solver.cpp
++++ b/src/ensemble/lattice_solver.cpp
+@@ -55,6 +55,8 @@ const EnsembleDataset& EnsembleRouter::dataset() const noexcept {
+ 
+ Result<EnsembleRouteResult> EnsembleRouter::optimize(
+     const EnsembleRouteRequest& request) const {
++    if (request.options.coastal_pruning.mode != CoastalPruningMode::off)
++        return Error{ErrorCode::invalid_argument, "coastal pruning is unsupported by ensemble solvers"};
+     if (request.enable_experimental_beam !=
+         (request.solver == EnsembleSolver::experimental_isochrone_beam)) {
+         return Error{
+@@ -77,6 +79,8 @@ Result<EnsembleRouteResult> EnsembleRouter::optimize(
+ Result<EnsembleRouteResult> EnsembleRouter::optimize_controlled(
+     const EnsembleRouteRequest& request,
+     const EnsembleControlCallback& on_progress) const {
++    if (request.options.coastal_pruning.mode != CoastalPruningMode::off)
++        return Error{ErrorCode::invalid_argument, "coastal pruning is unsupported by ensemble solvers"};
+     detail::EnsembleStepCallback step;
+     if (on_progress) {
+         step = [&on_progress](const EnsembleProgressView& view) {
+@@ -128,6 +132,8 @@ Result<EnsembleRouteResult> EnsembleRouter::optimize(
+ Result<EnsembleRouteResult> EnsembleRouter::optimize_view_controlled(
+     const EnsembleRouteRequest& request,
+     const EnsembleViewControlCallback& on_progress) const {
++    if (request.options.coastal_pruning.mode != CoastalPruningMode::off)
++        return Error{ErrorCode::invalid_argument, "coastal pruning is unsupported by ensemble solvers"};
+     detail::EnsembleStepCallback step;
+     if (on_progress) {
+         step = [&on_progress](const EnsembleProgressView& view) {
+diff --git a/src/environment/exclusions.cpp b/src/environment/exclusions.cpp
+index e31aa20..14f1dbc 100644
+--- a/src/environment/exclusions.cpp
++++ b/src/environment/exclusions.cpp
+@@ -20,7 +20,8 @@ using environment_detail::UnitVector;
+ // Contact tolerance for boundary tests, in radians of central angle. This is
+ // roughly two centimetres on the earth's surface, which is far below any
+ // meaningful exclusion tolerance and far above double rounding noise.
+-constexpr double boundary_tolerance_radians = 3.0e-9;
++constexpr double boundary_tolerance_radians =
++    environment_detail::ring_boundary_tolerance_radians;
+ constexpr double endpoint_parameter_tolerance =
+     32.0 * std::numeric_limits<double>::epsilon();
+ 
+@@ -69,30 +70,9 @@ Error invalid_topology(std::string message) {
+ }
+ 
+ Result<PreparedRing> prepare_ring(const ExclusionRing& ring) {
+-    std::vector<UnitVector> vertices;
+-    vertices.reserve(ring.vertices.size());
+-    for (const Coordinate vertex : ring.vertices) {
+-        if (!is_valid(vertex)) {
+-            return invalid_topology(
+-                "exclusion ring contains a coordinate outside canonical bounds");
+-        }
+-        const UnitVector unit = environment_detail::to_unit_vector(vertex);
+-        if (!vertices.empty() &&
+-            environment_detail::angle_between(vertices.back(), unit) <=
+-                boundary_tolerance_radians) {
+-            continue;
+-        }
+-        vertices.push_back(unit);
+-    }
+-    while (vertices.size() > 1U &&
+-           environment_detail::angle_between(vertices.front(), vertices.back()) <=
+-               boundary_tolerance_radians) {
+-        vertices.pop_back();
+-    }
+-    if (vertices.size() < 3U) {
+-        return invalid_topology(
+-            "exclusion ring must contain at least three distinct vertices");
+-    }
++    auto normalized = environment_detail::normalize_ring_vertices(ring.vertices);
++    if (!normalized) return normalized.error();
++    std::vector<UnitVector> vertices = std::move(normalized.value());
+ 
+     UnitVector sum{};
+     for (const UnitVector vertex : vertices) {
+diff --git a/src/environment/spherical.cpp b/src/environment/spherical.cpp
+index 64054fb..c93dc56 100644
+--- a/src/environment/spherical.cpp
++++ b/src/environment/spherical.cpp
+@@ -29,6 +29,33 @@ bool on_minor_arc(
+ 
+ }  // namespace
+ 
++Result<std::vector<UnitVector>> normalize_ring_vertices(
++    std::span<const Coordinate> input) {
++    std::vector<UnitVector> vertices;
++    vertices.reserve(input.size());
++    for (const Coordinate vertex : input) {
++        if (!is_valid(vertex)) {
++            return Error{ErrorCode::invalid_environment,
++                "exclusion ring contains a coordinate outside canonical bounds"};
++        }
++        const UnitVector unit = to_unit_vector(vertex);
++        if (!vertices.empty() &&
++            angle_between(vertices.back(), unit) <= ring_boundary_tolerance_radians) {
++            continue;
++        }
++        vertices.push_back(unit);
++    }
++    while (vertices.size() > 1U &&
++           angle_between(vertices.front(), vertices.back()) <= ring_boundary_tolerance_radians) {
++        vertices.pop_back();
++    }
++    if (vertices.size() < 3U) {
++        return Error{ErrorCode::invalid_environment,
++            "exclusion ring must contain at least three distinct vertices"};
++    }
++    return vertices;
++}
++
+ UnitVector to_unit_vector(Coordinate coordinate) noexcept {
+     const double latitude =
+         coordinate.latitude_degrees * std::numbers::pi / 180.0;
+diff --git a/src/environment/spherical.hpp b/src/environment/spherical.hpp
+index 514a140..04ca754 100644
+--- a/src/environment/spherical.hpp
++++ b/src/environment/spherical.hpp
+@@ -1,8 +1,11 @@
+ #pragma once
+ 
++#include "sailroute/error.hpp"
+ #include "sailroute/types.hpp"
+ 
+ #include <array>
++#include <span>
++#include <vector>
+ 
+ namespace sailroute::environment_detail {
+ 
+@@ -16,6 +19,13 @@ struct UnitVector {
+     double z{};
+ };
+ 
++inline constexpr double ring_boundary_tolerance_radians = 3.0e-9;
++
++/// Shared exclusion/proof normalization: validate coordinates, drop consecutive
++/// angular duplicates and closing duplicates, and require three distinct points.
++[[nodiscard]] Result<std::vector<UnitVector>> normalize_ring_vertices(
++    std::span<const Coordinate> vertices);
++
+ [[nodiscard]] UnitVector to_unit_vector(Coordinate coordinate) noexcept;
+ [[nodiscard]] Coordinate to_coordinate(UnitVector vector) noexcept;
+ [[nodiscard]] UnitVector cross(UnitVector left, UnitVector right) noexcept;
+diff --git a/src/routing/coastal_pruning.cpp b/src/routing/coastal_pruning.cpp
+new file mode 100644
+index 0000000..93399ee
+--- /dev/null
++++ b/src/routing/coastal_pruning.cpp
+@@ -0,0 +1,331 @@
++#include "sailroute/coastal_pruning.hpp"
++#include "environment/spherical.hpp"
++#include "routing/geodesy.hpp"
++
++#include <algorithm>
++#include <cmath>
++#include <limits>
++#include <numbers>
++
++namespace sailroute {
++namespace {
++using namespace environment_detail;
++constexpr double radius = detail::earth_radius_nautical_miles;
++
++std::size_t retained_overhead(const CoastalTopologyOptions& options) {
++    return sizeof(CoastalTopology) + options.source_identity.size() + options.domain_identity.size() + 2U;
++}
++
++std::optional<Error> validate(const CoastalTopologyOptions& options) {
++    if (options.cancelled && options.cancelled())
++        return Error{ErrorCode::cancelled, "coastal topology preparation cancelled"};
++    if (options.source_identity.empty() || options.domain_identity.empty() ||
++        (options.polygon_edges != CoastalPolygonEdges::great_circle &&
++         options.polygon_edges != CoastalPolygonEdges::linear_latitude_longitude) ||
++        !std::isfinite(options.clearance_nautical_miles) || options.clearance_nautical_miles < 0.0 ||
++        !std::isfinite(options.numerical_margin_nautical_miles) ||
++        options.numerical_margin_nautical_miles < 1.0e-4 ||
++        options.source_identity.size() > 4096U || options.domain_identity.size() > 4096U ||
++        options.maximum_caps == 0U || options.maximum_work == 0U ||
++        options.maximum_bytes < retained_overhead(options)) {
++        return Error{ErrorCode::invalid_argument, "invalid coastal topology identity, uncertainty or budget"};
++    }
++    const auto& d = options.domain;
++    if (!d.south_latitude_degrees || !d.north_latitude_degrees ||
++        !is_valid({*d.south_latitude_degrees, 0.0}) || !is_valid({*d.north_latitude_degrees, 0.0}) ||
++        *d.south_latitude_degrees >= *d.north_latitude_degrees || d.first_valid_time || d.last_valid_time ||
++        (!d.global_longitude_coverage && (!d.west_longitude_degrees || !d.east_longitude_degrees ||
++            !is_valid({0.0, *d.west_longitude_degrees}) || !is_valid({0.0, *d.east_longitude_degrees}) ||
++            *d.west_longitude_degrees == *d.east_longitude_degrees))) {
++        return Error{ErrorCode::invalid_argument, "coastal topology needs a nonempty static geographic domain"};
++    }
++    return std::nullopt;
++}
++
++double coverage_radius(Coordinate p, const EnvironmentCoverage& d) {
++    if (p.latitude_degrees < *d.south_latitude_degrees || p.latitude_degrees > *d.north_latitude_degrees)
++        return 0.0;
++    constexpr double radians = std::numbers::pi / 180.0;
++    double bound = radius * std::numbers::pi;
++    if (*d.south_latitude_degrees > -90.0)
++        bound = std::min(bound, radius * radians * (p.latitude_degrees - *d.south_latitude_degrees));
++    if (*d.north_latitude_degrees < 90.0)
++        bound = std::min(bound, radius * radians * (*d.north_latitude_degrees - p.latitude_degrees));
++    if (!d.global_longitude_coverage) {
++        const double width = detail::normalize_degrees(*d.east_longitude_degrees - *d.west_longitude_degrees);
++        if (detail::normalize_degrees(p.longitude_degrees - *d.west_longitude_degrees) > width) return 0.0;
++        for (double longitude : {*d.west_longitude_degrees, *d.east_longitude_degrees}) {
++            const double distance = std::asin(std::abs(std::cos(p.latitude_degrees*radians) *
++                std::sin((p.longitude_degrees-longitude)*radians))) * radius;
++            bound = std::min(bound, distance);
++        }
++    }
++    return bound;
++}
++
++enum class Containment { outside, inside, unknown };
++struct ProofPolygon {
++    std::vector<UnitVector> outer;
++    std::vector<std::vector<UnitVector>> holes;
++};
++
++Containment classify_certified(std::span<const UnitVector> ring, UnitVector p) {
++    UnitVector centroid{};
++    double winding = 0.0;
++    for (std::size_t i=0; i<ring.size(); ++i) {
++        const auto a = ring[i];
++        const auto b = ring[(i+1U)%ring.size()];
++        centroid = add(centroid,a);
++        winding += std::atan2(dot(p,cross(a,b)), dot(a,b)-dot(p,a)*dot(p,b));
++    }
++    // The hemisphere proof applies only to the validator's normalized ring,
++    // never to the duplicate-weighted centroid of the original input.
++    if (dot(p,normalize(centroid)) <= 0.0) return Containment::outside;
++    if (!std::isfinite(winding)) return Containment::unknown;
++    if (std::abs(winding) < 1.0e-6) return Containment::outside;
++    if (std::abs(std::abs(winding)-2.0*std::numbers::pi) < 1.0e-6) return Containment::inside;
++    return Containment::unknown;
++}
++
++bool certified_land(const std::vector<ProofPolygon>& polygons, UnitVector p) {
++    for (const auto& polygon : polygons) {
++        if (classify_certified(polygon.outer,p) != Containment::inside) continue;
++        bool clear_of_holes = true;
++        for (const auto& hole : polygon.holes)
++            if (classify_certified(hole,p) != Containment::outside) clear_of_holes = false;
++        if (clear_of_holes) return true;
++    }
++    return false;
++}
++
++// Shortest path in R^3 outside one closed ball. Every legal spherical water
++// path is in this larger ambient set; taking the maximum over single balls,
++// never their sum, preserves a lower bound.
++double ball_distance(UnitVector a, UnitVector b, UnitVector center, double r) {
++    const auto u = add(a, negate(center)), v = add(b, negate(center));
++    const double x = norm(u), y = norm(v);
++    if (x <= r || y <= r) return 0.0;
++    const double angle = std::acos(std::clamp(dot(u, v) / (x * y), -1.0, 1.0));
++    const double tangent_a = std::acos(std::clamp(r / x, 0.0, 1.0));
++    const double tangent_b = std::acos(std::clamp(r / y, 0.0, 1.0));
++    if (angle <= tangent_a + tangent_b) return norm(add(a, negate(b)));
++    return std::sqrt(std::max(0.0, x*x-r*r)) +
++        std::sqrt(std::max(0.0, y*y-r*r)) + r*(angle-tangent_a-tangent_b);
++}
++}
++
++Result<std::shared_ptr<const CoastalTopology>> CoastalTopology::from_certified_caps(
++    std::vector<Cap> caps, CoastalTopologyOptions options) {
++    if (auto error = validate(options)) return *error;
++    if (caps.size() > options.maximum_caps || caps.size() > options.maximum_work ||
++        caps.size() > (options.maximum_bytes - retained_overhead(options)) / sizeof(Cap)) {
++        return Error{ErrorCode::resource_limit, "certified coastal cap budget exceeded"};
++    }
++    auto result = std::shared_ptr<CoastalTopology>(new CoastalTopology);
++    result->options_ = std::move(options);
++    result->certified_caps_ = true;
++    result->caps_.reserve(caps.size());
++    const auto& domain = result->options_.domain;
++    for (auto cap : caps) {
++        if (result->options_.cancelled && result->options_.cancelled())
++            return Error{ErrorCode::cancelled, "certified coastal cap preparation cancelled"};
++        ++result->work_;
++        if (!is_valid(cap.center) || !std::isfinite(cap.radius_nautical_miles) ||
++            cap.radius_nautical_miles <= 0.0 || cap.radius_nautical_miles >= radius * std::numbers::pi / 2.0) {
++            return Error{ErrorCode::invalid_argument, "certified coastal cap requires canonical center and radius in (0, hemisphere)"};
++        }
++        if (cap.center.latitude_degrees < *domain.south_latitude_degrees ||
++            cap.center.latitude_degrees > *domain.north_latitude_degrees ||
++            (!domain.global_longitude_coverage &&
++             detail::normalize_degrees(cap.center.longitude_degrees - *domain.west_longitude_degrees) >
++                 detail::normalize_degrees(*domain.east_longitude_degrees - *domain.west_longitude_degrees))) {
++            return Error{ErrorCode::invalid_argument, "certified coastal cap center is outside preparation coverage"};
++        }
++        cap.radius_nautical_miles -= result->options_.numerical_margin_nautical_miles;
++        if (cap.radius_nautical_miles > coverage_radius(cap.center, domain))
++            return Error{ErrorCode::invalid_argument, "certified coastal cap extends outside preparation coverage"};
++        if (cap.radius_nautical_miles > 0.0) result->caps_.push_back(cap);
++    }
++    result->options_.cancelled = {};
++    return std::shared_ptr<const CoastalTopology>{std::move(result)};
++}
++
++Result<std::shared_ptr<const CoastalTopology>> CoastalTopology::from_polygons(
++    std::vector<ExclusionPolygon> polygons, std::span<const Coordinate> probes,
++    CoastalTopologyOptions options) {
++    if (auto error = validate(options)) return *error;
++    std::size_t vertices = 0U;
++    std::size_t preparation_work = 0U;
++    double edge_relaxation = 0.0;
++    const auto measure_edges = [&](const ExclusionRing& ring) {
++        if (options.polygon_edges != CoastalPolygonEdges::linear_latitude_longitude) return;
++        for (std::size_t i = 0; i < ring.vertices.size(); ++i) {
++            const auto a = ring.vertices[i], b = ring.vertices[(i+1U)%ring.vertices.size()];
++            // A latitude-then-longitude path upper-bounds the linear edge
++            // length. Its homotopy to the minor spherical edge stays in the
++            // convex endpoint cap of this radius. Erode by that whole radius.
++            edge_relaxation = std::max(edge_relaxation, radius * std::numbers::pi / 180.0 *
++                (std::abs(a.latitude_degrees-b.latitude_degrees) +
++                 detail::angular_difference_degrees(a.longitude_degrees,b.longitude_degrees)));
++        }
++    };
++    for (const auto& polygon : polygons) {
++        if (options.cancelled && options.cancelled())
++            return Error{ErrorCode::cancelled, "coastal topology preparation cancelled"};
++        if (polygon.outer.vertices.size() < 3U)
++            return Error{ErrorCode::invalid_environment, "coastal polygon requires a complete outer ring"};
++        if (polygon.outer.vertices.size() > options.maximum_work - vertices)
++            return Error{ErrorCode::resource_limit, "coastal vertex budget exceeded"};
++        vertices += polygon.outer.vertices.size();
++        measure_edges(polygon.outer);
++        if (polygon.outer.vertices.size() > (options.maximum_work - preparation_work) / 64U)
++            return Error{ErrorCode::resource_limit, "coastal validation budget exceeded"};
++        preparation_work += polygon.outer.vertices.size() * 64U;
++        for (const auto& hole : polygon.holes) {
++            if (hole.vertices.size() < 3U)
++                return Error{ErrorCode::invalid_environment, "coastal polygon requires complete hole rings"};
++            if (hole.vertices.size() > options.maximum_work - vertices)
++                return Error{ErrorCode::resource_limit, "coastal vertex budget exceeded"};
++            vertices += hole.vertices.size();
++            measure_edges(hole);
++            const auto per_vertex = 64U + 8U * polygon.outer.vertices.size();
++            if (hole.vertices.size() > (options.maximum_work - preparation_work) / per_vertex)
++                return Error{ErrorCode::resource_limit, "coastal hole validation budget exceeded"};
++            preparation_work += hole.vertices.size() * per_vertex;
++        }
++    }
++    // Includes validation's pairwise hole/outer containment work and scratch
++    // storage, not just the retained caps. Charge a conservative upper budget.
++    if (vertices > options.maximum_bytes / (32U * sizeof(Coordinate))) {
++        return Error{ErrorCode::resource_limit, "coastal polygon preparation budget exceeded"};
++    }
++    if (options.cancelled && options.cancelled())
++        return Error{ErrorCode::cancelled, "coastal topology preparation cancelled"};
++    if (polygons.empty()) {
++        auto empty = std::shared_ptr<CoastalTopology>(new CoastalTopology);
++        options.cancelled = {};
++        empty->options_ = std::move(options);
++        return std::shared_ptr<const CoastalTopology>{std::move(empty)};
++    }
++    ExclusionZone zone;
++    zone.identifier = "coastal-proof";
++    zone.polygons = std::move(polygons);
++    auto geometry = ExclusionZoneSet::create({std::move(zone)}, {"coastal-proof", options.source_identity, "1"});
++    if (!geometry) return geometry.error();
++    std::vector<ProofPolygon> proof_polygons;
++    for (const auto& polygon : geometry.value().zones().front().polygons) {
++        if (options.cancelled && options.cancelled())
++            return Error{ErrorCode::cancelled, "coastal topology preparation cancelled"};
++        auto outer = normalize_ring_vertices(polygon.outer.vertices);
++        if (!outer) return outer.error();
++        ProofPolygon proof{std::move(outer.value()), {}};
++        for (const auto& hole : polygon.holes) {
++            if (options.cancelled && options.cancelled())
++                return Error{ErrorCode::cancelled, "coastal topology preparation cancelled"};
++            auto normalized = normalize_ring_vertices(hole.vertices);
++            if (!normalized) return normalized.error();
++            proof.holes.push_back(std::move(normalized.value()));
++        }
++        proof_polygons.push_back(std::move(proof));
++    }
++    auto result = std::shared_ptr<CoastalTopology>(new CoastalTopology);
++    result->options_ = std::move(options);
++    result->work_ = preparation_work;
++    const std::size_t cap_limit = std::min(result->options_.maximum_caps,
++        (result->options_.maximum_bytes - retained_overhead(result->options_)) / sizeof(Cap));
++    result->caps_.reserve(cap_limit);
++    for (const auto probe : probes) {
++        if (result->options_.cancelled && result->options_.cancelled())
++            return Error{ErrorCode::cancelled, "coastal topology preparation cancelled"};
++        if (!is_valid(probe)) return Error{ErrorCode::invalid_argument, "invalid coastal probe"};
++        if (32U*vertices + 1U > result->options_.maximum_work - result->work_)
++            return Error{ErrorCode::resource_limit, "coastal topology work budget exceeded"};
++        result->work_ += 32U*vertices + 1U;
++        double distance = std::numeric_limits<double>::infinity();
++        const auto p = to_unit_vector(probe);
++        const auto ring_distance = [&](std::span<const UnitVector> ring) {
++            for (std::size_t i=0; i<ring.size(); ++i)
++                distance = std::min(distance, radius * distance_to_arc(p,
++                    ring[i], ring[(i+1U)%ring.size()]));
++        };
++        for (const auto& polygon : proof_polygons) {
++            ring_distance(polygon.outer);
++            for (const auto& hole : polygon.holes) ring_distance(hole);
++        }
++        distance = std::min(distance, coverage_radius(probe, result->options_.domain)) -
++            result->options_.numerical_margin_nautical_miles - edge_relaxation;
++        if (edge_relaxation >= radius * std::numbers::pi / 2.0) distance = 0.0;
++        if (distance <= 0.0 || !certified_land(proof_polygons,p)) continue;
++        if (distance > 0.0 && distance < radius && result->caps_.size() < cap_limit)
++            result->caps_.push_back({probe, distance});
++        if (result->caps_.size() >= cap_limit) { result->limited_ = true; break; }
++    }
++    result->options_.cancelled = {};
++    return std::shared_ptr<const CoastalTopology>{std::move(result)};
++}
++
++Result<std::shared_ptr<const CoastalTopology>> CoastalTopology::from_landmask(
++    const SignedDistanceLandmask& landmask, std::span<const Coordinate> probes,
++    CoastalTopologyOptions options) {
++    if (auto error = validate(options)) return *error;
++    const auto& grid = landmask.grid();
++    if (grid.latitude_count < 2U || grid.longitude_count < 2U)
++        return Error{ErrorCode::invalid_argument, "coastal topology requires a populated signed-distance grid"};
++    EnvironmentCoverage coverage;
++    coverage.south_latitude_degrees = grid.south_latitude_degrees;
++    coverage.north_latitude_degrees = grid.south_latitude_degrees +
++        grid.latitude_step_degrees * static_cast<double>(grid.latitude_count-1U);
++    coverage.west_longitude_degrees = grid.west_longitude_degrees;
++    coverage.east_longitude_degrees = detail::normalize_degrees(grid.west_longitude_degrees +
++        grid.longitude_step_degrees * static_cast<double>(grid.longitude_count-1U) + 180.0) - 180.0;
++    coverage.global_longitude_coverage = grid.global_longitude_coverage;
++    auto result = std::shared_ptr<CoastalTopology>(new CoastalTopology);
++    result->options_ = std::move(options);
++    result->native_ = true;
++    result->landmask_ = landmask;
++    const std::size_t cap_limit = std::min(result->options_.maximum_caps,
++        (result->options_.maximum_bytes - retained_overhead(result->options_)) / sizeof(Cap));
++    result->caps_.reserve(cap_limit);
++    for (const auto probe : probes) {
++        if (result->options_.cancelled && result->options_.cancelled())
++            return Error{ErrorCode::cancelled, "coastal topology preparation cancelled"};
++        if (!is_valid(probe)) return Error{ErrorCode::invalid_argument, "invalid coastal probe"};
++        if (++result->work_ > result->options_.maximum_work)
++            return Error{ErrorCode::resource_limit, "coastal topology work budget exceeded"};
++        const auto value = landmask.signed_distance_nautical_miles(probe);
++        if (!value.has_value()) {
++            if (value.status == EnvironmentSampleStatus::invalid_data)
++                return Error{ErrorCode::invalid_argument, "invalid coastal land distance"};
++            continue;
++        }
++        const double distance = std::min({-value.value - landmask.metadata().interpolation_error_nautical_miles,
++            coverage_radius(probe, result->options_.domain), coverage_radius(probe,coverage)}) -
++            result->options_.numerical_margin_nautical_miles;
++        if (distance > 0.0 && distance < radius && result->caps_.size() < cap_limit)
++            result->caps_.push_back({probe, distance});
++        if (result->caps_.size() >= cap_limit) { result->limited_ = true; break; }
++    }
++    result->options_.cancelled = {};
++    return std::shared_ptr<const CoastalTopology>{std::move(result)};
++}
++
++double CoastalTopology::optimistic_distance_nautical_miles(
++    Coordinate from, Coordinate destination, double arrival_radius, double transition_relaxation) const noexcept {
++    if (!is_valid(from) || !is_valid(destination) || !std::isfinite(arrival_radius) || arrival_radius < 0.0 ||
++        !std::isfinite(transition_relaxation) || transition_relaxation < 0.0)
++        return 0.0;
++    const auto a = scale(to_unit_vector(from), radius), b = scale(to_unit_vector(destination), radius);
++    double distance = std::max(0.0, detail::great_circle_distance_nautical_miles(from, destination) - arrival_radius);
++    for (const auto& cap : caps_) {
++        const double cap_radius = cap.radius_nautical_miles - transition_relaxation;
++        if (cap_radius <= 0.0) continue;
++        const auto center = scale(to_unit_vector(cap.center), radius);
++        const double r = 2.0*radius*std::sin(cap_radius/(2.0*radius));
++        // The entire Euclidean arrival ball must avoid the obstacle. Only
++        // then may its radius be subtracted using a legal straight connector.
++        if (norm(add(b, negate(center))) <= r + arrival_radius) continue;
++        distance = std::max(distance, ball_distance(a, b, center, r) - arrival_radius);
++    }
++    return std::max(0.0, distance - options_.numerical_margin_nautical_miles);
++}
++} // namespace sailroute
+diff --git a/src/routing/integration.cpp b/src/routing/integration.cpp
+index dc15cae..fa8e96b 100644
+--- a/src/routing/integration.cpp
++++ b/src/routing/integration.cpp
+@@ -53,7 +53,8 @@ Result<std::optional<VariableTransition>> maneuver_phase(
+     const WeatherDataset& weather, const RoutingOptions& options,
+     const RoutingEnvironment& environment, EnvironmentDiagnostics& diagnostics,
+     const RoutePoint& parent, OperationalConfiguration configuration,
+-    double heading, TimePoint action_end, VariableTransitionRejection* rejection) {
++    double heading, TimePoint action_end, VariableTransitionRejection* rejection,
++    IntegrationWorkControl* work = nullptr) {
+     if (!options.maneuver.active()) {
+         return std::optional<VariableTransition>{VariableTransition{parent, configuration, {}}};
+     }
+@@ -81,6 +82,15 @@ Result<std::optional<VariableTransition>> maneuver_phase(
+     VariableTransition result{parent, target, {}};
+     const TimePoint end = parent.time + delay;
+     while (result.point.time < end) {
++        if (work) {
++            if (work->cancelled && work->cancelled())
++                return Error{ErrorCode::cancelled, "seed maneuver cancelled"};
++            if (work->evaluations >= work->maximum_evaluations) {
++                work->exhausted = true;
++                return std::optional<VariableTransition>{};
++            }
++            ++work->evaluations;
++        }
+         if (result.intermediate_points.size() + 2U > options.maximum_retained_nodes) {
+             return Error{ErrorCode::resource_limit, "maneuver integration vertex limit reached"};
+         }
+@@ -151,7 +161,7 @@ Result<std::optional<VariableTransition>> evaluate_heading_transition(
+     EnvironmentDiagnostics& diagnostics, const RoutePoint& parent,
+     OperationalConfiguration configuration, double heading, TimePoint arrival,
+     std::optional<Coordinate> destination, double radius,
+-    VariableTransitionRejection* rejection) {
++    VariableTransitionRejection* rejection, IntegrationWorkControl* work) {
+     if (options.maximum_integration_step <= std::chrono::minutes::zero()) {
+         return Error{ErrorCode::invalid_argument, "maximum integration step must be positive"};
+     }
+@@ -161,12 +171,21 @@ Result<std::optional<VariableTransition>> evaluate_heading_transition(
+     sailing_options.maneuver.gybe_penalty = std::chrono::seconds::zero();
+     sailing_options.segment_eligibility = {};
+     while (result.point.time < arrival) {
++        if (work) {
++            if (work->cancelled && work->cancelled())
++                return Error{ErrorCode::cancelled, "seed integration cancelled"};
++            if (work->evaluations >= work->maximum_evaluations) {
++                work->exhausted = true;
++                return std::optional<VariableTransition>{};
++            }
++            ++work->evaluations;
++        }
+         if (result.intermediate_points.size() + 2U > options.maximum_retained_nodes) {
+             return Error{ErrorCode::resource_limit, "integration vertex limit reached"};
+         }
+         auto maneuver = maneuver_phase(
+             weather, options, environment, diagnostics, result.point,
+-            result.configuration, heading, arrival, rejection);
++            result.configuration, heading, arrival, rejection, work);
+         if (!maneuver || !maneuver.value()) return maneuver;
+         if (maneuver.value()->point.time != result.point.time) {
+             append_phase(result, std::move(*maneuver.value()), parent.time);
+diff --git a/src/routing/router.cpp b/src/routing/router.cpp
+index fb8da7e..4e2095b 100644
+--- a/src/routing/router.cpp
++++ b/src/routing/router.cpp
+@@ -1,4 +1,5 @@
+ #include "sailroute/router.hpp"
++#include "sailroute/coastal_pruning.hpp"
+ 
+ #include "routing/contours.hpp"
+ #include "routing/environment_context.hpp"
+@@ -133,6 +134,27 @@ std::optional<Error> validate_request(const RouteRequest& request) {
+     }
+ 
+     const RoutingOptions& options = request.options;
++    const auto& coastal = options.coastal_pruning;
++    if (coastal.mode != CoastalPruningMode::off && coastal.mode != CoastalPruningMode::conservative) {
++        return Error{ErrorCode::invalid_argument, "unknown coastal pruning mode"};
++    }
++    if (coastal.mode == CoastalPruningMode::conservative) {
++        if (options.solver != RoutingSolver::isochrone_beam || !coastal.topology ||
++            coastal.maximum_seed_transitions > options.maximum_generated_candidates ||
++            coastal.seed_actions.size() > coastal.maximum_seed_transitions ||
++            coastal.source_identity != coastal.topology->options().source_identity ||
++            coastal.domain_identity != coastal.topology->options().domain_identity ||
++            coastal.clearance_nautical_miles != coastal.topology->options().clearance_nautical_miles) {
++            return Error{ErrorCode::invalid_argument,
++                "conservative coastal pruning requires beam, matching topology identity/clearance and bounded seed work"};
++        }
++        for (const auto& action : coastal.seed_actions) {
++            if (!std::isfinite(action.heading_degrees) || action.duration <= std::chrono::seconds::zero() ||
++                action.duration > options.maximum_route_duration) {
++                return Error{ErrorCode::invalid_argument, "invalid coastal seed action"};
++            }
++        }
++    }
+     if (options.maximum_integration_step <= std::chrono::minutes::zero() ||
+         options.maximum_integration_step > std::chrono::hours{24} ||
+         !std::isfinite(options.boat_speed_factor) || options.boat_speed_factor <= 0.0 ||
+@@ -1435,6 +1457,38 @@ const RoutingEnvironment& Router::environment() const noexcept {
+     return environment_;
+ }
+ 
++Result<CoastalRemainingBound> Router::coastal_remaining_bound(
++    const RouteRequest& request, Coordinate position) const {
++    if (const auto error = validate_request(request)) return *error;
++    if (!is_valid(position)) return Error{ErrorCode::invalid_argument, "invalid bound query position"};
++    const auto& coastal = request.options.coastal_pruning;
++    if (coastal.mode == CoastalPruningMode::off)
++        return CoastalRemainingBound{0.0, CoastalBoundStatus::disabled, "off", {}};
++    if (const auto error = validate_environment(environment_)) return *error;
++    if (coastal.topology->native_landmask()) {
++        if (!environment_.land.configured() ||
++            !coastal.topology->matches_landmask(*environment_.land.landmask) ||
++            coastal.clearance_nautical_miles != environment_.land.clearance_nautical_miles)
++            return Error{ErrorCode::invalid_argument, "bound query topology does not match native enforcement"};
++    } else if (!request.options.segment_eligibility || environment_.land.configured()) {
++        return Error{ErrorCode::invalid_argument, "bound query topology does not match polygon enforcement"};
++    }
++    if (environment_.currents.configured())
++        return CoastalRemainingBound{0.0, CoastalBoundStatus::unavailable, "unknown_current_speed_bound", {}};
++    const double speed = polar_.maximum_boat_speed_knots() * request.options.boat_speed_factor;
++    if (!std::isfinite(speed) || speed <= 0.0)
++        return CoastalRemainingBound{0.0, CoastalBoundStatus::unavailable, "unknown_boat_speed_bound", {}};
++    const double seconds = coastal.topology->optimistic_distance_nautical_miles(position, request.destination,
++        request.options.arrival_radius_nautical_miles + 1.0e-6,
++        !coastal.topology->caller_certified_caps() &&
++            coastal.topology->options().polygon_edges == CoastalPolygonEdges::linear_latitude_longitude
++            ? speed * std::chrono::duration<double, std::ratio<3600>>(request.options.maximum_integration_step).count()
++            : 0.0) * 3600.0 / speed;
++    if (!std::isfinite(seconds))
++        return CoastalRemainingBound{0.0, CoastalBoundStatus::unavailable, "numeric_range", {}};
++    return CoastalRemainingBound{seconds, CoastalBoundStatus::available, "certified_spherical_cap_relaxation", speed};
++}
++
+ Result<RouteResult> Router::optimize(const RouteRequest& request) const {
+     return optimize_view_controlled(request, RoutingViewControlCallback{});
+ }
+@@ -1485,7 +1539,8 @@ Result<RouteResult> Router::optimize_controlled(
+                 std::vector<Coordinate>{
+                     view.search_points.begin(),
+                     view.search_points.end()},
+-                view.search};
++                view.search,
++                view.post_proof_retained_front};
+             return on_progress(progress);
+         });
+ }
+@@ -1519,6 +1574,24 @@ Result<RouteResult> Router::optimize_view_controlled(
+     if (!std::isfinite(polar_.maximum_boat_speed_knots() * request.options.boat_speed_factor)) {
+         return Error{ErrorCode::invalid_argument, "scaled polar speed exceeds the supported numeric range"};
+     }
++    const auto& coastal = request.options.coastal_pruning;
++    const bool proof_enabled = coastal.mode == CoastalPruningMode::conservative;
++    if (proof_enabled) {
++        if (coastal.cancelled && coastal.cancelled())
++            return Error{ErrorCode::cancelled, "coastal routing cancelled"};
++        if (coastal.topology->native_landmask()) {
++            if (!environment_.land.configured())
++                return Error{ErrorCode::invalid_argument, "native coastal topology requires its enforcement landmask"};
++            const auto& expected = coastal.topology->provider();
++            const auto& actual = environment_.land.landmask->metadata().provider;
++            if (!coastal.topology->matches_landmask(*environment_.land.landmask) ||
++                expected.name != actual.name || expected.source != actual.source || expected.revision != actual.revision ||
++                coastal.clearance_nautical_miles != environment_.land.clearance_nautical_miles)
++                return Error{ErrorCode::invalid_argument, "native coastal topology source/clearance mismatch"};
++        } else if (!request.options.segment_eligibility || environment_.land.configured()) {
++            return Error{ErrorCode::invalid_argument, "polygon coastal topology requires application segment enforcement"};
++        }
++    }
+ 
+     const ForecastMetadata& metadata = weather_.metadata();
+     const auto selected_departure = select_departure(request, metadata);
+@@ -1555,6 +1628,35 @@ Result<RouteResult> Router::optimize_view_controlled(
+     }
+ 
+     RouteDiagnostics diagnostics;
++    if (proof_enabled) {
++        diagnostics.coastal_pruning.emplace();
++        auto& audit = *diagnostics.coastal_pruning;
++        audit.requested = audit.effective = coastal.mode;
++        audit.source_identity = coastal.source_identity;
++        audit.domain_identity = coastal.domain_identity;
++        audit.topology_work = coastal.topology->construction_work();
++        audit.topology_caps = coastal.topology->cap_count();
++        audit.topology_numerical_margin_nautical_miles = coastal.topology->options().numerical_margin_nautical_miles;
++        audit.clearance_nautical_miles = coastal.clearance_nautical_miles;
++        const auto& domain = coastal.topology->options().domain;
++        audit.topology_domain_southwest = {*domain.south_latitude_degrees, domain.west_longitude_degrees.value_or(-180.0)};
++        audit.topology_domain_northeast = {*domain.north_latitude_degrees, domain.east_longitude_degrees.value_or(180.0)};
++        audit.topology_domain_global_longitude = domain.global_longitude_coverage;
++        audit.polygon_edge_model = coastal.topology->caller_certified_caps() ? "caller_certified_caps" :
++            coastal.topology->options().polygon_edges == CoastalPolygonEdges::great_circle
++                ? "great_circle" : "linear_latitude_longitude";
++        audit.maximum_seed_transitions = coastal.maximum_seed_transitions;
++        audit.topology_limited = coastal.topology->construction_limited();
++        audit.seed_status = "not_started";
++        // Both supported polar interpolants are bounded by the table maximum.
++        // Wave acceleration is rejected by the exact transition contract.
++        // Arbitrary current providers have no global speed certificate.
++        if (!environment_.currents.configured()) {
++            const double speed = polar_.maximum_boat_speed_knots() * request.options.boat_speed_factor;
++            if (speed > 0.0 && std::isfinite(speed)) audit.speed_upper_knots = speed;
++        }
++        audit.bound_status = audit.speed_upper_knots ? "certified" : "zero_unknown_current_or_speed";
++    }
+     EnvironmentDiagnostics environment_diagnostics = preflight;
+     std::vector<SearchNode> nodes;
+     nodes.reserve(1024);
+@@ -1574,6 +1676,10 @@ Result<RouteResult> Router::optimize_view_controlled(
+     if (detail::great_circle_distance_nautical_miles(
+             request.start,
+             request.destination) <= request.options.arrival_radius_nautical_miles) {
++        if (proof_enabled) {
++            diagnostics.coastal_pruning->seed_status = "not_needed_start_arrival";
++            diagnostics.coastal_pruning->incumbent_arrival = departure;
++        }
+         return make_route_result(
+             departure,
+             departure_source,
+@@ -1610,8 +1716,101 @@ Result<RouteResult> Router::optimize_view_controlled(
+         has_segment_eligibility};
+     ProgressScratch progress_scratch;
+     NodeIndex best_route_end = 0U;
++    std::optional<RouteResult> incumbent;
++    std::vector<SailingAction> seed_controls;
++    if (proof_enabled && coastal.maximum_seed_transitions > 0U && route_end > departure) {
++        auto& audit = *diagnostics.coastal_pruning;
++        audit.seed_status = "running";
++        seed_controls = coastal.seed_actions;
++        if (seed_controls.empty()) seed_controls.push_back({
++            detail::initial_bearing_degrees(request.start, request.destination),
++            std::chrono::duration_cast<std::chrono::seconds>(route_end - departure)});
++        if (on_progress && on_progress(RoutingProgressView{
++                departure, {}, {}, {}, {}, diagnostics, RoutingSolver::isochrone_beam, {}, {}, true}) == RoutingProgressDecision::cancel)
++            return cancelled_error(diagnostics);
++        std::vector<RoutePoint> seed_points{nodes.front().point};
++        detail::OperationalConfiguration seed_configuration;
++        bool cancelled = false;
++        detail::IntegrationWorkControl seed_work{0U, coastal.maximum_seed_transitions, false, [&] {
++            audit.seed_transition_evaluations = seed_work.evaluations;
++            if (coastal.cancelled && coastal.cancelled()) return true;
++            return on_progress && seed_work.evaluations > 0U && seed_work.evaluations % 32U == 0U &&
++                on_progress(RoutingProgressView{departure, {}, {}, {}, {}, diagnostics,
++                    RoutingSolver::isochrone_beam, {}, {}, true}) == RoutingProgressDecision::cancel;
++        }};
++        RoutingOptions seed_options = request.options;
++        seed_options.coastal_pruning.mode = CoastalPruningMode::off;
++        seed_options.segment_eligibility = [&](const RouteSegmentView& segment) {
++            if (coastal.cancelled && coastal.cancelled()) { cancelled = true; return false; }
++            return !request.options.segment_eligibility || request.options.segment_eligibility(segment);
++        };
++        for (const auto& action : seed_controls) {
++            if (seed_points.back().time >= route_end) break;
++            if (seed_points.size() >= request.options.maximum_retained_nodes)
++                return Error{ErrorCode::resource_limit, "seed integration vertex limit reached"};
++            seed_options.maximum_retained_nodes = request.options.maximum_retained_nodes - seed_points.size() + 1U;
++            auto transition = detail::evaluate_heading_transition(
++                weather_, polar_, seed_options, environment_, environment_diagnostics,
++                seed_points.back(), seed_configuration, action.heading_degrees,
++                std::min(route_end, seed_points.back().time + action.duration),
++                request.destination, request.options.arrival_radius_nautical_miles, nullptr, &seed_work);
++            audit.seed_transition_evaluations = seed_work.evaluations;
++            if (cancelled) return cancelled_error(diagnostics);
++            if (!transition) return transition.error();
++            if (!transition.value()) break;
++            auto& value = *transition.value();
++            seed_points.insert(seed_points.end(), value.intermediate_points.begin(), value.intermediate_points.end());
++            seed_points.push_back(value.point);
++            seed_configuration = value.configuration;
++            if (detail::great_circle_distance_nautical_miles(value.point.position, request.destination) <=
++                request.options.arrival_radius_nautical_miles + 1.0e-6) {
++                incumbent = make_route_result(departure, departure_source, RouteCompletion::destination_reached,
++                    metadata, request, polar_.source(), std::move(seed_points), {}, diagnostics,
++                    environment_, environment_diagnostics);
++                audit.incumbent_arrival = incumbent->arrival_time;
++                break;
++            }
++        }
++        audit.seed_status = incumbent ? "validated" : seed_work.exhausted ? "budget_exhausted" : "no_feasible_seed";
++    } else if (proof_enabled) {
++        diagnostics.coastal_pruning->seed_status =
++            coastal.maximum_seed_transitions == 0U ? "disabled" : "horizon_exhausted";
++    }
++    const auto finish_incumbent = [&]() -> RouteResult {
++        auto result = *incumbent;
++        result.diagnostics = diagnostics;
++        if (result.environment_diagnostics) result.environment_diagnostics = environment_diagnostics;
++        result.isochrones = std::move(isochrones);
++        result.coastal_seed_actions = seed_controls;
++        return result;
++    };
++    const auto reject_by_proof = [&](const RoutePoint& point, bool parent) {
++        if (!proof_enabled) return false;
++        auto& audit = *diagnostics.coastal_pruning;
++        if (!audit.speed_upper_knots) { ++audit.bound_unavailable; return false; }
++        const double lower_seconds = coastal.topology->optimistic_distance_nautical_miles(
++            point.position, request.destination, request.options.arrival_radius_nautical_miles + 1.0e-6,
++            !coastal.topology->caller_certified_caps() &&
++                coastal.topology->options().polygon_edges == CoastalPolygonEdges::linear_latitude_longitude
++                ? *audit.speed_upper_knots * std::chrono::duration<double, std::ratio<3600>>(
++                    request.options.maximum_integration_step).count()
++                : 0.0) *
++            3600.0 / *audit.speed_upper_knots;
++        if (!std::isfinite(lower_seconds)) { ++audit.bound_unavailable; return false; }
++        // Whole-second arrival quantization and floating point: preserve ties.
++        const bool horizon = lower_seconds >
++            std::chrono::duration<double>(route_end - point.time).count() + 2.0;
++        const bool beaten = incumbent && lower_seconds >
++            std::chrono::duration<double>(incumbent->arrival_time - point.time).count() + 2.0;
++        if (!horizon && !beaten) return false;
++        if (parent) ++audit.parent_expansions_skipped;
++        else if (horizon) ++audit.candidates_horizon;
++        else ++audit.candidates_incumbent;
++        return true;
++    };
+     auto finish_without_arrival = [&]() -> Result<RouteResult> {
+-        return make_route_result(
++        if (incumbent) return finish_incumbent();
++        auto result = make_route_result(
+             departure,
+             departure_source,
+             forecast_limited
+@@ -1625,9 +1824,16 @@ Result<RouteResult> Router::optimize_view_controlled(
+             diagnostics,
+             environment_,
+             environment_diagnostics);
++        result.coastal_seed_actions = seed_controls;
++        return result;
+     };
+ 
+     while (!frontier.empty()) {
++        if (proof_enabled) {
++            if (coastal.cancelled && coastal.cancelled()) return cancelled_error(diagnostics);
++            std::erase_if(frontier, [&](NodeIndex index) { return reject_by_proof(nodes[index].point, true); });
++            if (frontier.empty()) return finish_without_arrival();
++        }
+         const std::size_t headings_with_augmentation = heading_count + 5U;
+         if (nodes.size() >= request.options.maximum_retained_nodes ||
+             frontier.size() >
+@@ -1839,13 +2045,15 @@ Result<RouteResult> Router::optimize_view_controlled(
+         }
+ 
+         if (best_arrival.has_value()) {
++            if (incumbent && incumbent->arrival_time <= best_arrival->candidate.point.time)
++                return finish_incumbent();
+             nodes.push_back(SearchNode{
+                 std::move(best_arrival->candidate.point),
+                 best_arrival->candidate.parent,
+                 best_arrival->candidate.configuration,
+                 std::move(best_arrival->candidate.intermediate_points)});
+             ++diagnostics.retained_candidates;
+-            return make_route_result(
++            auto result = make_route_result(
+                 departure,
+                 departure_source,
+                 RouteCompletion::destination_reached,
+@@ -1857,9 +2065,17 @@ Result<RouteResult> Router::optimize_view_controlled(
+                 diagnostics,
+                 environment_,
+                 environment_diagnostics);
++            result.coastal_seed_actions = seed_controls;
++            if (result.diagnostics.coastal_pruning)
++                result.diagnostics.coastal_pruning->incumbent_arrival = result.arrival_time;
++            return result;
+         }
+ 
+         if (candidates.empty()) {
++            if (incumbent) {
++                if (interpolation_error.has_value()) return *interpolation_error;
++                return finish_incumbent();
++            }
+             if (has_segment_eligibility &&
+                 generated_this_step > 0U &&
+                 eligible_this_step == 0U) {
+@@ -1877,6 +2093,12 @@ Result<RouteResult> Router::optimize_view_controlled(
+                     std::to_string(diagnostics.time_steps)};
+         }
+ 
++        if (proof_enabled) {
++            std::erase_if(candidates, [&](const Candidate& candidate) {
++                return reject_by_proof(candidate.point, false);
++            });
++            if (candidates.empty()) return finish_without_arrival();
++        }
+         diagnostics.future_probe_misses +=
+             score_future_positions(candidates, weather_, polar_, request, route_end);
+         prune_candidates_into(
+@@ -1890,7 +2112,7 @@ Result<RouteResult> Router::optimize_view_controlled(
+                 0U;
+         const RoutingProgressPayload progress_payload =
+             request.options.progress.payload;
+-        const bool build_pre_prune_front =
++        const bool build_pre_prune_front = !proof_enabled &&
+             deliver_progress &&
+             has_payload(
+                 progress_payload,
+@@ -2004,7 +2226,7 @@ Result<RouteResult> Router::optimize_view_controlled(
+             if (has_payload(
+                     payload,
+                     RoutingProgressPayload::destination_front)) {
+-                if (request.options.progress.destination_front.mode ==
++                if (proof_enabled || request.options.progress.destination_front.mode ==
+                     DestinationFrontMode::retained_frontier) {
+                     if (const auto error = detail::build_destination_front_into(
+                             progress_scratch.retained_points,
+@@ -2040,7 +2262,8 @@ Result<RouteResult> Router::optimize_view_controlled(
+                 diagnostics,
+                 RoutingSolver::isochrone_beam,
+                 {},
+-                {}};
++                {},
++                proof_enabled};
+             const RoutingProgressDecision decision = on_progress(progress);
+             if (decision == RoutingProgressDecision::cancel) {
+                 return cancelled_error(diagnostics);
+diff --git a/src/routing/transition.hpp b/src/routing/transition.hpp
+index 6faea7b..a02f427 100644
+--- a/src/routing/transition.hpp
++++ b/src/routing/transition.hpp
+@@ -27,6 +27,13 @@ enum class VariableTransitionRejection {
+     missing_data,
+ };
+ 
++/// Optional bounded/cancellable integration observer (seed phase only).
++struct IntegrationWorkControl {
++    std::size_t evaluations{};
++    std::size_t maximum_evaluations{};
++    bool exhausted{};
++    std::function<bool()> cancelled;
++};
+ struct EvaluatedWind {
+     double speed_knots{};
+     double direction_from_degrees{};
+@@ -99,7 +106,8 @@ evaluate_heading_transition(
+     TimePoint arrival,
+     std::optional<Coordinate> arrival_destination = std::nullopt,
+     double arrival_radius_nautical_miles = 0.0,
+-    VariableTransitionRejection* rejection = nullptr);
++    VariableTransitionRejection* rejection = nullptr,
++    IntegrationWorkControl* work = nullptr);
+ 
+ [[nodiscard]] Result<std::optional<VariableTransition>>
+ evaluate_wait_transition(
+diff --git a/src/serialization/json.cpp b/src/serialization/json.cpp
+index 790be84..072e128 100644
+--- a/src/serialization/json.cpp
++++ b/src/serialization/json.cpp
+@@ -111,6 +111,17 @@ void append_provider(
+ }
+ 
+ Result<std::string> validate_route_numbers(const RouteResult& route) {
++    if (route.diagnostics.coastal_pruning) {
++        const auto& audit = *route.diagnostics.coastal_pruning;
++        if ((audit.speed_upper_knots && (!std::isfinite(*audit.speed_upper_knots) || *audit.speed_upper_knots <= 0.0)) ||
++            !std::isfinite(audit.topology_numerical_margin_nautical_miles) ||
++            !std::isfinite(audit.clearance_nautical_miles) ||
++            !is_valid(audit.topology_domain_southwest) || !is_valid(audit.topology_domain_northeast))
++            return invalid_numeric_value("coastal_pruning");
++        for (const auto& action : route.coastal_seed_actions)
++            if (!std::isfinite(action.heading_degrees) || action.duration <= std::chrono::seconds::zero())
++                return invalid_numeric_value("coastal_seed_action");
++    }
+     if (route.lattice_diagnostics.has_value() &&
+         !std::isfinite(
+             route.lattice_diagnostics
+@@ -242,6 +253,65 @@ Result<std::string> route_to_json(const RouteResult& route) {
+     output.append(std::to_string(route.diagnostics.pruned_candidates));
+     output.append(",\"futureProbeMisses\":");
+     output.append(std::to_string(route.diagnostics.future_probe_misses));
++    if (route.diagnostics.coastal_pruning) {
++        const auto& audit = *route.diagnostics.coastal_pruning;
++        output.append(",\"coastalPruning\":{\"schemaVersion\":1,\"requested\":");
++        serialization_detail::append_json_string(output, audit.requested == CoastalPruningMode::conservative ? "conservative" : "off");
++        output.append(",\"effective\":");
++        serialization_detail::append_json_string(output, audit.effective == CoastalPruningMode::conservative ? "conservative" : "off");
++        output.append(",\"topologyRepresentation\":\"spherical_caps_v1\",\"sourceIdentity\":");
++        serialization_detail::append_json_string(output, audit.source_identity);
++        output.append(",\"domainIdentity\":");
++        serialization_detail::append_json_string(output, audit.domain_identity);
++        output.append(",\"topologyDomainSouthwest\":");
++        append_coordinate(output, audit.topology_domain_southwest);
++        output.append(",\"topologyDomainNortheast\":");
++        append_coordinate(output, audit.topology_domain_northeast);
++        output.append(",\"topologyDomainGlobalLongitude\":");
++        output.append(audit.topology_domain_global_longitude ? "true" : "false");
++        output.append(",\"polygonEdgeModel\":");
++        serialization_detail::append_json_string(output, audit.polygon_edge_model);
++        output.append(",\"strictComparisonToleranceSeconds\":2");
++        output.append(",\"topologyLimited\":");
++        output.append(audit.topology_limited ? "true" : "false");
++        output.append(",\"boundStatus\":");
++        serialization_detail::append_json_string(output, audit.bound_status);
++        output.append(",\"seedStatus\":");
++        serialization_detail::append_json_string(output, audit.seed_status);
++        output.append(",\"speedUpperKnots\":");
++        if (audit.speed_upper_knots) output.append(std::to_string(*audit.speed_upper_knots));
++        else output.append("null");
++        output.append(",\"incumbentArrival\":");
++        if (audit.incumbent_arrival)
++            serialization_detail::append_json_string(output, format_utc_time(*audit.incumbent_arrival));
++        else output.append("null");
++        const auto count = [&](const char* name, std::size_t value) {
++            output.append(",\""); output.append(name); output.append("\":"); output.append(std::to_string(value));
++        };
++        count("parentExpansionsSkipped", audit.parent_expansions_skipped);
++        count("candidatesDisconnected", audit.candidates_disconnected);
++        count("candidatesHorizon", audit.candidates_horizon);
++        count("candidatesIncumbent", audit.candidates_incumbent);
++        count("boundUnavailable", audit.bound_unavailable);
++        count("seedTransitionEvaluations", audit.seed_transition_evaluations);
++        count("maximumSeedTransitions", audit.maximum_seed_transitions);
++        count("topologyWork", audit.topology_work);
++        count("topologyCaps", audit.topology_caps);
++        output.append(",\"numericalMarginNm\":");
++        output.append(std::to_string(audit.topology_numerical_margin_nautical_miles));
++        output.append(",\"clearanceNm\":");
++        output.append(std::to_string(audit.clearance_nautical_miles));
++        output.append(",\"seedActions\":[");
++        bool first_action = true;
++        for (const auto& action : route.coastal_seed_actions) {
++            if (!first_action) output.push_back(',');
++            first_action = false;
++            output.append("{\"headingDegrees\":"); output.append(std::to_string(action.heading_degrees));
++            output.append(",\"durationSeconds\":"); output.append(std::to_string(action.duration.count()));
++            output.push_back('}');
++        }
++        output.append("]}");
++    }
+     output.push_back('}');
+     if (route.run) {
+         const auto& run = *route.run;
+diff --git a/tests/test_coastal_pruning.cpp b/tests/test_coastal_pruning.cpp
+new file mode 100644
+index 0000000..01babe8
+--- /dev/null
++++ b/tests/test_coastal_pruning.cpp
+@@ -0,0 +1,522 @@
++#include "sailroute/coastal_pruning.hpp"
++#include "sailroute/router.hpp"
++#include "sailroute/serialization.hpp"
++#include "routing/geodesy.hpp"
++#include "grib_fixture.hpp"
++#include "test_support.hpp"
++
++#include <array>
++#include <chrono>
++#include <iostream>
++#include <limits>
++
++using namespace sailroute;
++using namespace std::chrono_literals;
++
++namespace {
++ExclusionPolygon rectangle(double south, double west, double north, double east) {
++    return {{{{south, west}, {south, east}, {north, east}, {north, west}}}, {}};
++}
++CoastalTopologyOptions topology_options() {
++    CoastalTopologyOptions options;
++    options.source_identity = "test-polygon-v1";
++    options.domain_identity = "world-v1";
++    return options;
++}
++std::shared_ptr<const CoastalTopology> topology(std::vector<ExclusionPolygon> polygons,
++    std::vector<Coordinate> probes = {}) {
++    auto result = CoastalTopology::from_polygons(std::move(polygons), probes, topology_options());
++    REQUIRE(result.has_value());
++    return result.value();
++}
++void enable(RouteRequest& request, std::shared_ptr<const CoastalTopology> geometry) {
++    auto& options = request.options.coastal_pruning;
++    options.mode = CoastalPruningMode::conservative;
++    options.topology = std::move(geometry);
++    options.source_identity = options.topology->options().source_identity;
++    options.domain_identity = options.topology->options().domain_identity;
++}
++RouteRequest route_request(const WeatherDataset& weather) {
++    RouteRequest request;
++    request.start = {1.0, 0.4};
++    request.destination = {1.0, 1.3};
++    request.departure_time = weather.metadata().first_valid_time;
++    request.options.worker_count = 1U;
++    request.options.time_step = 30min;
++    request.options.use_routing_intervals = false;
++    request.options.maximum_route_duration = 12h;
++    request.options.heading_step_degrees = 15.0;
++    request.options.spatial_bucket_nautical_miles = 2.0;
++    request.options.max_nodes_per_bucket = 3U;
++    request.options.progress.payload = RoutingProgressPayload::retained_points | RoutingProgressPayload::destination_front;
++    request.options.progress.destination_front.mode = DestinationFrontMode::eligible_pre_prune;
++    return request;
++}
++}
++
++TEST_CASE("coastal caps are optimistic against independently constructed legal sphere paths") {
++    auto mask = topology({rectangle(-0.2, -0.2, 0.2, 0.2)}, {{0,0}});
++    REQUIRE(mask->cap_count() == 1U);
++    const Coordinate start{0,-0.5}, end{0,0.5};
++    const double direct = detail::great_circle_distance_nautical_miles(start, end);
++    const double bound = mask->optimistic_distance_nautical_miles(start, end, 0.0);
++    REQUIRE(bound > direct + 1.0);
++    // Enumerate many legal detours around the whole square, not just its cap.
++    for (double latitude : {-0.3, -0.4, -0.8, 0.3, 0.4, 0.8}) {
++        const Coordinate left{latitude,-0.3}, right{latitude,0.3};
++        const double feasible = detail::great_circle_distance_nautical_miles(start,left) +
++            detail::great_circle_distance_nautical_miles(left,right) +
++            detail::great_circle_distance_nautical_miles(right,end);
++        REQUIRE(bound <= feasible);
++        for (double arrival : {0.1, 1.0, 5.0, 20.0, 100.0}) {
++            const double h = mask->optimistic_distance_nautical_miles(start, end, arrival);
++            REQUIRE(h >= 0.0);
++            REQUIRE(h <= feasible);
++            REQUIRE(h <= bound + 1e-6);
++        }
++    }
++    REQUIRE(mask->optimistic_distance_nautical_miles(end,end,0.1) == 0.0);
++}
++
++TEST_CASE("coastal caller certified caps preserve immutable proof and need no polygon conversion") {
++    auto options = topology_options();
++    options.polygon_edges = CoastalPolygonEdges::linear_latitude_longitude;
++    std::vector<CoastalTopology::Cap> caps{{{0,0},12.0}};
++    auto result = CoastalTopology::from_certified_caps(caps, options);
++    REQUIRE(result.has_value());
++    REQUIRE(result.value()->caller_certified_caps());
++    REQUIRE(!result.value()->native_landmask());
++    REQUIRE(result.value()->cap_count() == 1U);
++    REQUIRE(result.value()->construction_work() == 1U);
++    REQUIRE(!result.value()->options().cancelled);
++    const Coordinate a{0,-0.5}, b{0,0.5};
++    const double bound = result.value()->optimistic_distance_nautical_miles(a,b,0.0);
++    REQUIRE(bound > detail::great_circle_distance_nautical_miles(a,b) + 1.0);
++    caps.front().radius_nautical_miles = 0.0;
++    REQUIRE_NEAR(result.value()->optimistic_distance_nautical_miles(a,b,0.0),bound,0.0);
++    auto polar = CoastalTopology::from_certified_caps({{{89.9,179.9},20.0}}, topology_options());
++    REQUIRE(polar.has_value());
++    REQUIRE(polar.value()->cap_count() == 1U);
++}
++
++TEST_CASE("coastal caller certified cap validation rejects malformed uncovered and oversized inputs") {
++    auto options = topology_options();
++    for (double radius : {-1.0, 0.0, 6000.0, std::numeric_limits<double>::infinity(),
++                          std::numeric_limits<double>::quiet_NaN()}) {
++        auto invalid = CoastalTopology::from_certified_caps({{{0,0},radius}}, options);
++        REQUIRE(!invalid && invalid.error().code == ErrorCode::invalid_argument);
++    }
++    auto invalid = CoastalTopology::from_certified_caps({{{91,0},1.0}}, options);
++    REQUIRE(!invalid && invalid.error().code == ErrorCode::invalid_argument);
++    options.domain = {-1,1,179,-179,{},{},false};
++    auto wrapped = CoastalTopology::from_certified_caps({{{0,180},5.0}}, options);
++    REQUIRE(wrapped.has_value());
++    invalid = CoastalTopology::from_certified_caps({{{0,170},5.0}}, options);
++    REQUIRE(!invalid && invalid.error().code == ErrorCode::invalid_argument);
++    invalid = CoastalTopology::from_certified_caps({{{0,180},70.0}}, options);
++    REQUIRE(!invalid && invalid.error().code == ErrorCode::invalid_argument);
++    options = topology_options();
++    options.maximum_caps = 1U;
++    auto capped = CoastalTopology::from_certified_caps({{{0,0},1.0},{{1,1},1.0}}, options);
++    REQUIRE(!capped && capped.error().code == ErrorCode::resource_limit);
++    options.maximum_bytes = sizeof(CoastalTopology) + options.source_identity.size() + options.domain_identity.size() + 2U;
++    capped = CoastalTopology::from_certified_caps({{{0,0},1.0}}, options);
++    REQUIRE(!capped && capped.error().code == ErrorCode::resource_limit);
++    options = topology_options();
++    options.cancelled = [] { return true; };
++    auto cancelled = CoastalTopology::from_certified_caps({}, options);
++    REQUIRE(!cancelled && cancelled.error().code == ErrorCode::cancelled);
++}
++
++TEST_CASE("coastal holes narrow channels coverage and antimeridian stay optimistic") {
++    auto land = rectangle(-1,-1,1,1);
++    land.holes.push_back(rectangle(-0.2,-0.2,0.2,0.2).outer);
++    auto holes = topology({land}, {{0,0}, {0.5,0.5}});
++    REQUIRE(holes->cap_count() == 1U);
++    const Coordinate a{0,-0.1}, b{0,0.1};
++    REQUIRE(holes->optimistic_distance_nautical_miles(a,b,0.0) <=
++        detail::great_circle_distance_nautical_miles(a,b));
++    auto channel = topology({rectangle(-1,-1,-0.01,1), rectangle(0.01,-1,1,1)},
++        {{-0.5,0},{0.5,0}});
++    REQUIRE(channel->optimistic_distance_nautical_miles({0,-2},{0,2},0.0) <=
++        detail::great_circle_distance_nautical_miles({0,-2},{0,2}));
++    auto wrapped = topology({rectangle(-0.2,179.8,0.2,-179.8)}, {{0,180}});
++    const double ordinary = topology({rectangle(-0.2,-0.2,0.2,0.2)}, {{0,0}})
++        ->optimistic_distance_nautical_miles({0,-0.5},{0,0.5},0.1);
++    REQUIRE_NEAR(wrapped->optimistic_distance_nautical_miles({0,179.5},{0,-179.5},0.1), ordinary, 1e-7);
++    auto options = topology_options();
++    options.domain = {-0.1,0.1,-0.1,0.1,{},{},false};
++    const std::array<Coordinate,1> probes{{{0.5,0.5}}};
++    auto limited = CoastalTopology::from_polygons({land}, probes, options);
++    REQUIRE(limited.has_value());
++    REQUIRE(limited.value()->cap_count() == 0U);
++    REQUIRE(std::isfinite(limited.value()->optimistic_distance_nautical_miles({0,-2},{0,2},0.0)));
++}
++
++TEST_CASE("coastal duplicate ring normalization never fills water holes") {
++    const auto subdivide = [](ExclusionRing ring) {
++        const auto corners = ring.vertices;
++        ring.vertices.clear();
++        for (std::size_t edge = 0; edge < corners.size(); ++edge) {
++            const auto a = corners[edge], b = corners[(edge + 1U) % corners.size()];
++            for (int step = 0; step < 20; ++step) {
++                const double fraction = static_cast<double>(step) / 20.0;
++                ring.vertices.push_back({
++                    a.latitude_degrees + fraction * (b.latitude_degrees - a.latitude_degrees),
++                    a.longitude_degrees + fraction * (b.longitude_degrees - a.longitude_degrees)});
++            }
++        }
++        return ring;
++    };
++    ExclusionPolygon plain{
++        subdivide(rectangle(-20,-65,20,65).outer),
++        {subdivide(rectangle(-10,-55,10,55).outer)}};
++    const Coordinate from{-9,50}, to{9,50}, water_probe{0,50}, land_probe{15,50};
++    const double legal_distance = detail::great_circle_distance_nautical_miles(from,to);
++    const auto reference = topology({plain}, {water_probe});
++    REQUIRE(reference->cap_count() == 0U);
++    const auto reference_land = topology({plain}, {water_probe,land_probe});
++    REQUIRE(reference_land->cap_count() == 1U);
++
++    for (int variant = 0; variant < 3; ++variant) {
++        auto repeated = plain;
++        auto& hole = repeated.holes.front().vertices;
++        const auto southwest = hole.front();
++        // Exact review reproducer: 400 copies of the hole's SW vertex skewed
++        // the raw centroid opposite the validated, duplicate-free centroid.
++        hole.insert(hole.begin(), 400U, southwest);
++        if (variant > 0) {
++            hole.insert(hole.end(), 40U, southwest);
++            auto& outer = repeated.outer.vertices;
++            const auto first = outer.front();
++            outer.insert(outer.begin(), 400U, first);
++            outer.insert(outer.end(), 40U, first);
++        }
++        if (variant == 2) {
++            // Also exercise the validator's angular duplicate tolerance.
++            hole.insert(hole.begin() + 1, {southwest.latitude_degrees + 1.0e-9,
++                southwest.longitude_degrees + 1.0e-9});
++        }
++        auto enforcement = ExclusionZoneSet::create(
++            {{"duplicate-hole","synthetic",1,{},{},{repeated}}}, {"test","synthetic","1"});
++        REQUIRE(enforcement.has_value());
++        REQUIRE(!enforcement.value().contains(water_probe, TimePoint{}, ExclusionBoundaryPolicy::boundary_excluded));
++        REQUIRE(!enforcement.value().intersects_segment(from, TimePoint{}, to, TimePoint{} + 1h,
++            ExclusionBoundaryPolicy::boundary_excluded).violated);
++        auto options = topology_options();
++        options.maximum_work = 10'000'000U;
++        const std::array<Coordinate,1> water_probes{{water_probe}};
++        const auto duplicated = CoastalTopology::from_polygons({repeated}, water_probes, options);
++        REQUIRE(duplicated.has_value());
++        const double bound = duplicated.value()->optimistic_distance_nautical_miles(from,to,0.0);
++        std::cout << "DUPLICATE_HOLE_REGRESSION variant=" << variant
++                  << " bound_nm=" << bound << " legal_nm=" << legal_distance << '\n';
++        REQUIRE(bound <= legal_distance);
++        REQUIRE(duplicated.value()->cap_count() == 0U);
++        REQUIRE_NEAR(bound, reference->optimistic_distance_nautical_miles(from,to,0.0), 1.0e-8);
++        const std::array<Coordinate,2> mixed_probes{{water_probe,land_probe}};
++        const auto duplicated_land = CoastalTopology::from_polygons({repeated}, mixed_probes, options);
++        REQUIRE(duplicated_land.has_value());
++        REQUIRE(duplicated_land.value()->cap_count() == reference_land->cap_count());
++        REQUIRE_NEAR(duplicated_land.value()->optimistic_distance_nautical_miles(from,to,0.0),
++            reference_land->optimistic_distance_nautical_miles(from,to,0.0), 1.0e-8);
++    }
++}
++
++TEST_CASE("coastal linear longitude latitude polygons use certified erosion not spherical substitution") {
++    auto polygon = rectangle(-0.2,-0.2,0.2,0.2);
++    const auto corners = polygon.outer.vertices;
++    polygon.outer.vertices.clear();
++    for (std::size_t edge=0; edge<4U; ++edge) {
++        const auto a = corners[edge], b = corners[(edge+1U)%4U];
++        for (int step=0; step<8; ++step) {
++            const double f = static_cast<double>(step)/8.0;
++            polygon.outer.vertices.push_back({a.latitude_degrees + f*(b.latitude_degrees-a.latitude_degrees),
++                a.longitude_degrees + f*(b.longitude_degrees-a.longitude_degrees)});
++        }
++    }
++    auto options = topology_options();
++    options.polygon_edges = CoastalPolygonEdges::linear_latitude_longitude;
++    const std::array<Coordinate,1> probes{{{0,0}}};
++    auto linear = CoastalTopology::from_polygons({polygon}, probes, options);
++    REQUIRE(linear.has_value());
++    REQUIRE(linear.value()->cap_count() == 1U);
++    const auto spherical = topology({polygon}, {{0,0}});
++    const Coordinate a{0,-0.5}, b{0,0.5};
++    const double direct = detail::great_circle_distance_nautical_miles(a,b);
++    const double h = linear.value()->optimistic_distance_nautical_miles(a,b,0.0,1.0);
++    REQUIRE(h > direct);
++    REQUIRE(h <= spherical->optimistic_distance_nautical_miles(a,b,0.0));
++    REQUIRE(linear.value()->optimistic_distance_nautical_miles(a,b,0.0,100.0) <= direct);
++}
++
++TEST_CASE("coastal topology cancellation budgets source and solver mismatch fail explicitly") {
++    auto options = topology_options();
++    options.cancelled = [] { return true; };
++    auto cancelled = CoastalTopology::from_polygons({rectangle(-1,-1,1,1)}, {}, options);
++    REQUIRE(!cancelled);
++    REQUIRE(cancelled.error().code == ErrorCode::cancelled);
++    options.cancelled = {};
++    options.maximum_work = 1U;
++    auto limited = CoastalTopology::from_polygons({rectangle(-1,-1,1,1)}, {}, options);
++    REQUIRE(!limited);
++    REQUIRE(limited.error().code == ErrorCode::resource_limit);
++    const test::ConstantWindGribFixture fixture;
++    const auto weather = WeatherDataset::load(fixture.path());
++    REQUIRE(weather.has_value());
++    Router router{weather.value()};
++    auto request = route_request(weather.value());
++    request.options.segment_eligibility = [](const auto&) { return true; };
++    enable(request, topology({rectangle(-2,-2,-1,-1)}));
++    request.options.coastal_pruning.domain_identity = "different-domain";
++    auto invalid = router.optimize(request);
++    REQUIRE(!invalid && invalid.error().code == ErrorCode::invalid_argument);
++    request.options.coastal_pruning.domain_identity = "world-v1";
++    request.options.coastal_pruning.clearance_nautical_miles = 1.0;
++    invalid = router.optimize(request);
++    REQUIRE(!invalid && invalid.error().code == ErrorCode::invalid_argument);
++    request.options.coastal_pruning.clearance_nautical_miles = 0.0;
++    request.options.solver = RoutingSolver::time_dependent_lattice;
++    invalid = router.optimize(request);
++    REQUIRE(!invalid && invalid.error().code == ErrorCode::invalid_argument);
++}
++
++TEST_CASE("coastal validated seed cuts main and northern expansions with retained front audit") {
++    const test::ConstantWindGribFixture fixture;
++    const auto weather = WeatherDataset::load(fixture.path());
++    REQUIRE(weather.has_value());
++    Router router{weather.value()};
++    auto request = route_request(weather.value());
++    const auto land = rectangle(1.08,0.72,1.8,1.1);
++    auto zones = ExclusionZoneSet::create({{"coast","test",1,{},{},{land}}}, {"test","test","1"});
++    REQUIRE(zones.has_value());
++    std::size_t northern = 0U;
++    request.options.segment_eligibility = [&](const RouteSegmentView& segment) {
++        if (segment.parent.position.latitude_degrees > 1.15) ++northern;
++        return !zones.value().intersects_segment(segment.parent.position,segment.parent.time,
++            segment.candidate.position,segment.candidate.time,ExclusionBoundaryPolicy::boundary_excluded).violated;
++    };
++    const auto begin = std::chrono::steady_clock::now();
++    std::size_t off_northern_parents = 0U, on_northern_parents = 0U;
++    auto baseline = router.optimize_view(request, [&](const RoutingProgressView& view) {
++        for (const auto position : view.retained_points)
++            if (position.latitude_degrees > 1.15) ++off_northern_parents;
++    });
++    REQUIRE(baseline.has_value());
++    REQUIRE(baseline.value().completion == RouteCompletion::destination_reached);
++    const std::size_t off_northern = northern;
++    const auto middle = std::chrono::steady_clock::now();
++    northern = 0U;
++    // The six-mile cap is strictly inside the enforced peninsula, independent
++    // of polygon edge representation. This exercises the default-source ABI
++    // handoff in which the application supplies its own certified land subset.
++    auto cap_options = topology_options();
++    cap_options.polygon_edges = CoastalPolygonEdges::linear_latitude_longitude;
++    auto caps = CoastalTopology::from_certified_caps({{{1.45,0.9},6.0}}, cap_options);
++    REQUIRE(caps.has_value());
++    enable(request, caps.value());
++    CoastalPruningDiagnostics previous;
++    bool retained_progress = false;
++    auto pruned = router.optimize_view(request, [&](const RoutingProgressView& view) {
++        REQUIRE(view.diagnostics.coastal_pruning.has_value());
++        const auto& audit = *view.diagnostics.coastal_pruning;
++        REQUIRE(audit.candidates_incumbent >= previous.candidates_incumbent);
++        REQUIRE(audit.seed_transition_evaluations >= previous.seed_transition_evaluations);
++        previous = audit;
++        if (!view.retained_points.empty()) {
++            REQUIRE(view.post_proof_retained_front);
++            retained_progress = true;
++            for (const auto position : view.retained_points)
++                if (position.latitude_degrees > 1.15) ++on_northern_parents;
++            for (const auto& segment : view.destination_front.segments)
++                REQUIRE(segment.point_offset + segment.point_count <= view.destination_front.points.size());
++        }
++    });
++    REQUIRE(pruned.has_value());
++    REQUIRE(pruned.value().completion == RouteCompletion::destination_reached);
++    REQUIRE(pruned.value().arrival_time <= baseline.value().arrival_time + 2s);
++    const auto& audit = *pruned.value().diagnostics.coastal_pruning;
++    REQUIRE(audit.seed_status == "validated");
++    REQUIRE(audit.polygon_edge_model == "caller_certified_caps");
++    REQUIRE(audit.incumbent_arrival.has_value());
++    REQUIRE(audit.candidates_incumbent + audit.candidates_horizon > 0U);
++    REQUIRE(pruned.value().diagnostics.expanded_nodes < baseline.value().diagnostics.expanded_nodes);
++    REQUIRE(retained_progress);
++    std::cout << "COASTAL_BENCHMARK off_expanded=" << baseline.value().diagnostics.expanded_nodes
++        << " on_expanded=" << pruned.value().diagnostics.expanded_nodes
++        << " off_northern_segments=" << off_northern << " on_northern_segments=" << northern
++        << " off_northern_parents=" << off_northern_parents << " on_northern_parents=" << on_northern_parents
++        << " seed_transitions=" << audit.seed_transition_evaluations
++        << " prep_work=" << audit.topology_work
++        << " off_ms=" << std::chrono::duration_cast<std::chrono::milliseconds>(middle-begin).count()
++        << " on_ms=" << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-middle).count() << '\n';
++    REQUIRE(northern * 2U <= off_northern);
++    REQUIRE(on_northern_parents * 2U <= off_northern_parents);
++    const auto json = route_to_json(pruned.value());
++    REQUIRE(json.has_value());
++    REQUIRE(json.value().find("\"coastalPruning\"") != std::string::npos);
++    REQUIRE(json.value().find("\"seedStatus\":\"validated\"") != std::string::npos);
++    auto replay_request = request;
++    replay_request.options.coastal_pruning.mode = CoastalPruningMode::off;
++    const auto replay = router.evaluate_actions(replay_request, pruned.value().coastal_seed_actions);
++    REQUIRE(replay.has_value());
++    REQUIRE(replay.value().arrival_time >= pruned.value().arrival_time);
++    for (const auto& point : replay.value().points) {
++        auto bound = router.coastal_remaining_bound(request, point.position);
++        REQUIRE(bound.has_value());
++        REQUIRE(bound.value().status == CoastalBoundStatus::available);
++        REQUIRE(bound.value().optimistic_seconds <=
++            std::chrono::duration<double>(replay.value().arrival_time - point.time).count() + 2.0);
++    }
++    request.options.worker_count = 2U;
++    const auto parallel = router.optimize(request);
++    REQUIRE(parallel.has_value());
++    REQUIRE(parallel.value().arrival_time == pruned.value().arrival_time);
++    REQUIRE(parallel.value().diagnostics.expanded_nodes == pruned.value().diagnostics.expanded_nodes);
++    REQUIRE(parallel.value().diagnostics.coastal_pruning->candidates_incumbent == audit.candidates_incumbent);
++}
++
++TEST_CASE("coastal unknown current disables time pruning and preserves exact off result") {
++    const test::ConstantWindGribFixture fixture;
++    const auto weather = WeatherDataset::load(fixture.path());
++    REQUIRE(weather.has_value());
++    RoutingEnvironment environment;
++    const auto current = make_uniform_current_provider({15,0}, {"fast","test","1"});
++    REQUIRE(current.has_value());
++    environment.currents.provider = current.value();
++    Router router{weather.value(), VesselPolar::default_racer_cruiser_45ft(), environment};
++    auto request = route_request(weather.value());
++    request.options.segment_eligibility = [](const auto&) { return true; };
++    auto baseline = router.optimize(request);
++    REQUIRE(baseline.has_value());
++    enable(request, topology({rectangle(-2,-2,-1,-1)}));
++    request.options.coastal_pruning.maximum_seed_transitions = 0U;
++    auto pruned = router.optimize(request);
++    REQUIRE(pruned.has_value());
++    const auto& audit = *pruned.value().diagnostics.coastal_pruning;
++    REQUIRE(!audit.speed_upper_knots);
++    REQUIRE(audit.bound_unavailable > 0U);
++    REQUIRE(audit.candidates_horizon == 0U && audit.candidates_incumbent == 0U);
++    REQUIRE(pruned.value().arrival_time == baseline.value().arrival_time);
++    REQUIRE(pruned.value().diagnostics.expanded_nodes == baseline.value().diagnostics.expanded_nodes);
++}
++
++TEST_CASE("coastal invalid seed is never an incumbent and cancellation remains an error") {
++    const test::ConstantWindGribFixture fixture;
++    const auto weather = WeatherDataset::load(fixture.path());
++    REQUIRE(weather.has_value());
++    Router router{weather.value()};
++    auto request = route_request(weather.value());
++    request.options.segment_eligibility = [](const auto&) { return true; };
++    enable(request, topology({rectangle(-2,-2,-1,-1)}));
++    request.options.coastal_pruning.maximum_seed_transitions = 1U;
++    auto result = router.optimize(request);
++    REQUIRE(result.has_value());
++    REQUIRE(result.value().diagnostics.coastal_pruning->seed_status == "budget_exhausted");
++    REQUIRE(result.value().diagnostics.coastal_pruning->seed_transition_evaluations == 1U);
++    auto cancelled = router.optimize_view(request, [](const RoutingProgressView&) {
++        return RoutingProgressDecision::cancel;
++    });
++    REQUIRE(!cancelled && cancelled.error().code == ErrorCode::cancelled);
++    request.options.coastal_pruning.cancelled = [] { return true; };
++    cancelled = router.optimize(request);
++    REQUIRE(!cancelled && cancelled.error().code == ErrorCode::cancelled);
++}
++
++TEST_CASE("coastal signed distance subtracts uncertainty and keeps exact source identity") {
++    auto mask = SignedDistanceLandmask::create({-1,-1,1,1,3,3,false}, std::vector<double>(9,-0.1),
++        {{"sdf","test","1"},60,0.2});
++    REQUIRE(mask.has_value());
++    const std::array<Coordinate,2> probes{{{0,0},{10,10}}};
++    auto result = CoastalTopology::from_landmask(mask.value(), probes, topology_options());
++    REQUIRE(result.has_value());
++    REQUIRE(result.value()->cap_count() == 0U);
++    REQUIRE(result.value()->matches_landmask(mask.value()));
++    auto different = SignedDistanceLandmask::create({-1,-1,1,1,3,3,false}, std::vector<double>(9,-0.1),
++        {{"sdf","test","1"},60,0.2});
++    REQUIRE(different.has_value());
++    REQUIRE(!result.value()->matches_landmask(different.value()));
++}
++
++TEST_CASE("coastal horizon proof preserves legal partial and opening exclusions are relaxed") {
++    const test::ConstantWindGribFixture fixture;
++    const auto weather = WeatherDataset::load(fixture.path());
++    REQUIRE(weather.has_value());
++    auto request = route_request(weather.value());
++    request.options.segment_eligibility = [](const auto&) { return true; };
++    enable(request, topology({}));
++    request.options.maximum_route_duration = 1h;
++    request.options.coastal_pruning.maximum_seed_transitions = 0U;
++    Router router{weather.value()};
++    auto partial = router.optimize(request);
++    REQUIRE(partial.has_value());
++    REQUIRE(partial.value().completion == RouteCompletion::duration_exhausted);
++    REQUIRE(partial.value().points.front().position.longitude_degrees == request.start.longitude_degrees);
++    REQUIRE(!partial.value().diagnostics.coastal_pruning->incumbent_arrival);
++    REQUIRE(partial.value().diagnostics.coastal_pruning->parent_expansions_skipped == 1U);
++    request.options.maximum_route_duration = 48h;
++    request.destination = {1.0,2.0};
++    partial = router.optimize(request);
++    REQUIRE(partial.has_value());
++    REQUIRE(partial.value().completion == RouteCompletion::destination_reached ||
++        partial.value().completion == RouteCompletion::forecast_exhausted);
++    request = route_request(weather.value());
++    request.options.segment_eligibility = [](const auto&) { return true; };
++    enable(request, topology({}));
++    RoutingEnvironment environment;
++    auto opening = ExclusionZoneSet::create({{"opening","test",1,{},*request.departure_time + 10min,
++        {rectangle(0.8,0.55,1.2,0.65)}}}, {"test","test","1"});
++    REQUIRE(opening.has_value());
++    environment.exclusions.zones = opening.value();
++    Router timed{weather.value(), VesselPolar::default_racer_cruiser_45ft(), environment};
++    const auto result = timed.optimize(request);
++    REQUIRE(result.has_value());
++    REQUIRE(result.value().completion == RouteCompletion::destination_reached);
++    REQUIRE(result.value().diagnostics.coastal_pruning->seed_status == "validated");
++}
++
++TEST_CASE("coastal unusable control proposal cannot suppress feasible search") {
++    const test::ConstantWindGribFixture fixture;
++    const auto weather = WeatherDataset::load(fixture.path());
++    REQUIRE(weather.has_value());
++    auto request = route_request(weather.value());
++    request.options.segment_eligibility = [](const auto&) { return true; };
++    enable(request, topology({}));
++    request.options.coastal_pruning.seed_actions = {{0.0, 1h}};
++    Router router{weather.value()};
++    const auto result = router.optimize(request);
++    REQUIRE(result.has_value());
++    REQUIRE(result.value().diagnostics.coastal_pruning->seed_status == "no_feasible_seed");
++    REQUIRE(result.value().completion == RouteCompletion::destination_reached);
++    request.options.coastal_pruning.seed_actions = {{90.0, 0s}};
++    const auto invalid = router.optimize(request);
++    REQUIRE(!invalid && invalid.error().code == ErrorCode::invalid_argument);
++}
++
++TEST_CASE("coastal seed preserves invalid environmental model errors") {
++    class AcceleratingModel final : public SeaStatePerformanceModel {
++        ProviderMetadata metadata_{"invalid","synthetic","1"};
++    public:
++        const ProviderMetadata& metadata() const noexcept override { return metadata_; }
++        double derated_speed_knots(const SeaStateInput& input) const override {
++            return input.flat_water_speed_knots + 100.0;
++        }
++    };
++    const test::ConstantWindGribFixture fixture;
++    const auto weather = WeatherDataset::load(fixture.path());
++    REQUIRE(weather.has_value());
++    RoutingEnvironment environment;
++    const auto waves = make_uniform_wave_provider({1,5,0}, {"waves","synthetic","1"});
++    REQUIRE(waves.has_value());
++    environment.waves.provider = waves.value();
++    environment.waves.model = std::make_shared<AcceleratingModel>();
++    auto request = route_request(weather.value());
++    request.options.segment_eligibility = [](const auto&) { return true; };
++    Router router{weather.value(), VesselPolar::default_racer_cruiser_45ft(), environment};
++    auto off = router.optimize(request);
++    REQUIRE(!off);
++    enable(request, topology({}));
++    auto on = router.optimize(request);
++    REQUIRE(!on);
++    REQUIRE(on.error().code == off.error().code);
++}
+diff --git a/tests/test_ensemble_beam.cpp b/tests/test_ensemble_beam.cpp
+index 7451b2f..6885c78 100644
+--- a/tests/test_ensemble_beam.cpp
++++ b/tests/test_ensemble_beam.cpp
+@@ -126,6 +126,12 @@ TEST_CASE("experimental ensemble beam requires an exact explicit opt in") {
+     REQUIRE(defaults.solver == EnsembleSolver::time_dependent_lattice);
+     REQUIRE(!defaults.enable_experimental_beam);
+     REQUIRE(!EnsembleRouteResult{}.experimental);
++    auto coastal = beam_request();
++    coastal.options.coastal_pruning.mode = sailroute::CoastalPruningMode::conservative;
++    const auto unsupported = router.optimize(coastal);
++    REQUIRE(!unsupported && unsupported.error().code == ErrorCode::invalid_argument);
++    const auto unsupported_view = router.optimize_view(coastal, [](const sailroute::EnsembleProgressView&) {});
++    REQUIRE(!unsupported_view && unsupported_view.error().code == ErrorCode::invalid_argument);
+ }
+ 
+ TEST_CASE("experimental beam keeps canonical identical member states") {
+diff --git a/tests/test_strategic_routing.cpp b/tests/test_strategic_routing.cpp
+index 1dc83a1..87d081c 100644
+--- a/tests/test_strategic_routing.cpp
++++ b/tests/test_strategic_routing.cpp
+@@ -1,4 +1,5 @@
+ #include "sailroute/router.hpp"
++#include "sailroute/coastal_pruning.hpp"
+ #include "sailroute/time.hpp"
+ 
+ #include "../benchmarks/strategic_benchmark.hpp"
+@@ -201,6 +202,34 @@ void check_delayed_corridor(double reflection, bool with_island = false) {
+     greedy_request.options.max_nodes_per_bucket = 1U;
+     const auto greedy = optimize(router, greedy_request);
+     const auto reference = exhaustive_reference(weather, polar, request, environment);
++    auto conservative_request = request;
++    sailroute::CoastalTopologyOptions proof_options;
++    proof_options.source_identity = "strategic-relaxed-water";
++    proof_options.domain_identity = "global";
++    auto proof = sailroute::CoastalTopology::from_polygons({}, {}, proof_options);
++    REQUIRE(proof.has_value());
++    auto& coastal = conservative_request.options.coastal_pruning;
++    coastal.mode = sailroute::CoastalPruningMode::conservative;
++    coastal.topology = proof.value();
++    coastal.source_identity = proof_options.source_identity;
++    coastal.domain_identity = proof_options.domain_identity;
++    // The exhaustive action sequence is validated by the SAME exact transition
++    // kernel before becoming an incumbent; locally losing histories survive.
++    if (with_island) {
++        const auto unguided = optimize(router, conservative_request);
++        REQUIRE(unguided.diagnostics.coastal_pruning->seed_status == "no_feasible_seed");
++    }
++    coastal.seed_actions = reference.actions;
++    const auto conservative = optimize(router, conservative_request);
++    for (const auto& point : reference.points) {
++        const auto bound = router.coastal_remaining_bound(conservative_request, point.position);
++        REQUIRE(bound.has_value());
++        REQUIRE(bound.value().optimistic_seconds <=
++            std::chrono::duration<double>(reference.points.back().time - point.time).count() + 2.0);
++    }
++    REQUIRE(conservative.arrival_time <= strategic.arrival_time + std::chrono::seconds{2});
++    REQUIRE(conservative.diagnostics.coastal_pruning->seed_status == "validated");
++    require_multi_step_sacrifice(conservative.points, greedy, request, reflection, with_island);
+     std::cout << "strategic corridor reflection=" << reflection
+               << " island=" << with_island
+               << " strategic_s=" << (strategic.arrival_time - *request.departure_time).count()

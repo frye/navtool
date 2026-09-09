@@ -1,6 +1,7 @@
 #include "navtool_router_bridge.h"
 #include "sailroute/sailroute.hpp"
 #include "sailroute/land_data.hpp"
+#include "sailroute/coastal_pruning.hpp"
 #include <eccodes.h>
 #include <array>
 #include <chrono>
@@ -93,7 +94,8 @@ double distance_nm(sailroute::Coordinate a, navtool_router_coordinate_v1 b) {
     return 6880.13 * std::asin(std::min(1.,std::sqrt(x*x+std::cos(a.latitude_degrees*rad)*std::cos(b.latitude_degrees*rad)*y*y)));
 }
 
-void make_wind(const std::filesystem::path& path, bool mirrored = false, bool strategic = false, bool one_time = false) {
+void make_wind(const std::filesystem::path& path, bool mirrored = false, bool strategic = false, bool one_time = false,
+    bool coastal_region = false) {
     bool first = true;
     const auto hours = one_time ? std::vector<long>{0} : (strategic ? std::vector<long>{0,5,6,18} : std::vector<long>{0,1,2,3,6,9,12,18});
     for (long hour : hours) for (const char* component : {"10u", "10v"}) {
@@ -101,14 +103,19 @@ void make_wind(const std::filesystem::path& path, bool mirrored = false, bool st
         check(bool(h), "cannot create deterministic GRIB");
         const long count = strategic ? 121 : 13;
         const double spacing = 3.0 / static_cast<double>(count - 1);
+        const double north = coastal_region ? 58 : 1.5;
+        const double south = coastal_region ? 40 : -1.5;
+        const double west = coastal_region ? -138 : -.5;
+        const double east = coastal_region ? -108 : 2.5;
         codes(codes_set_long(h.get(), "Ni", count)); codes(codes_set_long(h.get(), "Nj", count));
         codes(codes_set_long(h.get(), "iScansNegatively", 0)); codes(codes_set_long(h.get(), "jScansPositively", 0));
-        codes(codes_set_double(h.get(), "latitudeOfFirstGridPointInDegrees", 1.5));
-        codes(codes_set_double(h.get(), "latitudeOfLastGridPointInDegrees", -1.5));
-        codes(codes_set_double(h.get(), "longitudeOfFirstGridPointInDegrees", -0.5));
-        codes(codes_set_double(h.get(), "longitudeOfLastGridPointInDegrees", 2.5));
-        codes(codes_set_double(h.get(), "iDirectionIncrementInDegrees", spacing));
-        codes(codes_set_double(h.get(), "jDirectionIncrementInDegrees", spacing));
+        codes(codes_set_double(h.get(), "latitudeOfFirstGridPointInDegrees", north));
+        codes(codes_set_double(h.get(), "latitudeOfLastGridPointInDegrees", south));
+        codes(codes_set_double(h.get(), "longitudeOfFirstGridPointInDegrees", west));
+        codes(codes_set_double(h.get(), "longitudeOfLastGridPointInDegrees", east));
+        codes(codes_set_double(h.get(), "iDirectionIncrementInDegrees", (east - west) / (count - 1)));
+        codes(codes_set_double(h.get(), "jDirectionIncrementInDegrees", (north - south) / (count - 1)));
+        if (coastal_region) codes(codes_set_long(h.get(), "centre", 7));
         codes(codes_set_long(h.get(), "dataDate", 20260714)); codes(codes_set_long(h.get(), "dataTime", 0));
         codes(codes_set_long(h.get(), "forecastTime", hour));
         size_t len = std::strlen(component); codes(codes_set_string(h.get(), "shortName", component, &len));
@@ -499,6 +506,7 @@ void test_unicode_asset_paths() {
         "missing Unicode GSHHG not classified");
     check(std::string{navtool_router_last_error_v1()}.find(marker) != std::string::npos, "GSHHG error lost UTF-8 path");
 }
+#include "bridge_v9_tests.inc"
 } // namespace
 
 int main(int argc, char** argv) {
@@ -506,6 +514,7 @@ int main(int argc, char** argv) {
         std::filesystem::create_directories(fixtures);
         test_defaults_and_validation(); test_forecast(); test_routes_and_replay(); test_holds(); test_land();
         test_unicode_asset_paths();
+        test_coastal_v9();
         const bool diagnostics = argc == 2 && std::string{argv[1]} == "--diagnostics";
         check(argc == 1 || diagnostics,"only --diagnostics is supported");
         for (bool mirrored : {false,true}) for (bool island : {false,true}) test_strategic(mirrored,island,diagnostics);

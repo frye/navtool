@@ -1443,6 +1443,54 @@ public sealed class MainViewModelWorkflowTests
         Assert.Single(GetLayer(viewModel, "NOAA GFS routes").Features);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Coastal_progress_and_final_details_distinguish_proof_counters_and_unavailable(bool available)
+    {
+        var coastal = available ? new RouteCoastalPruningDiagnostics(
+            RouteCoastalPruningMode.ConservativeLandAware, "bound_unavailable", "Unknown coverage",
+            11, 12, 13, 14, 15, 16, 17, seedStatus: "no_incumbent") : null;
+        var provider = new DelegateForecastProvider(ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new StreamingRouteEngine((request, forecast, progress, _) =>
+        {
+            var snapshot = CreateSnapshot(request, coastal);
+            progress?.Report(new RouteCalculationProgress(1, "forecast ended", snapshot));
+            return ValueTask.FromResult(new RouteResult(request, forecast.Request.Model,
+                snapshot.ProvisionalRoute, snapshot.Diagnostics, RouteCompletion.ForecastExhausted));
+        });
+        var vm = CreateViewModel(new RoutingWorkflow([provider], engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        vm.RoutingSetup.EnableCoastalPruning = available;
+        await vm.CalculateRoutesAsync();
+        await Task.Delay(20);
+        Assert.Null(vm.ErrorMessage);
+        Assert.Single(vm.SuccessfulRoutes);
+        Assert.Contains("Current coastal audit", vm.LiveSearchStatus);
+        Assert.Contains("Final coastal audit", vm.SelectedRouteDetails);
+        foreach (var text in new[] { vm.LiveSearchStatus, vm.SelectedRouteDetails })
+        {
+            if (!available)
+            {
+                Assert.Contains("unavailable (not zero)", text);
+                continue;
+            }
+            Assert.Contains("state bound_unavailable", text);
+            Assert.Contains("seed no_incumbent", text);
+            Assert.Contains("reason Unknown coverage", text);
+            Assert.Contains("Coastal skipped parents 11", text);
+            Assert.Contains("disconnected candidates 12", text);
+            Assert.Contains("horizon candidates 13", text);
+            Assert.Contains("incumbent candidates 14", text);
+            Assert.Contains("Coastal bound unavailable 15", text);
+            Assert.Contains("seed evaluations 16", text);
+            Assert.Contains("topology work 17", text);
+            Assert.Contains("Coastal incumbent arrival unavailable", text);
+        }
+    }
+
     [Fact]
     public async Task DurationLimitedRouteRetainsTimelineAndShowsDistinctWarning()
     {
@@ -2488,7 +2536,7 @@ public sealed class MainViewModelWorkflowTests
         Assert.IsType<MemoryLayer>(
             viewModel.Map.Layers.Single(layer => layer.Name == name));
 
-    private static RouteCalculationSnapshot CreateSnapshot(RouteRequest request)
+    private static RouteCalculationSnapshot CreateSnapshot(RouteRequest request, RouteCoastalPruningDiagnostics? coastal = null)
     {
         var frontierTime = request.DepartureTime.AddHours(1);
         var frontierPoint = new Coordinate(
@@ -2524,6 +2572,6 @@ public sealed class MainViewModelWorkflowTests
                 new RoutePoint(request.Origin, request.DepartureTime, 90, 6, 15, 180, 0),
                 new RoutePoint(frontierPoint, frontierTime, 90, 6, 15, 180, 10)
             },
-            new RouteDiagnostics(10, 20, 5, 1));
+            new RouteDiagnostics(10, 20, 5, 1, coastalPruning: coastal));
     }
 }

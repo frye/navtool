@@ -13,7 +13,7 @@ namespace Navtool.Infrastructure;
 
 public sealed record NativeRouterBridgeOptions
 {
-    public const uint SupportedAbiVersion = 8;
+    public const uint SupportedAbiVersion = 9;
 
     public int MaximumTextBytes { get; init; } = 64 * 1024 * 1024;
 
@@ -69,7 +69,8 @@ public enum NativeRouterCapabilities : ulong
     AuditedProgress = 1UL << 9,
     Gshhg = 1UL << 10,
     ActionReplay = 1UL << 11,
-    PlannedHold = 1UL << 12
+    PlannedHold = 1UL << 12,
+    CoastalPruning = 1UL << 13
 }
 
 public sealed class NativeRouterException : RoutingException
@@ -255,11 +256,12 @@ public sealed partial class NativeRouterBridge : INativeRoutingPreflight
                 exception);
         }
 
-        if (actualVersion != NativeRouterBridgeOptions.SupportedAbiVersion)
+        if (actualVersion is not 8 && actualVersion != NativeRouterBridgeOptions.SupportedAbiVersion)
         {
             throw new NotSupportedException(
-                $"Navtool router bridge ABI {actualVersion} is incompatible; ABI {NativeRouterBridgeOptions.SupportedAbiVersion} is required.");
+                $"Navtool router bridge ABI {actualVersion} is incompatible; ABI 8 or {NativeRouterBridgeOptions.SupportedAbiVersion} is required.");
         }
+        AbiVersion = actualVersion;
 
         try
         {
@@ -280,7 +282,7 @@ public sealed partial class NativeRouterBridge : INativeRoutingPreflight
         BuildIdentity = ReadBuildIdentity();
     }
 
-    public uint AbiVersion => NativeRouterBridgeOptions.SupportedAbiVersion;
+    public uint AbiVersion { get; }
 
     public NativeRoutingIdentity BuildIdentity { get; }
 
@@ -288,7 +290,7 @@ public sealed partial class NativeRouterBridge : INativeRoutingPreflight
 
     public void EnsureAvailable()
     {
-        if (NativeMethods.Preflight() != NativeRouterBridgeOptions.SupportedAbiVersion ||
+        if (NativeMethods.Preflight() != AbiVersion ||
             NativeMethods.Capabilities() != _capabilities || ReadBuildIdentity() != BuildIdentity)
             throw new RoutingException(RoutingFailureKind.NativeUnavailable, "Native bridge identity or capabilities changed after preflight.");
     }
@@ -617,7 +619,7 @@ public sealed partial class NativeRouterBridge : INativeRoutingPreflight
         return minutes > 0 ? $"{minutes}m" : $"{duration.Seconds}s";
     }
 
-    private RouteCalculationSnapshot CopyProgress(IntPtr progressPointer)
+    private RouteCalculationSnapshot CopyProgress(IntPtr progressPointer, RouteCoastalPruningDiagnostics? coastalPruning = null)
     {
         if (progressPointer == IntPtr.Zero)
         {
@@ -736,7 +738,8 @@ public sealed partial class NativeRouterBridge : INativeRoutingPreflight
             checked((int)progress.Diagnostics.TimeSteps),
             eligibilityEvaluations: checked((long)auditedProgress.EligibilityEvaluations),
             prunedCandidates: checked((long)auditedProgress.PrunedCandidates),
-            futureProbeMisses: checked((long)auditedProgress.FutureProbeMisses));
+            futureProbeMisses: checked((long)auditedProgress.FutureProbeMisses),
+            coastalPruning: coastalPruning);
         var latticeSearch = solver == RouteSolver.TimeDependentLattice
             ? new RouteLatticeSearchProgress(
                 checked((long)progress.LatticeSearch.SettledLabels),
@@ -1235,7 +1238,8 @@ internal static partial class NativeRouteJsonParser
                 calculationDuration,
                 NullableInt64(diagnosticsElement, "eligibilityEvaluations"),
                 NullableInt64(diagnosticsElement, "prunedCandidates"),
-                NullableInt64(diagnosticsElement, "futureProbeMisses"));
+                NullableInt64(diagnosticsElement, "futureProbeMisses"),
+                ParseCoastalDiagnostics(diagnosticsElement));
             if (root.TryGetProperty("schema", out var schema) && schema.GetString() == "route_result_v2")
             {
                 var routing = Required(root, "routing", JsonValueKind.Object);
@@ -1248,7 +1252,9 @@ internal static partial class NativeRouteJsonParser
                     Routing: ParseNativeRunMetadata(routing, solver),
                     ForecastSource: RequiredString(Required(root, "forecast", JsonValueKind.Object), "source"),
                     PolarSource: RequiredString(Required(root, "polar", JsonValueKind.Object), "source"),
-                    DepartureSource: RequiredString(Required(root, "departure", JsonValueKind.Object), "source"));
+                    DepartureSource: RequiredString(Required(root, "departure", JsonValueKind.Object), "source"),
+                    CoastalPruning: diagnostics.CoastalPruning,
+                    CoastalSeedActions: ParseCoastalSeedActions(diagnosticsElement));
             }
             if (root.TryGetProperty("latticeDiagnostics", out var latticeElement))
             {

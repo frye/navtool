@@ -40,6 +40,10 @@ internal static partial class NativeRouteJsonParser
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         var routing = Required(root, "routing", JsonValueKind.Object);
+        var coastal = ParseCoastalDiagnostics(Required(root, "diagnostics", JsonValueKind.Object));
+        if ((options.CoastalPruning == RouteCoastalPruningMode.Off) != (coastal is null) ||
+            coastal is not null && coastal.Mode != options.CoastalPruning)
+            throw new NativeRouteFormatException("Native coastal pruning audit differs from the requested mode.");
         if (Math.Abs(RequiredDouble(routing, "boatSpeedFactor") - options.PerformanceFactor) > 1e-9 ||
             Math.Abs(RequiredDouble(routing, "arrivalRadiusNm") - options.ArrivalRadiusNauticalMiles) > 1e-9 ||
             RequiredTimestamp(routing, "forecastInitialization") != forecast.InitializedAt ||
