@@ -122,9 +122,11 @@ public sealed record RoutePlanRoutingProgress(
     double OverallFraction,
     string? Message = null,
     RouteCalculationSnapshot? Snapshot = null,
-    Guid? AttemptId = null,
-    RouteRequest? Request = null,
-    ForecastAcquisition? Acquisition = null);
+    Guid? AttemptId = null)
+{
+    public RouteRequest? Request { get; init; }
+    public ForecastAcquisition? Acquisition { get; init; }
+}
 
 public enum RoutePlanModelStatus
 {
@@ -794,9 +796,11 @@ public sealed class RoutePlanRoutingWorkflow
                     _fractions.Values.Average(),
                     message,
                     snapshot,
-                    attemptId,
-                    request,
-                    acquisition);
+                    attemptId)
+                {
+                    Request = request,
+                    Acquisition = acquisition
+                };
                 _progress?.Report(report);
             }
         }

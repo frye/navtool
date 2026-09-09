@@ -109,9 +109,11 @@ public sealed record RoutingProgress(
     double Fraction,
     string? Message = null,
     RouteCalculationSnapshot? Snapshot = null,
-    Guid? AttemptId = null,
-    RouteRequest? Request = null,
-    ForecastAcquisition? Acquisition = null);
+    Guid? AttemptId = null)
+{
+    public RouteRequest? Request { get; init; }
+    public ForecastAcquisition? Acquisition { get; init; }
+}
 
 public enum ModelRouteStatus
 {
@@ -644,7 +646,11 @@ public sealed class RoutingWorkflow
         RouteRequest? request = null,
         ForecastAcquisition? acquisition = null) =>
         progress?.Report(new RoutingProgress(
-            provider, model, stage, fraction, message, snapshot, attemptId, request, acquisition));
+            provider, model, stage, fraction, message, snapshot, attemptId)
+        {
+            Request = request,
+            Acquisition = acquisition
+        });
 
     private sealed class SynchronousProgress<T>(Action<T> report) : IProgress<T>
     {

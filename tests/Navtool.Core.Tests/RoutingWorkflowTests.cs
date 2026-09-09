@@ -5,6 +5,23 @@ namespace Navtool.Core.Tests;
 public sealed class RoutingWorkflowTests
 {
     [Fact]
+    public void Progress_preserves_its_original_positional_contract()
+    {
+        var progress = new RoutingProgress(ForecastModel.NoaaGfs.Provider(), ForecastModel.NoaaGfs,
+            RoutingProgressStage.CalculatingRoute, .5);
+        var (provider, model, stage, fraction, message, snapshot, attemptId) = progress;
+        Assert.Equal(ForecastModel.NoaaGfs.Provider(), provider);
+        Assert.Equal(ForecastModel.NoaaGfs, model);
+        Assert.Equal(RoutingProgressStage.CalculatingRoute, stage);
+        Assert.Equal(.5, fraction);
+        Assert.Null(message);
+        Assert.Null(snapshot);
+        Assert.Null(attemptId);
+        Assert.Null(progress.Request);
+        Assert.Null(progress.Acquisition);
+    }
+
+    [Fact]
     public void Workflow_request_without_solver_selection_uses_balanced_beam()
     {
         var request = new RoutingWorkflowRequest(

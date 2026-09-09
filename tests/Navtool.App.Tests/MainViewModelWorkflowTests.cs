@@ -1530,6 +1530,61 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Interrupted_weather_requires_full_forecast_window_coverage(bool useCoverage, bool covered)
+    {
+        var provider = new DelegateForecastProvider(ForecastModel.NoaaGfs, (request, _) =>
+        {
+            var acquisition = CreateAcquisition(request);
+            return ValueTask.FromResult(useCoverage
+                ? new ForecastAcquisition(request, acquisition.Run, acquisition.Artifact, acquisition.Source,
+                    coverage: new ForecastCoverage(request.Bounds, [request.From, request.From.AddHours(1)]))
+                : acquisition);
+        });
+        var engine = new StreamingRouteEngine((request, forecast, progress, _) =>
+        {
+            var snapshot = CreateSnapshot(request);
+            var endpoint = snapshot.ProvisionalRoute[^1];
+            var end = (forecast.Coverage?.ValidThrough ?? forecast.Request.Through)
+                .AddMinutes(covered ? 0 : 1);
+            progress?.Report(new RouteCalculationProgress(.4, "searching",
+                new RouteCalculationSnapshot(end, snapshot.EnvelopeSegments, snapshot.FrontSegments,
+                    [
+                        snapshot.ProvisionalRoute[0],
+                        new RoutePoint(endpoint.Location, end, 90, 6, 15, 180, 10)
+                    ], snapshot.Diagnostics)));
+            throw new RoutingException(RoutingFailureKind.ResourceLimit, "work limit");
+        });
+        var samples = 0;
+        var viewModel = CreateViewModel(new RoutingWorkflow([provider], engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+            {
+                samples++;
+                return ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty);
+            }));
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.True(viewModel.HasInterruptedRoute);
+        Assert.True(viewModel.HasTimeline);
+        Assert.Equal(covered, viewModel.HasNoaaWeather);
+        viewModel.TimelinePosition = 1;
+        Assert.True(viewModel.SelectedRoutePoint!.IsProvisional);
+        Assert.Equal(covered, viewModel.HasNoaaWeather);
+        Assert.Equal(covered ? ForecastModel.NoaaGfs : (ForecastModel?)null, viewModel.ActiveWeatherModel);
+        await viewModel.RefreshWeatherAsync(provider.LastRequest!.Bounds, 2, 2);
+        Assert.Equal(covered ? 1 : 0, samples);
+        if (!covered)
+        {
+            Assert.Contains("Weather is unavailable", viewModel.WeatherLayerError);
+            Assert.Contains("weather unavailable", viewModel.SelectedRouteDetails);
+        }
+    }
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public async Task Terminal_failure_preserves_visible_preview_or_fits_it_without_fitting_old_routes(bool visible)

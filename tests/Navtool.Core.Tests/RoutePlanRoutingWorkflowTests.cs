@@ -8,6 +8,27 @@ public sealed class RoutePlanRoutingWorkflowTests
     private static readonly DateTimeOffset Now =
         new(2026, 8, 1, 18, 0, 0, TimeSpan.Zero);
 
+    [Fact]
+    public void Progress_preserves_its_original_positional_contract()
+    {
+        var id = new RouteLegId();
+        var progress = new RoutePlanRoutingProgress(ForecastModel.NoaaGfs.Provider(), ForecastModel.NoaaGfs,
+            1, id, RoutePlanRoutingUnitStatus.CalculatingRoute, .5, .25);
+        var (provider, model, legIndex, legId, status, fraction, overall, message, snapshot, attemptId) = progress;
+        Assert.Equal(ForecastModel.NoaaGfs.Provider(), provider);
+        Assert.Equal(ForecastModel.NoaaGfs, model);
+        Assert.Equal(1, legIndex);
+        Assert.Equal(id, legId);
+        Assert.Equal(RoutePlanRoutingUnitStatus.CalculatingRoute, status);
+        Assert.Equal(.5, fraction);
+        Assert.Equal(.25, overall);
+        Assert.Null(message);
+        Assert.Null(snapshot);
+        Assert.Null(attemptId);
+        Assert.Null(progress.Request);
+        Assert.Null(progress.Acquisition);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

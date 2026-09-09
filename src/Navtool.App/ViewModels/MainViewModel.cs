@@ -3019,6 +3019,10 @@ public partial class MainViewModel : ViewModelBase
                _interruptedSources.Any(source => source.Preview == preview) &&
                acquisition is not null && acquisition.Request.Model == model &&
                acquisition.Request.From <= preview.Snapshot.ProvisionalRoute[0].Timestamp &&
+               acquisition.Request.Through >= preview.Snapshot.ProvisionalRoute[^1].Timestamp &&
+               (acquisition.Coverage is not { } coverage ||
+                coverage.ValidFrom <= preview.Snapshot.ProvisionalRoute[0].Timestamp &&
+                coverage.ValidThrough >= preview.Snapshot.ProvisionalRoute[^1].Timestamp) &&
                preview.Snapshot.ProvisionalRoute.All(point => acquisition.Request.Bounds.Contains(point.Location))
             ? acquisition
             : null;
