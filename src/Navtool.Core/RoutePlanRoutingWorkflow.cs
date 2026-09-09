@@ -122,7 +122,11 @@ public sealed record RoutePlanRoutingProgress(
     double OverallFraction,
     string? Message = null,
     RouteCalculationSnapshot? Snapshot = null,
-    Guid? AttemptId = null);
+    Guid? AttemptId = null)
+{
+    public RouteRequest? Request { get; init; }
+    public ForecastAcquisition? Acquisition { get; init; }
+}
 
 public enum RoutePlanModelStatus
 {
@@ -335,7 +339,9 @@ public sealed class RoutePlanRoutingWorkflow
                             value.Fraction,
                             value.Message,
                             value.Snapshot,
-                            value.AttemptId));
+                            value.AttemptId,
+                            value.Request,
+                            value.Acquisition));
                     var workflowResult = await _singleLegWorkflow.ExecuteAsync(
                         workflowRequest,
                         legProgress,
@@ -773,7 +779,9 @@ public sealed class RoutePlanRoutingWorkflow
             double fraction,
             string? message = null,
             RouteCalculationSnapshot? snapshot = null,
-            Guid? attemptId = null)
+            Guid? attemptId = null,
+            RouteRequest? request = null,
+            ForecastAcquisition? acquisition = null)
         {
             lock (_gate)
             {
@@ -788,7 +796,11 @@ public sealed class RoutePlanRoutingWorkflow
                     _fractions.Values.Average(),
                     message,
                     snapshot,
-                    attemptId);
+                    attemptId)
+                {
+                    Request = request,
+                    Acquisition = acquisition
+                };
                 _progress?.Report(report);
             }
         }

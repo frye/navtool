@@ -58,6 +58,32 @@ public sealed class InterruptedRoutePreviewTrackerTests
         Assert.Empty(tracker.Previews);
     }
 
+    [Fact]
+    public void Forecast_context_belongs_only_to_the_snapshot_attempt()
+    {
+        var tracker = new InterruptedRoutePreviewTracker();
+        var snapshot = Snapshot();
+        var request = new RouteRequest("preview", snapshot.ProvisionalRoute[0].Location,
+            new Coordinate(49, -124), Departure, Departure.AddDays(1));
+        var forecastRequest = new ForecastRequest(ForecastModel.NoaaGfs,
+            new GeographicBounds(47, 50, -125, -122), Departure, Departure.AddDays(1));
+        var acquisition = new ForecastAcquisition(forecastRequest,
+            new ForecastRun(forecastRequest.Provider, forecastRequest.Model, Departure.AddHours(-6)),
+            new LocalGribArtifact(Path.GetFullPath("preview.grib2")), ForecastAcquisitionSource.Cache);
+        var attempt = Guid.NewGuid();
+        tracker.Observe(ForecastModel.NoaaGfs, 0, attempt, true, false, null, snapshot, request, acquisition);
+        tracker.Observe(ForecastModel.NoaaGfs, 0, attempt, true, false, null, null);
+        tracker.Observe(ForecastModel.NoaaGfs, 0, null, false, false, "work limit", null);
+        var retained = Assert.Single(tracker.Previews);
+        Assert.Same(request, retained.Request);
+        Assert.Same(acquisition, retained.Acquisition);
+
+        tracker.Observe(ForecastModel.NoaaGfs, 0, Guid.NewGuid(), true, false, null, snapshot);
+        var replacement = Assert.Single(tracker.Previews);
+        Assert.Null(replacement.Acquisition);
+        Assert.Null(replacement.Request);
+    }
+
     private static RouteCalculationSnapshot Snapshot() => new(
         Departure.AddHours(1),
         [new RouteCalculationEnvelopeSegment([new(48, -123), new(48.1, -123.1)], false)],

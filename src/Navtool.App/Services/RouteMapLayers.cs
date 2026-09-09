@@ -170,6 +170,11 @@ public sealed class RouteMapLayers
 
     public bool HasInterruptedRoutes => _interruptedPaths.Count > 0;
 
+    private readonly Dictionary<ForecastModel, IReadOnlyList<MPoint>> _interruptedProjections = [];
+
+    public IReadOnlyList<MPoint> GetInterruptedRoutePoints(ForecastModel model) =>
+        _interruptedProjections.TryGetValue(model, out var points) ? points : Array.Empty<MPoint>();
+
     public void SetInterruptedRoutes(
         IEnumerable<(ForecastModel Model, RouteCalculationSnapshot Snapshot)> previews)
     {
@@ -289,12 +294,14 @@ public sealed class RouteMapLayers
 
     private IReadOnlyList<MPoint> UpdateInterruptedRouteFeatures()
     {
+        _interruptedProjections.Clear();
         var features = new List<IFeature>();
         var allPoints = new List<MPoint>();
         var referenceX = Map.Navigator.Viewport.CenterX;
         foreach (var (model, path) in _interruptedPaths)
         {
             var points = MapProjection.ToContinuousMapPointsNear(path, referenceX);
+            _interruptedProjections[model] = points;
             if (allPoints.Count == 0)
             {
                 referenceX = (points.Min(point => point.X) + points.Max(point => point.X)) / 2;
@@ -518,6 +525,14 @@ public sealed class RouteMapLayers
                 RouteLegs.Where(leg => leg.Key.Model == key.Model))
             .SingleOrDefault(item => item.Leg.Key == key)
             ?.Points;
+        FitRoutePoints(projected);
+    }
+
+    public void FitInterruptedRoute(ForecastModel model) =>
+        FitRoutePoints(GetInterruptedRoutePoints(model));
+
+    private void FitRoutePoints(IReadOnlyList<MPoint>? projected)
+    {
         if (projected is null || projected.Count == 0)
         {
             return;

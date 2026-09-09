@@ -16,9 +16,8 @@ public sealed record RouteMapSelection
         RoutePoint point,
         RouteHitKind hitKind,
         double distancePixels)
-        : this(leg.Route!, pointIndex, point, hitKind, distancePixels)
+        : this(new RouteInspectionSource(leg.Route!, leg), pointIndex, point, hitKind, distancePixels)
     {
-        Leg = leg;
     }
 
     public RouteMapSelection(
@@ -27,21 +26,39 @@ public sealed record RouteMapSelection
         RoutePoint point,
         RouteHitKind hitKind,
         double distancePixels)
+        : this(new RouteInspectionSource(route), pointIndex, point, hitKind, distancePixels)
     {
-        ArgumentNullException.ThrowIfNull(route);
+    }
+
+    public RouteMapSelection(
+        RouteInspectionSource source,
+        int pointIndex,
+        RoutePoint point,
+        RouteHitKind hitKind,
+        double distancePixels)
+    {
+        ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(point);
-        Route = route;
+        Source = source;
         PointIndex = pointIndex;
         Point = point;
         HitKind = hitKind;
         DistancePixels = distancePixels;
     }
 
-    public RouteLegVisualization? Leg { get; }
+    public RouteInspectionSource Source { get; }
+
+    public RouteLegVisualization? Leg => Source.Leg;
 
     public RouteVisualizationKey? Key => Leg?.Key;
 
-    public RouteResult Route { get; }
+    public RouteResult? Route => Source.Route;
+
+    public ForecastModel Model => Source.Model;
+
+    public bool IsProvisional => Source.IsProvisional;
+
+    public string TelemetryLabel => IsProvisional ? "PROVISIONAL POINT" : "ROUTE POINT";
 
     public int PointIndex { get; }
 
