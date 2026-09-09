@@ -965,7 +965,7 @@
                           RowSpacing="8">
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Spacing="1">
-                                <TextBlock Text="ROUTE POINT"
+                                <TextBlock Text="{Binding SelectedRoutePoint.TelemetryLabel}"
                                            Classes="telemetry-label" />
                                 <TextBlock x:Name="RouteTelemetryTime"
                                            Text="{Binding SelectedRoutePoint.TimelineTimestamp, StringFormat={}{0:dd MMM · HH:mm} UTC}"

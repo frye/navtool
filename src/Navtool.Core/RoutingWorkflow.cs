@@ -109,7 +109,9 @@ public sealed record RoutingProgress(
     double Fraction,
     string? Message = null,
     RouteCalculationSnapshot? Snapshot = null,
-    Guid? AttemptId = null);
+    Guid? AttemptId = null,
+    RouteRequest? Request = null,
+    ForecastAcquisition? Acquisition = null);
 
 public enum ModelRouteStatus
 {
@@ -376,7 +378,8 @@ public sealed class RoutingWorkflow
             }
 
             failureStage = ModelRouteFailureStage.RouteCalculation;
-            Report(progress, providerId, model, RoutingProgressStage.CalculatingRoute, 0.5);
+            Report(progress, providerId, model, RoutingProgressStage.CalculatingRoute, 0.5,
+                request: request.Route, acquisition: acquisition);
             // Route calculation occupies the upper half of the bar. Clamp to the highest
             // fraction reported so far so progress never runs backwards: the fallback below
             // re-runs the engine from zero, and a raw projection would rewind the bar.
@@ -393,7 +396,9 @@ public sealed class RoutingWorkflow
                     highestFraction,
                     value.Message,
                     value.Snapshot,
-                    attemptId);
+                    attemptId,
+                    request.Route,
+                    acquisition);
             });
 
             async ValueTask<RouteResult> CalculateAsync(RouteOptimizationOptions options)
@@ -439,7 +444,9 @@ public sealed class RoutingWorkflow
                     model,
                     RoutingProgressStage.CalculatingRoute,
                     highestFraction,
-                    solverFallback);
+                    solverFallback,
+                    request: request.Route,
+                    acquisition: acquisition);
 
                 attemptId = Guid.NewGuid();
                 route = await CalculateAsync(fallbackOptions).ConfigureAwait(false);
@@ -633,8 +640,11 @@ public sealed class RoutingWorkflow
         double fraction,
         string? message = null,
         RouteCalculationSnapshot? snapshot = null,
-        Guid? attemptId = null) =>
-        progress?.Report(new RoutingProgress(provider, model, stage, fraction, message, snapshot, attemptId));
+        Guid? attemptId = null,
+        RouteRequest? request = null,
+        ForecastAcquisition? acquisition = null) =>
+        progress?.Report(new RoutingProgress(
+            provider, model, stage, fraction, message, snapshot, attemptId, request, acquisition));
 
     private sealed class SynchronousProgress<T>(Action<T> report) : IProgress<T>
     {

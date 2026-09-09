@@ -17,14 +17,10 @@ public static class RouteHitTester
         ValidateTolerance(routeTolerancePixels, nameof(routeTolerancePixels));
         ValidateTolerance(pointTolerancePixels, nameof(pointTolerancePixels));
 
-        var projected = legs
+        return FindNearest(legs
             .Where(leg => leg.HasOptimizedGeometry)
-            .Select(leg => new ProjectedLeg(
-                leg,
-                ValidateProjectedPoints(leg.Route!, projectToScreen(leg))))
-            .ToArray();
-        var pointHit = FindNearestLegPoint(projected, click, pointTolerancePixels);
-        return pointHit ?? FindNearestLegSegment(projected, click, routeTolerancePixels);
+            .Select(leg => new RouteInspectionSource(leg.Route!, leg)),
+            source => projectToScreen(source.Leg!), click, routeTolerancePixels, pointTolerancePixels);
     }
 
     public static RouteMapSelection? FindNearest(
@@ -61,10 +57,25 @@ public static class RouteHitTester
         ValidateTolerance(routeTolerancePixels, nameof(routeTolerancePixels));
         ValidateTolerance(pointTolerancePixels, nameof(pointTolerancePixels));
 
-        var projectedRoutes = routes
-            .Select(route => new ProjectedRoute(
-                route,
-                ValidateProjectedPoints(route, projectToScreen(route))))
+        return FindNearest(routes.Select(route => new RouteInspectionSource(route)),
+            source => projectToScreen(source.Route!), click, routeTolerancePixels, pointTolerancePixels);
+    }
+
+    public static RouteMapSelection? FindNearest(
+        IEnumerable<RouteInspectionSource> sources,
+        Func<RouteInspectionSource, IReadOnlyList<ScreenPoint>> projectToScreen,
+        ScreenPoint click,
+        double routeTolerancePixels = 10,
+        double pointTolerancePixels = 14)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        ArgumentNullException.ThrowIfNull(projectToScreen);
+        ValidateTolerance(routeTolerancePixels, nameof(routeTolerancePixels));
+        ValidateTolerance(pointTolerancePixels, nameof(pointTolerancePixels));
+        var projectedRoutes = sources
+            .Select(source => new ProjectedRoute(
+                source,
+                ValidateProjectedPoints(source, projectToScreen(source))))
             .ToArray();
 
         var pointHit = FindNearestPoint(projectedRoutes, click, pointTolerancePixels);
@@ -72,7 +83,7 @@ public static class RouteHitTester
     }
 
     private static ScreenPoint[] ValidateProjectedPoints(
-        RouteResult route,
+        RouteInspectionSource route,
         IReadOnlyList<ScreenPoint> projected)
     {
         ArgumentNullException.ThrowIfNull(projected);
@@ -162,87 +173,8 @@ public static class RouteHitTester
         return nearest;
     }
 
-    private static RouteMapSelection? FindNearestLegPoint(
-        IEnumerable<ProjectedLeg> legs,
-        ScreenPoint click,
-        double tolerance)
-    {
-        if (!IsFinite(click))
-        {
-            return null;
-        }
-
-        RouteMapSelection? nearest = null;
-        foreach (var leg in legs)
-        {
-            for (var index = 0; index < leg.Points.Length; index++)
-            {
-                if (!IsFinite(leg.Points[index]))
-                {
-                    continue;
-                }
-
-                var distance = click.DistanceTo(leg.Points[index]);
-                if (distance <= tolerance && (nearest is null || distance < nearest.DistancePixels))
-                {
-                    nearest = new RouteMapSelection(
-                        leg.Leg,
-                        index,
-                        leg.Leg.Route!.Points[index],
-                        RouteHitKind.RoutePoint,
-                        distance);
-                }
-            }
-        }
-
-        return nearest;
-    }
-
-    private static RouteMapSelection? FindNearestLegSegment(
-        IEnumerable<ProjectedLeg> legs,
-        ScreenPoint click,
-        double tolerance)
-    {
-        if (!IsFinite(click))
-        {
-            return null;
-        }
-
-        RouteMapSelection? nearest = null;
-        foreach (var leg in legs)
-        {
-            for (var index = 1; index < leg.Points.Length; index++)
-            {
-                if (!IsFinite(leg.Points[index - 1]) || !IsFinite(leg.Points[index]))
-                {
-                    continue;
-                }
-
-                var distance = DistanceToSegment(click, leg.Points[index - 1], leg.Points[index]);
-                if (!double.IsFinite(distance) ||
-                    distance > tolerance ||
-                    (nearest is not null && distance >= nearest.DistancePixels))
-                {
-                    continue;
-                }
-
-                var pointIndex = click.DistanceTo(leg.Points[index - 1]) <= click.DistanceTo(leg.Points[index])
-                    ? index - 1
-                    : index;
-                nearest = new RouteMapSelection(
-                    leg.Leg,
-                    pointIndex,
-                    leg.Leg.Route!.Points[pointIndex],
-                    RouteHitKind.Route,
-                    distance);
-            }
-        }
-
-        return nearest;
-    }
-
     private static RouteMapSelection CreateSelection(
-        RouteResult route,
+        RouteInspectionSource route,
         int pointIndex,
         RouteHitKind kind,
         double distance) =>
@@ -277,7 +209,5 @@ public static class RouteHitTester
     private static bool IsFinite(ScreenPoint point) =>
         double.IsFinite(point.X) && double.IsFinite(point.Y);
 
-    private sealed record ProjectedRoute(RouteResult Route, ScreenPoint[] Points);
-
-    private sealed record ProjectedLeg(RouteLegVisualization Leg, ScreenPoint[] Points);
+    private sealed record ProjectedRoute(RouteInspectionSource Route, ScreenPoint[] Points);
 }

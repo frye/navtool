@@ -131,6 +131,17 @@ public sealed class RoutingWorkflowTests
         Assert.Contains(reports, report =>
             report.Model == ForecastModel.EcmwfIfs &&
             report.Stage == RoutingProgressStage.Failed);
+        Assert.All(reports.Where(report => report.Stage == RoutingProgressStage.CalculatingRoute), report =>
+        {
+            Assert.Same(request.Route, report.Request);
+            Assert.Same(result.Outcomes.Single(outcome => outcome.Model == report.Model).Acquisition,
+                report.Acquisition);
+        });
+        Assert.All(reports.Where(report => report.Stage == RoutingProgressStage.AcquiringForecast), report =>
+        {
+            Assert.Null(report.Request);
+            Assert.Null(report.Acquisition);
+        });
     }
 
     [Fact]
@@ -193,6 +204,70 @@ public sealed class RoutingWorkflowTests
             new[] { ForecastModel.NoaaGfs, ForecastModel.NoaaGfs });
 
         Assert.Equal([ForecastModel.NoaaGfs], request.Models.ToArray());
+    }
+
+    [Fact]
+    public async Task Snapshot_retains_validated_context_when_cancellation_prevents_an_outcome()
+    {
+        var reports = new List<RoutingProgress>();
+        using var cancellation = new CancellationTokenSource();
+        ForecastAcquisition? acquired = null;
+        var workflow = new RoutingWorkflow(
+            [new StubForecastProvider(ForecastModel.NoaaGfs, (request, _, _) =>
+                ValueTask.FromResult(acquired = CreateAcquisition(request)))],
+            new StubRouteEngine((request, _, progress, token) =>
+            {
+                progress?.Report(new RouteCalculationProgress(0.4, snapshot: Snapshot(request)));
+                cancellation.Cancel();
+                token.ThrowIfCancellationRequested();
+                throw new InvalidOperationException("Unreachable.");
+            }));
+        var request = new RoutingWorkflowRequest(CreateRouteRequest(), [ForecastModel.NoaaGfs]);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => workflow.ExecuteAsync(
+            request, new InlineProgress<RoutingProgress>(reports.Add), cancellation.Token));
+
+        var snapshot = Assert.Single(reports, report => report.Snapshot is not null);
+        Assert.Same(request.Route, snapshot.Request);
+        Assert.Same(acquired, snapshot.Acquisition);
+        Assert.NotNull(snapshot.AttemptId);
+        Assert.DoesNotContain(reports, report =>
+            report.Stage is RoutingProgressStage.Completed or RoutingProgressStage.Failed);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Invalid_acquisition_never_exposes_progress_context(bool differentRequest)
+    {
+        var reports = new List<RoutingProgress>();
+        var workflow = new RoutingWorkflow(
+            [new StubForecastProvider(ForecastModel.NoaaGfs, (request, _, _) =>
+            {
+                if (differentRequest)
+                    return ValueTask.FromResult(CreateAcquisition(new ForecastRequest(
+                        request.Model, request.Bounds, request.From.AddHours(1), request.Through,
+                        request.RefreshPolicy)));
+                var acquired = CreateAcquisition(request);
+                return ValueTask.FromResult(new ForecastAcquisition(
+                    request, acquired.Run, acquired.Artifact, acquired.Source,
+                    coverage: new ForecastCoverage(request.Bounds,
+                        [request.From.AddHours(1), request.From.AddHours(2)])));
+            })],
+            new StubRouteEngine((_, _, _, _) =>
+                throw new InvalidOperationException("Invalid forecasts must not reach the engine.")));
+
+        var result = await workflow.ExecuteAsync(
+            new RoutingWorkflowRequest(CreateRouteRequest(), [ForecastModel.NoaaGfs]),
+            new InlineProgress<RoutingProgress>(reports.Add));
+
+        Assert.Equal(ModelRouteFailureStage.ForecastAcquisition, Assert.Single(result.Outcomes).Failure!.Stage);
+        Assert.DoesNotContain(reports, report => report.Stage == RoutingProgressStage.CalculatingRoute);
+        Assert.All(reports, report =>
+        {
+            Assert.Null(report.Request);
+            Assert.Null(report.Acquisition);
+        });
     }
 
     [Fact]
@@ -385,11 +460,14 @@ public sealed class RoutingWorkflowTests
     public async Task Workflow_falls_back_to_the_beam_solver_when_the_lattice_solver_fails()
     {
         StubRouteEngine? engine = null;
-        engine = new StubRouteEngine((request, acquisition, _, _) =>
-            engine!.Optimizations[^1].Solver == RouteSolver.TimeDependentLattice
+        engine = new StubRouteEngine((request, acquisition, progress, _) =>
+        {
+            progress?.Report(new RouteCalculationProgress(0.4, snapshot: Snapshot(request)));
+            return engine!.Optimizations[^1].Solver == RouteSolver.TimeDependentLattice
                 ? throw new RoutingException(RoutingFailureKind.RecoverableSolver,
                     "time-dependent lattice search exhausted every reachable state")
-                : ValueTask.FromResult(CreateRoute(request, acquisition.Request.Model)));
+                : ValueTask.FromResult(CreateRoute(request, acquisition.Request.Model));
+        });
         var workflow = new RoutingWorkflow(
             new[]
             {
@@ -422,6 +500,15 @@ public sealed class RoutingWorkflowTests
             report.Stage == RoutingProgressStage.CalculatingRoute &&
             report.Message is not null &&
             report.Message.Contains("isochrone beam", StringComparison.Ordinal));
+        Assert.All(reports.Where(report => report.Stage == RoutingProgressStage.CalculatingRoute), report =>
+        {
+            Assert.Same(outcome.Route.Request, report.Request);
+            Assert.Same(outcome.Acquisition, report.Acquisition);
+        });
+        var snapshots = reports.Where(report => report.Snapshot is not null).ToArray();
+        Assert.Equal(2, snapshots.Length);
+        Assert.All(snapshots, report => Assert.NotNull(report.AttemptId));
+        Assert.NotEqual(snapshots[0].AttemptId, snapshots[1].AttemptId);
     }
 
     [Fact]
@@ -611,6 +698,14 @@ public sealed class RoutingWorkflowTests
         new(
             CreateRouteRequest(),
             new[] { ForecastModel.NoaaGfs, ForecastModel.EcmwfIfs });
+
+    private static RouteCalculationSnapshot Snapshot(RouteRequest request) =>
+        new(request.DepartureTime.AddHours(1),
+            [new RouteCalculationEnvelopeSegment([request.Origin, request.Destination], closed: false)],
+            [new RouteCalculationFrontSegment([request.Origin, request.Destination])],
+            [new RoutePoint(request.Origin, request.DepartureTime, 90, 6, 15, 180, 0),
+             new RoutePoint(request.Destination, request.DepartureTime.AddHours(1), 90, 6, 15, 180, 6)],
+            new RouteDiagnostics(1, 2, 1, 1));
 
     private static RouteRequest CreateRouteRequest()
     {

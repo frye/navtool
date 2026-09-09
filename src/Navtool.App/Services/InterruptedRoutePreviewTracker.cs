@@ -7,7 +7,9 @@ internal sealed record InterruptedRoutePreview(
     int LegIndex,
     Guid? AttemptId,
     RouteCalculationSnapshot Snapshot,
-    string? FailureMessage);
+    string? FailureMessage,
+    RouteRequest? Request,
+    ForecastAcquisition? Acquisition);
 
 /// <summary>Caller synchronizes access; holds at most one current search path per model.</summary>
 internal sealed class InterruptedRoutePreviewTracker
@@ -18,7 +20,8 @@ internal sealed class InterruptedRoutePreviewTracker
     public IReadOnlyCollection<InterruptedRoutePreview> Previews => _previews.Values;
 
     public void Observe(ForecastModel model, int leg, Guid? attempt,
-        bool calculating, bool succeeded, string? failureMessage, RouteCalculationSnapshot? snapshot)
+        bool calculating, bool succeeded, string? failureMessage, RouteCalculationSnapshot? snapshot,
+        RouteRequest? request = null, ForecastAcquisition? acquisition = null)
     {
         if (succeeded)
         {
@@ -36,7 +39,7 @@ internal sealed class InterruptedRoutePreviewTracker
             }
             if (snapshot is { ProvisionalRoute.Length: >= 2 } &&
                 snapshot.ProvisionalRoute[^1].Timestamp > snapshot.ProvisionalRoute[0].Timestamp)
-                _previews[model] = new(model, leg, attempt, snapshot, null);
+                _previews[model] = new(model, leg, attempt, snapshot, null, request, acquisition);
         }
         else if (failureMessage is not null &&
                  _previews.TryGetValue(model, out var preview) && preview.LegIndex == leg)
