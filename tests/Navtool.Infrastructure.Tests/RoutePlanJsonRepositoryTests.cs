@@ -35,6 +35,10 @@ public sealed class RoutePlanJsonRepositoryTests
         var changed = loaded.WithPlanningInputs(inputs with { DepartureNow = true, ScheduledDepartureUtc = null });
         Assert.True(changed.HasInvalidatedResults);
         Assert.Equal(inputs, loaded.PlanningInputs);
+        Assert.Equal(RouteLegOutcomeReason.PlanningInputsChanged, changed.Results[0].Legs[changed.ActiveLegIndex].Reason);
+        await repository.SaveAsync(changed);
+        var reloaded = await repository.OpenAsync(changed.Id);
+        Assert.Equal(RouteLegOutcomeReason.PlanningInputsChanged, reloaded.Results[0].Legs[reloaded.ActiveLegIndex].Reason);
     }
 
     [Fact]

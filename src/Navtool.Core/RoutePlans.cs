@@ -194,7 +194,8 @@ public enum RouteLegOutcomeReason
     ResourceLimit,
     InvalidBoat,
     MissingRequiredSource,
-    DepartureChanged
+    DepartureChanged,
+    PlanningInputsChanged
 }
 
 public static class RouteCompletionOutcome
@@ -459,7 +460,7 @@ public sealed record RoutePlan
     {
         if (PlanningInputs == inputs) return this;
         return new(Id, Name, Waypoints,
-            Results.Select(result => RebuildResult(result, Legs, ActiveLegIndex, RouteLegOutcomeReason.RoutingSetupChanged)),
+            Results.Select(result => RebuildResult(result, Legs, ActiveLegIndex, RouteLegOutcomeReason.PlanningInputsChanged)),
             SailedLegIds, CurrentPosition, ActiveLegId, RoutingSetup, inputs);
     }
 
