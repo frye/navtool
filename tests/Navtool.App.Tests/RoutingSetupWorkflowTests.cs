@@ -14,6 +14,21 @@ public sealed class RoutingSetupWorkflowTests
     private static readonly DateTimeOffset Now = new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public void Repeated_invalid_setup_edits_still_advance_revisions_once()
+    {
+        var vm = Create(new CountingProvider(), new TestRoutingSetupService());
+        foreach (var performance in new[] { -1, -2 })
+        {
+            var revision = vm.Itinerary.CalculationRevision;
+            var editRevision = vm.Itinerary.EditRevision;
+            vm.RoutingSetup.PerformancePercentage = performance;
+            Assert.Equal(revision + 1, vm.Itinerary.CalculationRevision);
+            Assert.Equal(editRevision + 1, vm.Itinerary.EditRevision);
+            Assert.False(vm.RoutingSetup.TryBuild(out _, out _));
+        }
+    }
+
+    [Fact]
     public void Readiness_ignores_progress_and_status_but_updates_for_planning_dependencies()
     {
         var vm = Create(new CountingProvider(), new TestRoutingSetupService());
@@ -640,7 +655,9 @@ public sealed class RoutingSetupWorkflowTests
         Assert.Equal(1500, route.Points.Length);
         Assert.True(route.Points[750].Location.Latitude < -0.24);
         var original = route.Points.ToArray();
+        var revision = vm.Itinerary.CalculationRevision;
         vm.RoutingSetup.PerformancePercentage = 80;
+        Assert.Equal(revision + 1, vm.Itinerary.CalculationRevision);
         Assert.True(vm.Itinerary.ResultsInvalidated);
         Assert.Empty(vm.SuccessfulRoutes);
         Assert.Equal(original, route.Points);

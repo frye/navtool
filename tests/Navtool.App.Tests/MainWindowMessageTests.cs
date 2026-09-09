@@ -68,6 +68,37 @@ public sealed class MainWindowMessageTests
     }
 
     [AvaloniaFact]
+    public void New_messages_preserve_open_popup_filter_and_scroll_position()
+    {
+        using var fixture = new MessageWindow();
+        var (window, model) = (fixture.Window, fixture.Model);
+        var reason = string.Join(" ", Enumerable.Repeat("Detailed NOAA interruption context.", 200));
+        model.SetRoutingFailure(ForecastModel.NoaaGfs, 0, reason, new Coordinate(0, 0));
+        Dispatcher.UIThread.RunJobs();
+        var button = Assert.Single(window.FindControl<Canvas>("InterruptedEndpointLayer")!.Children.OfType<Button>());
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+        var scroll = window.FindControl<ScrollViewer>("MessageScrollViewer")!;
+        scroll.Offset = new Vector(0, 180);
+        Dispatcher.UIThread.RunJobs();
+        var offset = scroll.Offset;
+        Assert.True(offset.Y > 0);
+
+        model.SetRoutingFailure(ForecastModel.EcmwfIfs, 0, "New ECMWF interruption.", new Coordinate(0, 1));
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(window.IsMessagePopupOpen);
+        Assert.Equal("NOAA GFS interrupted", window.FindControl<TextBlock>("MessagePopupTitle")!.Text);
+        Assert.Equal(offset, scroll.Offset);
+        Assert.DoesNotContain(window.FindControl<StackPanel>("MessageItems")!.GetVisualDescendants().OfType<TextBlock>(),
+            text => text.Text == "New ECMWF interruption.");
+        Click(window, "CloseMessagesButton");
+        model.StatusMessage = "Unrelated update";
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(window.IsMessagePopupOpen);
+    }
+
+    [AvaloniaFact]
     public void Endpoint_click_uses_updated_message_before_the_queued_refresh()
     {
         using var fixture = new MessageWindow();

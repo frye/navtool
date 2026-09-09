@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
+using Navtool.App.Models;
 using Navtool.App.Services;
 using Navtool.Core;
 
@@ -12,6 +13,13 @@ public partial class MainViewModel
     private long _previewRevision;
     private int _previewStartLeg;
     private RouteRequest? _previewRequest;
+    private long _previewGeneration;
+    private RouteInspectionSource[] _interruptedSources = [];
+
+    private IEnumerable<RouteInspectionSource> InspectionSources =>
+        _visualizationLegs.Where(leg => leg.HasOptimizedGeometry)
+            .Select(leg => new RouteInspectionSource(leg.Route!, leg))
+            .Concat(_interruptedSources);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasInterruptedRoute))]
@@ -26,6 +34,7 @@ public partial class MainViewModel
         ClearRoutePreviews();
         _previewPlanId = Itinerary.PlanId;
         _previewRevision = Itinerary.CalculationRevision;
+        _previewGeneration = Volatile.Read(ref _calculationGeneration);
         _previewStartLeg = planRequest?.StartLegIndex ?? 0;
         _previewRequest = planRequest is null ? request : new RouteRequest(request.RouteId,
             planRequest.StartOrigin, planRequest.Plan.Waypoints[_previewStartLeg + 1].Coordinate,
@@ -36,6 +45,7 @@ public partial class MainViewModel
     {
         lock (_progressGate)
         {
+            var hadInspection = _interruptedSources.Length > 0;
             if (HasInterruptedRoute)
             {
                 StatusMessage = "Provisional path cleared; calculate again for the current itinerary.";
@@ -43,15 +53,23 @@ public partial class MainViewModel
             }
             _routePreviews.Clear();
             ClearRoutingMessages();
+            _interruptedSources = [];
             _previewPlanId = null;
             _previewRequest = null;
             InterruptedRouteMessage = null;
             _mapLayers.ClearInterruptedRoutes();
+            if (hadInspection)
+            {
+                CancelWeather();
+                RefreshInspectionTimeline();
+                UpdateWeatherAvailability();
+            }
         }
     }
 
     private void CaptureRoutePreview(long generation, ForecastModel model, int leg, Guid? attempt,
-        bool calculating, bool succeeded, string? failureMessage, RouteCalculationSnapshot? snapshot)
+        bool calculating, bool succeeded, string? failureMessage, RouteCalculationSnapshot? snapshot,
+        RouteRequest? routeRequest = null, ForecastAcquisition? acquisition = null)
     {
         lock (_progressGate)
         {
@@ -59,7 +77,8 @@ public partial class MainViewModel
                 _previewPlanId != Itinerary.PlanId || _previewRevision != Itinerary.CalculationRevision)
                 return;
 
-            if (snapshot is not null && leg == _previewStartLeg && _previewRequest is { } request &&
+            var expectedRequest = routeRequest ?? (leg == _previewStartLeg ? _previewRequest : null);
+            if (snapshot is not null && expectedRequest is { } request &&
                 (!snapshot.ProvisionalRoute[0].Location.IsSameLocation(request.Origin) ||
                  snapshot.ProvisionalRoute[0].Timestamp != request.DepartureTime))
             {
@@ -67,7 +86,8 @@ public partial class MainViewModel
                 _logger.LogWarning("Ignoring provisional geometry with an incorrect origin or departure for {Model}", model);
                 return;
             }
-            _routePreviews.Observe(model, leg, attempt, calculating, succeeded, failureMessage, snapshot);
+            _routePreviews.Observe(model, leg, attempt, calculating, succeeded, failureMessage, snapshot,
+                routeRequest, acquisition);
         }
     }
 
@@ -125,6 +145,19 @@ public partial class MainViewModel
         if (_routingMessages.RemoveAll(message => message.IsInterrupted &&
                 !previews.Any(preview => preview.Model == message.Model && preview.LegIndex == message.LegIndex)) > 0)
             OnPropertyChanged(nameof(CurrentMessages));
+        _interruptedSources = previews.Select(preview =>
+        {
+            var first = preview.Snapshot.ProvisionalRoute[0];
+            var leg = Itinerary.CurrentPlan?.Legs.ElementAtOrDefault(preview.LegIndex);
+            var destination = Itinerary.Waypoints.ElementAtOrDefault(preview.LegIndex + 1)?.Coordinate ??
+                              _previewRequest!.Destination;
+            var request = preview.Request ?? new RouteRequest(_previewRequest!.RouteId,
+                first.Location, destination, first.Timestamp, _previewRequest.LatestArrivalTime);
+            return new RouteInspectionSource(new InterruptedRouteInspection(
+                _previewPlanId!.Value, _previewRevision, _previewGeneration,
+                leg?.Id ?? new RouteLegId(), preview.LegIndex, preview.AttemptId, preview.Model,
+                request, preview.Snapshot, preview.Acquisition, preview.FailureMessage ?? defaultReason));
+        }).ToArray();
         _mapLayers.SetInterruptedRoutes(previews.Select(preview => (preview.Model, preview.Snapshot)));
         if (previews.Length == 0)
         {
@@ -151,8 +184,26 @@ public partial class MainViewModel
 
     private void FinishInterruptedPresentation()
     {
-        if (!HasInterruptedRoute) return;
-        StatusMessage = "Calculation interrupted; provisional path retained.";
-        _mapLayers.KeepInterruptedRoutesVisible();
+        lock (_progressGate)
+        {
+            if (!HasInterruptedRoute) return;
+            RefreshInspectionTimeline();
+            UpdateWeatherAvailability();
+            StatusMessage = "Calculation interrupted; provisional path retained.";
+            _mapLayers.KeepInterruptedRoutesVisible();
+        }
+    }
+
+    private void RefreshInspectionTimeline()
+    {
+        NotifyRouteModelAvailability();
+        var sources = InspectionSources.ToArray();
+        var model = ActiveRouteModel is { } active && sources.Any(source => source.Model == active)
+            ? active
+            : sources.OrderBy(source => source.Model).FirstOrDefault()?.Model;
+        if (ActiveRouteModel != model)
+            ActiveRouteModel = model;
+        else
+            BuildTimeline(model);
     }
 }

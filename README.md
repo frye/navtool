@@ -219,8 +219,14 @@ is not a certified anchorage or proof of station keeping.
 The map stores feature identity as plan, stable leg, model, calculation session,
 and route-result ID. This keeps revisions and parallel model results distinct
 during list selection, map hit testing, selected-leg emphasis, and timeline
-navigation. The active model's timeline spans its saved successful legs in
-chronological order. Stopover gaps are stationary holds at the waypoint; the
+navigation. The active model's timeline spans its saved successful legs and any
+retained interrupted path in chronological order. Interrupted paths support
+point/segment selection, point details, timeline stepping and scrubbing, and winds
+at the selected UTC time using the forecast retained from that calculation.
+They remain dashed and explicitly provisional: they are not saved as successful
+routes, do not imply destination arrival, and are cleared on retry or input changes.
+If the matching forecast is unavailable, point details remain inspectable without
+a weather overlay. Stopover gaps are stationary holds at the waypoint; the
 timeline does not compare unrelated nearest NOAA and ECMWF points as though they
 represented the same forecast instant.
 

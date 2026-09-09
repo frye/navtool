@@ -8,6 +8,27 @@ public sealed class RoutePlanRoutingWorkflowTests
     private static readonly DateTimeOffset Now =
         new(2026, 8, 1, 18, 0, 0, TimeSpan.Zero);
 
+    [Fact]
+    public void Progress_preserves_its_original_positional_contract()
+    {
+        var id = new RouteLegId();
+        var progress = new RoutePlanRoutingProgress(ForecastModel.NoaaGfs.Provider(), ForecastModel.NoaaGfs,
+            1, id, RoutePlanRoutingUnitStatus.CalculatingRoute, .5, .25);
+        var (provider, model, legIndex, legId, status, fraction, overall, message, snapshot, attemptId) = progress;
+        Assert.Equal(ForecastModel.NoaaGfs.Provider(), provider);
+        Assert.Equal(ForecastModel.NoaaGfs, model);
+        Assert.Equal(1, legIndex);
+        Assert.Equal(id, legId);
+        Assert.Equal(RoutePlanRoutingUnitStatus.CalculatingRoute, status);
+        Assert.Equal(.5, fraction);
+        Assert.Equal(.25, overall);
+        Assert.Null(message);
+        Assert.Null(snapshot);
+        Assert.Null(attemptId);
+        Assert.Null(progress.Request);
+        Assert.Null(progress.Acquisition);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -526,6 +547,9 @@ public sealed class RoutePlanRoutingWorkflowTests
         var plan = ThreeLegPlan();
         var engineCalls = 0;
         var repository = new RecordingRepository();
+        var reports = new List<RoutePlanRoutingProgress>();
+        var contexts = new List<(RouteRequest Request, ForecastAcquisition Acquisition,
+            RouteCalculationSnapshot Snapshot)>();
         var workflow = new RoutePlanRoutingWorkflow(
             new RoutingWorkflow(
                 [provider],
@@ -538,6 +562,16 @@ public sealed class RoutePlanRoutingWorkflowTests
                     }
 
                     return Route(request, forecast.Request.Model, TimeSpan.FromHours(2));
+                }, (request, forecast, progress) =>
+                {
+                    var snapshot = new RouteCalculationSnapshot(request.DepartureTime.AddHours(1),
+                        [new RouteCalculationEnvelopeSegment([request.Origin, request.Destination], closed: false)],
+                        [new RouteCalculationFrontSegment([request.Origin, request.Destination])],
+                        [new RoutePoint(request.Origin, request.DepartureTime, 90, 6, 15, 180, 0),
+                         new RoutePoint(request.Destination, request.DepartureTime.AddHours(1), 90, 6, 15, 180, 6)],
+                        new RouteDiagnostics(1, 2, 1, 1));
+                    contexts.Add((request, forecast, snapshot));
+                    progress?.Report(new RouteCalculationProgress(0.4, snapshot: snapshot));
                 })),
             repository,
             new FixedTimeProvider(Now));
@@ -545,6 +579,7 @@ public sealed class RoutePlanRoutingWorkflowTests
 
         var execution = workflow.ExecuteAsync(
             Request(plan, Now.AddHours(1), Now.AddDays(8)),
+            new InlineProgress<RoutePlanRoutingProgress>(reports.Add),
             cancellationToken: cancellation.Token);
         await secondLegStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
         cancellation.Cancel();
@@ -562,6 +597,38 @@ public sealed class RoutePlanRoutingWorkflowTests
         var persisted = await repository.OpenAsync(plan.Id);
         Assert.Equal(legs, persisted.LatestResult(ForecastModel.NoaaGfs)!.Legs);
         Assert.NotNull(persisted.LatestResult(ForecastModel.NoaaGfs)!.Session.CompletedAt);
+        var snapshots = reports.Where(report => report.Snapshot is not null).ToArray();
+        Assert.Equal(2, snapshots.Length);
+        for (var index = 0; index < snapshots.Length; index++)
+        {
+            var report = snapshots[index];
+            Assert.Equal(index, report.LegIndex);
+            Assert.Equal(plan.Legs[index].Id, report.LegId);
+            Assert.Same(contexts[index].Request, report.Request);
+            Assert.Same(contexts[index].Acquisition, report.Acquisition);
+            Assert.Same(contexts[index].Snapshot, report.Snapshot);
+            Assert.Equal(ForecastModel.NoaaGfs, report.Model);
+            Assert.Equal(report.Model.Provider(), report.Provider);
+            Assert.NotNull(report.AttemptId);
+        }
+        Assert.NotEqual(snapshots[0].AttemptId, snapshots[1].AttemptId);
+        Assert.NotEqual(snapshots[0].Request, snapshots[1].Request);
+        Assert.All(reports.Where(report => report.Status == RoutePlanRoutingUnitStatus.CalculatingRoute),
+            report =>
+            {
+                Assert.Same(contexts[report.LegIndex].Request, report.Request);
+                Assert.Same(contexts[report.LegIndex].Acquisition, report.Acquisition);
+            });
+        Assert.All(reports.Where(report => report.Status == RoutePlanRoutingUnitStatus.AcquiringForecast),
+            report =>
+            {
+                Assert.Null(report.Request);
+                Assert.Null(report.Acquisition);
+            });
+        Assert.Single(Assert.Single(result.Models).Acquisitions);
+        Assert.All(repository.SavedPlans, saved =>
+            Assert.Null(saved.LatestResult(ForecastModel.NoaaGfs)!.Legs[1].Route));
+        AssertProgressAverages(reports, plan.Legs.Length);
     }
 
     [Fact]
@@ -940,7 +1007,9 @@ public sealed class RoutePlanRoutingWorkflowTests
             RouteRequest,
             ForecastAcquisition,
             CancellationToken,
-            ValueTask<RouteResult>> calculate) : IRouteEngine
+            ValueTask<RouteResult>> calculate,
+        Action<RouteRequest, ForecastAcquisition, IProgress<RouteCalculationProgress>?>? reportProgress = null)
+        : IRouteEngine
     {
         public ValueTask<RouteResult> CalculateAsync(
             RouteRequest request,
@@ -948,14 +1017,17 @@ public sealed class RoutePlanRoutingWorkflowTests
             RouteOptimizationOptions optimization,
             IProgress<RouteCalculationProgress>? progress,
             CancellationToken cancellationToken) =>
-            calculate(request, forecast, cancellationToken);
+            CalculateAsync(request, forecast, progress, cancellationToken);
 
         public ValueTask<RouteResult> CalculateAsync(
             RouteRequest request,
             ForecastAcquisition forecast,
             IProgress<RouteCalculationProgress>? progress,
-            CancellationToken cancellationToken) =>
-            calculate(request, forecast, cancellationToken);
+            CancellationToken cancellationToken)
+        {
+            reportProgress?.Invoke(request, forecast, progress);
+            return calculate(request, forecast, cancellationToken);
+        }
     }
 
     private sealed class RecordingRepository : IRoutePlanRepository

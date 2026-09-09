@@ -67,7 +67,8 @@ public partial class MainWindow
         if (!model.IsCalculating && _autoMessagePending)
         {
             _autoMessagePending = false;
-            OpenMessages(null, null, focus: false);
+            if (!IsMessagePopupOpen)
+                OpenMessages(null, null, focus: false);
         }
         UpdateMessagePlacement();
     }
