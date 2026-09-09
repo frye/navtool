@@ -152,6 +152,10 @@ development snapshot**, not a published v0.6 release. Set
 revisions. The default build applies the documented UTF-8 compatibility and
 conservative coastal-pruning patches. Local source overrides must contain
 equivalent changes; see [the patch manifest](native/Navtool.RouterBridge/patches/README.md).
+The default build also patches polar number parsing to use the pinned,
+header-only fast_float 8.2.10 library. This keeps locale-independent parsing
+available on older Apple toolchains without requiring the macOS 26 runtime
+needed by Apple's floating-point `std::from_chars`.
 
 To build against a different immutable `router-lib` revision or release,
 configure CMake with an override before building:

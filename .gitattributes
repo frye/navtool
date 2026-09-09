@@ -1,4 +1,5 @@
 * text=auto
 *.sh text eol=lf
+*.patch text eol=lf
 *.ps1 text eol=crlf
 *.sln text eol=crlf

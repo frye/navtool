@@ -1,7 +1,7 @@
 # router-lib build patches
 
 The native bridge pins the router-lib 0.6 development snapshot
-`cd476a84ef3edea9582d77f21588a23af727e083` and carries two patches:
+`cd476a84ef3edea9582d77f21588a23af727e083` and carries three patches:
 `0001-utf8-asset-paths.patch` preserves UTF-8 in polar/GSHHG source metadata and
 path-bearing errors on Windows. The upstream loaders otherwise convert paths
 through the active filesystem code page, violating the bridge's UTF-8 contract.
@@ -25,11 +25,26 @@ The final revision also shares ring normalization between exclusion validation
 and coastal proofs, preventing duplicated vertices from turning holes into
 forbidden land. The bridge regression suite exercises that counterexample.
 
+`0003-portable-number-parsing.patch` replaces the polar loader's and router CLI's
+floating-point `std::from_chars` calls with the equivalent locale-independent
+fast_float implementation on all platforms. Older Apple headers lack the
+standard overload; newer Apple implementations require macOS 26. The patch
+fetches header-only fast_float 8.2.10 at immutable commit
+`34164f547b7df3f5d794ff67e9f885c36819ebfc`, preserving the existing full-token,
+range-error and nonfinite-value validation without adding a runtime library.
+Keeping the dependency pin in the patch includes it in `patch_set_sha256`.
+Native bridge tests cover decimal/scientific notation, quoted/signed numbers,
+subnormals, overflow/underflow and malformed/nonfinite input. The MIT license
+is distributed in `licenses/fast_float-MIT.txt`.
+
 The reusable patch step remains in `native/Navtool.RouterBridge/CMakeLists.txt`.
 Any future patch must be listed in `NAVTOOL_ROUTER_LIB_PATCHES`, apply cleanly to
 the pinned tag with `git apply -p1`, and be documented here. The build applies
 listed patches idempotently. Remove a patch once its fix lands upstream and the
-release pin moves past it. Patches are not applied when `SAILROUTE_SOURCE_DIR`
+release pin moves past it. Patch files must keep LF line endings, enforced by
+the repository's `.gitattributes`, including on Windows checkouts with
+`core.autocrlf=true`; CRLF conversion corrupts blank context lines in patch hunks.
+Patches are not applied when `SAILROUTE_SOURCE_DIR`
 points at a developer checkout; that checkout must include equivalent fixes
 to pass the Unicode-path tests. Build identity reports the resolved revision
 and patched/dirty source state honestly. Fetched builds additionally record

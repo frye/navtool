@@ -230,6 +230,35 @@ void test_defaults_and_validation() {
     ok(navtool_router_polar_destroy_v8(&expedition.p), "destroy polar twice");
 }
 
+void test_polar_number_parsing() {
+    const auto path = fixtures / "numeric-polar.csv";
+    const auto write_polar = [&](const std::string& token) {
+        std::ofstream file(path);
+        file << "TWA/TWS,10,20\n45,6,7\n90," << token << ",8\n135,6,7\n";
+        check(static_cast<bool>(file), "cannot write numeric polar");
+    };
+    struct NumericCase { const char* token; double expected; };
+    for (const auto& sample : {
+            NumericCase{"6.5", 6.5}, NumericCase{"\"+6.5e0\"", 6.5},
+            NumericCase{"1e+1", 10.0}, NumericCase{"1e-20", 1e-20},
+            NumericCase{"4.9406564584124654e-324", std::numeric_limits<double>::denorm_min()},
+            NumericCase{"2.2250738585072014e-308", std::numeric_limits<double>::min()},
+            NumericCase{"-0.0", 0.0}}) {
+        write_polar(sample.token);
+        auto polar = sailroute::VesselPolar::load(path, {sailroute::PolarFormat::matrix, {}});
+        check(bool(polar), std::string{"valid polar number rejected: "} + sample.token);
+        check(polar.value().boat_speed_knots(10, 90) == sample.expected,
+            std::string{"polar number changed value: "} + sample.token);
+    }
+    for (const char* token : {"nan", "inf", "-inf", "1e9999", "1e-9999", "6.5x", "0x1p0", "1e", "++6"}) {
+        write_polar(token);
+        Polar polar;
+        auto options = sized<navtool_router_polar_options_v8>(); options.format = 1;
+        check(navtool_router_polar_load_v8(path.string().c_str(), &options, &polar.p) == 14 && !polar.p,
+            std::string{"invalid polar number accepted: "} + token);
+    }
+}
+
 void test_forecast() {
     auto path = fixtures / "constant.grib"; make_wind(path);
     auto o = sized<navtool_router_forecast_options_v8>(); o.flags = 2; o.maximum_interpolation_gap_seconds = 21600;
@@ -513,6 +542,7 @@ int main(int argc, char** argv) {
     try {
         std::filesystem::create_directories(fixtures);
         test_defaults_and_validation(); test_forecast(); test_routes_and_replay(); test_holds(); test_land();
+        test_polar_number_parsing();
         test_unicode_asset_paths();
         test_coastal_v9();
         const bool diagnostics = argc == 2 && std::string{argv[1]} == "--diagnostics";
