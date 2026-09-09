@@ -3600,6 +3600,7 @@ public partial class MainViewModel : ViewModelBase
         NotifyInteractionChanged();
         UpdateArrivalAreas();
         UpdateForecastAreaSummary();
+        OnPropertyChanged(nameof(CalculationReadiness));
     }
 
     private void UpdateArrivalAreas()
@@ -3615,7 +3616,11 @@ public partial class MainViewModel : ViewModelBase
 
     private void OnRoutingInputChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(CalculationReadiness)) OnPropertyChanged(nameof(CalculationReadiness));
+        if (e.PropertyName is nameof(IsCalculating) or nameof(IsInspectingLocalGrib) or
+            nameof(DepartureNow) or nameof(DepartureDate) or nameof(DepartureTime) or
+            nameof(PassageDays) or nameof(PassageHours) or nameof(UseNoaa) or nameof(UseEcmwf) or
+            nameof(ForecastInputMode) or nameof(LocalGribPath) or nameof(LocalForecast))
+            OnPropertyChanged(nameof(CalculationReadiness));
         if (e.PropertyName == nameof(SelectedRouteDetails)) OnPropertyChanged(nameof(SelectedRouteSummary));
         if (_restoringRoutingInputs) return;
         if (e.PropertyName is nameof(DepartureDate) or nameof(DepartureTime) or nameof(DepartureNow))

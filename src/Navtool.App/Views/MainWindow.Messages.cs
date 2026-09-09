@@ -167,9 +167,13 @@ public partial class MainWindow
             button.Click += (_, e) =>
             {
                 e.Handled = true;
-                if (DataContext is MainViewModel model && model.MessageGeneration == generation &&
-                    model.CurrentMessages.Contains(message))
-                    OpenMessages(message.Model, button, focus: true);
+                if (DataContext is not MainViewModel model || model.MessageGeneration != generation) return;
+                var current = model.CurrentMessages.FirstOrDefault(candidate =>
+                    candidate.Id == message.Id && candidate.IsInterrupted);
+                if (current is null) return;
+                UpdateMessagePresentation();
+                var opener = _endpointButtons.Find(entry => entry.Message.Id == current.Id).Button ?? button;
+                OpenMessages(current.Model, opener, focus: true);
             };
             var connector = new Line
             {

@@ -68,6 +68,33 @@ public sealed class MainWindowMessageTests
     }
 
     [AvaloniaFact]
+    public void Endpoint_click_uses_updated_message_before_the_queued_refresh()
+    {
+        using var fixture = new MessageWindow();
+        var (window, model) = (fixture.Window, fixture.Model);
+        model.Map.Navigator.CenterOnAndZoomTo(MapProjection.ToMapPoint(new Coordinate(0, 0)), 10_000);
+        model.SetRoutingFailure(ForecastModel.NoaaGfs, 0, "Initial reason.", new Coordinate(0, 0));
+        Dispatcher.UIThread.RunJobs();
+        var button = Assert.Single(window.FindControl<Canvas>("InterruptedEndpointLayer")!.Children.OfType<Button>());
+        Click(window, "CloseMessagesButton");
+
+        model.SetRoutingFailure(ForecastModel.NoaaGfs, 0, "Updated reason.");
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        Assert.True(window.IsMessagePopupOpen);
+        Assert.Equal("NOAA GFS interrupted", window.FindControl<TextBlock>("MessagePopupTitle")!.Text);
+        var texts = window.FindControl<StackPanel>("MessageItems")!.GetVisualDescendants().OfType<TextBlock>()
+            .Select(text => text.Text).ToArray();
+        Assert.Contains("Updated reason.", texts);
+        Assert.DoesNotContain("Initial reason.", texts);
+        Click(window, "CloseMessagesButton");
+        var currentButton = Assert.Single(window.FindControl<Canvas>("InterruptedEndpointLayer")!.Children.OfType<Button>());
+        Assert.True(currentButton.IsFocused);
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(window.IsMessagePopupOpen);
+    }
+
+    [AvaloniaFact]
     public async Task Old_endpoint_cannot_reopen_after_a_new_attempt_clears_its_outcome()
     {
         using var fixture = new MessageWindow();

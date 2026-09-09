@@ -13,6 +13,50 @@ public sealed class RoutingSetupWorkflowTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
 
+    [Fact]
+    public void Readiness_ignores_progress_and_status_but_updates_for_planning_dependencies()
+    {
+        var vm = Create(new CountingProvider(), new TestRoutingSetupService());
+        var notifications = new List<string>();
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.CalculationReadiness))
+                notifications.Add(vm.CalculationReadiness);
+        };
+        for (var index = 1; index <= 10; index++)
+        {
+            vm.ProgressFraction = index / 10.0;
+            vm.StatusMessage = $"Progress {index}";
+            vm.LiveSearchStatus = $"Frontier {index}";
+            vm.NoaaStatus = $"Routing {index}";
+            vm.TimelinePosition = index / 10.0;
+        }
+        vm.ErrorMessage = "A display-only diagnostic.";
+        vm.WarningMessage = "A display-only warning.";
+        Assert.Empty(notifications);
+
+        ExpectUpdate(() => vm.IsCalculating = true, "Calculation in progress.");
+        ExpectUpdate(() => vm.IsCalculating = false, "Ready to calculate.");
+        ExpectUpdate(() => vm.IsInspectingLocalGrib = true, "Inspecting the selected forecast file.");
+        ExpectUpdate(() => vm.IsInspectingLocalGrib = false, "Ready to calculate.");
+        ExpectUpdate(() => vm.RoutingSetup.Boat = null, "Select a boat:");
+        ExpectUpdate(() => vm.RoutingSetup.Boat = TestRoutingSetupService.Demo, "Ready to calculate.");
+        ExpectUpdate(() => vm.PassageDays = 11, "Passage duration cannot exceed 10 days.");
+        ExpectUpdate(() => vm.PassageDays = 3, "Ready to calculate.");
+        ExpectUpdate(() => vm.UseNoaa = false, "Select at least one forecast model.");
+        ExpectUpdate(() => vm.ForecastInputMode = ForecastInputMode.LocalFile, "Choose a local GRIB file.");
+        ExpectUpdate(() => vm.LocalGribPath = Path.GetFullPath("forecast.grib"), "Ready to calculate.");
+        ExpectUpdate(() => vm.Itinerary.AddWaypointCommand.Execute(null), "Set every waypoint");
+
+        void ExpectUpdate(Action edit, string expected)
+        {
+            notifications.Clear();
+            edit();
+            Assert.Contains(notifications, value => value.StartsWith(expected, StringComparison.Ordinal));
+            Assert.StartsWith(expected, vm.CalculationReadiness);
+        }
+    }
+
     [Theory]
     [InlineData(nameof(MainViewModel.PassageDays))]
     [InlineData(nameof(MainViewModel.PassageHours))]
