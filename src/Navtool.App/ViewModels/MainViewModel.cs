@@ -1607,8 +1607,7 @@ public partial class MainViewModel : ViewModelBase
         !IsCalculating &&
         !IsInspectingLocalGrib &&
         (ForecastInputMode == ForecastInputMode.Download ||
-         ForecastInputMode == ForecastInputMode.LocalFile &&
-         !string.IsNullOrWhiteSpace(LocalGribPath ?? LocalForecast?.Artifact.Path));
+         ForecastInputMode == ForecastInputMode.LocalFile && HasValidLocalGribPath);
 
     private void RefreshExpiredDeparture()
     {

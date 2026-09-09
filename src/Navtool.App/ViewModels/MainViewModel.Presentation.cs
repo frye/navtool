@@ -9,6 +9,10 @@ public partial class MainViewModel
     [ObservableProperty]
     private bool _weatherOnlyMode;
 
+    private bool HasValidLocalGribPath =>
+        (LocalGribPath ?? LocalForecast?.Artifact.Path) is { } path &&
+        !string.IsNullOrWhiteSpace(path) && Path.IsPathFullyQualified(path);
+
     public string CalculationReadiness
     {
         get
@@ -23,7 +27,7 @@ public partial class MainViewModel
                 !LocalDepartureConverter.TryConvertToUtc(DepartureDate, DepartureTime, _localTimeZone, out _, out var departureError))
                 return departureError!;
             if (IsDownloadForecast && !UseNoaa && !UseEcmwf) return "Select at least one forecast model.";
-            if (IsLocalForecast && LocalGribPath is null && LocalForecast is null)
+            if (IsLocalForecast && !HasValidLocalGribPath)
                 return "Choose a local GRIB file.";
             if (Itinerary.CurrentPlan?.IsItineraryComplete is true) return "All legs are sailed. Unmark a leg to calculate again.";
             if (_workflow is null) return "Routing services are unavailable in the designer.";

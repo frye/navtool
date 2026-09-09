@@ -30,12 +30,20 @@ public sealed class RoutingSetupWorkflowTests
             Assert.True(forceChanges > 0);
             Assert.Equal(canCalculate, vm.CalculateCommand.CanExecute(null));
             Assert.Equal(canCalculate, vm.ForceRecalculateCommand.CanExecute(null));
+            if (vm.IsLocalForecast && !vm.IsCalculating && !vm.IsInspectingLocalGrib)
+            {
+                if (canCalculate)
+                    Assert.StartsWith("Ready to calculate.", vm.CalculationReadiness);
+                else
+                    Assert.Equal("Choose a local GRIB file.", vm.CalculationReadiness);
+            }
         }
 
         Assert.True(vm.CalculateCommand.CanExecute(null));
         Change(() => vm.ForecastInputMode = ForecastInputMode.LocalFile, false);
         Change(() => vm.LocalGribPath = "", false);
         Change(() => vm.LocalGribPath = " ", false);
+        Change(() => vm.LocalGribPath = "relative.grib", false);
         Change(() => vm.LocalGribPath = Path.GetFullPath("selected.grib"), true);
         Change(() => vm.IsInspectingLocalGrib = true, false);
         Change(() => vm.IsInspectingLocalGrib = false, true);
@@ -45,6 +53,8 @@ public sealed class RoutingSetupWorkflowTests
         Change(() => vm.LocalForecast = new LocalForecastDescriptor(ForecastModel.NoaaGfs,
             new LocalGribArtifact(Path.GetFullPath("inspected.grib")), Now.AddHours(-6), Now,
             Now.AddDays(3), new GeographicBounds(-89, 89, -179, 179)), true);
+        Change(() => vm.LocalGribPath = "replacement.grib", false);
+        Change(() => vm.LocalGribPath = null, true);
         Change(() => vm.LocalForecast = null, false);
         Change(() => vm.ForecastInputMode = ForecastInputMode.Download, true);
         Assert.Equal(0, provider.Calls);
