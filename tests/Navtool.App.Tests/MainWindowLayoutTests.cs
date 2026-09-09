@@ -25,6 +25,38 @@ namespace Navtool.App.Tests;
 public sealed class MainWindowLayoutTests
 {
     [AvaloniaFact]
+    public void Interrupted_path_reason_is_wrapped_and_visible_with_drawers_closed()
+    {
+        var window = CreateWindow();
+        try
+        {
+            window.Width = 1040;
+            window.Height = 680;
+            window.Show();
+            var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
+            viewModel.InterruptedRouteMessage =
+                "NOAA GFS - leg 1: routing search work limit reached.\n" +
+                "Incomplete: the last provisional path remains visible, not a completed route. Recalculate to try again.";
+            Dispatcher.UIThread.RunJobs();
+            var banner = Assert.IsType<Border>(window.FindControl<Border>("InterruptedRouteBanner"));
+            var text = Assert.IsType<TextBlock>(window.FindControl<TextBlock>("InterruptedRouteText"));
+            Assert.False(window.IsPlanningDrawerOpen);
+            Assert.False(window.IsRouteDrawerOpen);
+            Assert.True(banner.IsVisible);
+            Assert.True(banner.Bounds.Width > 0);
+            Assert.True(banner.Bounds.Height > 0);
+            Assert.Equal(TextWrapping.Wrap, text.TextWrapping);
+            Assert.Equal(viewModel.InterruptedRouteMessage, text.Text);
+            Assert.Equal("Route calculation interrupted", AutomationProperties.GetName(text));
+            Assert.Equal(viewModel.InterruptedRouteMessage, AutomationProperties.GetHelpText(text));
+            viewModel.InterruptedRouteMessage = null;
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(banner.IsVisible);
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
     public void DrawersAreAlwaysInTheWindowNameScopeAndClosedByDefault()
     {
         var window = CreateWindow();

@@ -1349,7 +1349,7 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
-    public async Task StreamingOverlaysRetainSuccessfulModelAndClearFailedModel()
+    public async Task StreamingOverlaysRetainSuccessfulModelAndFreezeFailedModel()
     {
         var providers = new[]
         {
@@ -1388,7 +1388,227 @@ public sealed class MainViewModelWorkflowTests
         Assert.Empty(GetLayer(viewModel, "ECMWF IFS isochrone fronts").Features);
         Assert.Empty(GetLayer(viewModel, "ECMWF IFS latest isochrone front").Features);
         Assert.Empty(GetLayer(viewModel, "ECMWF IFS provisional route").Features);
+        Assert.Single(GetLayer(viewModel, "ECMWF IFS interrupted route").Features);
+        Assert.True(viewModel.HasInterruptedRoute);
+        Assert.Contains("ECMWF search failed", viewModel.InterruptedRouteMessage);
         Assert.Equal(1, viewModel.SuccessfulRouteCount);
+    }
+
+    [Fact]
+    public async Task Resource_limit_retains_immediate_snapshot_without_accepting_a_route_and_clears_on_retry()
+    {
+        var provider = new DelegateForecastProvider(ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var calls = 0;
+        var engine = new StreamingRouteEngine((request, _, progress, _) =>
+        {
+            if (++calls == 1)
+                progress?.Report(new RouteCalculationProgress(.4, "searching", CreateSnapshot(request)));
+            throw new RoutingException(RoutingFailureKind.ResourceLimit, "routing search work limit reached");
+        });
+        var viewModel = CreateViewModel(new RoutingWorkflow([provider], engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        viewModel.Map.Navigator.SetSize(1280, 800);
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Equal(1, calls);
+        Assert.Empty(viewModel.SuccessfulRoutes);
+        Assert.False(viewModel.HasTimeline);
+        Assert.True(viewModel.HasInterruptedRoute);
+        Assert.Contains("search work limit reached", viewModel.InterruptedRouteMessage);
+        Assert.Contains("not a completed route", viewModel.InterruptedRouteMessage);
+        Assert.Contains("interrupted", viewModel.StatusMessage);
+        Assert.Equal("Stopped", viewModel.CalculationProgressDisplay);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS interrupted route").Features);
+        Assert.Empty(GetLayer(viewModel, "NOAA GFS provisional route").Features);
+        Assert.Null(viewModel.Itinerary.CurrentPlan!.LatestResult(ForecastModel.NoaaGfs)!.Legs[0].Route);
+
+        await viewModel.CalculateRoutesAsync();
+        await Task.Delay(20);
+
+        Assert.Equal(2, calls);
+        Assert.False(viewModel.HasInterruptedRoute);
+        Assert.Empty(GetLayer(viewModel, "NOAA GFS interrupted route").Features);
+        Assert.Contains("search work limit reached", viewModel.ErrorMessage);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Terminal_failure_preserves_visible_preview_or_fits_it_without_fitting_old_routes(bool visible)
+    {
+        var provider = new DelegateForecastProvider(ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var ecmwf = new DelegateForecastProvider(ForecastModel.EcmwfIfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new StreamingRouteEngine((request, forecast, progress, _) =>
+        {
+            if (forecast.Run.Model == ForecastModel.EcmwfIfs)
+                return ValueTask.FromResult(CreateRoute(request, ForecastModel.EcmwfIfs));
+            progress?.Report(new RouteCalculationProgress(.4, "searching", CreateSnapshot(request)));
+            throw new RoutingException(RoutingFailureKind.ResourceLimit, "work limit");
+        });
+        var viewModel = CreateViewModel(new RoutingWorkflow([provider, ecmwf], engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        viewModel.UseEcmwf = true;
+        viewModel.Map.Navigator.SetSize(1280, 800);
+        viewModel.Map.Navigator.CenterOnAndZoomTo(
+            MapProjection.ToMapPoint(visible ? new Coordinate(34.125, -63.875) : new Coordinate(0, 0)),
+            1000);
+        var before = viewModel.Map.Navigator.Viewport;
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.True(viewModel.HasInterruptedRoute);
+        Assert.Single(viewModel.SuccessfulRoutes);
+        var after = viewModel.Map.Navigator.Viewport;
+        if (visible) Assert.Equal(before, after);
+        else Assert.NotEqual(before, after);
+        var extent = after.ToExtent();
+        foreach (var location in new[] { new Coordinate(34, -64), new Coordinate(34.25, -63.75) })
+        {
+            var point = MapProjection.ToMapPoint(location);
+            Assert.InRange(point.X, extent.Left, extent.Right);
+            Assert.InRange(point.Y, extent.Bottom, extent.Top);
+        }
+    }
+
+    [Theory]
+    [InlineData(RoutingFailureKind.InvalidNativeOutput)]
+    [InlineData(RoutingFailureKind.InvalidForecast)]
+    public async Task Invalid_output_or_forecast_never_promotes_a_preview(RoutingFailureKind kind)
+    {
+        var provider = new DelegateForecastProvider(ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new StreamingRouteEngine((request, _, progress, _) =>
+        {
+            progress?.Report(new RouteCalculationProgress(.4, "searching", CreateSnapshot(request)));
+            throw new RoutingException(kind, "invalid native data");
+        });
+        var viewModel = CreateViewModel(new RoutingWorkflow([provider], engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.False(viewModel.HasInterruptedRoute);
+        Assert.Empty(GetLayer(viewModel, "NOAA GFS interrupted route").Features);
+        Assert.Contains("invalid native data", viewModel.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task Changed_inputs_discard_the_retained_preview()
+    {
+        var provider = new DelegateForecastProvider(ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new StreamingRouteEngine((request, _, progress, _) =>
+        {
+            progress?.Report(new RouteCalculationProgress(.4, "searching", CreateSnapshot(request)));
+            throw new RoutingException(RoutingFailureKind.ResourceLimit, "work limit");
+        });
+        var viewModel = CreateViewModel(new RoutingWorkflow([provider], engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        await viewModel.CalculateRoutesAsync();
+        Assert.True(viewModel.HasInterruptedRoute);
+
+        viewModel.RoutingSetup.PerformancePercentage = 90;
+
+        Assert.False(viewModel.HasInterruptedRoute);
+        Assert.Empty(GetLayer(viewModel, "NOAA GFS interrupted route").Features);
+    }
+
+    [Fact]
+    public async Task Input_change_cancellation_rejects_late_snapshots_from_old_calculation()
+    {
+        var provider = new DelegateForecastProvider(ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var engineFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var engine = new StreamingRouteEngine(async (request, _, progress, _) =>
+        {
+            progress?.Report(new RouteCalculationProgress(.4, "searching", CreateSnapshot(request)));
+            started.SetResult();
+            await release.Task;
+            progress?.Report(new RouteCalculationProgress(.6, "late search", CreateSnapshot(request)));
+            engineFinished.SetResult();
+            throw new RoutingException(RoutingFailureKind.ResourceLimit, "old work limit");
+        });
+        var viewModel = CreateViewModel(new RoutingWorkflow([provider], engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        var calculation = viewModel.CalculateRoutesAsync();
+        await started.Task;
+
+        viewModel.RoutingSetup.PerformancePercentage = 90;
+        release.SetResult();
+        await calculation;
+        await engineFinished.Task;
+        await Task.Delay(20);
+
+        Assert.False(viewModel.HasInterruptedRoute);
+        Assert.Empty(GetLayer(viewModel, "NOAA GFS interrupted route").Features);
+        Assert.Empty(GetLayer(viewModel, "NOAA GFS provisional route").Features);
+        Assert.Contains("changed", viewModel.StatusMessage);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task Interrupted_itinerary_retains_failed_leg_preview_without_saving_it_or_running_successors(int failedLeg)
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"navtool-interrupted-{Guid.NewGuid():N}");
+        var repository = new RoutePlanJsonRepository(root);
+        try
+        {
+            var provider = new DelegateForecastProvider(ForecastModel.NoaaGfs,
+                (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+            var calls = 0;
+            var engine = new StreamingRouteEngine((request, forecast, progress, _) =>
+            {
+                if (++calls != failedLeg) return ValueTask.FromResult(CreateRoute(request, forecast.Run.Model));
+                progress?.Report(new RouteCalculationProgress(.4, "searching", CreateSnapshot(request)));
+                throw new RoutingException(RoutingFailureKind.ResourceLimit, "routing search work limit reached");
+            });
+            var viewModel = CreateViewModel(new RoutingWorkflow([provider], engine),
+                new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                    ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+                routePlanRepository: repository);
+            for (var index = 0; index < 2; index++)
+            {
+                viewModel.Itinerary.AddWaypointCommand.Execute(null);
+                viewModel.Itinerary.Waypoints[^2].SetOnMapCommand.Execute(null);
+                viewModel.HandleMapClick(MapProjection.ToMapPoint(new Coordinate(35 + index, -60 + index)), default);
+            }
+            viewModel.Map.Navigator.SetSize(1280, 800);
+
+            await viewModel.CalculateRoutesAsync();
+
+            Assert.Equal(failedLeg, calls);
+            Assert.Equal(failedLeg - 1, viewModel.SuccessfulRouteCount);
+            Assert.True(viewModel.HasInterruptedRoute);
+            Assert.Contains($"leg {failedLeg}", viewModel.InterruptedRouteMessage);
+            Assert.Contains("search work limit reached", viewModel.InterruptedRouteMessage);
+            Assert.Single(GetLayer(viewModel, "NOAA GFS interrupted route").Features);
+            var loaded = await repository.OpenAsync(viewModel.Itinerary.PlanId);
+            var legs = loaded.LatestResult(ForecastModel.NoaaGfs)!.Legs;
+            Assert.Equal(RouteLegOutcomeState.Failed, legs[failedLeg - 1].State);
+            Assert.Null(legs[failedLeg - 1].Route);
+            Assert.All(legs.Skip(failedLeg), leg => Assert.Equal(RouteLegOutcomeState.Blocked, leg.State));
+
+            await viewModel.Itinerary.RefreshSavedPlansCommand.ExecuteAsync(null);
+            viewModel.Itinerary.SelectedSavedPlan = viewModel.Itinerary.SavedPlans.Single();
+            await viewModel.Itinerary.OpenCommand.ExecuteAsync(null);
+            Assert.False(viewModel.HasInterruptedRoute);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]
@@ -1495,7 +1715,7 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
-    public async Task CancellingCalculationClearsStreamingOverlays()
+    public async Task CancellingCalculationFreezesPathAndClearsLiveSearchOverlays()
     {
         var provider = new DelegateForecastProvider(
             ForecastModel.NoaaGfs,
@@ -1529,6 +1749,9 @@ public sealed class MainViewModelWorkflowTests
         Assert.Empty(GetLayer(viewModel, "NOAA GFS isochrone fronts").Features);
         Assert.Empty(GetLayer(viewModel, "NOAA GFS latest isochrone front").Features);
         Assert.Empty(GetLayer(viewModel, "NOAA GFS provisional route").Features);
+        Assert.Single(GetLayer(viewModel, "NOAA GFS interrupted route").Features);
+        Assert.Contains("Cancelled by user", viewModel.InterruptedRouteMessage);
+        Assert.Empty(viewModel.SuccessfulRoutes);
     }
 
     [Fact]

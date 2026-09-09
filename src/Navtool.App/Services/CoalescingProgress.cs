@@ -3,7 +3,8 @@ namespace Navtool.App.Services;
 /// <summary>Only the latest display update for a routing unit waits on the UI queue.</summary>
 internal sealed class CoalescingProgress<T, TKey>(
     Func<T, TKey> keySelector,
-    Action<T> handler) : IProgress<T> where TKey : notnull
+    Action<T> handler,
+    Action<T>? onReport = null) : IProgress<T> where TKey : notnull
 {
     private readonly SynchronizationContext? _context = SynchronizationContext.Current;
     private readonly object _gate = new();
@@ -12,6 +13,7 @@ internal sealed class CoalescingProgress<T, TKey>(
 
     public void Report(T value)
     {
+        onReport?.Invoke(value);
         lock (_gate)
         {
             _pending[keySelector(value)] = value;
