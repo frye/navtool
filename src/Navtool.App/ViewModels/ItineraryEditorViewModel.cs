@@ -244,10 +244,10 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         MarkChanged();
     }
 
-    public void InvalidateRoutingInputs()
+    public void InvalidateRoutingInputs(RouteLegOutcomeReason reason = RouteLegOutcomeReason.RoutingSetupChanged)
     {
         if (_plan is not null)
-            _plan = _plan.InvalidateFromActiveLeg(RouteLegOutcomeReason.RoutingSetupChanged);
+            _plan = _plan.InvalidateFromActiveLeg(reason);
         ResultsInvalidated = _plan?.HasInvalidatedResults is true;
         CalculationRevision++;
         MarkChanged();

@@ -13,6 +13,76 @@ public sealed class RoutingSetupWorkflowTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
 
+    [Theory]
+    [InlineData(nameof(MainViewModel.PassageDays))]
+    [InlineData(nameof(MainViewModel.PassageHours))]
+    [InlineData(nameof(MainViewModel.UseNoaa))]
+    [InlineData(nameof(MainViewModel.UseEcmwf))]
+    [InlineData(nameof(MainViewModel.ForecastInputMode))]
+    [InlineData(nameof(MainViewModel.LocalGribPath))]
+    public void Valid_planning_edits_increment_revisions_once(string property)
+    {
+        var provider = new CountingProvider();
+        var vm = Create(provider, new TestRoutingSetupService());
+        if (property == nameof(MainViewModel.UseNoaa)) vm.UseEcmwf = true;
+        if (property == nameof(MainViewModel.ForecastInputMode))
+            vm.LocalGribPath = Path.GetFullPath("selected-local-forecast.grib");
+        var calculationRevision = vm.Itinerary.CalculationRevision;
+        var editRevision = vm.Itinerary.EditRevision;
+
+        switch (property)
+        {
+            case nameof(MainViewModel.PassageDays): vm.PassageDays = 4; break;
+            case nameof(MainViewModel.PassageHours): vm.PassageHours = 6; break;
+            case nameof(MainViewModel.UseNoaa): vm.UseNoaa = false; break;
+            case nameof(MainViewModel.UseEcmwf): vm.UseEcmwf = true; break;
+            case nameof(MainViewModel.ForecastInputMode): vm.ForecastInputMode = ForecastInputMode.LocalFile; break;
+            case nameof(MainViewModel.LocalGribPath): vm.LocalGribPath = Path.GetFullPath("selected-local-forecast.grib"); break;
+            default: throw new ArgumentOutOfRangeException(nameof(property));
+        }
+
+        Assert.Null(vm.Itinerary.PlanningInputError);
+        Assert.Equal(calculationRevision + 1, vm.Itinerary.CalculationRevision);
+        Assert.Equal(editRevision + 1, vm.Itinerary.EditRevision);
+        Assert.Equal(0, provider.Calls);
+    }
+
+    [Theory]
+    [InlineData(4)]
+    [InlineData(-1)]
+    public async Task Planning_edits_invalidate_results_once_even_when_input_is_invalid(int days)
+    {
+        var provider = new CountingProvider();
+        var preferences = new CountingPreferences();
+        var vm = Create(provider, new TestRoutingSetupService(), preferences: preferences);
+        await vm.CalculateRoutesAsync();
+        Assert.Null(vm.ErrorMessage);
+        var previousDefaults = preferences.Value;
+        var revision = vm.Itinerary.CalculationRevision;
+        var calls = provider.Calls;
+
+        vm.PassageDays = days;
+
+        Assert.Equal(revision + 1, vm.Itinerary.CalculationRevision);
+        Assert.True(vm.Itinerary.ResultsInvalidated);
+        Assert.All(vm.Itinerary.CurrentPlan!.Results[0].Legs, leg =>
+        {
+            Assert.Equal(RouteLegOutcomeState.Invalidated, leg.State);
+            Assert.Equal(RouteLegOutcomeReason.PlanningInputsChanged, leg.Reason);
+        });
+        Assert.Equal(calls, provider.Calls);
+        if (days < 0)
+        {
+            Assert.NotNull(vm.Itinerary.PlanningInputError);
+            Assert.Equal(previousDefaults, preferences.Value);
+        }
+        else
+        {
+            Assert.Null(vm.Itinerary.PlanningInputError);
+            Assert.Equal(days, preferences.Value!.Planning.PassageDays);
+        }
+    }
+
     [Fact]
     public void Local_file_mode_recovers_from_deselected_download_models()
     {

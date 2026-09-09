@@ -3625,7 +3625,12 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
         if (e.PropertyName is nameof(PassageDays) or nameof(PassageHours) or nameof(UseNoaa) or nameof(UseEcmwf) or
-            nameof(ForecastInputMode) or nameof(LocalGribPath) or nameof(EnableProfessionalRouting) or
+            nameof(ForecastInputMode) or nameof(LocalGribPath))
+        {
+            SavePlanningEdits(invalidateOnError: true);
+            return;
+        }
+        if (e.PropertyName is nameof(EnableProfessionalRouting) or
             nameof(SelectedRouteSolver) or nameof(TackPenaltySeconds) or nameof(GybePenaltySeconds) or
             nameof(DownwindTrueWindAngleDegrees) or nameof(HeadingAugmentation) or nameof(WindSampling) or
             nameof(MidpointWindSamplingThresholdMinutes) or nameof(PolarAngleInterpolation) or

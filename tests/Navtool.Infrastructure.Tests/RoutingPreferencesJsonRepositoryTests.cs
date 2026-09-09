@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Navtool.Core;
 using Navtool.Infrastructure;
 
@@ -5,6 +6,27 @@ namespace Navtool.Infrastructure.Tests;
 
 public sealed class RoutingPreferencesJsonRepositoryTests
 {
+    [Theory]
+    [InlineData("planning", "forecastSource", (int)PlanningForecastSource.Download)]
+    [InlineData("setup", "quality", (int)RoutingQuality.NativeBalanced)]
+    [InlineData("advanced", "selectedRouteSolver", (int)RouteSolver.IsochroneBeam)]
+    public void Numeric_enums_are_rejected_and_retained_for_recovery(string section, string property, int value)
+    {
+        using var directory = new TestDirectory();
+        new RoutingPreferencesJsonRepository(directory.Path).Save(new());
+        var path = Path.Combine(directory.Path, "preferences", "routing.json");
+        var document = JsonNode.Parse(File.ReadAllText(path))!;
+        document[section]![property] = value;
+        var invalid = document.ToJsonString();
+        File.WriteAllText(path, invalid);
+
+        var repository = new RoutingPreferencesJsonRepository(directory.Path);
+        Assert.Throws<InvalidDataException>(() => repository.Load());
+        Assert.Throws<InvalidDataException>(() => repository.Save(new()));
+        Assert.Throws<InvalidDataException>(() => new RoutingPreferencesJsonRepository(directory.Path).Save(new()));
+        Assert.Equal(invalid, File.ReadAllText(path));
+    }
+
     [Fact]
     public void Missing_preferences_are_distinct_from_corrupt_preferences()
     {

@@ -132,7 +132,7 @@ public partial class MainViewModel
         return inputs;
     }
 
-    private void SavePlanningEdits(bool persistDefaults = true)
+    private void SavePlanningEdits(bool persistDefaults = true, bool invalidateOnError = false)
     {
         if (_restoringRoutingInputs) return;
         try
@@ -144,6 +144,8 @@ public partial class MainViewModel
         catch (Exception exception) when (exception is ArgumentException or OverflowException)
         {
             Itinerary.PlanningInputError = exception.Message;
+            if (invalidateOnError)
+                Itinerary.InvalidateRoutingInputs(RouteLegOutcomeReason.PlanningInputsChanged);
         }
         if (!persistDefaults) return;
         try

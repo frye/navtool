@@ -13,7 +13,7 @@ public sealed class RoutingPreferencesJsonRepository(string appDataRoot) : IRout
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true,
-        Converters = { new JsonStringEnumConverter(), new BoundsConverter() }
+        Converters = { new JsonStringEnumConverter(allowIntegerValues: false), new BoundsConverter() }
     };
 
     public RoutingUserPreferences? Load()
