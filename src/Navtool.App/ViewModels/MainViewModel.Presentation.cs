@@ -22,7 +22,7 @@ public partial class MainViewModel
             if (!DepartureNow && !Itinerary.HasCurrentPosition &&
                 !LocalDepartureConverter.TryConvertToUtc(DepartureDate, DepartureTime, _localTimeZone, out _, out var departureError))
                 return departureError!;
-            if (!UseNoaa && !UseEcmwf) return "Select at least one forecast model.";
+            if (IsDownloadForecast && !UseNoaa && !UseEcmwf) return "Select at least one forecast model.";
             if (IsLocalForecast && LocalGribPath is null && LocalForecast is null)
                 return "Choose a local GRIB file.";
             if (Itinerary.CurrentPlan?.IsItineraryComplete is true) return "All legs are sailed. Unmark a leg to calculate again.";

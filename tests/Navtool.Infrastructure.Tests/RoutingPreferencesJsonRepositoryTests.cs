@@ -19,8 +19,10 @@ public sealed class RoutingPreferencesJsonRepositoryTests
         Assert.Equal("{broken", File.ReadAllText(path));
     }
 
-    [Fact]
-    public void Everyday_and_inactive_advanced_values_round_trip_without_asset_access()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Everyday_and_inactive_advanced_values_round_trip_without_asset_access(bool selectDownloadModel)
     {
         using var directory = new TestDirectory();
         var repository = new RoutingPreferencesJsonRepository(directory.Path);
@@ -40,7 +42,7 @@ public sealed class RoutingPreferencesJsonRepositoryTests
             },
             Planning = new RoutePlanningInputs
             {
-                PassageDays = 5, PassageHours = 4, UseNoaa = false, UseEcmwf = true,
+                PassageDays = 5, PassageHours = 4, UseNoaa = false, UseEcmwf = selectDownloadModel,
                 ForecastSource = PlanningForecastSource.LocalFile,
                 LocalGribPath = Path.Combine(directory.Path, "missing.grib")
             },

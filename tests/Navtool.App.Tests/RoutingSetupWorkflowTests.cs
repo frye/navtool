@@ -14,6 +14,38 @@ public sealed class RoutingSetupWorkflowTests
     private static readonly DateTimeOffset Now = new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public void Local_file_mode_recovers_from_deselected_download_models()
+    {
+        var provider = new CountingProvider();
+        var preferences = new CountingPreferences();
+        var vm = Create(provider, new TestRoutingSetupService(), preferences: preferences);
+        vm.UseNoaa = false;
+        vm.UseEcmwf = false;
+        Assert.NotNull(vm.Itinerary.PlanningInputError);
+        Assert.Equal("Select at least one forecast model.", vm.CalculationReadiness);
+
+        vm.ForecastInputMode = ForecastInputMode.LocalFile;
+        Assert.Equal("Choose a local GRIB file.", vm.CalculationReadiness);
+        vm.LocalGribPath = Path.GetFullPath("selected-local-forecast.grib");
+
+        Assert.Null(vm.Itinerary.PlanningInputError);
+        Assert.StartsWith("Ready to calculate.", vm.CalculationReadiness);
+        Assert.True(vm.Itinerary.TryBuildPlan(out var plan, out var error), error);
+        Assert.Equal(vm.LocalGribPath, plan!.PlanningInputs!.LocalGribPath);
+        Assert.Equal(PlanningForecastSource.LocalFile, preferences.Value!.Planning.ForecastSource);
+        Assert.False(preferences.Value.Planning.UseNoaa);
+        Assert.False(preferences.Value.Planning.UseEcmwf);
+        Assert.Equal(0, provider.Calls);
+        Assert.Null(vm.LocalForecast);
+
+        vm.ForecastInputMode = ForecastInputMode.Download;
+        Assert.NotNull(vm.Itinerary.PlanningInputError);
+        Assert.Equal("Select at least one forecast model.", vm.CalculationReadiness);
+        vm.UseEcmwf = true;
+        Assert.Null(vm.Itinerary.PlanningInputError);
+    }
+
+    [Fact]
     public async Task Valid_preferences_survive_restart_and_new_draft_without_silent_boat_or_advanced_activation()
     {
         var root = Path.Combine(Path.GetTempPath(), $"navtool-user-preferences-{Guid.NewGuid():N}");

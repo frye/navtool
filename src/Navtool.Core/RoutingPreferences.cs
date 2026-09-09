@@ -24,8 +24,10 @@ public sealed record RoutePlanningInputs
             throw new ArgumentException("Passage duration cannot exceed 10 days.");
         if (PassageDays * 24 + PassageHours == 0)
             throw new ArgumentException("Passage duration must be greater than zero.");
-        if (!Enum.IsDefined(ForecastSource) || (!UseNoaa && !UseEcmwf))
-            throw new ArgumentException("Select a forecast source and at least one model.");
+        if (!Enum.IsDefined(ForecastSource))
+            throw new ArgumentException("Select a forecast source.");
+        if (ForecastSource == PlanningForecastSource.Download && !UseNoaa && !UseEcmwf)
+            throw new ArgumentException("Select at least one forecast model.");
         if (ForecastSource == PlanningForecastSource.LocalFile &&
             (string.IsNullOrWhiteSpace(LocalGribPath) || !Path.IsPathFullyQualified(LocalGribPath)))
             throw new ArgumentException("Choose an absolute local GRIB file path.");
