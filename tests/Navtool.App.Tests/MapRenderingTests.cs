@@ -95,22 +95,41 @@ public sealed class MapRenderingTests
     }
 
     [Fact]
-    public void Interrupted_path_under_banner_fits_below_it_even_when_endpoints_are_uncovered()
+    public void Visible_interrupted_path_crossing_former_banner_area_preserves_viewport()
     {
         var layers = CreateSizedMapLayers(new Coordinate(0, 0));
         layers.SetInterruptedRoutes([(ForecastModel.NoaaGfs, CreateInterruptedSnapshot(
             new Coordinate(2.7, -3.6), new Coordinate(2.7, 3.6)))]);
+        var before = layers.Map.Navigator.Viewport;
+
+        Assert.False(layers.KeepInterruptedRoutesVisible());
+        Assert.Equal(before, layers.Map.Navigator.Viewport);
+        AssertInterruptedGeometryVisible(layers);
+    }
+
+    [Theory]
+    [InlineData(800)]
+    [InlineData(200)]
+    public void Interrupted_fit_centers_paths_without_reserving_banner_space(double height)
+    {
+        var layers = CreateSizedMapLayers(new Coordinate(0, 0));
+        layers.Map.Navigator.SetSize(1_000, height);
+        layers.SetInterruptedRoutes([(ForecastModel.NoaaGfs, CreateInterruptedSnapshot(
+            new Coordinate(10, 170), new Coordinate(11, 171)))]);
 
         Assert.True(layers.KeepInterruptedRoutesVisible());
         AssertInterruptedGeometryVisible(layers);
         var viewport = layers.Map.Navigator.Viewport;
-        Assert.All(InterruptedFeatures(layers).SelectMany(feature => feature.Geometry!.Coordinates), coordinate =>
-            Assert.True(viewport.WorldToScreen(new MPoint(coordinate.X, coordinate.Y)).Y >= 222));
+        var line = Assert.Single(InterruptedFeatures(layers).Select(feature => feature.Geometry).OfType<LineString>());
+        var center = viewport.WorldToScreen(new MPoint(
+            line.EnvelopeInternal.Centre.X, line.EnvelopeInternal.Centre.Y));
+        Assert.Equal(viewport.Width / 2, center.X, precision: 6);
+        Assert.Equal(viewport.Height / 2, center.Y, precision: 6);
         Assert.False(layers.KeepInterruptedRoutesVisible());
     }
 
     [Fact]
-    public void Visible_interrupted_paths_beside_banner_preserve_viewport()
+    public void Visible_interrupted_paths_near_top_corners_preserve_viewport()
     {
         var layers = CreateSizedMapLayers(new Coordinate(0, 0));
         layers.SetInterruptedRoutes([
@@ -222,9 +241,11 @@ public sealed class MapRenderingTests
             Assert.Equal(PenStyle.Dash, lineStyle.Line!.PenStyle);
             Assert.Equal(model == ForecastModel.NoaaGfs ? RouteMapLayers.NoaaColor : RouteMapLayers.EcmwfColor,
                 lineStyle.Line.Color);
-            var label = Assert.IsType<LabelStyle>(Assert.Single(endpoint.Styles));
-            Assert.Equal(lineStyle.Line.Color, label.ForeColor);
-            Assert.Contains("interrupted", label.GetLabelText(endpoint));
+            var symbol = Assert.IsType<SymbolStyle>(Assert.Single(endpoint.Styles));
+            Assert.Equal(SymbolType.Ellipse, symbol.SymbolType);
+            Assert.Equal(0.4, symbol.SymbolScale);
+            Assert.Equal(lineStyle.Line.Color, symbol.Fill!.Color);
+            Assert.Equal(lineStyle.Line.Color, symbol.Outline!.Color);
             Assert.Equal(line.Geometry!.Coordinates[^1], endpoint.Geometry!.Coordinate);
             Assert.All(modelFeatures, feature => Assert.IsType<ForecastModel>(feature.Data));
         }

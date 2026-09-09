@@ -54,6 +54,7 @@ public sealed class AppCompositionTests
                 services.GetServices<IForecastDownloadEstimator>()
                     .Select(estimator => estimator.Model));
             Assert.NotNull(services.GetRequiredService<MainViewModel>().Itinerary);
+            Assert.IsType<RoutingPreferencesJsonRepository>(services.GetRequiredService<IRoutingPreferencesRepository>());
             Assert.IsType<DeferredBoatAssetService>(services.GetRequiredService<IBoatAssetService>());
             Assert.IsType<DeferredRoutingSetupService>(services.GetRequiredService<IRoutingSetupService>());
             Assert.IsAssignableFrom<IConfiguredRouteEngine>(services.GetRequiredService<IRouteEngine>());

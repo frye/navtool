@@ -42,6 +42,7 @@ public partial class MainViewModel
                 LiveSearchStatus = "Native search audit is unavailable until a calculation starts. Environment diagnostics are final-only.";
             }
             _routePreviews.Clear();
+            ClearRoutingMessages();
             _previewPlanId = null;
             _previewRequest = null;
             InterruptedRouteMessage = null;
@@ -121,6 +122,9 @@ public partial class MainViewModel
     private void ShowInterruptedRoutes(string defaultReason)
     {
         var previews = _routePreviews.Previews.OrderBy(preview => preview.Model).ToArray();
+        if (_routingMessages.RemoveAll(message => message.IsInterrupted &&
+                !previews.Any(preview => preview.Model == message.Model && preview.LegIndex == message.LegIndex)) > 0)
+            OnPropertyChanged(nameof(CurrentMessages));
         _mapLayers.SetInterruptedRoutes(previews.Select(preview => (preview.Model, preview.Snapshot)));
         if (previews.Length == 0)
         {
@@ -132,6 +136,7 @@ public partial class MainViewModel
         {
             _mapLayers.ClearCalculationOverlay(preview.Model);
             var reason = preview.FailureMessage ?? defaultReason;
+            SetRoutingFailure(preview.Model, preview.LegIndex, reason, preview.Snapshot.ProvisionalRoute[^1].Location);
             // Forecast coverage appended to the native error is diagnostic context, not the stop reason.
             var coverageIndex = reason.IndexOf(" The loaded forecast covers ", StringComparison.Ordinal);
             if (coverageIndex >= 0) reason = reason[..coverageIndex];
@@ -141,7 +146,7 @@ public partial class MainViewModel
         InterruptedRouteMessage = string.Join(Environment.NewLine, messages) +
             Environment.NewLine +
             "Incomplete: the last provisional path remains visible, not a completed route. Recalculate to try again.";
-        LiveSearchStatus = InterruptedRouteMessage;
+        LiveSearchStatus = "Calculation interrupted; see Messages for details.";
     }
 
     private void FinishInterruptedPresentation()

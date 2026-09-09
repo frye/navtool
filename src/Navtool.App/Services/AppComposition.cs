@@ -37,6 +37,8 @@ public static class AppComposition
             new AtomicFileCacheOptions(ResolveCacheRoot()),
             provider.GetRequiredService<ILogger<AtomicFileCache>>()));
         services.AddSingleton<IRoutePlanSchemaMigrator, RoutePlanSchemaMigrator>();
+        services.AddSingleton<IRoutingPreferencesRepository>(_ =>
+            new RoutingPreferencesJsonRepository(ResolveAppDataRoot()));
         services.AddSingleton<IRoutePlanRepository>(provider => new RoutePlanJsonRepository(
             ResolveAppDataRoot(),
             provider.GetRequiredService<IRoutePlanSchemaMigrator>()));
@@ -120,7 +122,8 @@ public static class AppComposition
             provider.GetRequiredService<IBoatAssetService>(),
             provider.GetRequiredService<IRoutingSetupService>(),
             ResolveLandDataEndpoint() is null ? RoutingLandSource.NaturalEarth : RoutingLandSource.OpenStreetMap,
-            provider.GetRequiredService<IRegionalLandPreviewService>()));
+            provider.GetRequiredService<IRegionalLandPreviewService>(),
+            provider.GetRequiredService<IRoutingPreferencesRepository>()));
         return services.BuildServiceProvider();
     }
 

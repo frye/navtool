@@ -398,7 +398,8 @@ public sealed record RoutePlan
         IEnumerable<RouteLegId>? sailedLegIds = null,
         RouteCurrentPosition? currentPosition = null,
         RouteLegId? activeLegId = null,
-        RoutingSetup? routingSetup = null)
+        RoutingSetup? routingSetup = null,
+        RoutePlanningInputs? planningInputs = null)
     {
         if (id.Value == Guid.Empty)
         {
@@ -430,6 +431,8 @@ public sealed record RoutePlan
         CurrentPosition = currentPosition;
         ActiveLegId = activeLegId;
         RoutingSetup = routingSetup;
+        planningInputs?.Validate();
+        PlanningInputs = planningInputs;
     }
 
     public RoutePlan(string name, IEnumerable<RouteWaypoint> waypoints)
@@ -450,13 +453,22 @@ public sealed record RoutePlan
     public ImmutableHashSet<RouteLegId> SailedLegIds { get; }
 
     public RoutingSetup? RoutingSetup { get; }
+    public RoutePlanningInputs? PlanningInputs { get; }
+
+    public RoutePlan WithPlanningInputs(RoutePlanningInputs? inputs)
+    {
+        if (PlanningInputs == inputs) return this;
+        return new(Id, Name, Waypoints,
+            Results.Select(result => RebuildResult(result, Legs, ActiveLegIndex, RouteLegOutcomeReason.RoutingSetupChanged)),
+            SailedLegIds, CurrentPosition, ActiveLegId, RoutingSetup, inputs);
+    }
 
     public RoutePlan WithRoutingSetup(RoutingSetup? setup)
     {
         if (RoutingSetup == setup) return this;
         var results = Results.Select(result =>
             RebuildResult(result, Legs, 0, RouteLegOutcomeReason.RoutingSetupChanged));
-        return new(Id, Name, Waypoints, results, SailedLegIds, CurrentPosition, ActiveLegId, setup);
+        return new(Id, Name, Waypoints, results, SailedLegIds, CurrentPosition, ActiveLegId, setup, PlanningInputs);
     }
 
     public RoutePlan SetRoutingSetup(RoutingSetup? setup) => WithRoutingSetup(setup);
@@ -467,7 +479,7 @@ public sealed record RoutePlan
             throw new ArgumentOutOfRangeException(nameof(reason));
         return new(Id, Name, Waypoints,
             Results.Select(result => RebuildResult(result, Legs, ActiveLegIndex, reason)),
-            SailedLegIds, CurrentPosition, ActiveLegId, RoutingSetup);
+            SailedLegIds, CurrentPosition, ActiveLegId, RoutingSetup, PlanningInputs);
     }
 
     /// <summary>
@@ -506,7 +518,7 @@ public sealed record RoutePlan
         Results.SingleOrDefault(result => result.Model == model);
 
     public RoutePlan Rename(string name) =>
-        new(Id, name, Waypoints, Results, SailedLegIds, CurrentPosition, ActiveLegId, RoutingSetup);
+        new(Id, name, Waypoints, Results, SailedLegIds, CurrentPosition, ActiveLegId, RoutingSetup, PlanningInputs);
 
     public RoutePlan CopyAs(RoutePlanId id, string name)
     {
@@ -529,7 +541,7 @@ public sealed record RoutePlan
                 outcome.PlannedHold, outcome.Failure))));
         return new RoutePlan(id, name, copiedWaypoints, results,
             SailedLegIds.Select(legId => legMap[legId]), CurrentPosition,
-            ActiveLegId is { } active ? legMap[active] : null, RoutingSetup);
+            ActiveLegId is { } active ? legMap[active] : null, RoutingSetup, PlanningInputs);
     }
 
     public RoutePlan RenameWaypoint(RouteWaypointId waypointId, string name)
@@ -649,7 +661,7 @@ public sealed record RoutePlan
             SailedLegIds,
             CurrentPosition,
             ActiveLegId,
-            RoutingSetup);
+            RoutingSetup, PlanningInputs);
     }
 
     /// <summary>
@@ -669,7 +681,7 @@ public sealed record RoutePlan
             SailedLegIds.Add(legId),
             CurrentPosition,
             newActiveLegId,
-            RoutingSetup);
+            RoutingSetup, PlanningInputs);
     }
 
     public RoutePlan UnmarkSailed(RouteLegId legId)
@@ -743,7 +755,7 @@ public sealed record RoutePlan
             newSailed,
             CurrentPosition,
             ActiveLegId,
-            RoutingSetup);
+            RoutingSetup, PlanningInputs);
     }
 
     /// <summary>
@@ -775,7 +787,7 @@ public sealed record RoutePlan
             SailedLegIds,
             updatedPosition,
             ActiveLegId,
-            RoutingSetup);
+            RoutingSetup, PlanningInputs);
     }
 
     /// <summary>
@@ -799,7 +811,7 @@ public sealed record RoutePlan
                 ActiveLegIndex,
                 RouteLegOutcomeReason.CurrentPositionChanged))
             .ToArray();
-        return new RoutePlan(Id, Name, Waypoints, updatedResults, SailedLegIds, null, ActiveLegId, RoutingSetup);
+        return new RoutePlan(Id, Name, Waypoints, updatedResults, SailedLegIds, null, ActiveLegId, RoutingSetup, PlanningInputs);
     }
 
     /// <summary>
@@ -837,7 +849,7 @@ public sealed record RoutePlan
         var updatedResults = Results
             .Select(result => InvalidateStaleCurrentPositionOrigin(result, newActiveIndex))
             .ToArray();
-        return new RoutePlan(Id, Name, Waypoints, updatedResults, SailedLegIds, CurrentPosition, activeLegId, RoutingSetup);
+        return new RoutePlan(Id, Name, Waypoints, updatedResults, SailedLegIds, CurrentPosition, activeLegId, RoutingSetup, PlanningInputs);
     }
 
     /// <summary>
@@ -886,7 +898,7 @@ public sealed record RoutePlan
     {
         var updated = Waypoints.SetItem(index, waypoint);
         return invalidFromLeg is null
-            ? new RoutePlan(Id, Name, updated, Results, SailedLegIds, CurrentPosition, ActiveLegId, RoutingSetup)
+            ? new RoutePlan(Id, Name, updated, Results, SailedLegIds, CurrentPosition, ActiveLegId, RoutingSetup, PlanningInputs)
             : Rebuild(updated, invalidFromLeg.Value, reason);
     }
 
@@ -921,7 +933,7 @@ public sealed record RoutePlan
             SailedLegIds,
             CurrentPosition,
             ActiveLegId,
-            RoutingSetup);
+            RoutingSetup, PlanningInputs);
     }
 
     private RoutePlanResult RebuildResult(

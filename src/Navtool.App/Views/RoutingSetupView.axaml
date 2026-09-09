@@ -1,70 +1,102 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Navtool.App.ViewModels"
+             xmlns:views="using:Navtool.App.Views"
+             xmlns:core="using:Navtool.Core"
              x:Class="Navtool.App.Views.RoutingSetupView"
-             x:DataType="vm:RoutingSetupViewModel">
-    <Border Classes="card">
-        <StackPanel Spacing="8">
-            <TextBlock Classes="section-title" Text="CRUISING SETUP" />
-            <TextBlock Text="{Binding BoatStatus}" TextWrapping="Wrap" />
-            <TextBlock Classes="muted" Text="Polar file format (automatic parsing can require an explicit choice)" TextWrapping="Wrap" />
-            <ComboBox x:Name="PolarFormatSelector" ItemsSource="{Binding PolarFormatOptions}" SelectedItem="{Binding PolarFormat}" HorizontalAlignment="Stretch" />
-            <WrapPanel>
-                <Button x:Name="ImportBoatButton" Content="Import boat polar…" Click="OnImportBoatClicked" IsEnabled="{Binding !IsLoadingBoat}" />
-                <Button x:Name="DemoBoatButton" Content="Use demo boat" Command="{Binding SelectDemoCommand}" IsEnabled="{Binding !IsLoadingBoat}" />
-                <Button Content="Clear boat" Command="{Binding ClearBoatCommand}" />
-            </WrapPanel>
-            <TextBlock Classes="muted" Text="Demo is illustrative, not your vessel's measured performance." TextWrapping="Wrap" />
-            <TextBlock Text="Native routing quality" />
-            <ComboBox x:Name="RoutingQualitySelector" ItemsSource="{Binding QualityOptions}" SelectedItem="{Binding Quality}" HorizontalAlignment="Stretch" />
-            <CheckBox x:Name="CoastalPruningToggle" Content="Experimental conservative coastal pruning"
-                      IsChecked="{Binding EnableCoastalPruning}" />
-            <TextBlock Classes="muted" Text="Opt-in proof-based pruning for beam routing: uncertain branches remain eligible. Does not certify chart safety or global optimality; unsupported configurations are rejected." TextWrapping="Wrap" />
-            <TextBlock Text="Boat performance (%)" />
-            <NumericUpDown x:Name="BoatPerformanceInput" Value="{Binding PerformancePercentage}" Minimum="1" Maximum="300" Increment="1" />
-            <TextBlock Text="Arrival radius (NM)" />
-            <NumericUpDown x:Name="ArrivalRadiusInput" Value="{Binding ArrivalRadiusNauticalMiles}" Minimum="0.01" Maximum="100" Increment="0.1" />
-            <TextBlock Classes="muted" Text="{Binding ArrivalStatus}" TextWrapping="Wrap" />
-            <TextBlock Text="Required land source" />
-            <ComboBox x:Name="RoutingLandSourceSelector" ItemsSource="{Binding LandSourceOptions}" SelectedItem="{Binding LandSource}" HorizontalAlignment="Stretch" />
-            <TextBlock Classes="muted" Text="{Binding LandSourceStatus}" TextWrapping="Wrap" />
-            <StackPanel x:Name="RegionalGshhgPanel" IsVisible="{Binding IsRegionalGshhg}" Spacing="6">
-                <Button x:Name="ChooseGshhgSourceButton" Content="Choose GSHHG binary shoreline…" Click="OnChooseRegionalSourceClicked" />
-                <TextBlock Text="{Binding RegionalSourcePath}" TextWrapping="Wrap" />
-                <TextBlock Classes="muted" Text="{Binding RegionalSourceIdentity, StringFormat=SHA-256: {0}}" TextWrapping="Wrap" />
-                <TextBlock Text="Explicit study domain (degrees; west > east crosses the dateline)" TextWrapping="Wrap" />
-                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="8">
-                    <TextBlock Text="South" />
-                    <TextBlock Grid.Column="1" Text="North" />
-                    <NumericUpDown Grid.Row="1" Value="{Binding RegionalSouth}" Minimum="-85" Maximum="85" Increment="0.1" />
-                    <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding RegionalNorth}" Minimum="-85" Maximum="85" Increment="0.1" />
-                    <TextBlock Grid.Row="2" Text="West" />
-                    <TextBlock Grid.Row="2" Grid.Column="1" Text="East" />
-                    <NumericUpDown Grid.Row="3" Value="{Binding RegionalWest}" Minimum="-180" Maximum="180" Increment="0.1" />
-                    <NumericUpDown Grid.Row="3" Grid.Column="1" Value="{Binding RegionalEast}" Minimum="-180" Maximum="180" Increment="0.1" />
-                </Grid>
-                <TextBlock Text="Grid spacing (NM)" />
-                <NumericUpDown x:Name="GshhgSpacingInput" Value="{Binding RegionalSpacingNauticalMiles}" Minimum="0.05" Maximum="120" Increment="0.25" />
-                <TextBlock Text="Required clearance (NM)" />
-                <NumericUpDown Value="{Binding RegionalClearanceNauticalMiles}" Minimum="0" Maximum="60" Increment="0.1" />
-                <TextBlock Text="Distance field cap (NM)" />
-                <NumericUpDown Value="{Binding RegionalDistanceCapNauticalMiles}" Minimum="1" Maximum="600" Increment="1" />
-                <Button x:Name="PreviewGshhgButton" Content="Validate source and preview native grid"
-                        Command="{Binding PreviewRegionalLandCommand}" IsEnabled="{Binding !IsPreviewingRegionalLand}" />
-                <TextBlock x:Name="GshhgPreviewStatus" Text="{Binding RegionalPreviewStatus}" TextWrapping="Wrap" />
-                <TextBlock Classes="muted" Text="Native capability, source fingerprint, coverage and resource budgets are checked before forecast acquisition. GSHHG source completeness is not certified; no automatic fallback to another coast source." TextWrapping="Wrap" />
-                <TextBlock Classes="muted" Text="Selecting this explicit study domain restricts the search and forecast area. Other land sources retain the broad default routing corridor." TextWrapping="Wrap" />
+             x:DataType="vm:MainViewModel" x:CompileBindings="True">
+    <StackPanel Spacing="10">
+        <Expander x:Name="BoatSettingsExpander" Header="Boat &amp; polar">
+            <StackPanel DataContext="{Binding RoutingSetup}" x:DataType="vm:RoutingSetupViewModel" Spacing="8">
+                <TextBlock Text="{Binding BoatSummary}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock IsVisible="{Binding IsDemoBoat}" Text="DEMO BOAT - illustrative, not your vessel's measured performance."
+                           Foreground="{DynamicResource WarningTextColor}" TextWrapping="Wrap" />
+                <WrapPanel>
+                    <Button x:Name="ImportBoatButton" Content="Import boat polar..." Click="OnImportBoatClicked" IsEnabled="{Binding !IsLoadingBoat}" />
+                    <Button x:Name="DemoBoatButton" Content="Use demo boat" Command="{Binding SelectDemoCommand}" IsEnabled="{Binding !IsLoadingBoat}" />
+                    <Button Content="Clear boat" Command="{Binding ClearBoatCommand}" />
+                </WrapPanel>
+                <TextBlock Text="Boat performance (%)" Classes="field-label" />
+                <NumericUpDown x:Name="BoatPerformanceInput" Value="{Binding PerformancePercentage}" Minimum="1" Maximum="300" Increment="1" />
+                <Expander Header="Import format &amp; asset details">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Polar format (choose explicitly if automatic parsing is ambiguous)" Classes="muted" TextWrapping="Wrap" />
+                        <ComboBox x:Name="PolarFormatSelector" ItemsSource="{Binding PolarFormatOptions}" SelectedItem="{Binding PolarFormat}" />
+                        <TextBlock Text="{Binding BoatStatus}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Expander>
+                <TextBlock Classes="error" Text="{Binding ErrorMessage}" TextWrapping="Wrap" />
             </StackPanel>
-            <TextBlock Text="Forecast run policy" />
-            <ComboBox ItemsSource="{Binding ForecastPolicyOptions}" SelectedItem="{Binding ForecastPolicy}" HorizontalAlignment="Stretch" />
-            <TextBlock Text="Local GRIB maximum interpolation gap (hours)" TextWrapping="Wrap" />
-            <NumericUpDown Value="{Binding LocalForecastMaximumGapHours}" Minimum="0.1" Maximum="24" Increment="1" />
-            <CheckBox Content="Override native hard search duration (whole hours)" IsChecked="{Binding UseHardDuration}" />
-            <NumericUpDown Value="{Binding HardDurationHours}" IsVisible="{Binding UseHardDuration}" Minimum="1" Maximum="240" Increment="1" />
-            <TextBlock Classes="muted" Text="The expected passage duration controls forecast acquisition; the native hard duration is a separate search limit." TextWrapping="Wrap" />
-            <TextBlock Classes="muted" Text="Default: native Balanced. The selected quality uses explicit PCHIP interpolation and NoSpeed above the polar range. Professional edits apply only to this session." TextWrapping="Wrap" />
-            <TextBlock x:Name="ResolvedRoutingSetupStatus" Text="{Binding ResolvedStatus}" TextWrapping="Wrap" />
-            <TextBlock Classes="error" Text="{Binding ErrorMessage}" TextWrapping="Wrap" />
-        </StackPanel>
-    </Border>
+        </Expander>
+        <Expander x:Name="CoastSettingsExpander" Header="Routing &amp; coastlines">
+            <StackPanel Spacing="8">
+                <StackPanel DataContext="{Binding RoutingSetup}" x:DataType="vm:RoutingSetupViewModel" Spacing="8">
+                    <TextBlock Text="Routing quality" Classes="field-label" />
+                    <ComboBox x:Name="RoutingQualitySelector" ItemsSource="{Binding QualityOptions}" SelectedItem="{Binding Quality}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="core:RoutingQuality">
+                                <TextBlock Text="{Binding ., Converter={x:Static views:RoutingOptionLabelConverter.Instance}}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Text="Arrival radius (NM, distinct from coast clearance)" Classes="field-label" TextWrapping="Wrap" />
+                    <NumericUpDown x:Name="ArrivalRadiusInput" Value="{Binding ArrivalRadiusNauticalMiles}" Minimum="0.01" Maximum="100" Increment="0.1" />
+                    <TextBlock Classes="muted" Text="{Binding ArrivalStatus}" TextWrapping="Wrap" />
+                    <TextBlock Text="Required coastline source" Classes="field-label" />
+                    <ComboBox x:Name="RoutingLandSourceSelector" ItemsSource="{Binding LandSourceOptions}" SelectedItem="{Binding LandSource}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="core:RoutingLandSource">
+                                <TextBlock Text="{Binding ., Converter={x:Static views:RoutingOptionLabelConverter.Instance}}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Classes="muted" Text="{Binding LandSourceStatus}" TextWrapping="Wrap" />
+                    <StackPanel x:Name="RegionalGshhgPanel" IsVisible="{Binding IsRegionalGshhg}" Spacing="6">
+                        <Button x:Name="ChooseGshhgSourceButton" Content="Choose GSHHG shoreline..." Click="OnChooseRegionalSourceClicked" />
+                        <TextBlock Text="{Binding RegionalSourcePath}" TextWrapping="Wrap" />
+                        <TextBlock Text="Study domain (degrees; west > east crosses the dateline)" TextWrapping="Wrap" />
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="8">
+                            <TextBlock Text="South" />
+                            <TextBlock Grid.Column="1" Text="North" />
+                            <NumericUpDown Grid.Row="1" Value="{Binding RegionalSouth}" Minimum="-85" Maximum="85" Increment="0.1" AutomationProperties.Name="Study domain south" />
+                            <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding RegionalNorth}" Minimum="-85" Maximum="85" Increment="0.1" AutomationProperties.Name="Study domain north" />
+                            <TextBlock Grid.Row="2" Text="West" />
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="East" />
+                            <NumericUpDown Grid.Row="3" Value="{Binding RegionalWest}" Minimum="-180" Maximum="180" Increment="0.1" AutomationProperties.Name="Study domain west" />
+                            <NumericUpDown Grid.Row="3" Grid.Column="1" Value="{Binding RegionalEast}" Minimum="-180" Maximum="180" Increment="0.1" AutomationProperties.Name="Study domain east" />
+                        </Grid>
+                        <TextBlock Text="Grid spacing (NM)" Classes="field-label" />
+                        <NumericUpDown x:Name="GshhgSpacingInput" Value="{Binding RegionalSpacingNauticalMiles}" Minimum="0.05" Maximum="120" Increment="0.25" />
+                        <TextBlock Text="Required clearance (NM)" Classes="field-label" />
+                        <NumericUpDown Value="{Binding RegionalClearanceNauticalMiles}" Minimum="0" Maximum="60" Increment="0.1" />
+                        <TextBlock Text="Distance field cap (NM)" Classes="field-label" />
+                        <NumericUpDown Value="{Binding RegionalDistanceCapNauticalMiles}" Minimum="1" Maximum="600" Increment="1" />
+                        <Button x:Name="PreviewGshhgButton" Content="Validate source and preview grid" Command="{Binding PreviewRegionalLandCommand}" IsEnabled="{Binding !IsPreviewingRegionalLand}" />
+                        <TextBlock x:Name="GshhgPreviewStatus" Text="{Binding RegionalPreviewStatus}" TextWrapping="Wrap" />
+                        <TextBlock Classes="muted" Text="This domain restricts search and weather acquisition. Native capability, coverage and budgets are checked before downloads. No automatic coastline fallback or chart-safety certification." TextWrapping="Wrap" />
+                        <Expander Header="Source fingerprint">
+                            <TextBlock Text="{Binding RegionalSourceIdentity, StringFormat=SHA-256: {0}}" TextWrapping="Wrap" />
+                        </Expander>
+                    </StackPanel>
+                </StackPanel>
+                <TextBlock Text="Expert land options are inactive until expert overrides are enabled in Advanced." Classes="muted" TextWrapping="Wrap" />
+                <StackPanel IsVisible="{Binding EnableProfessionalRouting}" IsEnabled="{Binding !IsCalculating}" Spacing="6">
+                    <TextBlock Classes="field-label" Text="Land avoidance mechanism" />
+                    <ComboBox x:Name="LandAvoidanceModeSelector" ItemsSource="{Binding LandAvoidanceModeOptions}" SelectedItem="{Binding LandAvoidanceMode}" />
+                    <TextBlock Classes="muted" Text="Segment callback uses the coastline test. Signed-distance landmask validates whole segments. Neither certifies chart safety." TextWrapping="Wrap" />
+                    <StackPanel IsVisible="{Binding IsSignedDistanceLandmaskSelected}" Spacing="6">
+                        <TextBlock Text="Landmask resolution (NM)" Classes="field-label" />
+                        <NumericUpDown Minimum="0.5" Maximum="60" Increment="0.5" Value="{Binding LandmaskResolutionNauticalMiles}" />
+                        <TextBlock Text="Landmask clearance (NM)" Classes="field-label" />
+                        <NumericUpDown Minimum="0" Maximum="100" Increment="0.5" Value="{Binding LandmaskClearanceNauticalMiles}" />
+                        <TextBlock Text="Maximum subdivision depth" Classes="field-label" />
+                        <NumericUpDown Minimum="1" Maximum="32" Value="{Binding LandmaskMaximumSubdivisionDepth}" />
+                        <TextBlock Text="Outside coverage" Classes="field-label" />
+                        <ComboBox ItemsSource="{Binding MissingDataPolicyOptions}" SelectedItem="{Binding LandmaskMissingDataPolicy}" />
+                    </StackPanel>
+                </StackPanel>
+                <TextBlock Text="{Binding LandAvoidanceWarning}" Foreground="{DynamicResource WarningTextColor}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Expander>
+    </StackPanel>
 </UserControl>

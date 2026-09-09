@@ -21,16 +21,17 @@ namespace Navtool.App.Views;
 
 public partial class MainWindow : Window
 {
-    private enum DrawerSide
+    internal enum WorkingPanel
     {
-        Planning,
-        Route
+        Plan,
+        Results,
+        Settings
     }
 
-    internal const double DrawerBreakpoint = 1280;
-    internal const double ClosedDrawerWidth = 44;
-    internal const double PlanningDrawerWidth = 380;
-    internal const double RouteDrawerWidth = 340;
+    internal const double DefaultPanelWidth = 400;
+    internal const double MinimumPanelWidth = 320;
+    internal const double MinimumMapWidth = 560;
+    private const double SplitterWidth = 6;
 
     private const double RadialActionWidth = 112;
     private const double RadialActionHeight = 48;
@@ -51,7 +52,6 @@ public partial class MainWindow : Window
     private Navigator? _subscribedNavigator;
     private MapControl? _mapControl;
     private ColumnDefinition? _planningDrawerColumn;
-    private ColumnDefinition? _routeDrawerColumn;
     private Border? _planningDrawerContent;
     private Border? _routeDrawerContent;
     private ToggleButton? _planningDrawerHandle;
@@ -74,7 +74,11 @@ public partial class MainWindow : Window
     private MPoint? _routeTelemetryProjection;
     private ScreenPoint? _lastPointerPosition;
     private MPoint? _capturedWorldPoint;
-    private DrawerSide? _lastOpenedDrawer;
+    private WorkingPanel _previousPanel = WorkingPanel.Plan;
+    private double _panelWidth = DefaultPanelWidth;
+    private readonly Dictionary<WorkingPanel, Control> _panelFocus = [];
+    private readonly Dictionary<WorkingPanel, Vector> _panelScroll = [];
+    private Navtool.Core.RoutePlanId? _displayedPlanId;
 
     public MainWindow() : this(GetDefaultThemeService())
     {
@@ -94,13 +98,18 @@ public partial class MainWindow : Window
         AddHandler(PointerPressedEvent, OnWindowPointerPressed, RoutingStrategies.Tunnel);
     }
 
-    internal bool IsPlanningDrawerOpen { get; private set; }
+    internal bool IsPanelOpen { get; private set; } = true;
 
-    internal bool IsRouteDrawerOpen { get; private set; }
+    internal WorkingPanel SelectedPanel { get; private set; } = WorkingPanel.Plan;
+
+    internal bool IsPlanningDrawerOpen => IsPanelOpen && SelectedPanel == WorkingPanel.Plan;
+
+    internal bool IsRouteDrawerOpen => IsPanelOpen && SelectedPanel == WorkingPanel.Results;
 
     internal bool IsRadialMenuOpen => _radialMenuLayer?.IsVisible is true;
 
-    internal static bool AllowsBothDrawers(double width) => width >= DrawerBreakpoint;
+    internal static double MaximumPanelWidth(double windowWidth) =>
+        Math.Max(MinimumPanelWidth, windowWidth - MinimumMapWidth - SplitterWidth);
 
     private void InitializeControls()
     {
@@ -120,7 +129,6 @@ public partial class MainWindow : Window
 
         var shellGrid = this.FindControl<Grid>("ShellGrid")!;
         _planningDrawerColumn = shellGrid.ColumnDefinitions[0];
-        _routeDrawerColumn = shellGrid.ColumnDefinitions[2];
         _planningDrawerContent = this.FindControl<Border>("PlanningDrawerContent")!;
         _routeDrawerContent = this.FindControl<Border>("RouteDrawerContent")!;
         _planningDrawerHandle = this.FindControl<ToggleButton>("PlanningDrawerHandle")!;
@@ -140,7 +148,7 @@ public partial class MainWindow : Window
         _routeTelemetryConnector = this.FindControl<Line>("RouteTelemetryConnector")!;
         _routeTelemetryAnchor = this.FindControl<Ellipse>("RouteTelemetryAnchor")!;
         _waypointList = this.FindControl<ListBox>("WaypointList")!;
-        ApplyDrawerState();
+        ApplyPanelState();
     }
 
     private void OnLoaded(object? sender, RoutedEventArgs e)
@@ -154,10 +162,15 @@ public partial class MainWindow : Window
         _subscribedViewModel.RouteSelectionChanged += OnRouteSelectionChanged;
         _subscribedViewModel.RoutePointInspectionRequested += OnRoutePointInspectionRequested;
         _subscribedViewModel.Itinerary.WaypointSelectionChanged += OnWaypointSelectionChanged;
+        _displayedPlanId = viewModel.Itinerary.PlanId;
+        _subscribedViewModel.Itinerary.ItineraryChanged += OnItineraryChanged;
+        _subscribedViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        _subscribedViewModel.RoutingSetup.PropertyChanged += OnRoutingSetupPropertyChanged;
         _subscribedNavigator = viewModel.Map.Navigator;
         _subscribedNavigator.ViewportChanged += OnViewportChanged;
         ScheduleRouteTelemetryRefresh();
         ScheduleWeatherRefresh();
+        ScheduleMessageRefresh();
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -180,6 +193,9 @@ public partial class MainWindow : Window
             _subscribedViewModel.RouteSelectionChanged -= OnRouteSelectionChanged;
             _subscribedViewModel.RoutePointInspectionRequested -= OnRoutePointInspectionRequested;
             _subscribedViewModel.Itinerary.WaypointSelectionChanged -= OnWaypointSelectionChanged;
+            _subscribedViewModel.Itinerary.ItineraryChanged -= OnItineraryChanged;
+            _subscribedViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            _subscribedViewModel.RoutingSetup.PropertyChanged -= OnRoutingSetupPropertyChanged;
         }
 
         Loaded -= OnLoaded;
@@ -310,10 +326,31 @@ public partial class MainWindow : Window
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            switch (e.Key)
+            {
+                case Key.D1: SelectPanel(WorkingPanel.Plan); break;
+                case Key.D2: SelectPanel(WorkingPanel.Results); break;
+                case Key.D3: SelectPanel(WorkingPanel.Settings); break;
+                case Key.OemPipe: SetPanelOpen(!IsPanelOpen); break;
+                default: return;
+            }
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Escape && IsRadialMenuOpen)
         {
             e.Handled = true;
             CloseRadialMenu();
+            return;
+        }
+
+        if (e.Key == Key.Escape && IsMessagePopupOpen)
+        {
+            e.Handled = true;
+            CloseMessages();
             return;
         }
 
@@ -519,8 +556,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        var waypoints = _subscribedViewModel?.Itinerary.Waypoints;
+        if (waypoints is null || waypoint == waypoints[0] || waypoint == waypoints[^1])
+            return;
+
         SetPlanningDrawerOpen(true);
-        Dispatcher.UIThread.Post(() => _waypointList?.ScrollIntoView(waypoint));
+        this.FindControl<Expander>("WaypointEditorExpander")!.IsExpanded = true;
+        Dispatcher.UIThread.Post(() => _waypointList?.ScrollIntoView(waypoint), DispatcherPriority.Loaded);
     }
 
     private void OnRoutePointInspectionRequested(object? sender, RouteMapSelection selection)
@@ -544,7 +586,11 @@ public partial class MainWindow : Window
 
     private void ScheduleRouteTelemetryRefresh()
     {
-        Dispatcher.UIThread.Post(UpdateRouteTelemetryOverlay, DispatcherPriority.Loaded);
+        Dispatcher.UIThread.Post(() =>
+        {
+            UpdateRouteTelemetryOverlay();
+            UpdateMessagePlacement();
+        }, DispatcherPriority.Loaded);
     }
 
     private void UpdateRouteTelemetryOverlay()
@@ -615,94 +661,186 @@ public partial class MainWindow : Window
 
     private void OnPlanningDrawerClicked(object? sender, RoutedEventArgs e)
     {
-        SetPlanningDrawerOpen(!IsPlanningDrawerOpen);
+        SelectPanel(WorkingPanel.Plan);
     }
 
     private void OnRouteDrawerClicked(object? sender, RoutedEventArgs e)
     {
-        SetRouteDrawerOpen(!IsRouteDrawerOpen);
+        SelectPanel(WorkingPanel.Results);
+    }
+
+    private void OnSettingsClicked(object? sender, RoutedEventArgs e) => SelectPanel(WorkingPanel.Settings);
+
+    private void OnSettingsBackClicked(object? sender, RoutedEventArgs e) => SelectPanel(_previousPanel);
+
+    private void OnCollapsePanelClicked(object? sender, RoutedEventArgs e) => SetPanelOpen(!IsPanelOpen);
+
+    private void OnBoatChangeClicked(object? sender, RoutedEventArgs e)
+    {
+        SelectPanel(WorkingPanel.Settings);
+        var setup = this.FindControl<RoutingSetupView>("CruisingSetupPanel")!;
+        var section = setup.FindControl<Expander>("BoatSettingsExpander")!;
+        section.IsExpanded = true;
+        Dispatcher.UIThread.Post(() => { section.BringIntoView(); section.Focus(); }, DispatcherPriority.Loaded);
+    }
+
+    private void OnForecastOptionsClicked(object? sender, RoutedEventArgs e)
+    {
+        SelectPanel(WorkingPanel.Settings);
+        var section = this.FindControl<Expander>("ForecastSettingsExpander")!;
+        section.IsExpanded = true;
+        Dispatcher.UIThread.Post(() => { section.BringIntoView(); section.Focus(); }, DispatcherPriority.Loaded);
     }
 
     internal void SetPlanningDrawerOpen(bool isOpen)
     {
-        if (isOpen && !AllowsBothDrawers(Bounds.Width))
-        {
-            IsRouteDrawerOpen = false;
-        }
-
-        IsPlanningDrawerOpen = isOpen;
-        if (isOpen)
-        {
-            _lastOpenedDrawer = DrawerSide.Planning;
-        }
-
-        ApplyDrawerState();
+        if (isOpen) SelectPanel(WorkingPanel.Plan);
+        else if (IsPlanningDrawerOpen) SetPanelOpen(false);
     }
 
     internal void SetRouteDrawerOpen(bool isOpen)
     {
-        if (isOpen && !AllowsBothDrawers(Bounds.Width))
-        {
-            IsPlanningDrawerOpen = false;
-        }
-
-        IsRouteDrawerOpen = isOpen;
-        if (isOpen)
-        {
-            _lastOpenedDrawer = DrawerSide.Route;
-        }
-
-        ApplyDrawerState();
+        if (isOpen) SelectPanel(WorkingPanel.Results);
+        else if (IsRouteDrawerOpen) SetPanelOpen(false);
     }
 
-    private void ApplyDrawerState()
+    internal void SelectPanel(WorkingPanel panel)
     {
-        if (_planningDrawerColumn is null ||
-            _routeDrawerColumn is null ||
-            _planningDrawerContent is null ||
-            _routeDrawerContent is null ||
-            _planningDrawerHandle is null ||
-            _routeDrawerHandle is null)
+        RememberPanelState();
+        if (panel == WorkingPanel.Settings && SelectedPanel != WorkingPanel.Settings)
         {
-            return;
+            _previousPanel = SelectedPanel;
         }
+        SelectedPanel = panel;
+        IsPanelOpen = true;
+        ApplyPanelState();
+        RestorePanelFocus();
+    }
 
+    internal void SetPanelOpen(bool isOpen)
+    {
+        RememberPanelState();
+        IsPanelOpen = isOpen;
+        ApplyPanelState();
+        if (isOpen) RestorePanelFocus();
+        else _mapControl?.Focus();
+    }
+
+    private ScrollViewer PanelScrollViewer => this.FindControl<ScrollViewer>(
+        SelectedPanel == WorkingPanel.Results ? "ResultsScrollViewer" : "PlanningScrollViewer")!;
+
+    private void RememberPanelState()
+    {
+        if (!IsPanelOpen) return;
+        _panelWidth = _planningDrawerColumn?.ActualWidth > 0
+            ? _planningDrawerColumn.ActualWidth : _panelWidth;
+        _panelScroll[SelectedPanel] = PanelScrollViewer.Offset;
+        if (FocusManager?.GetFocusedElement() is Control control &&
+            (PanelScrollViewer.IsKeyboardFocusWithin ||
+             this.FindControl<Border>("CalculationFooter")!.IsKeyboardFocusWithin))
+        {
+            _panelFocus[SelectedPanel] = control;
+        }
+    }
+
+    private void RestorePanelFocus()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!IsPanelOpen) return;
+            PanelScrollViewer.Offset = _panelScroll.GetValueOrDefault(SelectedPanel);
+            var fallback = SelectedPanel switch
+            {
+                WorkingPanel.Plan => "SetStartButton",
+                WorkingPanel.Results => "SetCurrentPositionButton",
+                _ => "SettingsTabButton"
+            };
+            var target = _panelFocus.GetValueOrDefault(SelectedPanel);
+            if (target?.IsEffectivelyVisible is true && target.IsEffectivelyEnabled)
+                target.Focus();
+            else this.FindControl<Control>(fallback)?.Focus();
+        }, DispatcherPriority.Loaded);
+    }
+
+    private void ApplyPanelState()
+    {
+        if (_planningDrawerColumn is null) return;
         CloseRadialMenu();
+        var shell = this.FindControl<Grid>("ShellGrid")!;
+        _planningDrawerColumn.MinWidth = IsPanelOpen ? MinimumPanelWidth : 0;
+        _planningDrawerColumn.MaxWidth = IsPanelOpen ? MaximumPanelWidth(Bounds.Width > 0 ? Bounds.Width : Width) : 0;
         _planningDrawerColumn.Width = new GridLength(
-            IsPlanningDrawerOpen ? PlanningDrawerWidth : ClosedDrawerWidth);
-        _routeDrawerColumn.Width = new GridLength(
-            IsRouteDrawerOpen ? RouteDrawerWidth : ClosedDrawerWidth);
-        _planningDrawerContent.IsVisible = IsPlanningDrawerOpen;
-        _routeDrawerContent.IsVisible = IsRouteDrawerOpen;
-        _planningDrawerHandle.IsChecked = IsPlanningDrawerOpen;
-        _routeDrawerHandle.IsChecked = IsRouteDrawerOpen;
-        _planningDrawerHandle.Content = IsPlanningDrawerOpen ? "‹" : "›";
-        _routeDrawerHandle.Content = IsRouteDrawerOpen ? "›" : "‹";
+            IsPanelOpen ? Math.Clamp(_panelWidth, MinimumPanelWidth, _planningDrawerColumn.MaxWidth) : 0);
+        shell.ColumnDefinitions[1].Width = new GridLength(IsPanelOpen ? SplitterWidth : 0);
+        _planningDrawerContent!.IsVisible = IsPanelOpen && SelectedPanel != WorkingPanel.Results;
+        _routeDrawerContent!.IsVisible = IsRouteDrawerOpen;
+        this.FindControl<Grid>("PlanningDrawer")!.IsVisible = _planningDrawerContent.IsVisible;
+        this.FindControl<Grid>("RouteDrawer")!.IsVisible = _routeDrawerContent.IsVisible;
+        _planningDrawerHandle!.IsChecked = IsPlanningDrawerOpen;
+        _routeDrawerHandle!.IsChecked = IsRouteDrawerOpen;
+        this.FindControl<ToggleButton>("SettingsTabButton")!.IsChecked = IsPanelOpen && SelectedPanel == WorkingPanel.Settings;
+        this.FindControl<Button>("CollapsePanelButton")!.Content = IsPanelOpen ? "Collapse" : "Show panel";
+        this.FindControl<Border>("CalculationFooter")!.IsVisible = IsPanelOpen;
+        this.FindControl<GridSplitter>("WorkingPanelSplitter")!.IsVisible = IsPanelOpen;
+        this.FindControl<StackPanel>("SettingsContent")!.IsVisible = SelectedPanel == WorkingPanel.Settings;
+        foreach (var name in new[] { "EndpointsPanel", "ForecastModelsPanel", "BoatSummaryPanel" })
+            this.FindControl<Border>(name)!.IsVisible = SelectedPanel == WorkingPanel.Plan;
+        UpdateCollapsedAlerts();
+        PanelScrollViewer.Offset = _panelScroll.GetValueOrDefault(SelectedPanel);
         ScheduleRouteTelemetryRefresh();
         ScheduleWeatherRefresh();
     }
 
     private void OnWindowSizeChanged(object? sender, SizeChangedEventArgs e)
     {
-        if (!AllowsBothDrawers(e.NewSize.Width) &&
-            IsPlanningDrawerOpen &&
-            IsRouteDrawerOpen)
+        if (_planningDrawerColumn is not null && IsPanelOpen)
         {
-            if (_lastOpenedDrawer == DrawerSide.Route)
-            {
-                IsPlanningDrawerOpen = false;
-            }
-            else
-            {
-                IsRouteDrawerOpen = false;
-            }
-
-            ApplyDrawerState();
-            return;
+            _planningDrawerColumn.MaxWidth = MaximumPanelWidth(e.NewSize.Width);
         }
-
         ScheduleRouteTelemetryRefresh();
         ScheduleWeatherRefresh();
+    }
+
+    private void OnItineraryChanged(object? sender, EventArgs e)
+    {
+        if (_subscribedViewModel is { } model && model.Itinerary.PlanId != _displayedPlanId)
+        {
+            _displayedPlanId = model.Itinerary.PlanId;
+            this.FindControl<Expander>("WaypointEditorExpander")!.IsExpanded = false;
+            Dispatcher.UIThread.Post(() =>
+            {
+                SelectPanel(WorkingPanel.Plan);
+                _panelScroll.Clear();
+                _panelFocus.Clear();
+                PanelScrollViewer.Offset = default;
+            });
+        }
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(MainViewModel.IsCalculating) or nameof(MainViewModel.ErrorMessage) or
+            nameof(MainViewModel.WarningMessage) or nameof(MainViewModel.PreferenceError) or
+            nameof(MainViewModel.CurrentMessages))
+        {
+            UpdateCollapsedAlerts();
+            ScheduleMessageRefresh();
+        }
+    }
+
+    private void OnRoutingSetupPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(RoutingSetupViewModel.ErrorMessage))
+        {
+            UpdateCollapsedAlerts();
+            ScheduleMessageRefresh();
+        }
+    }
+
+    private void UpdateCollapsedAlerts()
+    {
+        this.FindControl<Grid>("InstrumentRailHost")!.IsVisible =
+            !IsPanelOpen && DataContext is MainViewModel { IsCalculating: true };
     }
 
     private void OnWindowDeactivated(object? sender, EventArgs e)

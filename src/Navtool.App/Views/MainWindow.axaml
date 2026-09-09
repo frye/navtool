@@ -4,6 +4,7 @@
         xmlns:views="using:Navtool.App.Views"
         xmlns:core="using:Navtool.Core"
         xmlns:mapsui="using:Mapsui.UI.Avalonia"
+        xmlns:conv="using:Avalonia.Data.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -11,6 +12,7 @@
         d:DesignHeight="800"
         x:Class="Navtool.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
+        x:CompileBindings="True"
         Width="1280"
         Height="800"
         MinWidth="1040"
@@ -23,78 +25,91 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
-    <Grid x:Name="ShellGrid">
+    <Window.Styles>
+        <Style Selector="Button.interrupted-endpoint">
+            <Setter Property="Background" Value="{DynamicResource SidebarBackgroundColor}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource WarningTextColor}" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+    </Window.Styles>
+
+    <Grid x:Name="ShellGrid" RowDefinitions="Auto,*,Auto">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="44" />
+            <ColumnDefinition Width="400" MinWidth="320" />
+            <ColumnDefinition Width="6" />
             <ColumnDefinition Width="*" MinWidth="560" />
-            <ColumnDefinition Width="44" />
         </Grid.ColumnDefinitions>
 
+        <Border Grid.ColumnSpan="3" Padding="12,8"
+                Background="{DynamicResource SidebarBackgroundColor}"
+                BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="NAVTOOL" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <ToggleButton x:Name="PlanningDrawerHandle" Content="Plan" Click="OnPlanningDrawerClicked"
+                                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                  AutomationProperties.Name="Plan panel" ToolTip.Tip="Plan a passage (Ctrl+1)" />
+                    <ToggleButton x:Name="RouteDrawerHandle" Content="Results" Click="OnRouteDrawerClicked"
+                                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                  AutomationProperties.Name="Results panel" ToolTip.Tip="Results and passage progress (Ctrl+2)" />
+                    <ToggleButton x:Name="SettingsTabButton" Content="Settings" Click="OnSettingsClicked"
+                                  AutomationProperties.Name="Settings panel" ToolTip.Tip="Routing settings (Ctrl+3)" />
+                    <Button x:Name="CollapsePanelButton" Content="Collapse" Click="OnCollapsePanelClicked"
+                            AutomationProperties.Name="Collapse working panel" ToolTip.Tip="Show or hide working panel (Ctrl+Backslash)" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="{Binding Itinerary.RouteName}" FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                <Button Grid.Column="2" Content="Routes" AutomationProperties.Name="Route library and saving">
+                    <Button.Flyout>
+                        <Flyout>
+                            <StackPanel Width="340" Spacing="8">
+                                <TextBlock Text="Route name" Classes="field-label" />
+                                <TextBox Text="{Binding Itinerary.RouteName}" Watermark="Route name" />
+                                <TextBlock Text="Saved routes" Classes="field-label" />
+                                <Grid x:Name="SavedRouteActions" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                                    <ComboBox ItemsSource="{Binding Itinerary.SavedPlans}" SelectedItem="{Binding Itinerary.SelectedSavedPlan}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="core:RoutePlanSummary"><TextBlock Text="{Binding Name}" /></DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <Button Grid.Column="1" Content="New" Command="{Binding Itinerary.NewCommand}" />
+                                    <Button Grid.Column="2" Content="Open" Command="{Binding Itinerary.OpenCommand}" />
+                                </Grid>
+                                <Button Content="Refresh library" Command="{Binding Itinerary.RefreshSavedPlansCommand}" />
+                                <Grid x:Name="SaveRouteActions" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                                    <TextBox Text="{Binding Itinerary.SaveAsName}" Watermark="Save-as name" />
+                                    <Button Grid.Column="1" Content="Save as" Command="{Binding Itinerary.SaveAsCommand}" />
+                                    <Button Grid.Column="2" Content="Save" Command="{Binding Itinerary.SaveCommand}" />
+                                </Grid>
+                                <TextBlock Text="{Binding Itinerary.IsDirty, StringFormat=Unsaved changes: {0}}" Classes="muted" />
+                                <TextBlock Text="{Binding Itinerary.StorageError}" Classes="error" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+            </Grid>
+        </Border>
+        <GridSplitter x:Name="WorkingPanelSplitter" Grid.Column="1" Grid.Row="1" Grid.RowSpan="2"
+                      ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                      HorizontalAlignment="Stretch" Background="{DynamicResource BorderColor}"
+                      AutomationProperties.Name="Resize working panel" />
         <Grid x:Name="PlanningDrawer"
-              Grid.Column="0"
-              ColumnDefinitions="*,44"
+              Grid.Column="0" Grid.Row="1"
               Background="{DynamicResource SidebarBackgroundColor}">
             <Border x:Name="PlanningDrawerContent"
                     Grid.Column="0"
                     Background="{DynamicResource SidebarBackgroundColor}"
                     BorderBrush="{DynamicResource BorderColor}"
                     BorderThickness="0,0,1,0"
-                    IsVisible="False">
-                <ScrollViewer>
-                    <StackPanel Margin="16"
-                                Spacing="12">
-                        <Grid ColumnDefinitions="*,Auto">
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="Plan a passage"
-                                          FontSize="20"
-                                          FontWeight="SemiBold" />
-                                <TextBlock Classes="muted"
-                                          Text="Build an ordered itinerary, then choose departure and forecasts." />
-                            </StackPanel>
-                            <TextBlock Grid.Column="1"
-                                      Text="NAVTOOL"
-                                      FontSize="10"
-                                      FontWeight="SemiBold"
-                                      Foreground="{DynamicResource TextSecondaryColor}"
-                                      TextAlignment="Center"
-                                      VerticalAlignment="Center"
-                                      Opacity="0.9" />
-                        </Grid>
-
-                        <Border Classes="card">
+                    IsVisible="True">
+                <ScrollViewer x:Name="PlanningScrollViewer" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12" Spacing="10">
+                        <Border x:Name="EndpointsPanel" Classes="card" Padding="8">
                             <StackPanel Spacing="8">
                                 <TextBlock Classes="section-title"
-                                          Text="1  ITINERARY" />
-                                <StackPanel Spacing="4">
-                                    <TextBlock Classes="field-label"
-                                              Text="Route name" />
-                                    <TextBox Text="{Binding Itinerary.RouteName}"
-                                            Watermark="Route name" />
-                                </StackPanel>
-                                <StackPanel Spacing="4">
-                                    <TextBlock Classes="field-label"
-                                              Text="Saved route" />
-                                    <Grid x:Name="SavedRouteActions"
-                                         Classes="compact-action-row"
-                                         ColumnDefinitions="*,Auto,Auto">
-                                        <ComboBox ItemsSource="{Binding Itinerary.SavedPlans}"
-                                                 SelectedItem="{Binding Itinerary.SelectedSavedPlan}">
-                                           <ComboBox.ItemTemplate>
-                                               <DataTemplate x:DataType="core:RoutePlanSummary">
-                                                   <TextBlock Text="{Binding Name}" />
-                                               </DataTemplate>
-                                           </ComboBox.ItemTemplate>
-                                        </ComboBox>
-                                        <Button Grid.Column="1"
-                                               Content="New"
-                                               Command="{Binding Itinerary.NewCommand}" />
-                                        <Button Grid.Column="2"
-                                               Content="Open"
-                                               Command="{Binding Itinerary.OpenCommand}" />
-                                    </Grid>
-                                </StackPanel>
-                                <Button Content="Refresh saved routes"
-                                        Command="{Binding Itinerary.RefreshSavedPlansCommand}" />
+                                          Text="PLAN A PASSAGE" />
                                 <Grid x:Name="EndpointActions"
                                       ColumnDefinitions="*,*"
                                       ColumnSpacing="8">
@@ -112,6 +127,12 @@
                                                   Command="{Binding SetDestinationCommand}"
                                                   ToolTip.Tip="Arm finish placement, then select the map" />
                                 </Grid>
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                    <TextBlock Text="{Binding StartDisplay}" Classes="muted" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="1" Text="{Binding DestinationDisplay}" Classes="muted" TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                                <Expander x:Name="WaypointEditorExpander" Header="Waypoints &amp; stopovers" IsExpanded="False">
+                                <StackPanel Spacing="6">
                                 <ListBox x:Name="WaypointList"
                                          Classes="waypoint-list"
                                          ItemsSource="{Binding Itinerary.Waypoints}"
@@ -194,44 +215,149 @@
                                 </ListBox>
                                 <Button Content="Add waypoint"
                                         Command="{Binding Itinerary.AddWaypointCommand}" />
-                                <Grid x:Name="SaveRouteActions"
-                                      Classes="compact-action-row"
-                                      ColumnDefinitions="*,Auto,Auto">
-                                    <TextBox Text="{Binding Itinerary.SaveAsName}"
-                                             Watermark="Save-as name" />
-                                    <Button Grid.Column="1"
-                                            Content="Save as"
-                                            Command="{Binding Itinerary.SaveAsCommand}" />
-                                    <Button Grid.Column="2"
-                                            Content="Save"
-                                            Command="{Binding Itinerary.SaveCommand}" />
-                                </Grid>
-                                <TextBlock Text="{Binding Itinerary.StorageError}"
-                                           Classes="error"
-                                           TextWrapping="Wrap" />
+                                </StackPanel>
+                                </Expander>
                                 <TextBlock Text="{Binding Itinerary.ValidationMessage}"
                                            Classes="error"
                                            TextWrapping="Wrap" />
-                                <TextBlock Classes="muted"
-                                           Text="{Binding Itinerary.IsDirty, StringFormat=Unsaved changes: {0}}" />
-                                <TextBlock Classes="muted"
-                                           Text="{Binding Itinerary.ResultsInvalidated, StringFormat=Results invalidated: {0}}" />
                             </StackPanel>
                         </Border>
 
-                        <views:RoutingSetupView x:Name="CruisingSetupPanel" DataContext="{Binding RoutingSetup}" />
+                        <Border x:Name="DeparturePanel" Classes="card" Padding="8">
+                            <StackPanel Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="Departure" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <CheckBox x:Name="DepartureNowToggle" Grid.Column="1" Content="Now" IsChecked="{Binding DepartureNow}" />
+                                </Grid>
+                                <StackPanel IsVisible="{Binding !DepartureNow}" Spacing="4">
+                                    <Grid x:Name="DepartureFields" ColumnDefinitions="*,104" ColumnSpacing="8">
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Classes="field-label" Text="Departure date (local)" />
+                                            <DatePicker x:Name="DepartureDatePicker" SelectedDate="{Binding DepartureDate}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Spacing="4">
+                                            <TextBlock Classes="field-label" Text="Time (local)" />
+                                            <TimePicker x:Name="DepartureTimePicker" SelectedTime="{Binding DepartureTime}" ClockIdentifier="24HourClock" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <TextBlock x:Name="DepartureUtcPreviewText" Classes="muted" Text="{Binding DepartureUtcPreview}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Expander IsExpanded="False">
+                                    <Expander.Header>
+                                        <TextBlock>
+                                            <TextBlock.Text>
+                                                <MultiBinding StringFormat="Forecast horizon: {0}d {1}h">
+                                                    <Binding Path="PassageDays" />
+                                                    <Binding Path="PassageHours" />
+                                                </MultiBinding>
+                                            </TextBlock.Text>
+                                        </TextBlock>
+                                    </Expander.Header>
+                                    <StackPanel Spacing="6">
+                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                            <StackPanel Spacing="4">
+                                                <TextBlock Text="Forecast days" Classes="field-label" />
+                                                <NumericUpDown x:Name="PassageDaysInput" Minimum="0" Maximum="10" Increment="1" FormatString="0" Value="{Binding PassageDays}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Spacing="4">
+                                                <TextBlock Text="Additional hours" Classes="field-label" />
+                                                <NumericUpDown x:Name="PassageHoursInput" Minimum="0" Maximum="23" Increment="1" FormatString="0" Value="{Binding PassageHours}" />
+                                            </StackPanel>
+                                        </Grid>
+                                        <TextBlock Classes="muted" Text="Weather acquisition horizon, not a promised arrival or engine search limit. Maximum 10 days." TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding UtcOffsetDisplay, StringFormat=Current UTC offset: {0}}" Classes="muted" />
+                                    </StackPanel>
+                                </Expander>
+                            </StackPanel>
+                        </Border>
+                        <Border x:Name="ForecastModelsPanel" Classes="card" Padding="8">
+                            <StackPanel Spacing="4">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="Forecast models" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Content="Options" Click="OnForecastOptionsClicked" />
+                                </Grid>
+                                <WrapPanel IsVisible="{Binding IsDownloadForecast}">
+                                    <CheckBox x:Name="NoaaModelToggle" Content="NOAA GFS" IsChecked="{Binding UseNoaa}" Margin="0,0,16,0" />
+                                    <CheckBox x:Name="EcmwfModelToggle" Content="ECMWF IFS" IsChecked="{Binding UseEcmwf}" />
+                                </WrapPanel>
+                                <TextBlock IsVisible="{Binding IsLocalForecast}" Text="{Binding LocalGribPath, TargetNullValue=Choose a GRIB file in Options}"
+                                           ToolTip.Tip="{Binding LocalGribPath}" Classes="muted" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Border>
+                        <Border x:Name="BoatSummaryPanel" Classes="card" Padding="8">
+                            <StackPanel Spacing="4">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <TextBlock Text="{Binding RoutingSetup.BoatSummary}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                               ToolTip.Tip="{Binding RoutingSetup.BoatSummary}" VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Content="Change" Click="OnBoatChangeClicked" />
+                                </Grid>
+                                <TextBlock Classes="muted">
+                                    <TextBlock.Text>
+                                        <MultiBinding StringFormat="{}{0} routing · {1}% boat performance">
+                                            <Binding Path="RoutingSetup.Quality" Converter="{x:Static views:RoutingOptionLabelConverter.Instance}" />
+                                            <Binding Path="RoutingSetup.PerformancePercentage" />
+                                        </MultiBinding>
+                                    </TextBlock.Text>
+                                </TextBlock>
+                                <TextBlock IsVisible="{Binding EnableProfessionalRouting}" Text="Expert overrides active" Foreground="{DynamicResource WarningTextColor}" />
+                                <TextBlock IsVisible="{Binding RoutingSetup.EnableCoastalPruning}" Text="Experimental coastal pruning active" Foreground="{DynamicResource WarningTextColor}" />
+                                <TextBlock IsVisible="{Binding RoutingSetup.IsDemoBoat}" Text="DEMO BOAT - illustrative, not your vessel." TextWrapping="Wrap" Foreground="{DynamicResource WarningTextColor}" />
+                            </StackPanel>
+                        </Border>
+                        <StackPanel x:Name="SettingsContent" Spacing="10" IsVisible="False">
+                        <Button Content="Back to passage" Click="OnSettingsBackClicked" HorizontalAlignment="Left" />
+                        <TextBlock Text="{Binding PreferenceStatus}" TextWrapping="Wrap" Classes="muted"
+                                   IsVisible="{Binding PreferenceStatus, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" />
+                        <Expander x:Name="ForecastSettingsExpander" Header="Forecasts &amp; data">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Select forecast models in Plan." Classes="muted" />
+                                <RadioButton x:Name="DownloadForecastSource" GroupName="ForecastSource" Content="Download forecast"
+                                             IsChecked="{Binding IsDownloadForecast, Mode=OneWay}" Command="{Binding SelectDownloadSourceCommand}" />
+                                <RadioButton x:Name="LocalForecastSource" GroupName="ForecastSource" Content="Existing GRIB file"
+                                             IsChecked="{Binding IsLocalForecast, Mode=OneWay}" Command="{Binding SelectLocalFileSourceCommand}" />
+                                <StackPanel IsVisible="{Binding IsDownloadForecast}" Spacing="6">
+                                    <TextBlock Text="Forecast freshness" Classes="field-label" />
+                                    <ComboBox ItemsSource="{Binding RoutingSetup.ForecastPolicyOptions}" SelectedItem="{Binding RoutingSetup.ForecastPolicy}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="core:ForecastRefreshPolicy">
+                                                <TextBlock Text="{Binding ., Converter={x:Static views:RoutingOptionLabelConverter.Instance}}" TextWrapping="Wrap" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <TextBlock Text="Reuse a covering cached run, or require the newest published run." Classes="muted" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding NoaaStatus}" Classes="muted" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding EcmwfStatus}" Classes="muted" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <StackPanel IsVisible="{Binding IsLocalForecast}" Spacing="6">
+                                    <Button x:Name="ChooseGribFileButton" Click="OnChooseGribFileClicked" IsEnabled="{Binding !IsInspectingLocalGrib}" Content="Choose GRIB file..." />
+                                    <TextBlock Text="{Binding LocalGribDisplay}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding LocalGribPath}" Classes="muted" TextWrapping="Wrap"
+                                               IsVisible="{Binding LocalGribPath, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" />
+                                    <TextBlock Text="{Binding LocalGribStatus}" Classes="muted" TextWrapping="Wrap" />
+                                    <TextBlock Text="Maximum interpolation gap (hours)" Classes="field-label" TextWrapping="Wrap" />
+                                    <NumericUpDown Value="{Binding RoutingSetup.LocalForecastMaximumGapHours}" Minimum="0.1" Maximum="24" Increment="1" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding ForecastAreaSummary}" Classes="muted" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Expander>
+                        <views:RoutingSetupView x:Name="CruisingSetupPanel" />
+                        <Expander x:Name="AdvancedSettingsExpander" Header="Advanced &amp; experimental">
                         <Border Classes="card">
                             <StackPanel Spacing="8">
                                 <TextBlock Classes="section-title"
-                                           Text="ROUTING ENGINE" />
+                                           Text="EXPERT OVERRIDES" />
                                 <TextBlock Text="{Binding LiveSearchStatus}" Classes="muted" TextWrapping="Wrap" />
                                 <CheckBox x:Name="ProfessionalRoutingToggle"
-                                          Content="Professional routing features"
+                                          Content="Enable expert overrides"
                                           IsChecked="{Binding EnableProfessionalRouting}"
                                           IsEnabled="{Binding !IsCalculating}" />
                                 <TextBlock Classes="muted"
-                                           Text="Off uses the selected native quality preset with explicit PCHIP polar interpolation and NoSpeed above the polar range. Professional changes are session-only."
+                                           Text="Values are remembered, but inactive until explicitly enabled. Off uses your native quality preset, PCHIP and NoSpeed above the polar range."
                                            TextWrapping="Wrap" />
+                                <CheckBox x:Name="CoastalPruningToggle" Content="Experimental conservative coastal pruning" IsChecked="{Binding RoutingSetup.EnableCoastalPruning}" />
+                                <TextBlock Text="Experimental pruning is separately opt-in. It does not certify chart safety or global optimality." Classes="muted" TextWrapping="Wrap" />
+                                <CheckBox Content="Override hard search duration (hours)" IsChecked="{Binding RoutingSetup.UseHardDuration}" />
+                                <NumericUpDown Value="{Binding RoutingSetup.HardDurationHours}" IsVisible="{Binding RoutingSetup.UseHardDuration}" Minimum="1" Maximum="240" Increment="1" />
                                 <StackPanel IsVisible="{Binding EnableProfessionalRouting}"
                                             IsEnabled="{Binding !IsCalculating}"
                                             Spacing="8">
@@ -244,6 +370,7 @@
                                                   Text="The lattice solver is opt-in; standard routing always remains on the isochrone beam."
                                                   TextWrapping="Wrap" />
                                     </StackPanel>
+                                    <TextBlock Text="Boat handling" Classes="section-title" />
                                     <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                                         <StackPanel Spacing="4">
                                             <TextBlock Classes="field-label" Text="Tack penalty (s)" />
@@ -266,6 +393,7 @@
                                         <ComboBox ItemsSource="{Binding HeadingAugmentationOptions}"
                                                   SelectedItem="{Binding HeadingAugmentation}" />
                                     </StackPanel>
+                                    <TextBlock Text="Wind &amp; polar behavior" Classes="section-title" />
                                     <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                                         <StackPanel Spacing="4">
                                             <TextBlock Classes="field-label" Text="Wind sampling" />
@@ -295,6 +423,7 @@
                                         <ComboBox ItemsSource="{Binding AbovePolarRangeOptions}"
                                                   SelectedItem="{Binding AbovePolarRange}" />
                                     </StackPanel>
+                                    <TextBlock Text="Search mechanics" Classes="section-title" />
                                     <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                                         <StackPanel Spacing="4">
                                             <TextBlock Classes="field-label" Text="Pruning" />
@@ -313,10 +442,14 @@
                                         <TextBlock Classes="field-label" Text="Destination front" />
                                         <ComboBox ItemsSource="{Binding DestinationFrontPolicyOptions}"
                                                   SelectedItem="{Binding DestinationFrontSegmentPolicy}" />
-                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                                            <NumericUpDown Minimum="1" Maximum="180"
+                                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8">
+                                            <TextBlock Text="Front half-angle (degrees)" Classes="field-label" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Column="1" Text="Minimum secondary points" Classes="field-label" TextWrapping="Wrap" />
+                                            <NumericUpDown Grid.Row="1" Minimum="1" Maximum="180"
+                                                           AutomationProperties.Name="Destination front half-angle in degrees"
                                                            Value="{Binding DestinationFrontHalfAngleDegrees}" />
-                                            <NumericUpDown Grid.Column="1" Minimum="1" Maximum="1000"
+                                            <NumericUpDown Grid.Row="1" Grid.Column="1" Minimum="1" Maximum="1000"
+                                                           AutomationProperties.Name="Minimum secondary segment points"
                                                            Value="{Binding DestinationFrontMinimumSecondarySegmentPoints}" />
                                         </Grid>
                                     </StackPanel>
@@ -326,22 +459,28 @@
                                         <TextBlock Classes="field-label" Text="Lattice search" />
                                         <ComboBox ItemsSource="{Binding LatticeSearchAlgorithmOptions}"
                                                   SelectedItem="{Binding LatticeSearchAlgorithm}" />
-                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                                            <NumericUpDown Minimum="0" Maximum="8"
+                                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8">
+                                            <TextBlock Text="Subdivision level" Classes="field-label" />
+                                            <TextBlock Grid.Column="1" Text="Refinement levels" Classes="field-label" />
+                                            <NumericUpDown Grid.Row="1" Minimum="0" Maximum="8" AutomationProperties.Name="Lattice subdivision level"
                                                            Value="{Binding LatticeSubdivisionLevel}" />
-                                            <NumericUpDown Grid.Column="1" Minimum="0" Maximum="8"
+                                            <NumericUpDown Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="8" AutomationProperties.Name="Lattice refinement levels"
                                                            Value="{Binding LatticeRefinementLevels}" />
                                         </Grid>
-                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                                            <NumericUpDown Minimum="1" Maximum="1440"
+                                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8">
+                                            <TextBlock Text="Time bucket (min)" Classes="field-label" />
+                                            <TextBlock Grid.Column="1" Text="Corridor width (NM)" Classes="field-label" />
+                                            <NumericUpDown Grid.Row="1" Minimum="1" Maximum="1440" AutomationProperties.Name="Lattice time bucket in minutes"
                                                            Value="{Binding LatticeTimeBucketMinutes}" />
-                                            <NumericUpDown Grid.Column="1" Minimum="1" Maximum="5000"
+                                            <NumericUpDown Grid.Row="1" Grid.Column="1" Minimum="1" Maximum="5000" AutomationProperties.Name="Lattice corridor width in nautical miles"
                                                            Value="{Binding LatticeCorridorWidthNauticalMiles}" />
                                         </Grid>
-                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                                            <NumericUpDown Minimum="0" Maximum="20"
+                                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8">
+                                            <TextBlock Text="Widening retries" Classes="field-label" />
+                                            <TextBlock Grid.Column="1" Text="Progress interval (expansions)" Classes="field-label" TextWrapping="Wrap" />
+                                            <NumericUpDown Grid.Row="1" Minimum="0" Maximum="20" AutomationProperties.Name="Lattice corridor widening retries"
                                                            Value="{Binding LatticeCorridorWideningRetries}" />
-                                            <NumericUpDown Grid.Column="1" Minimum="1" Maximum="1000000"
+                                            <NumericUpDown Grid.Row="1" Grid.Column="1" Minimum="1" Maximum="1000000" AutomationProperties.Name="Lattice progress interval in expansions"
                                                            Value="{Binding LatticeProgressEveryExpansions}" />
                                         </Grid>
                                     </StackPanel>
@@ -397,36 +536,6 @@
                                             <ComboBox ItemsSource="{Binding MissingDataPolicyOptions}"
                                                       SelectedItem="{Binding WaveMissingDataPolicy}" />
                                         </StackPanel>
-                                        <StackPanel Spacing="4">
-                                            <TextBlock Classes="field-label" Text="Land avoidance" />
-                                            <ComboBox x:Name="LandAvoidanceModeSelector"
-                                                      ItemsSource="{Binding LandAvoidanceModeOptions}"
-                                                      SelectedItem="{Binding LandAvoidanceMode}" />
-                                            <TextBlock Classes="muted"
-                                                       Text="The segment callback is Navtool's long-standing coastline test. The signed-distance landmask hands the same coastline to router-lib, which certifies whole segments instead of sampling them."
-                                                       TextWrapping="Wrap" />
-                                        </StackPanel>
-                                        <StackPanel IsVisible="{Binding IsSignedDistanceLandmaskSelected}"
-                                                    Spacing="4">
-                                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                                                <StackPanel Spacing="4">
-                                                    <TextBlock Classes="field-label" Text="Resolution (nm)" />
-                                                    <NumericUpDown Minimum="0.5" Maximum="60" Increment="0.5"
-                                                                   Value="{Binding LandmaskResolutionNauticalMiles}" />
-                                                </StackPanel>
-                                                <StackPanel Grid.Column="1" Spacing="4">
-                                                    <TextBlock Classes="field-label" Text="Clearance (nm)" />
-                                                    <NumericUpDown Minimum="0" Maximum="100" Increment="0.5"
-                                                                   Value="{Binding LandmaskClearanceNauticalMiles}" />
-                                                </StackPanel>
-                                            </Grid>
-                                            <TextBlock Classes="field-label" Text="Subdivision depth" />
-                                            <NumericUpDown Minimum="1" Maximum="32"
-                                                           Value="{Binding LandmaskMaximumSubdivisionDepth}" />
-                                            <TextBlock Classes="field-label" Text="Outside coverage" />
-                                            <ComboBox ItemsSource="{Binding MissingDataPolicyOptions}"
-                                                      SelectedItem="{Binding LandmaskMissingDataPolicy}" />
-                                        </StackPanel>
                                         <CheckBox x:Name="AntarcticExclusionToggle"
                                                   Content="Antarctic exclusion zone (example)"
                                                   IsChecked="{Binding EnableAntarcticExclusionZone}" />
@@ -449,306 +558,38 @@
                             </StackPanel>
                         </Border>
 
-                        <Border Classes="card">
-                            <StackPanel Spacing="8">
-                                <TextBlock Classes="section-title"
-                                           Text="CURRENT POSITION &amp; PROGRESS" />
-                                <TextBlock Classes="muted"
-                                           Text="Mark completed legs as sailed, choose the active leg to resume from, and place the vessel's current position for a mid-leg reroute."
-                                           TextWrapping="Wrap" />
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                                    <ToggleButton x:Name="SetCurrentPositionButton"
-                                                  Classes="map-tool"
-                                                  Content="Set current position"
-                                                  IsChecked="{Binding IsSettingCurrentPosition, Mode=OneWay}"
-                                                  Command="{Binding SetCurrentPositionCommand}"
-                                                  ToolTip.Tip="Arm current-position placement, then select the map" />
-                                    <Button Grid.Column="1"
-                                            Content="Clear"
-                                            Command="{Binding ClearCurrentPositionCommand}"
-                                            ToolTip.Tip="Remove the placed current position" />
-                                </Grid>
-                                <Grid ColumnDefinitions="*,104"
-                                      ColumnSpacing="7">
-                                    <StackPanel Spacing="4">
-                                        <TextBlock Classes="field-label"
-                                                   Text="Departure date (local)" />
-                                        <DatePicker x:Name="CurrentPositionDatePicker"
-                                                    SelectedDate="{Binding Itinerary.CurrentPositionDepartureDate}" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1"
-                                                Spacing="4">
-                                        <TextBlock Classes="field-label"
-                                                   Text="Time (local)" />
-                                        <TimePicker x:Name="CurrentPositionTimePicker"
-                                                    SelectedTime="{Binding Itinerary.CurrentPositionDepartureTimeOfDay}"
-                                                    ClockIdentifier="24HourClock" />
-                                    </StackPanel>
-                                </Grid>
-                                <TextBlock x:Name="CurrentPositionDepartureDisplay"
-                                           Classes="muted"
-                                           Text="{Binding Itinerary.CurrentPositionDepartureDisplay}"
-                                           TextWrapping="Wrap" />
-                                <Border Classes="subtle"
-                                        Padding="9,6">
-                                    <Grid ColumnDefinitions="*,Auto">
-                                        <TextBlock Text="Current UTC offset"
-                                                   Classes="muted" />
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding UtcOffsetDisplay}"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextSecondaryColor}" />
-                                    </Grid>
-                                </Border>
-                                <TextBlock Classes="muted"
-                                           Text="{Binding Itinerary.CurrentPositionDisplay}"
-                                           TextWrapping="Wrap" />
-                                <ItemsControl ItemsSource="{Binding Itinerary.Legs}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:RouteLegEditorItemViewModel">
-                                            <Border Classes="subtle" Margin="0,0,0,6">
-                                                <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="5">
-                                                    <StackPanel>
-                                                        <TextBlock Text="{Binding Label}" />
-                                                        <TextBlock Text="{Binding StatusLabel}"
-                                                                   Classes="muted" />
-                                                        <TextBlock Text="{Binding OutcomeStatus}"
-                                                                   Classes="muted"
-                                                                   TextWrapping="Wrap" />
-                                                    </StackPanel>
-                                                    <RadioButton Grid.Column="1"
-                                                                 Content="View"
-                                                                 Command="{Binding SelectCommand}"
-                                                                 GroupName="RouteLegSelection"
-                                                                 IsChecked="{Binding IsSelected, Mode=OneWay}"
-                                                                 ToolTip.Tip="Select this leg on the full-route map" />
-                                                    <Button Grid.Column="2"
-                                                            Content="Sailed"
-                                                            Command="{Binding MarkSailedCommand}"
-                                                            ToolTip.Tip="Mark this leg as sailed/completed" />
-                                                    <Button Grid.Column="3"
-                                                            Content="Unmark"
-                                                            Command="{Binding UnmarkSailedCommand}"
-                                                            ToolTip.Tip="Unmark this leg as sailed" />
-                                                    <Button Grid.Column="4"
-                                                            Content="Active"
-                                                            Command="{Binding MakeActiveCommand}"
-                                                            ToolTip.Tip="Explicitly resume from this leg" />
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Classes="card">
-                            <StackPanel Spacing="9">
-                                <TextBlock Classes="section-title"
-                                           Text="DEPARTURE &amp; DURATION" />
-                                <Grid x:Name="DepartureFields"
-                                      ColumnDefinitions="*,104"
-                                      ColumnSpacing="8">
-                                    <StackPanel Spacing="4">
-                                        <TextBlock Classes="field-label"
-                                                   Text="Departure date (local)" />
-                                        <DatePicker x:Name="DepartureDatePicker"
-                                                    SelectedDate="{Binding DepartureDate}" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1"
-                                                Spacing="4">
-                                        <TextBlock Classes="field-label"
-                                                   Text="Time (local)" />
-                                        <TimePicker x:Name="DepartureTimePicker"
-                                                    SelectedTime="{Binding DepartureTime}"
-                                                    ClockIdentifier="24HourClock" />
-                                    </StackPanel>
-                                </Grid>
-                                <TextBlock x:Name="DepartureUtcPreviewText"
-                                           Classes="muted"
-                                           Text="{Binding DepartureUtcPreview}"
-                                           TextWrapping="Wrap" />
-                                <Grid ColumnDefinitions="*,*"
-                                      ColumnSpacing="8">
-                                    <StackPanel Spacing="4">
-                                        <TextBlock Text="Passage days"
-                                                   Classes="field-label" />
-                                        <NumericUpDown x:Name="PassageDaysInput"
-                                                       Minimum="0"
-                                                       Maximum="10"
-                                                       Increment="1"
-                                                       FormatString="0"
-                                                       Value="{Binding PassageDays}" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1"
-                                                Spacing="4">
-                                        <TextBlock Text="Passage hours"
-                                                   Classes="field-label" />
-                                        <NumericUpDown x:Name="PassageHoursInput"
-                                                       Minimum="0"
-                                                       Maximum="23"
-                                                       Increment="1"
-                                                       FormatString="0"
-                                                       Value="{Binding PassageHours}" />
-                                    </StackPanel>
-                                </Grid>
-                                <Border Classes="subtle"
-                                        Padding="9,6">
-                                    <Grid ColumnDefinitions="*,Auto">
-                                        <TextBlock Text="Current UTC offset"
-                                                   Classes="muted" />
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding UtcOffsetDisplay}"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextSecondaryColor}" />
-                                    </Grid>
-                                </Border>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Classes="card">
-                            <StackPanel Spacing="8">
-                                <TextBlock Classes="section-title"
-                                           Text="FORECAST SOURCE" />
-                                <RadioButton x:Name="DownloadForecastSource"
-                                             GroupName="ForecastSource"
-                                             Content="Download forecast"
-                                             IsChecked="{Binding IsDownloadForecast, Mode=OneWay}"
-                                             Command="{Binding SelectDownloadSourceCommand}" />
-                                <RadioButton x:Name="LocalForecastSource"
-                                             GroupName="ForecastSource"
-                                             Content="Existing GRIB file"
-                                             IsChecked="{Binding IsLocalForecast, Mode=OneWay}"
-                                             Command="{Binding SelectLocalFileSourceCommand}" />
-                                <StackPanel IsVisible="{Binding IsDownloadForecast}"
-                                            Spacing="7">
-                                    <CheckBox IsChecked="{Binding UseNoaa}">
-                                        <StackPanel>
-                                            <TextBlock Text="NOAA GFS"
-                                                       FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding NoaaStatus}"
-                                                       Classes="muted"
-                                                       TextWrapping="Wrap" />
-                                        </StackPanel>
-                                    </CheckBox>
-                                    <CheckBox IsChecked="{Binding UseEcmwf}">
-                                        <StackPanel>
-                                            <TextBlock Text="ECMWF IFS"
-                                                       FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding EcmwfStatus}"
-                                                       Classes="muted"
-                                                       TextWrapping="Wrap" />
-                                        </StackPanel>
-                                    </CheckBox>
-                                    <CheckBox IsChecked="{Binding UseNewestWeatherData}"
-                                              Content="Use newest weather data" />
-                                    <TextBlock Classes="muted"
-                                               Text="Normally Navtool reuses a covering cached run. Enable this only when newer published weather is required."
-                                               TextWrapping="Wrap" />
-                                </StackPanel>
-                                <StackPanel IsVisible="{Binding IsLocalForecast}"
-                                            Spacing="7">
-                                    <Button x:Name="ChooseGribFileButton"
-                                            Click="OnChooseGribFileClicked"
-                                            IsEnabled="{Binding !IsInspectingLocalGrib}"
-                                            Content="Choose GRIB file..." />
-                                    <TextBlock Text="{Binding LocalGribDisplay}"
-                                               FontWeight="SemiBold"
-                                               TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding LocalGribStatus}"
-                                               Classes="muted"
-                                               TextWrapping="Wrap" />
-                                </StackPanel>
-                                <Border Classes="subtle">
-                                    <TextBlock Text="{Binding ForecastAreaSummary}"
-                                               Classes="muted"
-                                               TextWrapping="Wrap" />
-                                </Border>
-                            </StackPanel>
-                        </Border>
-
-                        <Grid ColumnDefinitions="*,Auto"
-                              ColumnSpacing="8">
-                            <Button x:Name="CalculateRoutesButton"
-                                    Classes="primary"
-                                    Command="{Binding CalculateCommand}"
-                                    Content="Calculate routes" />
-                            <Button x:Name="CancelButton"
-                                    Grid.Column="1"
-                                    Command="{Binding CancelCommand}"
-                                    Content="Cancel"
-                                    MinWidth="72" />
-                        </Grid>
-
-                        <Border Classes="card">
-                            <StackPanel Spacing="8">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Classes="section-title"
-                                               Text="STATUS" />
-                                    <TextBlock Grid.Column="1"
-                                               Text="{Binding CalculationProgressDisplay}"
-                                               Classes="muted" />
-                                </Grid>
-                                <ProgressBar Minimum="0"
-                                             Maximum="1"
-                                             Value="{Binding ProgressFraction}"
-                                             IsVisible="{Binding !HasInterruptedRoute}"
-                                             Height="5" />
-                                <TextBlock Text="{Binding StatusMessage}"
-                                           TextWrapping="Wrap"
-                                           Classes="muted" />
-                                <TextBlock Text="{Binding WarningMessage}"
-                                           TextWrapping="Wrap"
-                                           Foreground="{DynamicResource WarningTextColor}"
-                                           FontSize="12"
-                                           FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding ErrorMessage}"
-                                           TextWrapping="Wrap"
-                                           Classes="error" />
-                                <TextBlock Text="{Binding LandAvoidanceWarning}"
-                                           TextWrapping="Wrap"
-                                           Foreground="{DynamicResource WarningTextColor}"
-                                           FontSize="12"
-                                           FontWeight="SemiBold" />
-                            </StackPanel>
-                        </Border>
-
-                        <Border Background="{DynamicResource WarningBackgroundColor}"
-                                BorderBrush="{DynamicResource WarningBorderColor}"
-                                BorderThickness="1"
-                                CornerRadius="7"
-                                Padding="10,8">
-                            <TextBlock Text="Planning aid only. Verify weather and routing information independently; not certified for navigation."
-                                       TextWrapping="Wrap"
-                                       Foreground="{DynamicResource WarningTextColor}"
-                                       FontSize="11"
-                                       FontWeight="SemiBold" />
-                        </Border>
-
+                        </Expander>
+                        <Expander Header="Appearance">
                         <StackPanel Spacing="4">
-                            <TextBlock Classes="section-title"
-                                       Text="COLOR SCHEME" />
+                            <TextBlock Text="Color scheme" Classes="field-label" />
                             <ComboBox x:Name="ThemeSelector"
                                       Classes="theme-picker" />
+                        </StackPanel>
+                        </Expander>
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
-
-            <ToggleButton x:Name="PlanningDrawerHandle"
-                          Grid.Column="1"
-                          Classes="edge-handle"
-                          Width="44"
-                          MinHeight="44"
-                          HorizontalAlignment="Right"
-                          VerticalAlignment="Stretch"
-                          Click="OnPlanningDrawerClicked"
-                          ToolTip.Tip="Open or close passage planning"
-                          AutomationProperties.Name="Passage planning drawer"
-                          Content="›" />
         </Grid>
 
-        <Grid Grid.Column="1"
+        <Border x:Name="CalculationFooter" Grid.Row="2" Grid.Column="0" Padding="12,8"
+                Background="{DynamicResource SidebarBackgroundColor}"
+                BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,1,0,0">
+            <StackPanel Spacing="5">
+                <TextBlock x:Name="CalculationReadinessText" Text="{Binding CalculationReadiness}" Classes="muted" TextWrapping="Wrap"
+                           AutomationProperties.Name="Calculation readiness" />
+                <TextBlock IsVisible="{Binding IsCalculating}" Text="{Binding CalculationProgressDisplay}" Classes="muted" TextWrapping="Wrap" />
+                <ProgressBar IsVisible="{Binding IsCalculating}" Minimum="0" Maximum="1" Value="{Binding ProgressFraction}" Height="5" />
+                <Button x:Name="FooterMessagesButton" Content="Messages" IsVisible="False"
+                        Click="OnMessagesClicked" AutomationProperties.Name="Review routing messages" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <Button x:Name="CalculateRoutesButton" Classes="primary" Command="{Binding CalculateCommand}" Content="Calculate route" />
+                    <Button x:Name="CancelButton" Grid.Column="1" Command="{Binding CancelCommand}" Content="Cancel" IsVisible="{Binding IsCalculating}" />
+                </Grid>
+                <TextBlock Text="Planning aid only. Independently verify the route." FontSize="11" Foreground="{DynamicResource WarningTextColor}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+        <Grid Grid.Column="2" Grid.Row="1" Grid.RowSpan="2"
               x:Name="MapShell"
               MinWidth="560"
               Background="{DynamicResource WindowBackgroundColor}">
@@ -758,33 +599,15 @@
                                UseContinuousMouseWheelZoom="True"
                                AutomationProperties.Name="Route planning map" />
 
-            <Border HorizontalAlignment="Left"
-                    VerticalAlignment="Top"
-                    Margin="16"
-                    Classes="map-overlay"
-                    CornerRadius="6"
-                    Padding="9,6"
-                    IsHitTestVisible="False">
-                <StackPanel Spacing="0"
-                            HorizontalAlignment="Center">
-                    <TextBlock Text="NAVTOOL"
-                               FontSize="11"
-                               FontWeight="SemiBold"
-                               LetterSpacing="1"
-                               TextAlignment="Center" />
-                    <TextBlock Text="WEATHER ROUTING"
-                               Classes="muted"
-                               FontSize="9"
-                               TextAlignment="Center"
-                               Opacity="0.9" />
-                </StackPanel>
-            </Border>
+            <Button Content="Fit selected leg" Command="{Binding FocusSelectedLegCommand}"
+                    HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16"
+                    ToolTip.Tip="Fit the selected leg while retaining full-route context" />
 
             <Grid x:Name="InstrumentRailHost"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Top"
                   Margin="16"
-                  MaxWidth="720">
+                  MaxWidth="540">
                 <Border x:Name="InstrumentRail"
                         Classes="map-overlay"
                         CornerRadius="18"
@@ -792,60 +615,6 @@
                         ClipToBounds="True"
                         IsHitTestVisible="False">
                     <Grid>
-                    <StackPanel x:Name="InstrumentRailIdleRow"
-                                Margin="14,7"
-                                Orientation="Horizontal"
-                                Spacing="11"
-                                VerticalAlignment="Center"
-                                IsVisible="{Binding !IsCalculating}">
-                        <TextBlock Text="{Binding SelectedRouteTitle}"
-                                   FontWeight="SemiBold"
-                                   FontSize="11"
-                                   MaxWidth="150"
-                                   TextTrimming="CharacterEllipsis"
-                                   TextAlignment="Center"
-                                   VerticalAlignment="Center" />
-                        <Border Width="1"
-                                Background="{DynamicResource OverlayBorderColor}" />
-                        <TextBlock Text="{Binding StatusMessage}"
-                                   Classes="muted"
-                                   FontSize="11"
-                                   MaxWidth="210"
-                                   TextTrimming="CharacterEllipsis"
-                                   TextAlignment="Center"
-                                   VerticalAlignment="Center" />
-                        <Border Width="1"
-                                Background="{DynamicResource OverlayBorderColor}" />
-                        <TextBlock Text="{Binding ActiveWeatherDisplay}"
-                                   Classes="muted"
-                                   FontSize="11"
-                                   MaxWidth="140"
-                                   TextTrimming="CharacterEllipsis"
-                                   TextAlignment="Center"
-                                   VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding TimelineDisplay}"
-                                   Classes="muted"
-                                   FontSize="11"
-                                   MaxWidth="160"
-                                   TextTrimming="CharacterEllipsis"
-                                   TextAlignment="Center"
-                                   VerticalAlignment="Center" />
-                        <TextBlock Text="!"
-                                   Foreground="{DynamicResource WarningTextColor}"
-                                   FontWeight="Bold"
-                                   TextAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   IsVisible="{Binding HasWarning}"
-                                   ToolTip.Tip="{Binding WarningMessage}" />
-                        <TextBlock Text="!"
-                                   Foreground="{DynamicResource DangerTextColor}"
-                                   FontWeight="Bold"
-                                   TextAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   IsVisible="{Binding HasError}"
-                                   ToolTip.Tip="{Binding ErrorMessage}" />
-                    </StackPanel>
-
                     <StackPanel x:Name="InstrumentRailProgressRow"
                                 Margin="14,7,14,10"
                                 Orientation="Horizontal"
@@ -909,28 +678,10 @@
                         AutomationProperties.Name="Cancel route calculation" />
             </Grid>
 
-            <Border x:Name="InterruptedRouteBanner"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Top"
-                    Margin="16,68,16,0"
-                    MaxWidth="620"
-                    Classes="map-overlay"
-                    Padding="12,8"
-                    IsHitTestVisible="False"
-                    IsVisible="{Binding HasInterruptedRoute}">
-                <TextBlock x:Name="InterruptedRouteText"
-                           Text="{Binding InterruptedRouteMessage}"
-                           TextWrapping="Wrap"
-                           FontSize="12"
-                           Foreground="{DynamicResource WarningTextColor}"
-                           AutomationProperties.Name="Route calculation interrupted"
-                           AutomationProperties.HelpText="{Binding InterruptedRouteMessage}" />
-            </Border>
-
+            <StackPanel HorizontalAlignment="Stretch" VerticalAlignment="Top" Margin="16,68,16,0" Spacing="6">
             <Border x:Name="MapInstructionOverlay"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Top"
-                    Margin="14,68,14,0"
                     Classes="map-overlay"
                     CornerRadius="14"
                     Padding="12,7"
@@ -939,6 +690,94 @@
                 <TextBlock Text="{Binding MapInstruction}"
                            FontSize="12"
                            FontWeight="SemiBold" />
+            </Border>
+            </StackPanel>
+
+            <Canvas x:Name="InterruptedEndpointLayer" ZIndex="10" />
+            <Button x:Name="MessagesButton" ZIndex="11" Content="Messages" IsVisible="False"
+                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16"
+                    Click="OnMessagesClicked" AutomationProperties.Name="Review routing messages"
+                    AutomationProperties.LiveSetting="Polite" />
+            <Border x:Name="MessagePopup" ZIndex="11" IsVisible="False"
+                    SizeChanged="OnMessagePopupSizeChanged"
+                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16,68,16,16"
+                    Width="400" MaxHeight="420" Padding="16" CornerRadius="10"
+                    Background="{DynamicResource SidebarBackgroundColor}"
+                    BorderBrush="{DynamicResource WarningTextColor}" BorderThickness="2"
+                    BoxShadow="0 8 30 0 #60000000"
+                    AutomationProperties.Name="Routing messages">
+                <Grid RowDefinitions="Auto,*" RowSpacing="12">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                        <TextBlock x:Name="MessagePopupTitle" Text="Messages" FontSize="19"
+                                   FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" />
+                        <Button x:Name="CloseMessagesButton" Grid.Column="1" Content="Close"
+                                Click="OnCloseMessagesClicked" AutomationProperties.Name="Close messages" />
+                    </Grid>
+                    <ScrollViewer x:Name="MessageScrollViewer" Grid.Row="1"
+                                  HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="12">
+                            <TextBlock x:Name="MessageIncompleteText" IsVisible="False" TextWrapping="Wrap"
+                                       Text="Incomplete: the dashed paths are not completed routes. Recalculate to try again."
+                                       Foreground="{DynamicResource WarningTextColor}" />
+                            <StackPanel x:Name="MessageItems" Spacing="12" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <Border x:Name="ChartTimeline" Classes="map-overlay" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Margin="16,0,16,24">
+                <Border.IsVisible>
+                    <MultiBinding Converter="{x:Static conv:BoolConverters.Or}">
+                        <Binding Path="HasTimeline" />
+                        <Binding Path="HasNoaaWeather" />
+                        <Binding Path="HasEcmwfWeather" />
+                    </MultiBinding>
+                </Border.IsVisible>
+                <StackPanel Spacing="5">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <WrapPanel>
+                            <RadioButton Content="NOAA GFS" GroupName="RouteModel" Command="{Binding ActivateNoaaRouteCommand}"
+                                         IsChecked="{Binding IsNoaaRouteActive, Mode=OneWay}" IsVisible="{Binding HasNoaaRoutes}" Margin="0,0,12,0" />
+                            <RadioButton Content="ECMWF IFS" GroupName="RouteModel" Command="{Binding ActivateEcmwfRouteCommand}"
+                                         IsChecked="{Binding IsEcmwfRouteActive, Mode=OneWay}" IsVisible="{Binding HasEcmwfRoutes}" />
+                        </WrapPanel>
+                    </Grid>
+                    <WrapPanel IsVisible="{Binding WeatherOnlyMode}">
+                        <RadioButton Content="NOAA GFS weather" GroupName="WeatherModel" Command="{Binding ActivateNoaaWeatherCommand}"
+                                     IsChecked="{Binding IsNoaaWeatherActive, Mode=OneWay}" IsVisible="{Binding HasNoaaWeather}" Margin="0,0,12,0" />
+                        <RadioButton Content="ECMWF IFS weather" GroupName="WeatherModel" Command="{Binding ActivateEcmwfWeatherCommand}"
+                                     IsChecked="{Binding IsEcmwfWeatherActive, Mode=OneWay}" IsVisible="{Binding HasEcmwfWeather}" />
+                    </WrapPanel>
+                    <Grid x:Name="TimelineControls" ColumnDefinitions="44,44,*" ColumnSpacing="8">
+                        <Button x:Name="PreviousTimelineButton" Content="◀" ToolTip.Tip="Previous point" AutomationProperties.Name="Previous timeline point"
+                                Command="{Binding PreviousTimelineCommand}" MinWidth="44" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+                        <Button x:Name="NextTimelineButton" Grid.Column="1" Content="▶" ToolTip.Tip="Next point" AutomationProperties.Name="Next timeline point"
+                                Command="{Binding NextTimelineCommand}" MinWidth="44" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+                        <Slider x:Name="TimelineSlider" Grid.Column="2" Minimum="0" Maximum="1" Value="{Binding TimelinePosition}"
+                                IsEnabled="{Binding HasTimeline}" VerticalAlignment="Center" AutomationProperties.Name="Route and weather timeline" />
+                    </Grid>
+                    <TextBlock Text="{Binding TimelineDisplay}" Classes="muted" TextWrapping="Wrap" TextAlignment="Center" />
+                    <TextBlock Text="{Binding ActiveWeatherDisplay}" Classes="muted" TextWrapping="Wrap" TextAlignment="Center" />
+                    <Expander x:Name="WeatherDetailsExpander" Header="Weather legend &amp; coverage" IsExpanded="False">
+                        <StackPanel Spacing="6">
+                            <Grid x:Name="WeatherLegend" ColumnDefinitions="*,*,*,*,*,*" RowDefinitions="8,Auto" ColumnSpacing="3" RowSpacing="4">
+                                <Border Background="#5BC0EB" />
+                                <Border Grid.Column="1" Background="#00A6A6" />
+                                <Border Grid.Column="2" Background="#7FB800" />
+                                <Border Grid.Column="3" Background="#F4D35E" />
+                                <Border Grid.Column="4" Background="#E4572E" />
+                                <Border Grid.Column="5" Background="#9B2C67" />
+                                <TextBlock Grid.Row="1" Text="0" FontSize="10" TextAlignment="Center" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="5" FontSize="10" TextAlignment="Center" />
+                                <TextBlock Grid.Row="1" Grid.Column="2" Text="10" FontSize="10" TextAlignment="Center" />
+                                <TextBlock Grid.Row="1" Grid.Column="3" Text="15" FontSize="10" TextAlignment="Center" />
+                                <TextBlock Grid.Row="1" Grid.Column="4" Text="25" FontSize="10" TextAlignment="Center" />
+                                <TextBlock Grid.Row="1" Grid.Column="5" Text="35+ kt" FontSize="10" TextAlignment="Center" />
+                            </Grid>
+                        </StackPanel>
+                    </Expander>
+                    <TextBlock Text="{Binding WeatherLayerError}" IsVisible="{Binding WeatherLayerError, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" Classes="error" />
+                </StackPanel>
             </Border>
 
             <Canvas x:Name="RouteTelemetryLayer"
@@ -1150,34 +989,35 @@
         </Grid>
 
         <Grid x:Name="RouteDrawer"
-              Grid.Column="2"
-              ColumnDefinitions="44,*"
+              Grid.Column="0" Grid.Row="1"
+              IsVisible="False"
               Background="{DynamicResource SidebarBackgroundColor}">
             <Border x:Name="RouteDrawerContent"
-                    Grid.Column="1"
+                    Grid.Column="0"
                     Background="{DynamicResource SidebarBackgroundColor}"
                     BorderBrush="{DynamicResource BorderColor}"
                     BorderThickness="1,0,0,0"
                     IsVisible="False">
-                <ScrollViewer>
+                <ScrollViewer x:Name="ResultsScrollViewer" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="16"
                                 Spacing="12">
                         <StackPanel Spacing="2">
-                            <TextBlock Text="Route &amp; weather"
+                            <TextBlock Text="Results &amp; progress"
                                        FontSize="20"
                                        FontWeight="SemiBold" />
                             <TextBlock Classes="muted"
-                                       Text="Full-route context with a model-specific UTC timeline." />
+                                       Text="Select a model on the chart to inspect its route, weather and timeline." TextWrapping="Wrap" />
                         </StackPanel>
+                        <CheckBox x:Name="WeatherOnlyToggle" Content="Inspect weather independently"
+                                  IsChecked="{Binding WeatherOnlyMode}"
+                                  ToolTip.Tip="Inspect acquired forecasts even when no route was completed" />
 
                         <Border Classes="card">
                             <StackPanel Spacing="8">
                                 <TextBlock Text="{Binding SelectedRouteTitle}"
                                            FontSize="16"
                                            FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding SelectedRouteDetails}"
-                                           Classes="muted"
-                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding SelectedRouteSummary}" Classes="muted" TextWrapping="Wrap" />
                                 <Grid ColumnDefinitions="*,*" ColumnSpacing="7">
                                     <Button Command="{Binding FocusSelectedLegCommand}"
                                             Content="Fit selected leg"
@@ -1194,51 +1034,53 @@
 
                         <Border Classes="card">
                             <StackPanel Spacing="8">
-                                <TextBlock Classes="section-title"
-                                           Text="TIMELINE" />
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <RadioButton Content="NOAA GFS"
-                                                 Command="{Binding ActivateNoaaRouteCommand}"
-                                                 IsChecked="{Binding IsNoaaRouteActive, Mode=OneWay}"
-                                                 IsVisible="{Binding HasNoaaRoutes}" />
-                                    <RadioButton Content="ECMWF IFS"
-                                                 Command="{Binding ActivateEcmwfRouteCommand}"
-                                                 IsChecked="{Binding IsEcmwfRouteActive, Mode=OneWay}"
-                                                 IsVisible="{Binding HasEcmwfRoutes}" />
-                                </StackPanel>
-                                <Grid x:Name="TimelineControls"
-                                      ColumnDefinitions="44,44,*"
-                                      ColumnSpacing="8">
-                                    <Button x:Name="PreviousTimelineButton"
-                                            Content="◀"
-                                            ToolTip.Tip="Previous point"
-                                            AutomationProperties.Name="Previous timeline point"
-                                            Command="{Binding PreviousTimelineCommand}"
-                                            MinWidth="44"
-                                            HorizontalContentAlignment="Center"
-                                            VerticalContentAlignment="Center" />
-                                    <Button x:Name="NextTimelineButton"
-                                            Grid.Column="1"
-                                            Content="▶"
-                                            ToolTip.Tip="Next point"
-                                            AutomationProperties.Name="Next timeline point"
-                                            Command="{Binding NextTimelineCommand}"
-                                            MinWidth="44"
-                                            HorizontalContentAlignment="Center"
-                                            VerticalContentAlignment="Center" />
-                                    <Slider x:Name="TimelineSlider"
-                                            Grid.Column="2"
-                                            Minimum="0"
-                                            Maximum="1"
-                                            Value="{Binding TimelinePosition}"
-                                            IsEnabled="{Binding HasTimeline}"
-                                            VerticalAlignment="Center" />
+                                <TextBlock Text="FORECAST RESULTS" Classes="section-title" />
+                                <TextBlock Text="{Binding NoaaStatus}" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding EcmwfStatus}" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding LiveSearchStatus}" Classes="muted" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <Border x:Name="PassageProgressPanel" Classes="card">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="PASSAGE &amp; PROGRESS" Classes="section-title" />
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                    <ToggleButton x:Name="SetCurrentPositionButton" Classes="map-tool" Content="Set current position"
+                                                  IsChecked="{Binding IsSettingCurrentPosition, Mode=OneWay}" Command="{Binding SetCurrentPositionCommand}"
+                                                  ToolTip.Tip="Place the vessel on the map to resume mid-leg" />
+                                    <Button Grid.Column="1" Content="Clear" Command="{Binding ClearCurrentPositionCommand}" />
                                 </Grid>
-                                <TextBlock Text="{Binding TimelineDisplay}"
-                                           Classes="muted"
-                                           HorizontalAlignment="Center"
-                                           TextAlignment="Center"
-                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding Itinerary.CurrentPositionDisplay}" Classes="muted" TextWrapping="Wrap" />
+                                <Grid ColumnDefinitions="*,104" ColumnSpacing="7">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Departure date (local)" Classes="field-label" />
+                                        <DatePicker x:Name="CurrentPositionDatePicker" SelectedDate="{Binding Itinerary.CurrentPositionDepartureDate}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="4">
+                                        <TextBlock Text="Time (local)" Classes="field-label" />
+                                        <TimePicker x:Name="CurrentPositionTimePicker" SelectedTime="{Binding Itinerary.CurrentPositionDepartureTimeOfDay}" ClockIdentifier="24HourClock" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock x:Name="CurrentPositionDepartureDisplay" Classes="muted" Text="{Binding Itinerary.CurrentPositionDepartureDisplay}" TextWrapping="Wrap" />
+                                <ItemsControl ItemsSource="{Binding Itinerary.Legs}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:RouteLegEditorItemViewModel">
+                                            <Border Classes="subtle" Margin="0,0,0,6">
+                                                <StackPanel Spacing="6">
+                                                    <TextBlock Text="{Binding Label}" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding StatusLabel}" Classes="muted" />
+                                                    <TextBlock Text="{Binding OutcomeStatus}" Classes="muted" TextWrapping="Wrap" />
+                                                    <WrapPanel>
+                                                        <RadioButton Content="View" Command="{Binding SelectCommand}" GroupName="RouteLegSelection"
+                                                                     IsChecked="{Binding IsSelected, Mode=OneWay}" ToolTip.Tip="Select this leg on the full-route map" Margin="0,0,6,0" />
+                                                        <Button Content="Sailed" Command="{Binding MarkSailedCommand}" ToolTip.Tip="Mark this leg as sailed" />
+                                                        <Button Content="Unmark" Command="{Binding UnmarkSailedCommand}" ToolTip.Tip="Unmark this leg as sailed" />
+                                                        <Button Content="Active" Command="{Binding MakeActiveCommand}" ToolTip.Tip="Explicitly resume from this leg" />
+                                                    </WrapPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                             </StackPanel>
                         </Border>
 
@@ -1312,78 +1154,22 @@
                             </Border>
                         </Expander>
 
-                        <Expander x:Name="WeatherDetailsExpander"
-                                  Header="Weather overlay"
-                                  IsExpanded="False">
-                            <Border Classes="card"
-                                    Margin="0,8,0,0">
-                                <StackPanel Spacing="8">
-                                    <StackPanel Spacing="5">
-                                        <RadioButton Content="NOAA GFS"
-                                                     Command="{Binding ActivateNoaaWeatherCommand}"
-                                                     IsChecked="{Binding IsNoaaWeatherActive, Mode=OneWay}"
-                                                     IsVisible="{Binding HasNoaaWeather}" />
-                                        <RadioButton Content="ECMWF IFS"
-                                                     Command="{Binding ActivateEcmwfWeatherCommand}"
-                                                     IsChecked="{Binding IsEcmwfWeatherActive, Mode=OneWay}"
-                                                     IsVisible="{Binding HasEcmwfWeather}" />
-                                    </StackPanel>
-                                    <TextBlock Text="{Binding ActiveWeatherDisplay}"
-                                               Classes="muted" />
-                                    <Grid x:Name="WeatherLegend"
-                                          ColumnDefinitions="*,*,*,*,*,*"
-                                          RowDefinitions="8,Auto"
-                                          ColumnSpacing="3"
-                                          RowSpacing="4">
-                                        <Border Background="#5BC0EB" />
-                                        <Border Grid.Column="1" Background="#00A6A6" />
-                                        <Border Grid.Column="2" Background="#7FB800" />
-                                        <Border Grid.Column="3" Background="#F4D35E" />
-                                        <Border Grid.Column="4" Background="#E4572E" />
-                                        <Border Grid.Column="5" Background="#9B2C67" />
-                                        <TextBlock Grid.Row="1" Text="0" FontSize="10" TextAlignment="Center" />
-                                        <TextBlock Grid.Row="1" Grid.Column="1" Text="5" FontSize="10" TextAlignment="Center" />
-                                        <TextBlock Grid.Row="1" Grid.Column="2" Text="10" FontSize="10" TextAlignment="Center" />
-                                        <TextBlock Grid.Row="1" Grid.Column="3" Text="15" FontSize="10" TextAlignment="Center" />
-                                        <TextBlock Grid.Row="1" Grid.Column="4" Text="25" FontSize="10" TextAlignment="Center" />
-                                        <TextBlock Grid.Row="1" Grid.Column="5" Text="35+ kt" FontSize="10" TextAlignment="Center" />
-                                    </Grid>
-                                    <TextBlock Text="{Binding WeatherLayerError}"
-                                               TextWrapping="Wrap"
-                                               Classes="error"
-                                               FontSize="11" />
-                                </StackPanel>
-                            </Border>
-                        </Expander>
-
+                        <Expander Header="Run details">
                         <Border Classes="subtle">
                             <StackPanel Spacing="5">
                                 <TextBlock Text="{Binding StatusMessage}"
                                            TextWrapping="Wrap"
                                            Classes="muted" />
-                                <TextBlock Text="{Binding WarningMessage}"
-                                           TextWrapping="Wrap"
-                                           Foreground="{DynamicResource WarningTextColor}" />
-                                <TextBlock Text="{Binding ErrorMessage}"
-                                           TextWrapping="Wrap"
-                                           Classes="error" />
+                                <TextBlock x:Name="ResolvedRoutingSetupStatus" Text="{Binding RoutingSetup.ResolvedStatus}" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding SelectedRouteDetails}" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding LandAvoidanceWarning}" TextWrapping="Wrap" Foreground="{DynamicResource WarningTextColor}" />
                             </StackPanel>
                         </Border>
+                        </Expander>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
 
-            <ToggleButton x:Name="RouteDrawerHandle"
-                          Grid.Column="0"
-                          Classes="edge-handle"
-                          Width="44"
-                          MinHeight="44"
-                          HorizontalAlignment="Left"
-                          VerticalAlignment="Stretch"
-                          Click="OnRouteDrawerClicked"
-                          ToolTip.Tip="Open or close route and weather details"
-                          AutomationProperties.Name="Route and weather drawer"
-                          Content="‹" />
         </Grid>
     </Grid>
 </Window>
