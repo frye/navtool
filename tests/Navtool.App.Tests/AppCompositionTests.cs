@@ -1,5 +1,6 @@
 using BruTile.Cache;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Navtool.App.Services;
 using Navtool.App.ViewModels;
 using Navtool.Core;
@@ -81,14 +82,52 @@ public sealed class AppCompositionTests
         }
     }
 
+    [Fact]
+    public void Disposing_services_disposes_the_file_logger()
+    {
+        var previous = Environment.GetEnvironmentVariable(
+            AppComposition.AppDataRootEnvironmentVariable);
+        var root = Path.Combine(Path.GetTempPath(), $"navtool-composition-{Guid.NewGuid():N}");
+        try
+        {
+            Environment.SetEnvironmentVariable(AppComposition.AppDataRootEnvironmentVariable, root);
+            RollingFileLoggerProvider fileProvider;
+            using (var services = AppComposition.CreateServices())
+            {
+                fileProvider = Assert.Single(
+                    services.GetServices<ILoggerProvider>().OfType<RollingFileLoggerProvider>());
+                services.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("Navtool.Tests")
+                    .LogInformation("Exercise the owned log file");
+                Assert.True(File.Exists(fileProvider.CurrentPath));
+            }
+
+            Assert.Throws<ObjectDisposedException>(() => fileProvider.CreateLogger("After disposal"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                AppComposition.AppDataRootEnvironmentVariable,
+                previous);
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
     private static void WithLandEndpoint(
         string? value,
         Action<ServiceProvider> assertion)
     {
         var previous = Environment.GetEnvironmentVariable(
             AppComposition.LandDataEndpointEnvironmentVariable);
+        var previousRoot = Environment.GetEnvironmentVariable(
+            AppComposition.AppDataRootEnvironmentVariable);
+        var root = Path.Combine(Path.GetTempPath(), $"navtool-composition-{Guid.NewGuid():N}");
         try
         {
+            Environment.SetEnvironmentVariable(AppComposition.AppDataRootEnvironmentVariable, root);
             Environment.SetEnvironmentVariable(
                 AppComposition.LandDataEndpointEnvironmentVariable,
                 value);
@@ -100,6 +139,13 @@ public sealed class AppCompositionTests
             Environment.SetEnvironmentVariable(
                 AppComposition.LandDataEndpointEnvironmentVariable,
                 previous);
+            Environment.SetEnvironmentVariable(
+                AppComposition.AppDataRootEnvironmentVariable,
+                previousRoot);
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
         }
     }
 }

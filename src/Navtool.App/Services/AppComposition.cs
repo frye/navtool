@@ -19,9 +19,9 @@ public static class AppComposition
         services.AddLogging(builder =>
         {
             builder.SetMinimumLevel(LogLevel.Information);
-            builder.AddProvider(new RollingFileLoggerProvider(
-                new RollingFileLoggerOptions(Path.Combine(ResolveAppDataRoot(), "logs"))));
         });
+        services.AddSingleton<ILoggerProvider>(_ => new RollingFileLoggerProvider(
+            new RollingFileLoggerOptions(Path.Combine(ResolveAppDataRoot(), "logs"))));
         services.AddSingleton(provider => new AppThemeService(
             ResolveAppDataRoot(),
             provider.GetRequiredService<ILogger<AppThemeService>>()));
