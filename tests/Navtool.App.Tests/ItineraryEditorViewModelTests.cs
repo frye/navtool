@@ -475,7 +475,7 @@ public sealed class ItineraryEditorViewModelTests
                     RouteLegOutcomeReason.None))));
     }
 
-    private sealed class MemoryRepository : IRoutePlanRepository
+    internal sealed class MemoryRepository : IRoutePlanRepository
     {
         private RoutePlan? _plan;
 

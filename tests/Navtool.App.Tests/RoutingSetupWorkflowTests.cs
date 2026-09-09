@@ -14,6 +14,43 @@ public sealed class RoutingSetupWorkflowTests
     private static readonly DateTimeOffset Now = new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public void Calculation_commands_require_a_local_file_and_notify_on_source_changes()
+    {
+        var provider = new CountingProvider();
+        var vm = Create(provider, new TestRoutingSetupService());
+        var calculateChanges = 0;
+        var forceChanges = 0;
+        vm.CalculateCommand.CanExecuteChanged += (_, _) => calculateChanges++;
+        vm.ForceRecalculateCommand.CanExecuteChanged += (_, _) => forceChanges++;
+        void Change(Action edit, bool canCalculate)
+        {
+            calculateChanges = forceChanges = 0;
+            edit();
+            Assert.True(calculateChanges > 0);
+            Assert.True(forceChanges > 0);
+            Assert.Equal(canCalculate, vm.CalculateCommand.CanExecute(null));
+            Assert.Equal(canCalculate, vm.ForceRecalculateCommand.CanExecute(null));
+        }
+
+        Assert.True(vm.CalculateCommand.CanExecute(null));
+        Change(() => vm.ForecastInputMode = ForecastInputMode.LocalFile, false);
+        Change(() => vm.LocalGribPath = "", false);
+        Change(() => vm.LocalGribPath = " ", false);
+        Change(() => vm.LocalGribPath = Path.GetFullPath("selected.grib"), true);
+        Change(() => vm.IsInspectingLocalGrib = true, false);
+        Change(() => vm.IsInspectingLocalGrib = false, true);
+        Change(() => vm.IsCalculating = true, false);
+        Change(() => vm.IsCalculating = false, true);
+        Change(() => vm.LocalGribPath = null, false);
+        Change(() => vm.LocalForecast = new LocalForecastDescriptor(ForecastModel.NoaaGfs,
+            new LocalGribArtifact(Path.GetFullPath("inspected.grib")), Now.AddHours(-6), Now,
+            Now.AddDays(3), new GeographicBounds(-89, 89, -179, 179)), true);
+        Change(() => vm.LocalForecast = null, false);
+        Change(() => vm.ForecastInputMode = ForecastInputMode.Download, true);
+        Assert.Equal(0, provider.Calls);
+    }
+
+    [Fact]
     public void Repeated_invalid_setup_edits_still_advance_revisions_once()
     {
         var vm = Create(new CountingProvider(), new TestRoutingSetupService());

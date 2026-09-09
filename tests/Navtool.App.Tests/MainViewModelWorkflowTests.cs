@@ -2103,6 +2103,54 @@ public sealed class MainViewModelWorkflowTests
         Assert.Single(GetLayer(viewModel, "NOAA GFS routes").Features);
     }
 
+    [Theory]
+    [InlineData(false, RouteCompletion.DurationExhausted)]
+    [InlineData(false, RouteCompletion.ForecastExhausted)]
+    [InlineData(true, RouteCompletion.DurationExhausted)]
+    [InlineData(true, RouteCompletion.ForecastExhausted)]
+    public void Completion_retains_overlays_when_the_display_queue_has_not_run(
+        bool sequential, RouteCompletion completion)
+    {
+        var provider = new DelegateForecastProvider(ForecastModel.NoaaGfs,
+            (request, _) => ValueTask.FromResult(CreateAcquisition(request)));
+        var engine = new StreamingRouteEngine((request, forecast, progress, _) =>
+        {
+            var snapshot = CreateSnapshot(request);
+            progress?.Report(new RouteCalculationProgress(1, "partial route", snapshot));
+            return ValueTask.FromResult(new RouteResult(request, forecast.Request.Model,
+                snapshot.ProvisionalRoute, snapshot.Diagnostics, completion));
+        });
+        var viewModel = CreateViewModel(new RoutingWorkflow([provider], engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)),
+            routePlanRepository: sequential ? new ItineraryEditorViewModelTests.MemoryRepository() : null);
+        if (sequential)
+        {
+            viewModel.Itinerary.AddWaypointCommand.Execute(null);
+            viewModel.Itinerary.Waypoints[^2].SetOnMapCommand.Execute(null);
+            viewModel.HandleMapClick(MapProjection.ToMapPoint(new Coordinate(35, -60)), default);
+        }
+        var context = new CoalescingProgressTests.QueuedContext();
+        var previous = SynchronizationContext.Current;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+            var calculation = viewModel.CalculateRoutesAsync();
+            Assert.True(calculation.IsCompletedSuccessfully);
+            Assert.True(viewModel.ErrorMessage is null, viewModel.ErrorMessage);
+            Assert.Single(viewModel.SuccessfulRoutes);
+            Assert.Single(GetLayer(viewModel, "NOAA GFS isochrone fronts").Features);
+            Assert.Single(GetLayer(viewModel, "NOAA GFS latest isochrone front").Features);
+            Assert.Single(GetLayer(viewModel, "NOAA GFS provisional route").Features);
+            var status = viewModel.NoaaStatus;
+            context.Drain();
+            Assert.Equal(status, viewModel.NoaaStatus);
+            Assert.Equal(1, viewModel.ProgressFraction);
+            Assert.Single(GetLayer(viewModel, "NOAA GFS isochrone fronts").Features);
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+    }
+
     [Fact]
     public async Task CancellingCalculationFreezesPathAndClearsLiveSearchOverlays()
     {

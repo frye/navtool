@@ -1364,6 +1364,7 @@ public partial class MainViewModel : ViewModelBase
                     return;
                 }
 
+                planProgress.Flush();
                 lock (_progressGate)
                 {
                     acceptingProgress = false;
@@ -1385,6 +1386,7 @@ public partial class MainViewModel : ViewModelBase
                 return;
             }
 
+            progress.Flush();
             lock (_progressGate)
             {
                 acceptingProgress = false;
@@ -1603,7 +1605,10 @@ public partial class MainViewModel : ViewModelBase
 
     private bool CanCalculate() =>
         !IsCalculating &&
-        !IsInspectingLocalGrib;
+        !IsInspectingLocalGrib &&
+        (ForecastInputMode == ForecastInputMode.Download ||
+         ForecastInputMode == ForecastInputMode.LocalFile &&
+         !string.IsNullOrWhiteSpace(LocalGribPath ?? LocalForecast?.Artifact.Path));
 
     private void RefreshExpiredDeparture()
     {
