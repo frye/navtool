@@ -285,6 +285,7 @@ public partial class MainViewModel : ViewModelBase
     private bool _isCalculating;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CalculationProgressDisplay))]
     private double _progressFraction;
 
     [ObservableProperty]
@@ -1028,6 +1029,7 @@ public partial class MainViewModel : ViewModelBase
 
     public async Task CalculateRoutesAsync()
     {
+        ClearRoutePreviews();
         ErrorMessage = null;
         WarningMessage = null;
         WeatherLayerError = null;
@@ -1237,6 +1239,7 @@ public partial class MainViewModel : ViewModelBase
         CancelWeather();
 
         InitializeCalculationPresentation(request, planRequest);
+        BeginRoutePreviews(request.Route, planRequest);
         WarningMessage = departureWarning;
         IsCalculating = true;
         if (request.RefreshPolicy == ForecastRefreshPolicy.LatestAvailable)
@@ -1289,7 +1292,10 @@ public partial class MainViewModel : ViewModelBase
             {
                 _mapLayers.ClearCalculationOverlay(value.Model);
             }
-        }));
+        }), value => CaptureRoutePreview(generation, value.Model, 0, value.AttemptId,
+            value.Stage == RoutingProgressStage.CalculatingRoute,
+            value.Stage == RoutingProgressStage.Completed,
+            value.Stage == RoutingProgressStage.Failed ? value.Message : null, value.Snapshot));
         var planProgress = new CoalescingProgress<RoutePlanRoutingProgress, (ForecastModel, int, Guid?)>(
             value => (value.Model, value.LegIndex, value.AttemptId), value => HandleCalculationProgress(generation, () =>
         {
@@ -1323,7 +1329,11 @@ public partial class MainViewModel : ViewModelBase
             {
                 _mapLayers.ClearCalculationOverlay(value.Model);
             }
-        }));
+        }), value => CaptureRoutePreview(generation, value.Model, value.LegIndex, value.AttemptId,
+            value.Status == RoutePlanRoutingUnitStatus.CalculatingRoute,
+            value.Status is RoutePlanRoutingUnitStatus.Succeeded or RoutePlanRoutingUnitStatus.ForecastLimited or
+                RoutePlanRoutingUnitStatus.DurationLimited,
+            value.Status == RoutePlanRoutingUnitStatus.Failed ? value.Message : null, value.Snapshot));
 
         try
         {
@@ -1376,7 +1386,13 @@ public partial class MainViewModel : ViewModelBase
         {
             if (IsCurrentCalculation(generation))
             {
-                StatusMessage = "Calculation cancelled.";
+                lock (_progressGate)
+                {
+                    acceptingProgress = false;
+                    ShowInterruptedRoutes("Cancelled by user.");
+                    StatusMessage = "Calculation cancelled.";
+                    FinishInterruptedPresentation();
+                }
             }
         }
         catch (Exception exception)
@@ -1387,6 +1403,14 @@ public partial class MainViewModel : ViewModelBase
                 ErrorMessage = $"Route calculation failed: {exception.Message}";
                 StatusMessage = "No route result was accepted.";
                 _mapLayers.ClearCalculationOverlays();
+                lock (_progressGate)
+                {
+                    acceptingProgress = false;
+                    if (exception is RoutingException { Kind: RoutingFailureKind.InvalidNativeOutput })
+                        _routePreviews.Clear();
+                    ShowInterruptedRoutes(exception.Message);
+                    FinishInterruptedPresentation();
+                }
             }
         }
         finally
@@ -1621,6 +1645,11 @@ public partial class MainViewModel : ViewModelBase
         {
             Interlocked.Increment(ref _calculationGeneration);
         }
+        lock (_progressGate)
+        {
+            IsCalculating = false;
+            if (wasCalculating) ShowInterruptedRoutes("Cancelled by user.");
+        }
         var cancellation = Interlocked.Exchange(ref _calculationCancellation, null);
         cancellation?.Cancel();
         cancellation?.Dispose();
@@ -1631,6 +1660,7 @@ public partial class MainViewModel : ViewModelBase
         StatusMessage = wasCalculating
             ? "Calculation cancelled."
             : "GRIB inspection cancelled.";
+        FinishInterruptedPresentation();
     }
 
     private bool CanCancel() => IsCalculating || IsInspectingLocalGrib;
@@ -1771,6 +1801,7 @@ public partial class MainViewModel : ViewModelBase
         RoutePlanRoutingResult result,
         string? calculationWarning)
     {
+        PrepareInterruptedRoutes(result);
         Itinerary.AcceptCalculationResult(result.Plan);
         _acquisitions.Clear();
         var failures = new List<string>();
@@ -1826,6 +1857,7 @@ public partial class MainViewModel : ViewModelBase
         };
         OnPropertyChanged(nameof(SelectedRouteDetails));
         UpdateWeatherAvailability();
+        FinishInterruptedPresentation();
     }
 
     partial void OnHasNoaaWeatherChanged(bool value) =>
@@ -2144,6 +2176,7 @@ public partial class MainViewModel : ViewModelBase
         RoutingWorkflowResult result,
         string? calculationWarning)
     {
+        PrepareInterruptedRoutes(result);
         _acquisitions.Clear();
         var failures = new List<string>();
         var warnings = new List<string>();
@@ -2284,6 +2317,7 @@ public partial class MainViewModel : ViewModelBase
         };
         OnPropertyChanged(nameof(SelectedRouteDetails));
         UpdateWeatherAvailability();
+        FinishInterruptedPresentation();
     }
 
     private static void AddSolverFallbackWarning(
@@ -2338,7 +2372,7 @@ public partial class MainViewModel : ViewModelBase
             ? reboundSelection.Key
             : (RouteVisualizationKey?)null;
         _mapLayers.SetRouteLegs(successful, selectedKey);
-        if (fit)
+        if (fit && !HasInterruptedRoute)
         {
             _mapLayers.FitRoutes();
         }
@@ -3424,6 +3458,9 @@ public partial class MainViewModel : ViewModelBase
 
     private void OnItineraryChanged(object? sender, EventArgs e)
     {
+        if (_previewPlanId is not null &&
+            (_previewPlanId != Itinerary.PlanId || _previewRevision != Itinerary.CalculationRevision))
+            ClearRoutePreviews();
         if (IsCalculating &&
             (_activeCalculationPlanId != Itinerary.PlanId ||
              _activeCalculationRevision != Itinerary.CalculationRevision))

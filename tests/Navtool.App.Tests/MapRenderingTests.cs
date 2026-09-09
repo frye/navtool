@@ -23,6 +23,308 @@ namespace Navtool.App.Tests;
 public sealed class MapRenderingTests
 {
     [Fact]
+    public void Interrupted_paths_already_visible_with_margin_do_not_change_the_viewport()
+    {
+        var layers = CreateSizedMapLayers(new Coordinate(10, 170));
+        var before = layers.Map.Navigator.Viewport;
+        layers.SetInterruptedRoutes([(ForecastModel.NoaaGfs, CreateInterruptedSnapshot(
+            new Coordinate(10, 170), new Coordinate(11, 171)))]);
+
+        Assert.Equal(before, layers.Map.Navigator.Viewport);
+        Assert.False(layers.KeepInterruptedRoutesVisible());
+        Assert.Equal(before, layers.Map.Navigator.Viewport);
+        Assert.True(layers.HasInterruptedRoutes);
+        Assert.Empty(layers.Routes);
+        Assert.Empty(layers.RouteLegs);
+    }
+
+    [Fact]
+    public void Offscreen_interrupted_paths_fit_without_including_accepted_routes()
+    {
+        var layers = CreateSizedMapLayers(new Coordinate(0, 0));
+        var withoutAccepted = CreateSizedMapLayers(new Coordinate(0, 0));
+        var accepted = CreateVisualizationLeg(
+            ForecastModel.EcmwfIfs, 0, new Coordinate(-40, -80), new Coordinate(-39, -79));
+        layers.SetRouteLegs([accepted], accepted.Key);
+        var snapshot = CreateInterruptedSnapshot(new Coordinate(10, 170), new Coordinate(11, 171));
+        layers.SetInterruptedRoutes([(ForecastModel.NoaaGfs, snapshot)]);
+        withoutAccepted.SetInterruptedRoutes([(ForecastModel.NoaaGfs, snapshot)]);
+        var before = layers.Map.Navigator.Viewport;
+
+        Assert.True(layers.KeepInterruptedRoutesVisible());
+        Assert.True(withoutAccepted.KeepInterruptedRoutesVisible());
+
+        Assert.NotEqual(before, layers.Map.Navigator.Viewport);
+        Assert.Equal(withoutAccepted.Map.Navigator.Viewport, layers.Map.Navigator.Viewport);
+        AssertInterruptedGeometryVisible(layers);
+        Assert.True(layers.Map.Navigator.Viewport.ToExtent().Width < 500_000);
+        Assert.Same(accepted.Route, Assert.Single(layers.Routes));
+        Assert.Equal(accepted.Key, layers.SelectedRouteKey);
+        var fitted = layers.Map.Navigator.Viewport;
+        Assert.False(layers.KeepInterruptedRoutesVisible());
+        Assert.Equal(fitted, layers.Map.Navigator.Viewport);
+    }
+
+    [Fact]
+    public void Interrupted_path_near_viewport_edge_is_fitted_with_padding()
+    {
+        var layers = CreateSizedMapLayers(new Coordinate(0, 0));
+        layers.SetInterruptedRoutes([(ForecastModel.NoaaGfs, CreateInterruptedSnapshot(
+            new Coordinate(0, 0), new Coordinate(0, 4.4)))]);
+
+        Assert.True(layers.KeepInterruptedRoutesVisible());
+        AssertInterruptedGeometryVisible(layers);
+        Assert.False(layers.KeepInterruptedRoutesVisible());
+    }
+
+    [Fact]
+    public void Interrupted_fit_preserves_rotation_and_keeps_all_geometry_inside_screen_margin()
+    {
+        var layers = CreateSizedMapLayers(new Coordinate(0, 0));
+        layers.Map.Navigator.RotateTo(45);
+        layers.SetInterruptedRoutes([(ForecastModel.NoaaGfs, CreateInterruptedSnapshot(
+            new Coordinate(20, 20), new Coordinate(21, 22)))]);
+        var rotation = layers.Map.Navigator.Viewport.Rotation;
+
+        Assert.True(layers.KeepInterruptedRoutesVisible());
+        Assert.Equal(rotation, layers.Map.Navigator.Viewport.Rotation);
+        AssertInterruptedGeometryVisible(layers);
+        var fitted = layers.Map.Navigator.Viewport;
+        Assert.False(layers.KeepInterruptedRoutesVisible());
+        Assert.Equal(fitted, layers.Map.Navigator.Viewport);
+    }
+
+    [Fact]
+    public void Interrupted_path_under_banner_fits_below_it_even_when_endpoints_are_uncovered()
+    {
+        var layers = CreateSizedMapLayers(new Coordinate(0, 0));
+        layers.SetInterruptedRoutes([(ForecastModel.NoaaGfs, CreateInterruptedSnapshot(
+            new Coordinate(2.7, -3.6), new Coordinate(2.7, 3.6)))]);
+
+        Assert.True(layers.KeepInterruptedRoutesVisible());
+        AssertInterruptedGeometryVisible(layers);
+        var viewport = layers.Map.Navigator.Viewport;
+        Assert.All(InterruptedFeatures(layers).SelectMany(feature => feature.Geometry!.Coordinates), coordinate =>
+            Assert.True(viewport.WorldToScreen(new MPoint(coordinate.X, coordinate.Y)).Y >= 222));
+        Assert.False(layers.KeepInterruptedRoutesVisible());
+    }
+
+    [Fact]
+    public void Visible_interrupted_paths_beside_banner_preserve_viewport()
+    {
+        var layers = CreateSizedMapLayers(new Coordinate(0, 0));
+        layers.SetInterruptedRoutes([
+            (ForecastModel.NoaaGfs, CreateInterruptedSnapshot(
+                new Coordinate(2.7, -3.6), new Coordinate(2.7, -3.4))),
+            (ForecastModel.EcmwfIfs, CreateInterruptedSnapshot(
+                new Coordinate(2.7, 3.4), new Coordinate(2.7, 3.6)))
+        ]);
+        var before = layers.Map.Navigator.Viewport;
+
+        Assert.False(layers.KeepInterruptedRoutesVisible());
+        Assert.Equal(before, layers.Map.Navigator.Viewport);
+        AssertInterruptedGeometryVisible(layers);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void Interrupted_dateline_paths_use_the_nearest_viewport_world_copy(int worldCopy)
+    {
+        var layers = CreateSizedMapLayers(new Coordinate(10, 180));
+        var center = MapProjection.ToMapPoint(new Coordinate(10, 180));
+        center.X += worldCopy * MapProjection.WebMercatorWorldWidth;
+        layers.Map.Navigator.CenterOnAndZoomTo(center, 1_000);
+        var before = layers.Map.Navigator.Viewport;
+        layers.SetInterruptedRoutes([
+            (ForecastModel.NoaaGfs, CreateInterruptedSnapshot(
+                new Coordinate(10, 179), new Coordinate(10, -179))),
+            (ForecastModel.EcmwfIfs, CreateInterruptedSnapshot(
+                new Coordinate(11, -179), new Coordinate(11, 179)))
+        ]);
+
+        Assert.False(layers.KeepInterruptedRoutesVisible());
+        Assert.Equal(before, layers.Map.Navigator.Viewport);
+        AssertInterruptedGeometryVisible(layers);
+        var lines = InterruptedFeatures(layers).Select(feature => feature.Geometry).OfType<LineString>().ToArray();
+        Assert.Equal(2, lines.Length);
+        Assert.All(lines, line =>
+        {
+            Assert.InRange(line.EnvelopeInternal.Width, 200_000, 250_000);
+            Assert.InRange(Math.Abs(line.Centroid.X - center.X), 0, 1);
+        });
+    }
+
+    [Fact]
+    public void Interrupted_dateline_fit_stays_compact_and_reprojects_after_accepted_fit()
+    {
+        var layers = CreateSizedMapLayers(new Coordinate(10, -170));
+        var accepted = CreateVisualizationLeg(
+            ForecastModel.NoaaGfs, 0, new Coordinate(10, 179), new Coordinate(10, -179));
+        layers.SetRouteLegs([accepted]);
+        layers.SetInterruptedRoutes([(ForecastModel.EcmwfIfs, CreateInterruptedSnapshot(
+            new Coordinate(11, 179), new Coordinate(11, -179)))]);
+
+        Assert.True(layers.KeepInterruptedRoutesVisible());
+        AssertInterruptedGeometryVisible(layers);
+        Assert.True(layers.Map.Navigator.Viewport.CenterX < 0);
+        Assert.True(layers.Map.Navigator.Viewport.ToExtent().Width < 500_000);
+
+        layers.FitRoutes();
+        Assert.True(layers.Map.Navigator.Viewport.CenterX > 0);
+        layers.KeepInterruptedRoutesVisible();
+
+        AssertInterruptedGeometryVisible(layers);
+        Assert.True(layers.Map.Navigator.Viewport.CenterX > 0);
+        Assert.True(layers.Map.Navigator.Viewport.ToExtent().Width < 500_000);
+    }
+
+    [Fact]
+    public void Accepted_route_and_leg_fits_ignore_interrupted_paths()
+    {
+        var layers = CreateSizedMapLayers(new Coordinate(0, 0));
+        var acceptedOnly = CreateSizedMapLayers(new Coordinate(0, 0));
+        var leg = CreateVisualizationLeg(
+            ForecastModel.NoaaGfs, 0, new Coordinate(0, 0), new Coordinate(1, 1));
+        layers.SetRouteLegs([leg]);
+        acceptedOnly.SetRouteLegs([leg]);
+        layers.SetInterruptedRoutes([(ForecastModel.EcmwfIfs, CreateInterruptedSnapshot(
+            new Coordinate(10, 170), new Coordinate(11, 171)))]);
+
+        layers.FitRoutes();
+        acceptedOnly.FitRoutes();
+        Assert.Equal(acceptedOnly.Map.Navigator.Viewport, layers.Map.Navigator.Viewport);
+        layers.FitRouteLeg(leg.Key);
+        acceptedOnly.FitRouteLeg(leg.Key);
+        Assert.Equal(acceptedOnly.Map.Navigator.Viewport, layers.Map.Navigator.Viewport);
+        Assert.True(layers.HasInterruptedRoutes);
+    }
+
+    [Fact]
+    public void Interrupted_paths_have_dashed_model_lines_and_distinct_endpoints_without_snapshots()
+    {
+        var layers = CreateSizedMapLayers(new Coordinate(10, 170));
+        var snapshot = CreateInterruptedSnapshot(new Coordinate(10, 170), new Coordinate(11, 171));
+        layers.SetInterruptedRoutes([
+            (ForecastModel.NoaaGfs, snapshot),
+            (ForecastModel.EcmwfIfs, snapshot)
+        ]);
+
+        var features = InterruptedFeatures(layers);
+        Assert.Equal(4, features.Length);
+        foreach (var model in new[] { ForecastModel.NoaaGfs, ForecastModel.EcmwfIfs })
+        {
+            var modelFeatures = features.Where(feature => Equals(feature.Data, model)).ToArray();
+            var line = Assert.Single(modelFeatures, feature => feature.Geometry is LineString);
+            var endpoint = Assert.Single(modelFeatures, feature => feature.Geometry is Point);
+            var lineStyle = Assert.IsType<VectorStyle>(Assert.Single(line.Styles));
+            Assert.Equal(PenStyle.Dash, lineStyle.Line!.PenStyle);
+            Assert.Equal(model == ForecastModel.NoaaGfs ? RouteMapLayers.NoaaColor : RouteMapLayers.EcmwfColor,
+                lineStyle.Line.Color);
+            var label = Assert.IsType<LabelStyle>(Assert.Single(endpoint.Styles));
+            Assert.Equal(lineStyle.Line.Color, label.ForeColor);
+            Assert.Contains("interrupted", label.GetLabelText(endpoint));
+            Assert.Equal(line.Geometry!.Coordinates[^1], endpoint.Geometry!.Coordinate);
+            Assert.All(modelFeatures, feature => Assert.IsType<ForecastModel>(feature.Data));
+        }
+        Assert.Empty(layers.Routes);
+    }
+
+    [Fact]
+    public void Interrupted_and_live_overlays_clear_independently_and_do_not_clear_accepted_routes()
+    {
+        var layers = CreateSizedMapLayers(new Coordinate(10, 170));
+        var snapshot = CreateInterruptedSnapshot(new Coordinate(10, 170), new Coordinate(11, 171));
+        var accepted = CreateVisualizationLeg(
+            ForecastModel.EcmwfIfs, 0, new Coordinate(10, 170), new Coordinate(11, 171));
+        layers.SetRouteLegs([accepted]);
+        layers.AddCalculationSnapshot(ForecastModel.NoaaGfs, snapshot);
+        layers.AddCalculationSnapshot(ForecastModel.EcmwfIfs, snapshot);
+
+        layers.SetInterruptedRoutes([(ForecastModel.NoaaGfs, snapshot)]);
+
+        Assert.False(layers.HasSearchPoint(ForecastModel.NoaaGfs));
+        Assert.False(layers.HasProvisionalRoute(ForecastModel.NoaaGfs));
+        Assert.False(layers.HasLatestIsochroneFront(ForecastModel.NoaaGfs));
+        Assert.Equal(0, layers.GetIsochroneFrontCount(ForecastModel.NoaaGfs));
+        Assert.True(layers.HasSearchPoint(ForecastModel.EcmwfIfs));
+        layers.ClearCalculationOverlays();
+        Assert.True(layers.HasInterruptedRoutes);
+        Assert.Equal(2, InterruptedFeatures(layers).Length);
+        Assert.False(layers.HasProvisionalRoute(ForecastModel.EcmwfIfs));
+
+        layers.AddCalculationSnapshot(ForecastModel.EcmwfIfs, snapshot);
+        layers.ClearInterruptedRoutes();
+
+        Assert.False(layers.HasInterruptedRoutes);
+        Assert.Empty(InterruptedFeatures(layers));
+        Assert.True(layers.HasProvisionalRoute(ForecastModel.EcmwfIfs));
+        Assert.True(layers.HasLatestIsochroneFront(ForecastModel.EcmwfIfs));
+        Assert.True(layers.HasSearchPoint(ForecastModel.EcmwfIfs));
+        Assert.Same(accepted.Route, Assert.Single(layers.Routes));
+        var before = layers.Map.Navigator.Viewport;
+        Assert.False(layers.KeepInterruptedRoutesVisible());
+        Assert.Equal(before, layers.Map.Navigator.Viewport);
+    }
+
+    [Fact]
+    public void Interrupted_single_point_is_an_endpoint_and_set_replaces_previous_paths()
+    {
+        var layers = CreateSizedMapLayers(new Coordinate(0, 0));
+        layers.SetInterruptedRoutes([(ForecastModel.NoaaGfs, CreateInterruptedSnapshot(
+            new Coordinate(10, 170), new Coordinate(11, 171)))]);
+        layers.SetInterruptedRoutes([(ForecastModel.EcmwfIfs, CreateInterruptedSnapshot(new Coordinate(0, 1)))]);
+
+        var endpoint = Assert.Single(InterruptedFeatures(layers));
+        Assert.IsType<Point>(endpoint.Geometry);
+        Assert.Equal(ForecastModel.EcmwfIfs, endpoint.Data);
+        Assert.True(layers.HasInterruptedRoutes);
+        Assert.False(layers.KeepInterruptedRoutesVisible());
+        layers.SetInterruptedRoutes([]);
+        Assert.False(layers.HasInterruptedRoutes);
+        Assert.Empty(InterruptedFeatures(layers));
+    }
+
+    private static RouteMapLayers CreateSizedMapLayers(Coordinate center)
+    {
+        var layers = new RouteMapLayers(new Map());
+        layers.Map.Navigator.SetSize(1_000, 800);
+        layers.Map.Navigator.CenterOnAndZoomTo(MapProjection.ToMapPoint(center), 1_000);
+        return layers;
+    }
+
+    private static GeometryFeature[] InterruptedFeatures(RouteMapLayers layers) =>
+        layers.Map.Layers.Where(layer => layer.Name is
+                "NOAA GFS interrupted route" or "ECMWF IFS interrupted route" or "Interrupted route endpoints")
+            .Cast<MemoryLayer>().SelectMany(layer => layer.Features).Cast<GeometryFeature>().ToArray();
+
+    private static void AssertInterruptedGeometryVisible(RouteMapLayers layers)
+    {
+        var viewport = layers.Map.Navigator.Viewport;
+        Assert.All(InterruptedFeatures(layers).SelectMany(feature => feature.Geometry!.Coordinates), coordinate =>
+        {
+            var screen = viewport.WorldToScreen(new MPoint(coordinate.X, coordinate.Y));
+            Assert.InRange(screen.X, 24, viewport.Width - 24);
+            Assert.InRange(screen.Y, 24, viewport.Height - 24);
+        });
+    }
+
+    private static RouteCalculationSnapshot CreateInterruptedSnapshot(params Coordinate[] path)
+    {
+        var start = new DateTimeOffset(2026, 7, 15, 0, 0, 0, TimeSpan.Zero);
+        return new RouteCalculationSnapshot(
+            start.AddHours(path.Length - 1),
+            RouteSolver.IsochroneBeam,
+            [new RouteCalculationEnvelopeSegment(path, closed: false)],
+            [new RouteCalculationFrontSegment(path)],
+            [path[^1]],
+            path.Select((location, index) => new RoutePoint(location, start.AddHours(index), 90, 6, 15, 180, index)),
+            new RouteDiagnostics(10, 20, 5, 1),
+            null);
+    }
+
+    [Fact]
     public void Progress_history_is_bounded_and_does_not_retain_route_snapshots()
     {
         var map = new Map();
@@ -223,6 +525,9 @@ public sealed class MapRenderingTests
                 "ECMWF IFS lattice search",
                 "NOAA GFS provisional route",
                 "ECMWF IFS provisional route",
+                "NOAA GFS interrupted route",
+                "ECMWF IFS interrupted route",
+                "Interrupted route endpoints",
                 "NOAA GFS routes",
                 "ECMWF IFS routes",
                 "Nominal arrival areas",
