@@ -34,6 +34,45 @@ public sealed class RouteInspectionTimelineTests
     }
 
     [Fact]
+    public void Timeline_boundaries_and_clamped_timestamps_are_utc()
+    {
+        var preview = CreatePreview(Departure.ToOffset(TimeSpan.FromHours(5)));
+        var timeline = new RouteInspectionTimeline(preview.Model, [preview]);
+
+        Assert.Equal(TimeSpan.Zero, timeline.Start.Offset);
+        Assert.Equal(TimeSpan.Zero, timeline.End.Offset);
+        foreach (var minutes in new[] { -1, 0, 30, 60, 61 })
+        {
+            var timestamp = Departure.AddMinutes(minutes).ToOffset(TimeSpan.FromHours(-7));
+            var clamped = timeline.Clamp(timestamp);
+            Assert.Equal(TimeSpan.Zero, clamped.Offset);
+            Assert.Equal(Departure.AddMinutes(Math.Clamp(minutes, 0, 60)), clamped);
+        }
+    }
+
+    [Theory]
+    [InlineData(-1, null, 0)]
+    [InlineData(0, null, 60)]
+    [InlineData(30, 0, 60)]
+    [InlineData(60, 0, 120)]
+    [InlineData(90, 60, 120)]
+    [InlineData(120, 60, null)]
+    [InlineData(121, 120, null)]
+    public void Stepping_returns_strict_neighbors(int minutes, int? previousMinutes, int? nextMinutes)
+    {
+        var timeline = new RouteInspectionTimeline(ForecastModel.NoaaGfs,
+            [CreatePreview(Departure), CreatePreview(Departure.AddHours(1))]);
+        var timestamp = Departure.AddMinutes(minutes).ToOffset(TimeSpan.FromHours(5));
+
+        Assert.Equal(previousMinutes.HasValue, timeline.TryGetPreviousTimestamp(timestamp, out var previous));
+        Assert.Equal(nextMinutes.HasValue, timeline.TryGetNextTimestamp(timestamp, out var next));
+        Assert.Equal(previousMinutes.HasValue ? Departure.AddMinutes(previousMinutes.Value) : default, previous);
+        Assert.Equal(nextMinutes.HasValue ? Departure.AddMinutes(nextMinutes.Value) : default, next);
+        Assert.Equal(TimeSpan.Zero, previous.Offset);
+        Assert.Equal(TimeSpan.Zero, next.Offset);
+    }
+
+    [Fact]
     public void Completed_hold_transitions_to_preview_without_clamping_to_completed_arrival()
     {
         var from = new RouteWaypoint("Start", new Coordinate(0, 0));

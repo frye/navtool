@@ -18,6 +18,7 @@ internal sealed class RouteInspectionTimeline
         _previews = matching.Where(source => source.IsProvisional).ToArray();
         _timestamps = (_accepted?.Timestamps ?? [])
             .Concat(_previews.SelectMany(source => source.Points.Select(point => point.Timestamp)))
+            .Select(timestamp => timestamp.ToUniversalTime())
             .Distinct().Order().ToImmutableArray();
         if (_timestamps.IsEmpty)
             throw new ArgumentException("At least one inspectable path is required.", nameof(sources));
@@ -72,10 +73,11 @@ internal sealed class RouteInspectionTimeline
 
     public bool TryGetPreviousTimestamp(DateTimeOffset timestamp, out DateTimeOffset previous)
     {
-        foreach (var candidate in _timestamps.Reverse())
+        var index = _timestamps.BinarySearch(timestamp);
+        index = (index >= 0 ? index : ~index) - 1;
+        if (index >= 0)
         {
-            if (candidate >= timestamp) continue;
-            previous = candidate;
+            previous = _timestamps[index];
             return true;
         }
         previous = default;
@@ -84,10 +86,11 @@ internal sealed class RouteInspectionTimeline
 
     public bool TryGetNextTimestamp(DateTimeOffset timestamp, out DateTimeOffset next)
     {
-        foreach (var candidate in _timestamps)
+        var index = _timestamps.BinarySearch(timestamp);
+        index = index >= 0 ? index + 1 : ~index;
+        if (index < _timestamps.Length)
         {
-            if (candidate <= timestamp) continue;
-            next = candidate;
+            next = _timestamps[index];
             return true;
         }
         next = default;
