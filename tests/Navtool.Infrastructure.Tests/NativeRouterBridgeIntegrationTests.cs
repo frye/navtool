@@ -18,7 +18,7 @@ public sealed class NativeRouterBridgeIntegrationTests
         if (bridge is null) return;
 
         using var forecast = bridge.LoadForecast(sample);
-        Assert.Equal(8u, bridge.AbiVersion);
+        Assert.Equal(NativeRouterBridgeOptions.SupportedAbiVersion, bridge.AbiVersion);
         Assert.True(bridge.LandConstraintAvailable);
         Assert.True(bridge.EnvironmentAvailable);
         Assert.True(bridge.SignedDistanceLandmaskAvailable);

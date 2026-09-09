@@ -17,6 +17,9 @@
             <TextBlock Classes="muted" Text="Demo is illustrative, not your vessel's measured performance." TextWrapping="Wrap" />
             <TextBlock Text="Native routing quality" />
             <ComboBox x:Name="RoutingQualitySelector" ItemsSource="{Binding QualityOptions}" SelectedItem="{Binding Quality}" HorizontalAlignment="Stretch" />
+            <CheckBox x:Name="CoastalPruningToggle" Content="Experimental conservative coastal pruning"
+                      IsChecked="{Binding EnableCoastalPruning}" />
+            <TextBlock Classes="muted" Text="Opt-in proof-based pruning for beam routing: uncertain branches remain eligible. Does not certify chart safety or global optimality; unsupported configurations are rejected." TextWrapping="Wrap" />
             <TextBlock Text="Boat performance (%)" />
             <NumericUpDown x:Name="BoatPerformanceInput" Value="{Binding PerformancePercentage}" Minimum="1" Maximum="300" Increment="1" />
             <TextBlock Text="Arrival radius (NM)" />

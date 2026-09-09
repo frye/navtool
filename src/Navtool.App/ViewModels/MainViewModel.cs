@@ -1146,7 +1146,8 @@ public partial class MainViewModel : ViewModelBase
             RoutingSetup.ResolvedStatus =
                 $"{context.NativeIdentity.LibraryVersion} · bridge ABI {context.NativeIdentity.BridgeAbiVersion}\n" +
                 $"{context.Resolved.Quality} · {context.Resolved.Optimization.Solver} · " +
-                $"performance {context.Resolved.PerformanceFactor:P0} · arrival {context.Resolved.ArrivalRadiusNauticalMiles:0.###} NM";
+                $"performance {context.Resolved.PerformanceFactor:P0} · arrival {context.Resolved.ArrivalRadiusNauticalMiles:0.###} NM\n" +
+                $"Coastal pruning requested {context.Setup.CoastalPruning} · resolved {context.Resolved.CoastalPruning}";
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -1444,7 +1445,8 @@ public partial class MainViewModel : ViewModelBase
             $"Eligibility {diagnostics.EligibilityEvaluations?.ToString("N0") ?? "unavailable"} · " +
             $"pruned {diagnostics.PrunedCandidates?.ToString("N0") ?? "unavailable"} · " +
             $"future-probe misses {diagnostics.FutureProbeMisses?.ToString("N0") ?? "unavailable"}. " +
-            "Provisional search audit; environment totals are final-only.";
+            "Provisional search audit; environment totals are final-only.\n" +
+            FormatCoastalPruning(diagnostics.CoastalPruning, "Current");
     }
 
     public async Task SelectLocalGribAsync(string path)
@@ -2656,12 +2658,14 @@ public partial class MainViewModel : ViewModelBase
     private static string FormatRunAudit(RouteResult route)
     {
         if (route.RunAudit is not { } audit)
-            return "\nEffective settings / native build audit unavailable for this historical result.";
+            return "\nEffective settings / native build audit unavailable for this historical result.\n" +
+                FormatCoastalPruning(route.Diagnostics.CoastalPruning, "Final");
         var settings = audit.Resolved;
         var search = settings.Search;
         var native = route.NativeAudit ?? audit.Native;
         return $"\nRecorded settings · {audit.Setup.Boat.SourceDisplayName} ({audit.Setup.Boat.ContentIdentity})\n" +
                $"{settings.Quality} · requested {audit.RequestedSolver} · actual {route.Solver}\n" +
+               $"Coastal pruning requested {audit.Setup.CoastalPruning} · resolved {settings.CoastalPruning}\n" +
                $"{settings.PerformanceFactor:P0} performance · arrival area {settings.ArrivalRadiusNauticalMiles:0.###} NM · " +
                $"{settings.Optimization.PolarAngleInterpolation} · above polar {settings.Optimization.AbovePolarRange}\n" +
                $"Time step {search.TimeStep.TotalMinutes:0.###} min · integration {search.MaximumIntegrationStep.TotalMinutes:0.###} min · " +
@@ -2682,11 +2686,22 @@ public partial class MainViewModel : ViewModelBase
                (native is not null
                    ? $"\nSearch audit · eligibility {native.EligibilityEvaluations?.ToString("N0") ?? "unavailable"} · pruned {native.PrunedCandidates?.ToString("N0") ?? "unavailable"} · future-probe misses {native.FutureProbeMisses?.ToString("N0") ?? "unavailable"}"
                    : "\nNative search counters unavailable") +
+               "\n" + FormatCoastalPruning(route.Diagnostics.CoastalPruning, "Final") +
                (native?.Routing is { } observed
                    ? $"\nNative objective {observed.Objective} · quality claim {observed.QualityClaim}" +
                      (observed.Warnings.IsEmpty ? string.Empty : $"\nRaw native warnings: {string.Join("; ", observed.Warnings)}")
                    : string.Empty);
     }
+
+    private static string FormatCoastalPruning(RouteCoastalPruningDiagnostics? coastal, string phase) =>
+        coastal is null
+            ? $"{phase} coastal audit · unavailable (not zero)"
+            : $"{phase} coastal audit · {coastal.Mode} · state {coastal.Status} · seed {coastal.SeedStatus ?? "unavailable"}" +
+              (coastal.UnavailableReason is { } reason ? $" · reason {reason}" : string.Empty) +
+              $"\nCoastal skipped parents {coastal.SkippedParents:N0} · disconnected candidates {coastal.DisconnectedCandidates:N0} · " +
+              $"horizon candidates {coastal.HorizonCandidates:N0} · incumbent candidates {coastal.IncumbentCandidates:N0}" +
+              $"\nCoastal bound unavailable {coastal.BoundUnavailable:N0} · seed evaluations {coastal.SeedEvaluations:N0} · topology work {coastal.TopologyWork:N0}" +
+              $"\nCoastal incumbent arrival {(coastal.IncumbentArrival is { } arrival ? $"{arrival:yyyy-MM-dd HH:mm:ss} UTC" : "unavailable")}";
 
     private static void AppendProvider(
         ICollection<string> lines,

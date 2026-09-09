@@ -23,6 +23,9 @@ It targets macOS, Windows, and Linux.
   the native `router-lib` 0.6 development snapshot and cruising-quality presets.
 - Apply bundled Natural Earth land geometry by default, with an optional
   higher-detail OSM-derived service override.
+- Opt into conservative coastal pruning to stop expanding branches whose
+  optimistic arrival cannot beat a validated route or the search horizon,
+  without imposing geographic cutoffs or hiding viable detours.
 - Watch historical destination-facing isochrone fronts, the emphasized latest
   front, and the closest provisional route stream onto the map while each model
   calculates.
@@ -106,7 +109,9 @@ fetch and compile `router-lib` commit
 `cd476a84ef3edea9582d77f21588a23af727e083` by default. This is a **0.6.0
 development snapshot**, not a published v0.6 release. Set
 `SAILROUTE_SOURCE_DIR` to a local `router-lib` checkout when testing other
-revisions.
+revisions. The default build applies the documented UTF-8 compatibility and
+conservative coastal-pruning patches. Local source overrides must contain
+equivalent changes; see [the patch manifest](native/Navtool.RouterBridge/patches/README.md).
 
 To build against a different immutable `router-lib` revision or release,
 configure CMake with an override before building:
@@ -151,6 +156,11 @@ Fallback attribution is retained rather than silently relabeling the solver.
 
 See [the 0.6 migration guide](docs/router-lib-0.6-migration.md) for compatibility,
 native units and API limits, saved-plan recovery, and optional GSHHG constraints.
+
+**Experimental conservative coastal pruning** is a separate, saved opt-in in
+CRUISING SETUP. It requires the beam solver and bridge ABI 9; migrated plans
+remain Off. The [coastal pruning guide](docs/coastal-route-pruning.md) explains
+its diagnostics, selected-land-source handling and conservative limitations.
 
 ## Multi-point routes and visualization
 

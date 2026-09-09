@@ -492,6 +492,8 @@ public sealed class LandGeometryIndex
         NetTopologySuite.NtsGeometryServices.Instance.CreateGeometryFactory(srid: 4326);
     private readonly STRtree<IndexedGeometry> _index = new();
     private readonly double _maximumSampleNauticalMiles;
+    internal string GeometryIdentity { get; }
+    internal double MaximumSegmentSampleNauticalMiles => _maximumSampleNauticalMiles;
 
     public LandGeometryIndex(
         IEnumerable<Geometry> geometries,
@@ -505,6 +507,7 @@ public sealed class LandGeometryIndex
         }
 
         _maximumSampleNauticalMiles = maximumSampleNauticalMiles;
+        using var identity = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         foreach (var geometry in geometries)
         {
             ArgumentNullException.ThrowIfNull(geometry);
@@ -514,12 +517,14 @@ public sealed class LandGeometryIndex
                 throw new InvalidDataException("Land geometry must be non-empty and valid.");
             }
 
+            identity.AppendData(immutableGeometry.AsBinary());
             Insert(immutableGeometry);
             Insert(ShiftLongitude(immutableGeometry, -360));
             Insert(ShiftLongitude(immutableGeometry, 360));
         }
 
         _index.Build();
+        GeometryIdentity = "sha256:" + Convert.ToHexString(identity.GetHashAndReset()).ToLowerInvariant();
     }
 
     public bool Contains(CoreCoordinate coordinate)
@@ -552,6 +557,9 @@ public sealed class LandGeometryIndex
             .Select(item => item.Geometry)
             .ToList();
     }
+
+    internal IEnumerable<IPreparedGeometry> QueryPreparedGeometries(Envelope envelope) =>
+        _index.Query(envelope).Select(item => item.Prepared);
 
     private static Geometry ShiftLongitude(Geometry geometry, double offset)
     {

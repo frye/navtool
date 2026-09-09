@@ -1568,7 +1568,8 @@ uint64_t navtool_router_bridge_capabilities_v1(void) {
         NAVTOOL_ROUTER_CAPABILITY_AUDITED_PROGRESS_V8 |
         NAVTOOL_ROUTER_CAPABILITY_GSHHG_V8 |
         NAVTOOL_ROUTER_CAPABILITY_ACTION_REPLAY_V8 |
-        NAVTOOL_ROUTER_CAPABILITY_PLANNED_HOLD_V8;
+        NAVTOOL_ROUTER_CAPABILITY_PLANNED_HOLD_V8 |
+        NAVTOOL_ROUTER_CAPABILITY_COASTAL_PRUNING_V9;
 }
 
 const char* navtool_router_last_error_v1(void) {
@@ -2283,6 +2284,7 @@ navtool_router_status_v1 navtool_router_inspect_grib_v1(
 }  // extern "C"
 
 #include "bridge_v8.inc"
+#include "bridge_v9.inc"
 
 static_assert(sizeof(navtool_router_grib_descriptor_v1) == 64U);
 

@@ -63,6 +63,8 @@ public sealed partial class RoutingSetupViewModel : ViewModelBase
     [ObservableProperty]
     private bool _useHardDuration;
     [ObservableProperty]
+    private bool _enableCoastalPruning;
+    [ObservableProperty]
     private double _hardDurationHours = 240;
     [ObservableProperty]
     private string? _regionalSourcePath;
@@ -125,7 +127,9 @@ public sealed partial class RoutingSetupViewModel : ViewModelBase
                 ArrivalRadiusNauticalMiles, LandSource, ForecastPolicy,
                 hardDuration: UseHardDuration ? TimeSpan.FromHours(HardDurationHours) : null,
                 localForecastMaximumGap: TimeSpan.FromHours(LocalForecastMaximumGapHours),
-                regionalLand: regional);
+                regionalLand: regional,
+                coastalPruning: EnableCoastalPruning
+                    ? RouteCoastalPruningMode.ConservativeLandAware : RouteCoastalPruningMode.Off);
             error = null;
             return true;
         }
@@ -146,6 +150,7 @@ public sealed partial class RoutingSetupViewModel : ViewModelBase
         {
             Boat = setup?.Boat;
             Quality = setup?.Quality ?? RoutingQuality.NativeBalanced;
+            EnableCoastalPruning = setup?.CoastalPruning == RouteCoastalPruningMode.ConservativeLandAware;
             PerformancePercentage = (setup?.PerformanceFactor ?? 1) * 100;
             ArrivalRadiusNauticalMiles = setup?.ArrivalRadiusNauticalMiles ?? 1;
             LandSource = setup?.LandSource ?? _defaultLandSource;
@@ -306,6 +311,7 @@ public sealed partial class RoutingSetupViewModel : ViewModelBase
 
     partial void OnBoatChanged(BoatAsset? value) => Changed();
     partial void OnQualityChanged(RoutingQuality value) => Changed();
+    partial void OnEnableCoastalPruningChanged(bool value) => Changed();
     partial void OnPerformancePercentageChanged(double value) => Changed();
     partial void OnArrivalRadiusNauticalMilesChanged(double value) => Changed();
     partial void OnLandSourceChanged(RoutingLandSource value) => Changed();

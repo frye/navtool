@@ -24,7 +24,9 @@ set(NAVTOOL_ROUTER_PATCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/patches")
 set(NAVTOOL_ROUTER_PATCH_SCRIPT "${NAVTOOL_ROUTER_PATCH_DIR}/apply.cmake")
 # Optional fixes carried against the pinned router-lib revision. See
 # patches/README.md; drop entries once the release pin moves past them.
-set(NAVTOOL_ROUTER_LIB_PATCHES 0001-utf8-asset-paths.patch)
+set(NAVTOOL_ROUTER_LIB_PATCHES
+    0001-utf8-asset-paths.patch
+    0002-conservative-coastal-pruning.patch)
 set(SAILROUTE_ENABLE_ENSEMBLE OFF CACHE BOOL "" FORCE)
 set(SAILROUTE_ENABLE_LAND_DATA ON CACHE BOOL "" FORCE)
 
@@ -111,6 +113,15 @@ if(NOT "${_navtool_router_effective_source_dir}" STREQUAL "")
     endif()
 endif()
 message(STATUS "Navtool router-lib: ${NAVTOOL_ROUTER_RESOLVED_VERSION} ${NAVTOOL_ROUTER_RESOLVED_REVISION} (${NAVTOOL_ROUTER_SOURCE_KIND}, dirty=${NAVTOOL_ROUTER_SOURCE_DIRTY}); ensemble=OFF land-data=ON")
+set(NAVTOOL_ROUTER_PATCH_SET_SHA256 "")
+if(NAVTOOL_ROUTER_SOURCE_KIND STREQUAL "fetched")
+    set(_navtool_patch_identity "")
+    foreach(_patch IN LISTS NAVTOOL_ROUTER_LIB_PATCHES)
+        file(SHA256 "${NAVTOOL_ROUTER_PATCH_DIR}/${_patch}" _patch_hash)
+        string(APPEND _navtool_patch_identity "${_patch}:${_patch_hash}\n")
+    endforeach()
+    string(SHA256 NAVTOOL_ROUTER_PATCH_SET_SHA256 "${_navtool_patch_identity}")
+endif()
 configure_file(src/bridge_build_info.h.in "${CMAKE_CURRENT_BINARY_DIR}/bridge_build_info.h" @ONLY)
 
 if(TARGET sailroute)

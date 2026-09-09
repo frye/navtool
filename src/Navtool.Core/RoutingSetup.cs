@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text.Json.Serialization;
 
 namespace Navtool.Core;
 
@@ -6,6 +7,7 @@ public enum BoatAssetKind { Imported, Demo }
 public enum BoatPolarFormat { Automatic, NativeMatrix, Expedition }
 public enum RoutingQuality { NativeFast, NativeBalanced, NativeAccurate }
 public enum RoutingLandSource { NaturalEarth, OpenStreetMap, RegionalGshhg, None }
+public enum RouteCoastalPruningMode { Off = 0, ConservativeLandAware = 1 }
 
 public sealed record RouteRegionalLandPolicy
 {
@@ -131,11 +133,14 @@ public sealed record RoutingSetup
         ForecastRefreshPolicy forecastPolicy = ForecastRefreshPolicy.PreferCache,
         TimeSpan? hardDuration = null,
         TimeSpan? localForecastMaximumGap = null,
-        RouteRegionalLandPolicy? regionalLand = null)
+        RouteRegionalLandPolicy? regionalLand = null,
+        RouteCoastalPruningMode coastalPruning = RouteCoastalPruningMode.Off)
     {
         ArgumentNullException.ThrowIfNull(boat);
         if (!Enum.IsDefined(quality) || !Enum.IsDefined(landSource) || !Enum.IsDefined(forecastPolicy))
             throw new ArgumentOutOfRangeException(nameof(quality));
+        if (!Enum.IsDefined(coastalPruning))
+            throw new ArgumentOutOfRangeException(nameof(coastalPruning));
         if (!double.IsFinite(performanceFactor) || performanceFactor <= 0)
             throw new ArgumentOutOfRangeException(nameof(performanceFactor));
         if (!double.IsFinite(arrivalRadiusNauticalMiles) || arrivalRadiusNauticalMiles <= 0)
@@ -153,6 +158,7 @@ public sealed record RoutingSetup
         HardDuration = hardDuration;
         LocalForecastMaximumGap = localForecastMaximumGap ?? TimeSpan.FromHours(6);
         RegionalLand = regionalLand;
+        CoastalPruning = coastalPruning;
     }
 
     public BoatAsset Boat { get; }
@@ -164,6 +170,7 @@ public sealed record RoutingSetup
     public TimeSpan? HardDuration { get; }
     public TimeSpan LocalForecastMaximumGap { get; }
     public RouteRegionalLandPolicy? RegionalLand { get; }
+    public RouteCoastalPruningMode CoastalPruning { get; }
 }
 
 /// <summary>All numerical fields affected by the native quality preset; no managed preset imitation.</summary>
@@ -235,7 +242,8 @@ public sealed record ResolvedRoutingOptions(
     RouteSearchSettings Search,
     double PerformanceFactor,
     double ArrivalRadiusNauticalMiles,
-    TimeSpan? HardDuration)
+    TimeSpan? HardDuration,
+    RouteCoastalPruningMode CoastalPruning = RouteCoastalPruningMode.Off)
 {
     public static ResolvedRoutingOptions FromNativeDefaults(
         RoutingSetup setup,
@@ -250,7 +258,8 @@ public sealed record ResolvedRoutingOptions(
             RoutePolarAngleInterpolation.MonotoneCubic, RouteAbovePolarRangePolicy.NoSpeed);
         return new(setup.Quality, professionalOverrides?.Optimization ?? normal,
             professionalOverrides?.Search ?? nativeDefaults.Search,
-            setup.PerformanceFactor, setup.ArrivalRadiusNauticalMiles, setup.HardDuration ?? nativeDefaults.HardDuration);
+            setup.PerformanceFactor, setup.ArrivalRadiusNauticalMiles, setup.HardDuration ?? nativeDefaults.HardDuration,
+            setup.CoastalPruning);
     }
 }
 
@@ -293,10 +302,17 @@ public sealed record RoutingCalculationContext
             throw new RoutingException(RoutingFailureKind.InvalidBoat, "The resolved boat does not match the selected asset.");
         if (nativeIdentity.BridgeAbiVersion < 8)
             throw new RoutingException(RoutingFailureKind.NativeUnavailable, "Configured routing requires bridge ABI 8.");
+        if (setup.CoastalPruning != RouteCoastalPruningMode.Off && nativeIdentity.BridgeAbiVersion < 9)
+            throw new RoutingException(RoutingFailureKind.NativeUnavailable, "Conservative coastal pruning requires bridge ABI 9 or newer.");
         if (resolved.Quality != setup.Quality || resolved.PerformanceFactor != setup.PerformanceFactor ||
+            !Enum.IsDefined(resolved.CoastalPruning) || resolved.CoastalPruning != setup.CoastalPruning ||
             resolved.ArrivalRadiusNauticalMiles != setup.ArrivalRadiusNauticalMiles ||
             (setup.HardDuration is { } duration && resolved.HardDuration != duration))
             throw new RoutingException(RoutingFailureKind.InvalidConfiguration, "The resolved configuration does not match the selected setup.");
+        if (resolved.CoastalPruning != RouteCoastalPruningMode.Off &&
+            resolved.Optimization.Solver != RouteSolver.IsochroneBeam)
+            throw new RoutingException(RoutingFailureKind.InvalidConfiguration,
+                "Conservative coastal pruning supports the isochrone beam solver only. Disable coastal pruning or explicitly select beam routing.");
         if (professionalOverrides?.Optimization is null &&
             (resolved.Optimization.PolarAngleInterpolation != RoutePolarAngleInterpolation.MonotoneCubic ||
              resolved.Optimization.AbovePolarRange != RouteAbovePolarRangePolicy.NoSpeed))
@@ -463,13 +479,32 @@ public sealed record RouteNativeRunAudit(
     string? ForecastSource = null,
     string? PolarSource = null,
     string? DepartureSource = null,
-    ForecastCoverage? ForecastCoverage = null)
+    ForecastCoverage? ForecastCoverage = null,
+    RouteCoastalPruningDiagnostics? CoastalPruning = null,
+    ImmutableArray<RouteCoastalSeedAction> CoastalSeedActions = default)
 {
+    private ImmutableArray<RouteCoastalSeedAction> _coastalSeedActions = ValidateSeedActions(CoastalSeedActions);
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public ImmutableArray<RouteCoastalSeedAction> CoastalSeedActions
+    {
+        get => _coastalSeedActions;
+        init => _coastalSeedActions = ValidateSeedActions(value);
+    }
+
+    private static ImmutableArray<RouteCoastalSeedAction> ValidateSeedActions(ImmutableArray<RouteCoastalSeedAction> actions)
+    {
+        if (!actions.IsDefault && actions.Any(action => action is null))
+            throw new ArgumentException("Coastal seed actions cannot contain null entries.", nameof(actions));
+        return actions;
+    }
+
     internal bool HasSameContent(RouteNativeRunAudit? other) =>
         other is not null &&
         (Routing is null ? other.Routing is null : Routing.HasSameContent(other.Routing)) &&
         (ForecastCoverage is null ? other.ForecastCoverage is null : ForecastCoverage.HasSameContent(other.ForecastCoverage)) &&
-        this == other with { Routing = Routing, ForecastCoverage = ForecastCoverage };
+        (CoastalSeedActions.IsDefault ? other.CoastalSeedActions.IsDefault :
+            !other.CoastalSeedActions.IsDefault && CoastalSeedActions.SequenceEqual(other.CoastalSeedActions)) &&
+        this == other with { Routing = Routing, ForecastCoverage = ForecastCoverage, CoastalSeedActions = CoastalSeedActions };
 }
 
 /// <summary>The observed native v2 routing block, distinct from requested and bridge-resolved settings.</summary>
@@ -586,6 +621,13 @@ public sealed record RouteRunAudit
         ArgumentNullException.ThrowIfNull(nativeIdentity);
         ArgumentNullException.ThrowIfNull(attempts);
         if (!Enum.IsDefined(requestedSolver)) throw new ArgumentOutOfRangeException(nameof(requestedSolver));
+        if (setup.CoastalPruning != RouteCoastalPruningMode.Off && nativeIdentity.BridgeAbiVersion < 9)
+            throw new ArgumentException("Conservative coastal pruning audit requires bridge ABI 9 or newer.", nameof(nativeIdentity));
+        if (!Enum.IsDefined(resolved.CoastalPruning) || setup.CoastalPruning != resolved.CoastalPruning ||
+            (resolved.CoastalPruning != RouteCoastalPruningMode.Off &&
+             (resolved.Optimization.Solver != RouteSolver.IsochroneBeam || requestedSolver != RouteSolver.IsochroneBeam)) ||
+            native?.CoastalPruning is { } coastal && coastal.Mode != resolved.CoastalPruning)
+            throw new ArgumentException("Requested, resolved and observed coastal pruning settings must agree.", nameof(resolved));
         var frozenAttempts = attempts.ToImmutableArray();
         if (frozenAttempts.IsEmpty || frozenAttempts[0].Solver != requestedSolver ||
             frozenAttempts.Any(attempt => attempt.AttemptId == Guid.Empty ||

@@ -8,6 +8,246 @@ namespace Navtool.Infrastructure.Tests;
 
 public sealed class RoutePlanJsonRepositoryTests
 {
+    private static RouteCoastalPruningDiagnostics CoastalAudit() =>
+        new(RouteCoastalPruningMode.ConservativeLandAware, "ready", "Some coverage remains uncertain",
+            long.MaxValue, 2, 3, 4, 5, 6, 7, DateTimeOffset.Parse("2026-08-01T19:00:00Z"),
+            "source-fingerprint", "bounded-domain-identity", "validated", 27.25, long.MaxValue, 0.002, 0.15);
+
+    [Fact]
+    public async Task Coastal_selection_and_complete_audit_round_trip_and_copy_without_asset_access()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var coastal = CoastalAudit();
+        var plan = CreateAuditedPlan(directory.Path, coastal);
+        await repository.SaveAsync(plan);
+        var loaded = await repository.OpenAsync(plan.Id);
+        var copy = await repository.SaveAsAsync(loaded, "Coastal copy");
+        foreach (var restored in new[] { loaded, await repository.OpenAsync(copy.Id) })
+        {
+            Assert.Equal(RouteCoastalPruningMode.ConservativeLandAware, restored.RoutingSetup!.CoastalPruning);
+            foreach (var leg in restored.Results[0].Legs)
+            {
+                var route = leg.Route!;
+                Assert.Equal(coastal, route.Diagnostics.CoastalPruning);
+                Assert.Equal(coastal, route.NativeAudit!.CoastalPruning);
+                Assert.Equal(coastal, route.RunAudit!.Native!.CoastalPruning);
+                Assert.Equal(
+                    new[] { new RouteCoastalSeedAction(270, TimeSpan.FromMinutes(15)),
+                            new RouteCoastalSeedAction(275, TimeSpan.FromSeconds(901)) },
+                    route.NativeAudit.CoastalSeedActions.ToArray());
+                Assert.Equal(route.NativeAudit.CoastalSeedActions.ToArray(),
+                    route.RunAudit.Native.CoastalSeedActions.ToArray());
+                Assert.Equal(coastal.Mode, route.RunAudit.Setup.CoastalPruning);
+                Assert.Equal(coastal.Mode, route.RunAudit.Resolved.CoastalPruning);
+                Assert.Equal(coastal, route.WithLandAvoidance(route.LandAvoidance).Diagnostics.CoastalPruning);
+                Assert.Equal(coastal, route.WithRunAudit(route.RunAudit).NativeAudit!.CoastalPruning);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    public async Task Earlier_schemas_migrate_coastal_selection_to_off_and_audit_to_unknown(int version)
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = version == 6 ? CreateAuditedPlan(directory.Path, CoastalAudit()) : WithResult(CreatePlan());
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        root["schemaVersion"] = version;
+        if (version == 1)
+        {
+            root["plan"]!.AsObject().Remove("currentPosition");
+            root["plan"]!.AsObject().Remove("activeLegId");
+        }
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+        var original = await File.ReadAllBytesAsync(path);
+        var loaded = await repository.OpenAsync(plan.Id);
+        Assert.Equal(original, await File.ReadAllBytesAsync(path));
+        if (version == 6)
+            Assert.Equal(RouteCoastalPruningMode.Off, loaded.RoutingSetup!.CoastalPruning);
+        else
+            Assert.Null(loaded.RoutingSetup);
+        for (var i = 0; i < loaded.Results[0].Legs.Length; i++)
+        {
+            var leg = loaded.Results[0].Legs[i];
+            var old = plan.Results[0].Legs[i];
+            Assert.Equal(old.Route!.Points.Select(point => point.Location), leg.Route!.Points.Select(point => point.Location));
+            Assert.Equal(old.Route.ArrivalTime, leg.Route.ArrivalTime);
+            Assert.Null(leg.Route.Diagnostics.CoastalPruning);
+            Assert.Null(leg.Route.NativeAudit?.CoastalPruning);
+            Assert.True(leg.Route.NativeAudit?.CoastalSeedActions.IsDefault ?? true);
+            if (version == 6)
+            {
+                Assert.Equal(old.Origin, leg.Origin);
+                Assert.Equal(old.PlannedHold, leg.PlannedHold);
+                Assert.Equal(old.ExecutionSession, leg.ExecutionSession);
+                Assert.Equal(RouteCoastalPruningMode.Off, leg.Route.RunAudit!.Setup.CoastalPruning);
+                Assert.Equal(RouteCoastalPruningMode.Off, leg.Route.RunAudit.Resolved.CoastalPruning);
+                Assert.Null(leg.Route.RunAudit.Native!.CoastalPruning);
+                Assert.True(leg.Route.RunAudit.Native.CoastalSeedActions.IsDefault);
+            }
+        }
+        await repository.SaveAsync(loaded);
+        var backup = Assert.Single(Directory.EnumerateFiles(Path.Combine(repository.RootDirectory, "backups"), "*.json"));
+        Assert.Equal(original, await File.ReadAllBytesAsync(backup));
+        var saved = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        Assert.Equal(7, saved["schemaVersion"]!.GetValue<int>());
+        Assert.Null((await repository.OpenAsync(plan.Id)).Results[0].Legs[0].Route!.Diagnostics.CoastalPruning);
+    }
+
+    [Fact]
+    public async Task Absent_optional_coastal_provenance_remains_unknown_after_round_trip()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path, CoastalAudit());
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        foreach (var leg in root["plan"]!["results"]![0]!["legs"]!.AsArray())
+        {
+            var route = leg!["route"]!;
+            foreach (var audit in new[] { route["diagnostics"]!["coastalPruning"]!,
+                         route["nativeAudit"]!["coastalPruning"]!, route["runAudit"]!["native"]!["coastalPruning"]! })
+                foreach (var field in new[] { "sourceIdentity", "domainIdentity", "seedStatus", "speedUpperKnots",
+                             "topologyCaps", "numericalMarginNauticalMiles", "clearanceNauticalMiles" })
+                    audit.AsObject().Remove(field);
+        }
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+        var restored = await repository.OpenAsync(plan.Id);
+        await repository.SaveAsync(restored);
+        var coastal = (await repository.OpenAsync(plan.Id)).Results[0].Legs[0].Route!.Diagnostics.CoastalPruning!;
+        Assert.Null(coastal.SourceIdentity);
+        Assert.Null(coastal.DomainIdentity);
+        Assert.Null(coastal.SeedStatus);
+        Assert.Null(coastal.SpeedUpperKnots);
+        Assert.Null(coastal.TopologyCaps);
+        Assert.Null(coastal.NumericalMarginNauticalMiles);
+        Assert.Null(coastal.ClearanceNauticalMiles);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Coastal_seed_audit_preserves_unknown_versus_recorded_empty(bool recorded)
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path, CoastalAudit());
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        foreach (var leg in root["plan"]!["results"]![0]!["legs"]!.AsArray())
+        {
+            var route = leg!["route"]!;
+            route["nativeAudit"]!["coastalSeedActions"] = recorded ? new JsonArray() : null;
+            route["runAudit"]!["native"]!["coastalSeedActions"] = recorded ? new JsonArray() : null;
+        }
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+        await repository.SaveAsync(await repository.OpenAsync(plan.Id));
+        var audit = (await repository.OpenAsync(plan.Id)).Results[0].Legs[0].Route!.NativeAudit!;
+        Assert.Equal(!recorded, audit.CoastalSeedActions.IsDefault);
+        Assert.True(audit.CoastalSeedActions.IsDefaultOrEmpty);
+    }
+
+    [Theory]
+    [InlineData(-0.001, false)]
+    [InlineData(-1, false)]
+    [InlineData(360, false)]
+    [InlineData(720, false)]
+    [InlineData(0, true)]
+    [InlineData(359.999, true)]
+    public async Task Stored_seed_headings_require_the_canonical_compass_range(double heading, bool valid)
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path, CoastalAudit());
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        var route = root["plan"]!["results"]![0]!["legs"]![0]!["route"]!;
+        route["nativeAudit"]!["coastalSeedActions"]![0]!["headingDegrees"] = heading;
+        route["runAudit"]!["native"]!["coastalSeedActions"]![0]!["headingDegrees"] = heading;
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+        if (!valid)
+            await Assert.ThrowsAsync<RoutePlanRepositoryException>(async () => await repository.OpenAsync(plan.Id));
+        else
+            Assert.Equal(heading, (await repository.OpenAsync(plan.Id)).Results[0].Legs[0].Route!
+                .NativeAudit!.CoastalSeedActions[0].HeadingDegrees);
+    }
+
+    [Theory]
+    [InlineData("negative")]
+    [InlineData("overflow")]
+    [InlineData("fractional")]
+    [InlineData("missing-counter")]
+    [InlineData("missing-mode")]
+    [InlineData("unknown-mode")]
+    [InlineData("empty-status")]
+    [InlineData("conflicting-counter")]
+    [InlineData("conflicting-resolved")]
+    [InlineData("missing-setup-mode")]
+    [InlineData("old-abi")]
+    [InlineData("invalid-speed")]
+    [InlineData("invalid-topology-caps")]
+    [InlineData("invalid-margin")]
+    [InlineData("invalid-clearance")]
+    [InlineData("conflicting-source")]
+    [InlineData("invalid-seed-duration")]
+    [InlineData("missing-seed-heading")]
+    [InlineData("null-seed-action")]
+    [InlineData("conflicting-seed-action")]
+    [InlineData("missing-all-coastal-audit")]
+    public async Task Corrupted_coastal_audit_or_settings_cannot_silently_become_zero_or_off(string corruption)
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path, CoastalAudit());
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        var route = root["plan"]!["results"]![0]!["legs"]![0]!["route"]!;
+        var coastal = route["diagnostics"]!["coastalPruning"]!.AsObject();
+        switch (corruption)
+        {
+            case "negative": coastal["seedEvaluations"] = -1; break;
+            case "overflow": coastal["skippedParents"] = JsonNode.Parse("9223372036854775808"); break;
+            case "fractional": coastal["topologyWork"] = 1.5; break;
+            case "missing-counter": coastal.Remove("horizonCandidates"); break;
+            case "missing-mode": coastal.Remove("mode"); break;
+            case "unknown-mode": coastal["mode"] = 900; break;
+            case "empty-status": coastal["status"] = ""; break;
+            case "conflicting-counter": coastal["disconnectedCandidates"] = 99; break;
+            case "conflicting-resolved": route["runAudit"]!["resolved"]!["coastalPruning"] = "Off"; break;
+            case "missing-setup-mode": root["plan"]!["setup"]!.AsObject().Remove("coastalPruning"); break;
+            case "old-abi": route["runAudit"]!["nativeIdentity"]!["bridgeAbiVersion"] = 8; break;
+            case "invalid-speed": coastal["speedUpperKnots"] = 0; break;
+            case "invalid-topology-caps": coastal["topologyCaps"] = -1; break;
+            case "invalid-margin": coastal["numericalMarginNauticalMiles"] = -0.1; break;
+            case "invalid-clearance": coastal["clearanceNauticalMiles"] = -0.1; break;
+            case "conflicting-source": coastal["sourceIdentity"] = "different-source"; break;
+            case "invalid-seed-duration": route["nativeAudit"]!["coastalSeedActions"]![0]!["durationTicks"] = -1; break;
+            case "missing-seed-heading": route["nativeAudit"]!["coastalSeedActions"]![0]!.AsObject().Remove("headingDegrees"); break;
+            case "null-seed-action": route["nativeAudit"]!["coastalSeedActions"]![0] = null; break;
+            case "conflicting-seed-action": route["nativeAudit"]!["coastalSeedActions"]![0]!["headingDegrees"] = 12; break;
+            case "missing-all-coastal-audit":
+                route["diagnostics"]!["coastalPruning"] = null;
+                route["nativeAudit"]!["coastalPruning"] = null;
+                route["runAudit"]!["native"]!["coastalPruning"] = null;
+                break;
+        }
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+        await Assert.ThrowsAsync<RoutePlanRepositoryException>(async () => await repository.OpenAsync(plan.Id));
+    }
+
     [Fact]
     public async Task Failed_solver_attempts_round_trip_from_workflow_and_survive_copy_without_geometry()
     {
@@ -414,7 +654,7 @@ public sealed class RoutePlanJsonRepositoryTests
         Assert.Null(loaded.Results[0].Legs[1].Route);
     }
 
-    private static RoutePlan CreateAuditedPlan(string root)
+    private static RoutePlan CreateAuditedPlan(string root, RouteCoastalPruningDiagnostics? coastal = null)
     {
         var boat = new BoatAsset(new string('a', 64), "Imported cruising polar.csv", BoatAssetKind.Imported,
             BoatPolarFormat.NativeMatrix, new("Native validation accepted", MaximumWindSpeedKnots: 50), 35);
@@ -424,7 +664,8 @@ public sealed class RoutePlanJsonRepositoryTests
             missingDataPolicy: RouteMissingDataPolicy.RejectTransition);
         var setup = new RoutingSetup(boat, RoutingQuality.NativeAccurate, .85, 1,
             RoutingLandSource.RegionalGshhg, hardDuration: TimeSpan.FromHours(240),
-            localForecastMaximumGap: TimeSpan.FromHours(3), regionalLand: regional);
+            localForecastMaximumGap: TimeSpan.FromHours(3), regionalLand: regional,
+            coastalPruning: coastal?.Mode ?? RouteCoastalPruningMode.Off);
         var basePlan = CreatePlan();
         var plan = new RoutePlan(basePlan.Id, basePlan.Name, basePlan.Waypoints, sailedLegIds: basePlan.SailedLegIds,
             activeLegId: basePlan.Legs[1].Id, routingSetup: setup);
@@ -437,8 +678,9 @@ public sealed class RoutePlanJsonRepositoryTests
              new(TimeSpan.FromMinutes(30), TimeSpan.FromHours(24)), new(TimeSpan.FromHours(1))]);
         var optimization = new RouteOptimizationOptions(maneuver: new(TimeSpan.FromSeconds(40), TimeSpan.FromSeconds(30)),
             maximumTrueWindSpeedKnots: 40, destinationFront: new(90, RouteDestinationFrontSegmentPolicy.AllMeaningfulComponents, 4));
-        var resolved = new ResolvedRoutingOptions(setup.Quality, optimization, search, .85, 1, TimeSpan.FromHours(240));
-        var build = new NativeRoutingIdentity(8, "0.6.0", "cd476a84ef3edea9582d77f21588a23af727e083", "fetched-clean", 8191);
+        var resolved = new ResolvedRoutingOptions(setup.Quality, optimization, search, .85, 1, TimeSpan.FromHours(240), setup.CoastalPruning);
+        var build = new NativeRoutingIdentity(coastal is null ? 8 : 9, "0.6.0",
+            "cd476a84ef3edea9582d77f21588a23af727e083", "fetched-clean", 8191);
         var validTimes = new[] { date.AddHours(-6), date.AddHours(-5) }
             .Concat(Enumerable.Range(1, 18).Select(index => date.AddHours(-6 + index * 3)))
             .ToImmutableArray();
@@ -457,10 +699,15 @@ public sealed class RoutePlanJsonRepositoryTests
                 RouteWindSampling.Midpoint, RouteAbovePolarRangePolicy.NoSpeed, 40, TimeSpan.FromSeconds(40),
                 TimeSpan.FromSeconds(30), date.AddHours(-6), date.AddHours(-6), date.AddDays(2), ["native warning"]);
             var native = new RouteNativeRunAudit("route_result_v2", RouteSolver.IsochroneBeam, 1, TimeSpan.FromHours(240),
-                true, 3, 1, 0, routing, "forecast-source", "explicit-polar-source", "explicit_time", coverage);
-            var audit = new RouteRunAudit(Guid.NewGuid(), setup, resolved, build, RouteSolver.TimeDependentLattice,
-                [new(Guid.NewGuid(), RouteSolver.TimeDependentLattice, date, date.AddSeconds(1), RoutingFailureKind.RecoverableSolver, "disconnected"),
-                 new(Guid.NewGuid(), RouteSolver.IsochroneBeam, date.AddSeconds(1), date.AddSeconds(2))],
+                true, 3, 1, 0, routing, "forecast-source", "explicit-polar-source", "explicit_time", coverage, coastal,
+                coastal is null ? default :
+                    [new(270, TimeSpan.FromMinutes(15)), new(275, TimeSpan.FromSeconds(901))]);
+            var audit = new RouteRunAudit(Guid.NewGuid(), setup, resolved, build,
+                coastal is null ? RouteSolver.TimeDependentLattice : RouteSolver.IsochroneBeam,
+                coastal is null
+                ? [new(Guid.NewGuid(), RouteSolver.TimeDependentLattice, date, date.AddSeconds(1), RoutingFailureKind.RecoverableSolver, "disconnected"),
+                 new(Guid.NewGuid(), RouteSolver.IsochroneBeam, date.AddSeconds(1), date.AddSeconds(2))]
+                : [new(Guid.NewGuid(), RouteSolver.IsochroneBeam, date, date.AddSeconds(2))],
                 new(new(ForecastProvider.Noaa, ForecastModel.NoaaGfs, date.AddHours(-6)),
                     new GeographicBounds(34, 41, -66, -51), new GeographicBounds(34, 41, -66, -51),
                     date.AddHours(-6), date.AddDays(2), TimeSpan.FromHours(3),
@@ -470,7 +717,7 @@ public sealed class RoutePlanJsonRepositoryTests
             var route = new RouteResult(request, ForecastModel.NoaaGfs,
                 [new(origin, departure, 90, 6, 15, 180, 0, environment, 13, 170),
                  new(endpoint, departure.AddHours(1), 90, 6, 15, 180, 50, environment, 13, 170)],
-                new RouteDiagnostics(1, 2, 1, 1, TimeSpan.FromSeconds(2), 3, 1, 0),
+                new RouteDiagnostics(1, 2, 1, 1, TimeSpan.FromSeconds(2), 3, 1, 0, coastal),
                 RouteCompletion.DestinationReached, new(LandAvoidanceStatus.Applied, Attribution: "GSHHG"),
                 RouteSolver.IsochroneBeam, null, null, null, audit, native);
             var hold = leg.Index == 0 ? new RoutePlannedHold(endpoint, route.ArrivalTime,

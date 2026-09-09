@@ -22,43 +22,34 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
                 $"Route plan schema version {currentVersion} is not supported by this application version.");
         }
 
-        if (fromVersion == 5)
+        if (fromVersion is < 1 or > 6)
+            throw new InvalidDataException(
+                $"Route plan schema version {fromVersion} is not supported by this application version.");
+        var current = JsonDocument.Parse(document.RootElement.GetRawText());
+        try
         {
-            return MigrateV5ToV6(document);
+            for (var version = fromVersion; version < currentVersion; version++)
+            {
+                var next = version switch
+                {
+                    1 => MigrateV1ToV2(current),
+                    2 => MigrateV2ToV3(current),
+                    3 => MigrateV3ToV4(current),
+                    4 => MigrateV4ToV5(current),
+                    5 => MigrateV5ToV6(current),
+                    6 => MigrateV6ToV7(current),
+                    _ => throw new InvalidDataException("Unsupported migration step.")
+                };
+                current.Dispose();
+                current = next;
+            }
+            return current;
         }
-
-        if (fromVersion == 4)
+        catch
         {
-            using var versionFive = MigrateV4ToV5(document);
-            return MigrateV5ToV6(versionFive);
+            current.Dispose();
+            throw;
         }
-
-        if (fromVersion == 3)
-        {
-            using var versionFour = MigrateV3ToV4(document);
-            using var versionFive = MigrateV4ToV5(versionFour);
-            return MigrateV5ToV6(versionFive);
-        }
-
-        if (fromVersion == 2)
-        {
-            using var versionThree = MigrateV2ToV3(document);
-            using var versionFour = MigrateV3ToV4(versionThree);
-            using var versionFive = MigrateV4ToV5(versionFour);
-            return MigrateV5ToV6(versionFive);
-        }
-
-        if (fromVersion == 1)
-        {
-            using var versionTwo = MigrateV1ToV2(document);
-            using var versionThree = MigrateV2ToV3(versionTwo);
-            using var versionFour = MigrateV3ToV4(versionThree);
-            using var versionFive = MigrateV4ToV5(versionFour);
-            return MigrateV5ToV6(versionFive);
-        }
-
-        throw new InvalidDataException(
-            $"Route plan schema version {fromVersion} is not supported by this application version.");
     }
 
     /// <summary>
@@ -198,6 +189,36 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
         return JsonDocument.Parse(root.ToJsonString());
     }
 
+    private static JsonDocument MigrateV6ToV7(JsonDocument document)
+    {
+        var root = JsonNode.Parse(document.RootElement.GetRawText()) as JsonObject ??
+                   throw new InvalidDataException("A route plan document must be a JSON object.");
+        root["schemaVersion"] = 7;
+        if (root["plan"]?["setup"] is JsonObject setup)
+            setup["coastalPruning"] = nameof(RouteCoastalPruningMode.Off);
+        foreach (var route in EnumerateRoutes(root))
+        {
+            if (route["diagnostics"] is JsonObject diagnostics)
+                diagnostics["coastalPruning"] = null;
+            if (route["nativeAudit"] is JsonObject native)
+            {
+                native["coastalPruning"] = null;
+                native["coastalSeedActions"] = null;
+            }
+            if (route["runAudit"] is not JsonObject audit) continue;
+            if (audit["setup"] is JsonObject requested)
+                requested["coastalPruning"] = nameof(RouteCoastalPruningMode.Off);
+            if (audit["resolved"] is JsonObject resolved)
+                resolved["coastalPruning"] = nameof(RouteCoastalPruningMode.Off);
+            if (audit["native"] is JsonObject observed)
+            {
+                observed["coastalPruning"] = null;
+                observed["coastalSeedActions"] = null;
+            }
+        }
+        return JsonDocument.Parse(root.ToJsonString());
+    }
+
     private static IEnumerable<JsonObject> EnumerateRoutes(JsonObject root)
     {
         if (root["plan"]?["results"] is not JsonArray results)
@@ -268,7 +289,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
 
 public sealed class RoutePlanJsonRepository : IRoutePlanRepository
 {
-    public const int CurrentSchemaVersion = 6;
+    public const int CurrentSchemaVersion = 7;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -738,7 +759,8 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
                 route.Diagnostics.CalculationDuration?.Ticks,
                 route.Diagnostics.EligibilityEvaluations,
                 route.Diagnostics.PrunedCandidates,
-                route.Diagnostics.FutureProbeMisses),
+                route.Diagnostics.FutureProbeMisses,
+                route.Diagnostics.CoastalPruning is { } coastal ? ToDto(coastal) : null),
             route.Completion,
             new RouteLandAvoidanceDto(
                 route.LandAvoidance.Status,
@@ -1005,7 +1027,8 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
                     : TimeSpan.FromTicks(dto.Diagnostics.CalculationDurationTicks.Value),
                 dto.Diagnostics.EligibilityEvaluations,
                 dto.Diagnostics.PrunedCandidates,
-                dto.Diagnostics.FutureProbeMisses),
+                dto.Diagnostics.FutureProbeMisses,
+                dto.Diagnostics.CoastalPruning is { } coastal ? FromDto(coastal) : null),
             dto.Completion,
             new RouteLandAvoidance(
                 dto.LandAvoidance.Status,
@@ -1105,7 +1128,8 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
                 new(land.SourcePath, land.SourceIdentity, ToDto(land.StudyBounds),
                     land.ResolutionNauticalMiles, land.ClearanceNauticalMiles, land.DistanceCapNauticalMiles,
                     land.MaximumGridNodes, land.MaximumSourcePoints, land.MaximumGeometryTests,
-                    land.MaximumSubdivisionDepth, land.Attribution, land.MissingDataPolicy));
+                    land.MaximumSubdivisionDepth, land.Attribution, land.MissingDataPolicy),
+            value.CoastalPruning);
 
     private static RoutingSetup FromDto(RoutingSetupDto dto)
     {
@@ -1131,7 +1155,8 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
                 new(land.SourcePath, land.SourceIdentity, FromDto(land.StudyBounds),
                     land.ResolutionNauticalMiles, land.ClearanceNauticalMiles, land.DistanceCapNauticalMiles,
                     land.MaximumGridNodes, land.MaximumSourcePoints, land.MaximumGeometryTests,
-                    land.MaximumSubdivisionDepth, land.Attribution, land.MissingDataPolicy));
+                    land.MaximumSubdivisionDepth, land.Attribution, land.MissingDataPolicy),
+            dto.CoastalPruning);
     }
 
     private static bool OptionalNonnegative(double? value) =>
@@ -1212,16 +1237,18 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
 
     private static ResolvedRoutingOptionsDto ToDto(ResolvedRoutingOptions value) =>
         new(value.Quality, ToDto(value.Optimization), ToDto(value.Search), value.PerformanceFactor,
-            value.ArrivalRadiusNauticalMiles, value.HardDuration?.Ticks);
+            value.ArrivalRadiusNauticalMiles, value.HardDuration?.Ticks, value.CoastalPruning);
 
     private static ResolvedRoutingOptions FromDto(ResolvedRoutingOptionsDto dto)
     {
         ValidateHardDuration(dto.HardDurationTicks);
-        if (!Enum.IsDefined(dto.Quality) || !double.IsFinite(dto.PerformanceFactor) || dto.PerformanceFactor <= 0 ||
+        if (!Enum.IsDefined(dto.Quality) || !Enum.IsDefined(dto.CoastalPruning) ||
+            dto.CoastalPruning != RouteCoastalPruningMode.Off && dto.Optimization.Solver != RouteSolver.IsochroneBeam ||
+            !double.IsFinite(dto.PerformanceFactor) || dto.PerformanceFactor <= 0 ||
             !double.IsFinite(dto.ArrivalRadiusNauticalMiles) || dto.ArrivalRadiusNauticalMiles <= 0)
             throw new InvalidDataException("Stored resolved routing settings are invalid.");
         return new(dto.Quality, FromDto(dto.Optimization), FromDto(dto.Search), dto.PerformanceFactor,
-            dto.ArrivalRadiusNauticalMiles, Ticks(dto.HardDurationTicks));
+            dto.ArrivalRadiusNauticalMiles, Ticks(dto.HardDurationTicks), dto.CoastalPruning);
     }
 
     private static RouteRunAuditDto ToDto(RouteRunAudit value) =>
@@ -1246,12 +1273,13 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
     private static RouteRunAudit FromDto(RouteRunAuditDto dto)
     {
         var identity = dto.NativeIdentity;
-        if (identity.BridgeAbiVersion != 8 || string.IsNullOrWhiteSpace(identity.LibraryVersion) ||
+        if (identity.BridgeAbiVersion is not (8 or 9) || string.IsNullOrWhiteSpace(identity.LibraryVersion) ||
             string.IsNullOrWhiteSpace(identity.SourceRevision) || string.IsNullOrWhiteSpace(identity.BuildIdentity))
             throw new InvalidDataException("Stored native build identity is invalid or unsupported.");
         var setup = FromDto(dto.Setup);
         var resolved = FromDto(dto.Resolved);
         if (setup.Quality != resolved.Quality || setup.PerformanceFactor != resolved.PerformanceFactor ||
+            setup.CoastalPruning != resolved.CoastalPruning ||
             setup.ArrivalRadiusNauticalMiles != resolved.ArrivalRadiusNauticalMiles ||
             (setup.HardDuration is { } hard && hard != resolved.HardDuration))
             throw new InvalidDataException("Stored requested and effective cruising settings disagree.");
@@ -1328,7 +1356,10 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
             value.NativeLandmaskApplied, value.EligibilityEvaluations, value.PrunedCandidates,
             value.FutureProbeMisses, value.Routing is null ? null : ToDto(value.Routing),
             value.ForecastSource, value.PolarSource, value.DepartureSource,
-            value.ForecastCoverage is null ? null : ToDto(value.ForecastCoverage));
+            value.ForecastCoverage is null ? null : ToDto(value.ForecastCoverage),
+            value.CoastalPruning is null ? null : ToDto(value.CoastalPruning),
+            value.CoastalSeedActions.IsDefault ? null : value.CoastalSeedActions.Select(
+                action => new RouteCoastalSeedActionDto(action.HeadingDegrees, action.Duration.Ticks)).ToArray());
 
     private static RouteNativeRunAudit FromDto(RouteNativeRunAuditDto dto)
     {
@@ -1350,8 +1381,26 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
             throw new InvalidDataException("Stored native coverage contradicts native routing forecast validity.");
         return new(dto.Schema, dto.Solver, dto.EffectiveArrivalRadiusNauticalMiles, Ticks(dto.HardDurationTicks),
             dto.NativeLandmaskApplied, dto.EligibilityEvaluations, dto.PrunedCandidates,
-            dto.FutureProbeMisses, routing, dto.ForecastSource, dto.PolarSource, dto.DepartureSource, coverage);
+            dto.FutureProbeMisses, routing, dto.ForecastSource, dto.PolarSource, dto.DepartureSource, coverage,
+            dto.CoastalPruning is null ? null : FromDto(dto.CoastalPruning),
+            dto.CoastalSeedActions is null ? default : dto.CoastalSeedActions.Select(action =>
+                action is null ? throw new InvalidDataException("A stored coastal seed action is null.") :
+                    new RouteCoastalSeedAction(action.HeadingDegrees, TimeSpan.FromTicks(action.DurationTicks))).ToImmutableArray());
     }
+
+    private static RouteCoastalPruningDiagnosticsDto ToDto(RouteCoastalPruningDiagnostics value) =>
+        new(value.Mode, value.Status, value.UnavailableReason, value.SkippedParents,
+            value.DisconnectedCandidates, value.HorizonCandidates, value.IncumbentCandidates,
+            value.BoundUnavailable, value.SeedEvaluations, value.TopologyWork, value.IncumbentArrival,
+            value.SourceIdentity, value.DomainIdentity, value.SeedStatus, value.SpeedUpperKnots,
+            value.TopologyCaps, value.NumericalMarginNauticalMiles, value.ClearanceNauticalMiles);
+
+    private static RouteCoastalPruningDiagnostics FromDto(RouteCoastalPruningDiagnosticsDto dto) =>
+        new(dto.Mode, dto.Status, dto.UnavailableReason, dto.SkippedParents,
+            dto.DisconnectedCandidates, dto.HorizonCandidates, dto.IncumbentCandidates,
+            dto.BoundUnavailable, dto.SeedEvaluations, dto.TopologyWork, dto.IncumbentArrival,
+            dto.SourceIdentity, dto.DomainIdentity, dto.SeedStatus, dto.SpeedUpperKnots,
+            dto.TopologyCaps, dto.NumericalMarginNauticalMiles, dto.ClearanceNauticalMiles);
 
     private static RouteNativeRunMetadataDto ToDto(RouteNativeRunMetadata value) =>
         new(value.Objective, value.QualityClaim, value.Solver,
@@ -1416,7 +1465,8 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
     private sealed record RoutingSetupDto(
         BoatAssetDto Boat, RoutingQuality Quality, double PerformanceFactor, double ArrivalRadiusNauticalMiles,
         RoutingLandSource LandSource, ForecastRefreshPolicy ForecastPolicy, long? HardDurationTicks,
-        long LocalForecastMaximumGapTicks, RouteRegionalLandPolicyDto? RegionalLand);
+        long LocalForecastMaximumGapTicks, RouteRegionalLandPolicyDto? RegionalLand,
+        [property: JsonRequired] RouteCoastalPruningMode CoastalPruning);
     private sealed record RouteRegionalLandPolicyDto(
         string SourcePath, string SourceIdentity, BoundsDto StudyBounds,
         double ResolutionNauticalMiles, double ClearanceNauticalMiles, double DistanceCapNauticalMiles,
@@ -1452,7 +1502,8 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
     private sealed record RouteRoutingIntervalDto(long IntervalTicks, long? UntilElapsedTicks);
     private sealed record ResolvedRoutingOptionsDto(
         RoutingQuality Quality, RouteOptimizationDto Optimization, RouteSearchSettingsDto Search,
-        double PerformanceFactor, double ArrivalRadiusNauticalMiles, long? HardDurationTicks);
+        double PerformanceFactor, double ArrivalRadiusNauticalMiles, long? HardDurationTicks,
+        [property: JsonRequired] RouteCoastalPruningMode CoastalPruning);
     private sealed record RouteProfessionalOverridesDto(RouteOptimizationDto? Optimization, RouteSearchSettingsDto? Search);
     private sealed record NativeRoutingIdentityDto(
         int BridgeAbiVersion, string LibraryVersion, string SourceRevision, string BuildIdentity, ulong Capabilities);
@@ -1478,7 +1529,31 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
         bool? NativeLandmaskApplied, long? EligibilityEvaluations, long? PrunedCandidates,
         long? FutureProbeMisses, RouteNativeRunMetadataDto? Routing,
         string? ForecastSource, string? PolarSource, string? DepartureSource,
-        ForecastCoverageDto? ForecastCoverage = null);
+        ForecastCoverageDto? ForecastCoverage = null,
+        RouteCoastalPruningDiagnosticsDto? CoastalPruning = null,
+        RouteCoastalSeedActionDto[]? CoastalSeedActions = null);
+    private sealed record RouteCoastalSeedActionDto(
+        [property: JsonRequired] double HeadingDegrees,
+        [property: JsonRequired] long DurationTicks);
+    private sealed record RouteCoastalPruningDiagnosticsDto(
+        [property: JsonRequired] RouteCoastalPruningMode Mode,
+        [property: JsonRequired] string Status,
+        string? UnavailableReason,
+        [property: JsonRequired] long SkippedParents,
+        [property: JsonRequired] long DisconnectedCandidates,
+        [property: JsonRequired] long HorizonCandidates,
+        [property: JsonRequired] long IncumbentCandidates,
+        [property: JsonRequired] long BoundUnavailable,
+        [property: JsonRequired] long SeedEvaluations,
+        [property: JsonRequired] long TopologyWork,
+        DateTimeOffset? IncumbentArrival,
+        string? SourceIdentity = null,
+        string? DomainIdentity = null,
+        string? SeedStatus = null,
+        double? SpeedUpperKnots = null,
+        long? TopologyCaps = null,
+        double? NumericalMarginNauticalMiles = null,
+        double? ClearanceNauticalMiles = null);
     private sealed record RouteNativeRunMetadataDto(
         string Objective, string QualityClaim, RouteSolver Solver, double DestinationLatitude, double DestinationLongitude,
         double ArrivalRadiusNauticalMiles, double RemainingDistanceNauticalMiles, double BoatSpeedFactor,
@@ -1637,7 +1712,8 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
         long? CalculationDurationTicks,
         long? EligibilityEvaluations = null,
         long? PrunedCandidates = null,
-        long? FutureProbeMisses = null);
+        long? FutureProbeMisses = null,
+        RouteCoastalPruningDiagnosticsDto? CoastalPruning = null);
 
     private sealed record RouteLandAvoidanceDto(
         LandAvoidanceStatus Status,

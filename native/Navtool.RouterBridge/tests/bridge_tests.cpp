@@ -757,7 +757,7 @@ std::filesystem::path create_ecmwf_grib(bool mixed_run = false) {
 int main() {
     try {
         require(
-            navtool_router_bridge_abi_version_v1() == 8U,
+            navtool_router_bridge_abi_version_v1() == NAVTOOL_ROUTER_BRIDGE_ABI_VERSION,
             "unexpected bridge ABI version");
         require(
             (navtool_router_bridge_capabilities_v1() &

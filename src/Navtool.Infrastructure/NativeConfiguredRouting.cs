@@ -21,6 +21,14 @@ public sealed partial class NativeRouterBridge
         NativeRegionalLand? land = null) =>
         ExecuteRoute(forecast, polar, request, model, options, onProgress, isSegmentEligible, cancellationToken, land, null);
 
+    internal RouteResult CalculateWithCoastalTopology(
+        NativeForecast forecast, NativePolar polar, RouteRequest request, ForecastModel model,
+        ResolvedRoutingOptions options, Action<RouteCalculationSnapshot>? onProgress,
+        Func<Coordinate, Coordinate, bool>? isSegmentEligible, CancellationToken cancellationToken,
+        NativeRegionalLand? land, CoastalTopologyPreparation? topology, Action<string>? onPreparation = null) =>
+        ExecuteRoute(forecast, polar, request, model, options, onProgress, isSegmentEligible,
+            cancellationToken, land, null, topology, onPreparation);
+
     public RouteResult EvaluateTimedActions(NativeForecast forecast, NativePolar polar, RouteRequest request,
         ForecastModel model, ResolvedRoutingOptions options, IReadOnlyList<NativeTimedHeadingAction> actions,
         Func<Coordinate, Coordinate, bool>? isSegmentEligible = null, NativeRegionalLand? land = null,
@@ -44,7 +52,8 @@ public sealed partial class NativeRouterBridge
     private RouteResult ExecuteRoute(NativeForecast forecast, NativePolar polar, RouteRequest request,
         ForecastModel model, ResolvedRoutingOptions options, Action<RouteCalculationSnapshot>? onProgress,
         Func<Coordinate, Coordinate, bool>? isSegmentEligible, CancellationToken cancellationToken,
-        NativeRegionalLand? land, NativeActionV8[]? actions)
+        NativeRegionalLand? land, NativeActionV8[]? actions, CoastalTopologyPreparation? topology = null,
+        Action<string>? onPreparation = null)
     {
         ArgumentNullException.ThrowIfNull(forecast);
         ArgumentNullException.ThrowIfNull(polar);
@@ -56,6 +65,23 @@ public sealed partial class NativeRouterBridge
             ObjectDisposedException.ThrowIf(land.Handle.IsClosed || land.Handle.IsInvalid, land);
         _ = model.Provider();
         cancellationToken.ThrowIfCancellationRequested();
+        ValidateCoastalPruning(options);
+        var coastal = options.CoastalPruning != RouteCoastalPruningMode.Off;
+        if (coastal && actions is not null)
+            throw new RoutingException(RoutingFailureKind.InvalidConfiguration,
+                "Explicit action replay does not run coastal search pruning. Replay with pruning Off.");
+        if (coastal && topology is null)
+        {
+            if (isSegmentEligible is not null || (land is null && options.Optimization.Environment?.Land is null))
+                throw new RoutingException(RoutingFailureKind.InvalidConfiguration,
+                    "Coastal pruning requires topology certified against the selected land enforcement source.");
+            var bounds = forecast.Metadata.EffectiveBounds ??
+                throw new NativeRouteFormatException("Coastal pruning requires effective forecast coverage.");
+            topology = CoastalTopologyPreparation.Create(bounds, request, null,
+                land?.SourceFingerprint ?? CoastalTopologyPreparation.IdentifyLandmask(
+                    options.Optimization.Environment!.Land!, cancellationToken), cancellationToken);
+        }
+        using var topologyScope = coastal ? new NativeCoastalTopologyScope(topology!) : null;
         if (options.Optimization.Environment is { } configuredEnvironment &&
             DescribeMissingCapability(_capabilities, configuredEnvironment) is { } missing)
             throw new NotSupportedException($"The bridge lacks configured {missing}.");
@@ -96,8 +122,8 @@ public sealed partial class NativeRouterBridge
                 try
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    var snapshot = CopyProgress(pointer);
-                    onProgress?.Invoke(snapshot);
+                    var snapshot = coastal ? CopyCoastalProgress(pointer, onPreparation) : CopyProgress(pointer);
+                    if (snapshot is not null) onProgress?.Invoke(snapshot);
                     cancellationToken.ThrowIfCancellationRequested();
                     return 1;
                 }
@@ -124,13 +150,27 @@ public sealed partial class NativeRouterBridge
                     }
                 };
             var watch = Stopwatch.StartNew();
-            var status = actions is null
+            NativeMethods.ContinueCallbackV9 shouldContinue = _ =>
+                callbackFailure is null && !cancellationToken.IsCancellationRequested ? (byte)1 : (byte)0;
+            var requestV9 = new NativeRoutingRequestV9
+            {
+                StructSize = checked((uint)Marshal.SizeOf<NativeRoutingRequestV9>()),
+                CoastalPruningMode = (int)options.CoastalPruning,
+                Base = nativeRequest,
+                Topology = topologyScope?.Pointer ?? IntPtr.Zero,
+                MaximumSeedTransitions = 512
+            };
+            var status = coastal
+                ? NativeMethods.CalculateV9(ref requestV9, progress, IntPtr.Zero, eligibility, IntPtr.Zero,
+                    shouldContinue, IntPtr.Zero, out var json, out var length)
+                : actions is null
                 ? NativeMethods.CalculateV8(ref nativeRequest, progress, IntPtr.Zero, eligibility, IntPtr.Zero,
-                    out var json, out var length)
+                    out json, out length)
                 : NativeMethods.EvaluateActions(ref nativeRequest, actions, checked((ulong)actions.Length), eligibility,
                     IntPtr.Zero, out json, out length);
             GC.KeepAlive(progress);
             GC.KeepAlive(eligibility);
+            GC.KeepAlive(shouldContinue);
             Volatile.Write(ref _streamingProgressAvailability, 1);
             using var buffer = new NativeAllocatedBufferSafeHandle(json);
             callbackFailure?.Throw();
@@ -142,6 +182,10 @@ public sealed partial class NativeRouterBridge
             NativeRouteJsonParser.RequireV2(text);
             var result = NativeRouteJsonParser.Parse(text, request, model, watch.Elapsed, options.Optimization.Solver);
             NativeRouteJsonParser.ValidateEffectiveAudit(text, options, forecast.Metadata);
+            if (coastal && (result.Diagnostics.CoastalPruning is not { } audit ||
+                audit.SourceIdentity != topology!.SourceIdentity || audit.DomainIdentity != topology.DomainIdentity ||
+                (audit.IncumbentArrival is { } incumbent && (!result.IsComplete || result.ArrivalTime > incumbent))))
+                throw new NativeRouteFormatException("Native coastal result contradicts its topology identity or feasible incumbent.");
             EnsureWithinForecastHorizon(result, forecast.Metadata);
             var coverage = new ForecastCoverage(
                 forecast.Metadata.EffectiveBounds ?? throw new NativeRouteFormatException("ABI 8 forecast has no effective geographic coverage."),

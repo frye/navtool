@@ -562,7 +562,8 @@ public sealed record RouteDiagnostics
         TimeSpan? calculationDuration = null,
         long? eligibilityEvaluations = null,
         long? prunedCandidates = null,
-        long? futureProbeMisses = null)
+        long? futureProbeMisses = null,
+        RouteCoastalPruningDiagnostics? coastalPruning = null)
     {
         if (expandedNodes < 0)
         {
@@ -599,6 +600,7 @@ public sealed record RouteDiagnostics
         EligibilityEvaluations = eligibilityEvaluations;
         PrunedCandidates = prunedCandidates;
         FutureProbeMisses = futureProbeMisses;
+        CoastalPruning = coastalPruning;
     }
 
     public long ExpandedNodes { get; }
@@ -614,6 +616,7 @@ public sealed record RouteDiagnostics
     public long? EligibilityEvaluations { get; }
     public long? PrunedCandidates { get; }
     public long? FutureProbeMisses { get; }
+    public RouteCoastalPruningDiagnostics? CoastalPruning { get; }
 }
 
 public sealed record RouteLatticeSearchProgress
@@ -1030,6 +1033,15 @@ public sealed record RouteResult
             throw new ArgumentException("A result requires a successful final attempt from the actual solver.", nameof(runAudit));
         if (runAudit?.Native is not null && !runAudit.Native.HasSameContent(nativeAudit))
             throw new ArgumentException("Run and native audit must describe the same accepted output.", nameof(runAudit));
+        if (nativeAudit is not null && nativeAudit.CoastalPruning != diagnostics.CoastalPruning)
+            throw new ArgumentException("Native and route coastal counters must describe the same accepted output.", nameof(nativeAudit));
+        if (runAudit is { Resolved.CoastalPruning: RouteCoastalPruningMode.ConservativeLandAware } &&
+            diagnostics.CoastalPruning?.Mode != RouteCoastalPruningMode.ConservativeLandAware)
+            throw new ArgumentException("An enabled coastal run requires observed pruning audit.", nameof(diagnostics));
+        if (diagnostics.CoastalPruning is { } coastal &&
+            (coastal.Mode != RouteCoastalPruningMode.Off && solver != RouteSolver.IsochroneBeam ||
+             runAudit is not null && coastal.Mode != runAudit.Resolved.CoastalPruning))
+            throw new ArgumentException("Coastal audit does not match the accepted routing configuration.", nameof(diagnostics));
 
         var immutablePoints = points.ToImmutableArray();
         if (immutablePoints.IsEmpty)

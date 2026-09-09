@@ -6,7 +6,43 @@ namespace Navtool.Infrastructure.Tests;
 public sealed class RoutingMigrationEndToEndTests
 {
     [Fact]
-    public async Task Imported_boat_regional_itinerary_preserves_native_handoffs_and_audit_after_restart_and_copy()
+    public async Task Default_polygon_source_runs_coastal_pruning_through_the_saved_plan_workflow()
+    {
+        var bridge = NativeIntegration.Bridge();
+        var sample = NativeIntegration.Fixture("coastal-region.grib");
+        var polar = NativeIntegration.Fixture("coastal.csv");
+        if (bridge is null || sample is null || polar is null) return;
+        using var directory = new TestDirectory();
+        var boats = new BoatAssetRepository(directory.Path, bridge);
+        var boat = await boats.ImportAsync(polar, BoatPolarFormat.NativeMatrix);
+        var setup = new RoutingSetup(boat, coastalPruning: RouteCoastalPruningMode.ConservativeLandAware);
+        var plan = new RoutePlan("Coastal default source",
+            [new("Start", new(48.25, -123.65)), new("Finish", new(48.25, -123.35))]).WithRoutingSetup(setup);
+        var descriptor = await new NativeLocalGribInspector(bridge).InspectAsync(sample);
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var engine = new NativeRouteEngine(bridge, executionDirectory: Path.Combine(directory.Path, "execution"));
+        var setupService = new NativeRoutingSetupService(bridge, boats,
+            executionDirectory: Path.Combine(directory.Path, "execution"));
+        var workflow = new RoutePlanRoutingWorkflow(new RoutingWorkflow([], engine), repository,
+            setupService: setupService);
+        var result = await workflow.ExecuteAsync(new RoutePlanRoutingRequest(
+            plan, descriptor.ValidFrom, descriptor.ValidFrom.AddHours(12), [ForecastSelection.LocalFile(descriptor)]));
+        Assert.True(result.Status == RoutePlanRoutingStatus.Succeeded,
+            string.Join("; ", result.Models.SelectMany(model => model.Legs).Select(leg => leg.Detail)));
+        var route = Assert.Single(Assert.Single(result.Models).Legs).Route!;
+        Assert.True(route.LandAvoidance.IsApplied);
+        Assert.False(route.NativeAudit!.NativeLandmaskApplied);
+        Assert.StartsWith("sha256:", route.Diagnostics.CoastalPruning!.SourceIdentity);
+        Assert.Equal(RouteCoastalPruningMode.ConservativeLandAware, route.RunAudit!.Resolved.CoastalPruning);
+        var restored = (await repository.OpenAsync(plan.Id)).LatestResult(descriptor.Model)!.Legs[0].Route!;
+        Assert.Equal(route.Diagnostics.CoastalPruning, restored.Diagnostics.CoastalPruning);
+        Assert.Equal(route.NativeAudit.CoastalSeedActions.ToArray(), restored.NativeAudit!.CoastalSeedActions.ToArray());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Imported_boat_regional_itinerary_preserves_native_handoffs_and_audit_after_restart_and_copy(bool coastal)
     {
         var bridge = NativeIntegration.Bridge();
         var sample = NativeIntegration.Sample();
@@ -20,7 +56,8 @@ public sealed class RoutingMigrationEndToEndTests
             new RegionalLandOptions(new GeographicBounds(48.1, 48.4, -123.7, -123.3), 5, 10));
         var boats = new BoatAssetRepository(directory.Path, bridge);
         var boat = await boats.ImportAsync(polar, BoatPolarFormat.NativeMatrix);
-        var setup = new RoutingSetup(boat, landSource: RoutingLandSource.RegionalGshhg, regionalLand: regional);
+        var setup = new RoutingSetup(boat, landSource: RoutingLandSource.RegionalGshhg, regionalLand: regional,
+            coastalPruning: coastal ? RouteCoastalPruningMode.ConservativeLandAware : RouteCoastalPruningMode.Off);
         var plan = new RoutePlan("Native cruising handoff",
         [
             new RouteWaypoint("Start", new Coordinate(48.25, -123.65)),
@@ -54,6 +91,7 @@ public sealed class RoutingMigrationEndToEndTests
         Assert.True(outbound.Route.LandAvoidance.IsApplied);
         Assert.True(outbound.Route.NativeAudit!.NativeLandmaskApplied);
         Assert.Equal(boat.ContentIdentity, outbound.Route.RunAudit!.Setup.Boat.ContentIdentity);
+        Assert.Equal(coastal, outbound.Route.Diagnostics.CoastalPruning is not null);
 
         var loaded = await new RoutePlanJsonRepository(directory.Path).OpenAsync(plan.Id);
         var after = loaded.LatestResult(descriptor.Model)!;

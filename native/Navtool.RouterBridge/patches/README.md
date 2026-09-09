@@ -1,12 +1,29 @@
 # router-lib build patches
 
 The native bridge pins the router-lib 0.6 development snapshot
-`cd476a84ef3edea9582d77f21588a23af727e083` and carries one compatibility patch:
+`cd476a84ef3edea9582d77f21588a23af727e083` and carries two patches:
 `0001-utf8-asset-paths.patch` preserves UTF-8 in polar/GSHHG source metadata and
 path-bearing errors on Windows. The upstream loaders otherwise convert paths
 through the active filesystem code page, violating the bridge's UTF-8 contract.
 This patch changes path text, not routing physics, and is a candidate for a
 separate upstream fix.
+
+`0002-conservative-coastal-pruning.patch` carries the conservative coastal
+implementation developed in local router-lib commit
+`e6a1d899fd6f72d878fd626b6528030b5c435dcc`. The cumulative patch is relative to
+the pinned snapshot, includes native regression tests and the upstream
+`docs/coastal-pruning.md` API/proof documentation, and is not a published
+router-lib release. No remote push is required to build Navtool.
+
+The patch adds immutable polygon/SDF/certified-cap bounds, bounded exact seed
+validation, pre-expansion/preretention pruning and optional audited native
+progress/JSON. The default remains Off. Uncertified current speed bounds stay
+unavailable; disconnection and automatic land-guided seeds are not claimed.
+The [Navtool coastal guide](../../../docs/coastal-route-pruning.md) describes
+the application adapter and rollout.
+The final revision also shares ring normalization between exclusion validation
+and coastal proofs, preventing duplicated vertices from turning holes into
+forbidden land. The bridge regression suite exercises that counterexample.
 
 The reusable patch step remains in `native/Navtool.RouterBridge/CMakeLists.txt`.
 Any future patch must be listed in `NAVTOOL_ROUTER_LIB_PATCHES`, apply cleanly to
@@ -15,7 +32,10 @@ listed patches idempotently. Remove a patch once its fix lands upstream and the
 release pin moves past it. Patches are not applied when `SAILROUTE_SOURCE_DIR`
 points at a developer checkout; that checkout must include equivalent fixes
 to pass the Unicode-path tests. Build identity reports the resolved revision
-and patched/dirty source state honestly.
+and patched/dirty source state honestly. Fetched builds additionally record
+`patch_set_sha256`, a digest of the ordered patch names and contents, in build
+metadata so different patches over the same base cannot share the same audit
+identity. Local overrides report null for this field.
 
 ## Fixes incorporated by v0.4.3
 

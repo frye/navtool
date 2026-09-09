@@ -4,6 +4,16 @@ namespace Navtool.Core.Tests;
 
 public sealed class RoutingSetupTests
 {
+    [Fact]
+    public void Unknown_seed_actions_do_not_break_public_audit_serialization()
+    {
+        var audit = new RouteNativeRunAudit("route_result_v2", RouteSolver.IsochroneBeam, 1);
+        var json = System.Text.Json.JsonSerializer.Serialize(audit);
+        Assert.DoesNotContain("CoastalSeedActions", json);
+        var recorded = System.Text.Json.JsonSerializer.Serialize(audit with { CoastalSeedActions = [] });
+        Assert.Contains("\"CoastalSeedActions\":[]", recorded);
+    }
+
     internal static BoatAsset Demo() =>
         new("demo:v1", "Explicit demo", BoatAssetKind.Demo, BoatPolarFormat.NativeMatrix,
             new BoatValidationSummary("Native validated demo"));
@@ -28,11 +38,200 @@ public sealed class RoutingSetupTests
         Assert.Throws<ArgumentNullException>(() => new RoutingSetup(null!));
         var setup = new RoutingSetup(Demo());
         Assert.Equal(RoutingQuality.NativeBalanced, setup.Quality);
+        Assert.Equal(RouteCoastalPruningMode.Off, setup.CoastalPruning);
+        Assert.Equal(RouteCoastalPruningMode.Off, Context().Resolved.CoastalPruning);
         Assert.Equal(1, setup.PerformanceFactor);
         Assert.Equal(RoutingLandSource.NaturalEarth, setup.LandSource);
         Assert.Null(setup.HardDuration);
         Assert.Equal(TimeSpan.FromDays(30), Context().Resolved.HardDuration);
         Assert.Equal(TimeSpan.FromDays(10), RoutePlanRoutingRequest.MaximumForecastWindow);
+    }
+
+    [Fact]
+    public void Coastal_selection_survives_native_defaults_and_professional_overrides()
+    {
+        var baseline = Context();
+        var setup = new RoutingSetup(Demo(), coastalPruning: RouteCoastalPruningMode.ConservativeLandAware);
+        var professional = new RoutingProfessionalOverrides(baseline.Resolved.Optimization);
+        foreach (var overrides in new[] { null, professional })
+        {
+            var resolved = ResolvedRoutingOptions.FromNativeDefaults(setup, baseline.Resolved, overrides);
+            var frozen = new RoutingCalculationContext(Guid.NewGuid(), setup, baseline.Boat,
+                baseline.NativeIdentity with { BridgeAbiVersion = 9 }, resolved, overrides);
+            Assert.Equal(setup.CoastalPruning, frozen.Resolved.CoastalPruning);
+            Assert.Same(baseline.Resolved.Search, frozen.Resolved.Search);
+        }
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(2)]
+    [InlineData(int.MaxValue)]
+    public void Unknown_coastal_modes_are_rejected(int mode)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RoutingSetup(Demo(),
+            coastalPruning: (RouteCoastalPruningMode)mode));
+        var baseline = Context();
+        Assert.Throws<RoutingException>(() => new RoutingCalculationContext(Guid.NewGuid(),
+            baseline.Setup, baseline.Boat, baseline.NativeIdentity,
+            baseline.Resolved with { CoastalPruning = (RouteCoastalPruningMode)mode }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RouteCoastalPruningDiagnostics(
+            (RouteCoastalPruningMode)mode, "unavailable", null, 0, 0, 0, 0, 0, 0, 0));
+    }
+
+    [Fact]
+    public void Coastal_context_rejects_silent_downgrade_and_lattice()
+    {
+        var baseline = Context();
+        var setup = new RoutingSetup(Demo(), coastalPruning: RouteCoastalPruningMode.ConservativeLandAware);
+        Assert.Throws<RoutingException>(() => new RoutingCalculationContext(Guid.NewGuid(),
+            setup, baseline.Boat, baseline.NativeIdentity with { BridgeAbiVersion = 9 }, baseline.Resolved));
+        var professional = new RoutingProfessionalOverrides(new RouteOptimizationOptions(solver: RouteSolver.TimeDependentLattice));
+        var resolved = ResolvedRoutingOptions.FromNativeDefaults(setup, baseline.Resolved, professional);
+        var error = Assert.Throws<RoutingException>(() => new RoutingCalculationContext(Guid.NewGuid(),
+            setup, baseline.Boat, baseline.NativeIdentity with { BridgeAbiVersion = 9 }, resolved, professional));
+        Assert.Contains("beam solver only", error.Message);
+        Assert.Equal(RouteSolver.TimeDependentLattice, resolved.Optimization.Solver);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    public void Coastal_audit_rejects_each_negative_counter(int index)
+    {
+        var counters = new long[7];
+        counters[index] = -1;
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RouteCoastalPruningDiagnostics(
+            RouteCoastalPruningMode.ConservativeLandAware, "ready", null,
+            counters[0], counters[1], counters[2], counters[3], counters[4], counters[5], counters[6]));
+    }
+
+    [Fact]
+    public void Coastal_audit_preserves_large_counts_and_unknown_is_absent()
+    {
+        Assert.Null(new RouteDiagnostics(0, 0, 0, 0).CoastalPruning);
+        Assert.Null(new RouteNativeRunAudit("route_result_v2", RouteSolver.IsochroneBeam).CoastalPruning);
+        Assert.Throws<ArgumentException>(() => new RouteCoastalPruningDiagnostics(
+            RouteCoastalPruningMode.Off, " ", null, 0, 0, 0, 0, 0, 0, 0));
+        var coastal = new RouteCoastalPruningDiagnostics(RouteCoastalPruningMode.ConservativeLandAware,
+            "bound_unavailable", "Uncertain coverage", long.MaxValue, 2, 3, 4, 5, 6, 7);
+        Assert.Equal(long.MaxValue, new RouteDiagnostics(0, 0, 0, 0, coastalPruning: coastal).CoastalPruning!.SkippedParents);
+        Assert.Null(coastal.IncumbentArrival);
+        Assert.Null(coastal.SourceIdentity);
+        Assert.Null(coastal.DomainIdentity);
+        Assert.Null(coastal.SeedStatus);
+        Assert.Null(coastal.SpeedUpperKnots);
+        Assert.Null(coastal.TopologyCaps);
+        Assert.Null(coastal.NumericalMarginNauticalMiles);
+        Assert.Null(coastal.ClearanceNauticalMiles);
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    [InlineData(-0.01)]
+    public void Coastal_provenance_rejects_invalid_numeric_bounds(double value)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RouteCoastalPruningDiagnostics(
+            RouteCoastalPruningMode.ConservativeLandAware, "ready", null, 0, 0, 0, 0, 0, 0, 0,
+            speedUpperKnots: value));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RouteCoastalPruningDiagnostics(
+            RouteCoastalPruningMode.ConservativeLandAware, "ready", null, 0, 0, 0, 0, 0, 0, 0,
+            numericalMarginNauticalMiles: value));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RouteCoastalPruningDiagnostics(
+            RouteCoastalPruningMode.ConservativeLandAware, "ready", null, 0, 0, 0, 0, 0, 0, 0,
+            clearanceNauticalMiles: value));
+    }
+
+    [Fact]
+    public void Coastal_provenance_allows_zero_margin_and_caps_but_requires_positive_speed()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RouteCoastalPruningDiagnostics(
+            RouteCoastalPruningMode.ConservativeLandAware, "ready", null, 0, 0, 0, 0, 0, 0, 0,
+            speedUpperKnots: 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RouteCoastalPruningDiagnostics(
+            RouteCoastalPruningMode.ConservativeLandAware, "ready", null, 0, 0, 0, 0, 0, 0, 0,
+            topologyCaps: -1));
+        var audit = new RouteCoastalPruningDiagnostics(RouteCoastalPruningMode.ConservativeLandAware,
+            "ready", null, 0, 0, 0, 0, 0, 0, 0, sourceIdentity: "source", domainIdentity: "domain",
+            seedStatus: "validated", speedUpperKnots: 25, topologyCaps: 0,
+            numericalMarginNauticalMiles: 0, clearanceNauticalMiles: 0);
+        Assert.Equal("source", audit.SourceIdentity);
+        Assert.Equal("domain", audit.DomainIdentity);
+        Assert.Equal("validated", audit.SeedStatus);
+        Assert.Equal(25, audit.SpeedUpperKnots);
+        Assert.Equal(0, audit.TopologyCaps);
+        Assert.Equal(0, audit.NumericalMarginNauticalMiles);
+        Assert.Equal(0, audit.ClearanceNauticalMiles);
+    }
+
+    [Theory]
+    [InlineData(-0.001)]
+    [InlineData(-1)]
+    [InlineData(360)]
+    [InlineData(720)]
+    public void Coastal_seed_actions_reject_headings_outside_the_compass_range(double heading)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RouteCoastalSeedAction(heading, TimeSpan.FromSeconds(1)));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(359.999)]
+    public void Coastal_seed_actions_accept_canonical_heading_boundaries(double heading)
+    {
+        Assert.Equal(heading, new RouteCoastalSeedAction(heading, TimeSpan.FromSeconds(1)).HeadingDegrees);
+    }
+
+    [Fact]
+    public void Coastal_seed_actions_are_immutable_and_preserve_unknown_versus_empty()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RouteCoastalSeedAction(double.NaN, TimeSpan.FromSeconds(1)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RouteCoastalSeedAction(double.PositiveInfinity, TimeSpan.FromSeconds(1)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RouteCoastalSeedAction(270, TimeSpan.Zero));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RouteCoastalSeedAction(270, TimeSpan.FromTicks(1)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RouteCoastalSeedAction(270, TimeSpan.FromSeconds(-1)));
+        var unknown = new RouteNativeRunAudit("route_result_v2", RouteSolver.IsochroneBeam);
+        Assert.True(unknown.CoastalSeedActions.IsDefault);
+        var empty = unknown with { CoastalSeedActions = [] };
+        Assert.False(empty.CoastalSeedActions.IsDefault);
+        Assert.Empty(empty.CoastalSeedActions);
+        Assert.Throws<ArgumentException>(() => unknown with { CoastalSeedActions = [null!] });
+        Assert.Throws<ArgumentException>(() => new RouteNativeRunAudit("route_result_v2", RouteSolver.IsochroneBeam,
+            CoastalSeedActions: [null!]));
+        var input = new[] { new RouteCoastalSeedAction(270, TimeSpan.FromSeconds(10)) };
+        var audit = unknown with { CoastalSeedActions = input.ToImmutableArray() };
+        input[0] = new RouteCoastalSeedAction(90, TimeSpan.FromSeconds(20));
+        Assert.Equal(270, audit.CoastalSeedActions[0].HeadingDegrees);
+        Assert.Equal(TimeSpan.FromSeconds(10), audit.CoastalSeedActions[0].Duration);
+    }
+
+    [Fact]
+    public void Coastal_context_and_run_audit_require_new_abi_while_off_remains_compatible()
+    {
+        var baseline = Context();
+        var setup = new RoutingSetup(Demo(), coastalPruning: RouteCoastalPruningMode.ConservativeLandAware);
+        var resolved = ResolvedRoutingOptions.FromNativeDefaults(setup, baseline.Resolved);
+        var error = Assert.Throws<RoutingException>(() => new RoutingCalculationContext(Guid.NewGuid(),
+            setup, baseline.Boat, baseline.NativeIdentity, resolved));
+        Assert.Equal(RoutingFailureKind.NativeUnavailable, error.Kind);
+        Assert.Contains("ABI 9", error.Message);
+        var attempts = new[] { new RouteAttemptAudit(Guid.NewGuid(), RouteSolver.IsochroneBeam,
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch) };
+        Assert.Throws<ArgumentException>(() => new RouteRunAudit(Guid.NewGuid(), setup, resolved,
+            baseline.NativeIdentity, RouteSolver.IsochroneBeam, attempts));
+        foreach (var abi in new[] { 8, 9 })
+        {
+            var context = new RoutingCalculationContext(Guid.NewGuid(), baseline.Setup, baseline.Boat,
+                baseline.NativeIdentity with { BridgeAbiVersion = abi }, baseline.Resolved);
+            Assert.Equal(RouteCoastalPruningMode.Off, context.Resolved.CoastalPruning);
+        }
     }
 
     [Fact]

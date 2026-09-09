@@ -14,6 +14,30 @@ public sealed class RoutingSetupWorkflowTests
     private static readonly DateTimeOffset Now = new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public void Coastal_toggle_defaults_off_restores_without_events_and_invalidates_setup_on_edit()
+    {
+        var vm = new RoutingSetupViewModel();
+        Assert.False(vm.EnableCoastalPruning);
+        var changes = 0;
+        vm.SetupChanged += (_, _) => changes++;
+        vm.Restore(new RoutingSetup(TestRoutingSetupService.Demo,
+            coastalPruning: RouteCoastalPruningMode.ConservativeLandAware));
+        Assert.True(vm.EnableCoastalPruning);
+        Assert.Equal(0, changes);
+        Assert.True(vm.TryBuild(out var restored, out var error), error);
+        Assert.Equal(RouteCoastalPruningMode.ConservativeLandAware, restored!.CoastalPruning);
+        vm.ResolvedStatus = "Previous run";
+        vm.EnableCoastalPruning = false;
+        Assert.Equal(1, changes);
+        Assert.Null(vm.ResolvedStatus);
+        Assert.True(vm.TryBuild(out var changed, out error), error);
+        Assert.Equal(RouteCoastalPruningMode.Off, changed!.CoastalPruning);
+        vm.Restore(null);
+        Assert.False(vm.EnableCoastalPruning);
+        Assert.Equal(1, changes);
+    }
+
+    [Fact]
     public async Task Missing_boat_blocks_manual_and_automatic_calculation_before_forecast()
     {
         var provider = new CountingProvider();
@@ -257,6 +281,7 @@ public sealed class RoutingSetupWorkflowTests
             vm.RoutingSetup.PerformancePercentage = 92;
             vm.RoutingSetup.ArrivalRadiusNauticalMiles = 0.35;
             vm.RoutingSetup.LocalForecastMaximumGapHours = 3;
+            vm.RoutingSetup.EnableCoastalPruning = true;
             vm.EnableProfessionalRouting = true;
             vm.TackPenaltySeconds = 75;
             await vm.Itinerary.SaveCommand.ExecuteAsync(null);
@@ -271,6 +296,7 @@ public sealed class RoutingSetupWorkflowTests
             await vm.Itinerary.OpenCommand.ExecuteAsync(null);
             Assert.Null(vm.Itinerary.StorageError);
             Assert.False(vm.EnableProfessionalRouting);
+            Assert.True(vm.RoutingSetup.EnableCoastalPruning);
             Assert.Equal(TestRoutingSetupService.Demo, vm.RoutingSetup.Boat);
             Assert.Equal(RoutingQuality.NativeAccurate, vm.RoutingSetup.Quality);
             Assert.Equal(92, vm.RoutingSetup.PerformancePercentage);
@@ -347,6 +373,7 @@ public sealed class RoutingSetupWorkflowTests
             Assert.NotNull(panel.FindControl<Button>("ImportBoatButton"));
             Assert.NotNull(panel.FindControl<Button>("DemoBoatButton"));
             Assert.NotNull(panel.FindControl<ComboBox>("RoutingQualitySelector"));
+            Assert.NotNull(panel.FindControl<CheckBox>("CoastalPruningToggle"));
             Assert.NotNull(panel.FindControl<NumericUpDown>("BoatPerformanceInput"));
             Assert.NotNull(panel.FindControl<NumericUpDown>("ArrivalRadiusInput"));
             Assert.NotNull(panel.FindControl<Button>("PreviewGshhgButton"));
