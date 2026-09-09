@@ -686,12 +686,13 @@
                                     <TextBlock Classes="section-title"
                                                Text="STATUS" />
                                     <TextBlock Grid.Column="1"
-                                               Text="{Binding ProgressFraction, StringFormat={}{0:P0}}"
+                                               Text="{Binding CalculationProgressDisplay}"
                                                Classes="muted" />
                                 </Grid>
                                 <ProgressBar Minimum="0"
                                              Maximum="1"
                                              Value="{Binding ProgressFraction}"
+                                             IsVisible="{Binding !HasInterruptedRoute}"
                                              Height="5" />
                                 <TextBlock Text="{Binding StatusMessage}"
                                            TextWrapping="Wrap"
@@ -907,6 +908,24 @@
                         Content="Cancel"
                         AutomationProperties.Name="Cancel route calculation" />
             </Grid>
+
+            <Border x:Name="InterruptedRouteBanner"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Top"
+                    Margin="16,68,16,0"
+                    MaxWidth="620"
+                    Classes="map-overlay"
+                    Padding="12,8"
+                    IsHitTestVisible="False"
+                    IsVisible="{Binding HasInterruptedRoute}">
+                <TextBlock x:Name="InterruptedRouteText"
+                           Text="{Binding InterruptedRouteMessage}"
+                           TextWrapping="Wrap"
+                           FontSize="12"
+                           Foreground="{DynamicResource WarningTextColor}"
+                           AutomationProperties.Name="Route calculation interrupted"
+                           AutomationProperties.HelpText="{Binding InterruptedRouteMessage}" />
+            </Border>
 
             <Border x:Name="MapInstructionOverlay"
                     HorizontalAlignment="Center"

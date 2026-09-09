@@ -5,6 +5,27 @@ namespace Navtool.App.Tests;
 public sealed class CoalescingProgressTests
 {
     [Fact]
+    public void Observer_receives_every_update_before_display_coalescing()
+    {
+        var context = new QueuedContext();
+        var previous = SynchronizationContext.Current;
+        var observed = new List<int>();
+        var displayed = new List<int>();
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+            var progress = new CoalescingProgress<int, int>(_ => 0, displayed.Add, observed.Add);
+            progress.Report(1);
+            progress.Report(2);
+            Assert.Equal([1, 2], observed);
+            Assert.Empty(displayed);
+            context.Drain();
+            Assert.Equal([2], displayed);
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+    }
+
+    [Fact]
     public void Queues_one_dispatch_and_latest_value_per_model_leg_attempt()
     {
         var context = new QueuedContext();

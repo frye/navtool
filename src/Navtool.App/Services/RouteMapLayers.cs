@@ -1,6 +1,8 @@
 using BruTile.Cache;
 using Mapsui;
+using Mapsui.Extensions;
 using Mapsui.Layers;
+using Mapsui.Manipulations;
 using Mapsui.Nts;
 using Mapsui.Styles;
 using Navtool.App.Models;
@@ -58,6 +60,11 @@ public sealed class RouteMapLayers
     public const int MaximumLiveSearchPoints = 2048;
     public const int MaximumDisplayFrontPoints = 2048;
     private const int IsochroneSmoothingIterations = 2;
+    private const double InterruptedRouteViewportMargin = 24;
+    // Reserve the wrapped interruption banner only when geometry would be obscured or needs a fit.
+    private const double InterruptedBannerTop = 68;
+    private const double InterruptedBannerHeight = 130;
+    private const double InterruptedBannerMaximumWidth = 620;
 
     private readonly MemoryLayer _noaaRoutes = CreateRouteLayer("NOAA GFS routes");
     private readonly MemoryLayer _ecmwfRoutes = CreateRouteLayer("ECMWF IFS routes");
@@ -73,6 +80,11 @@ public sealed class RouteMapLayers
     private readonly MemoryLayer _ecmwfProvisionalRoute = CreateProvisionalRouteLayer(
         "ECMWF IFS provisional route",
         EcmwfColor);
+    private readonly MemoryLayer _noaaInterruptedRoute = CreateRouteLayer("NOAA GFS interrupted route");
+    private readonly MemoryLayer _ecmwfInterruptedRoute = CreateRouteLayer("ECMWF IFS interrupted route");
+    private readonly MemoryLayer _interruptedEndpoints = CreateRouteLayer("Interrupted route endpoints");
+    private IReadOnlyList<(ForecastModel Model, CoreCoordinate[] Path)> _interruptedPaths =
+        Array.Empty<(ForecastModel, CoreCoordinate[])>();
     private readonly Dictionary<ForecastModel, List<IFeature>> _historicalFrontFeatures = new()
     {
         [ForecastModel.NoaaGfs] = new List<IFeature>(),
@@ -108,6 +120,9 @@ public sealed class RouteMapLayers
         map.Layers.Add(_ecmwfSearchPoints);
         map.Layers.Add(_noaaProvisionalRoute);
         map.Layers.Add(_ecmwfProvisionalRoute);
+        map.Layers.Add(_noaaInterruptedRoute);
+        map.Layers.Add(_ecmwfInterruptedRoute);
+        map.Layers.Add(_interruptedEndpoints);
         map.Layers.Add(_noaaRoutes);
         map.Layers.Add(_ecmwfRoutes);
         map.Layers.Add(_arrivalAreas);
@@ -152,6 +167,178 @@ public sealed class RouteMapLayers
 
     public bool HasSearchPoint(ForecastModel model) =>
         GetSearchPointLayer(model).Features.Any();
+
+    public bool HasInterruptedRoutes => _interruptedPaths.Count > 0;
+
+    public void SetInterruptedRoutes(
+        IEnumerable<(ForecastModel Model, RouteCalculationSnapshot Snapshot)> previews)
+    {
+        ArgumentNullException.ThrowIfNull(previews);
+        var paths = previews.Select(preview =>
+        {
+            ArgumentNullException.ThrowIfNull(preview.Snapshot);
+            _ = GetProvisionalRouteLayer(preview.Model);
+            return (preview.Model, Path: preview.Snapshot.ProvisionalRoute
+                .Select(point => point.Location).ToArray());
+        }).ToArray();
+
+        // Retain only screen geometry, not snapshots, search history, or accepted RouteResults.
+        _interruptedPaths = paths;
+        foreach (var model in paths.Select(path => path.Model).Distinct())
+        {
+            ClearCalculationOverlay(model, refresh: false);
+        }
+        UpdateInterruptedRouteFeatures();
+        Map.Refresh(ChangeType.Discrete);
+    }
+
+    public void ClearInterruptedRoutes()
+    {
+        _interruptedPaths = Array.Empty<(ForecastModel, CoreCoordinate[])>();
+        UpdateInterruptedRouteFeatures();
+        Map.Refresh(ChangeType.Discrete);
+    }
+
+    /// <summary>
+    /// Preserves the current viewport when retained paths fit with a screen margin and avoid the banner;
+    /// otherwise fits only those paths. Returns true when a fit was requested.
+    /// </summary>
+    public bool KeepInterruptedRoutesVisible()
+    {
+        if (!HasInterruptedRoutes)
+        {
+            return false;
+        }
+
+        var viewport = Map.Navigator.Viewport;
+        var projected = UpdateInterruptedRouteFeatures();
+        Map.Refresh(ChangeType.Discrete);
+        var topInset = InterruptedBannerTop + InterruptedBannerHeight + InterruptedRouteViewportMargin;
+        if (viewport.Width <= InterruptedRouteViewportMargin * 2 ||
+            viewport.Height <= topInset + InterruptedRouteViewportMargin)
+        {
+            return false;
+        }
+
+        var screenPoints = projected.Select(point => viewport.WorldToScreen(point)).ToArray();
+        if (screenPoints.All(point =>
+                point.X >= InterruptedRouteViewportMargin &&
+                point.X <= viewport.Width - InterruptedRouteViewportMargin &&
+                point.Y >= InterruptedRouteViewportMargin &&
+                point.Y <= viewport.Height - InterruptedRouteViewportMargin) &&
+            !IntersectsInterruptedBanner(screenPoints, viewport.Width))
+        {
+            return false;
+        }
+
+        var extent = new MRect(
+            projected.Min(point => point.X),
+            projected.Min(point => point.Y),
+            projected.Max(point => point.X),
+            projected.Max(point => point.Y));
+        var padded = extent.Grow(Math.Max(extent.Width, extent.Height) * 0.12 + 1_000);
+        // Measure the padded box in screen space so a rotated viewport also fits the path.
+        var corners = new[]
+        {
+            new MPoint(padded.Left, padded.Bottom),
+            new MPoint(padded.Left, padded.Top),
+            new MPoint(padded.Right, padded.Bottom),
+            new MPoint(padded.Right, padded.Top)
+        }.Select(point => viewport.WorldToScreen(point)).ToArray();
+        var resolution = viewport.Resolution * Math.Max(
+            (corners.Max(point => point.X) - corners.Min(point => point.X)) /
+            (viewport.Width - InterruptedRouteViewportMargin * 2),
+            (corners.Max(point => point.Y) - corners.Min(point => point.Y)) /
+            (viewport.Height - topInset - InterruptedRouteViewportMargin));
+        var safeCenter = viewport.ScreenToWorld(new ScreenPosition(
+            viewport.Width / 2, (viewport.Height + topInset - InterruptedRouteViewportMargin) / 2));
+        Map.Navigator.CenterOnAndZoomTo(
+            new MPoint(
+                (extent.Left + extent.Right) / 2 -
+                (safeCenter.X - viewport.CenterX) * resolution / viewport.Resolution,
+                (extent.Bottom + extent.Top) / 2 -
+                (safeCenter.Y - viewport.CenterY) * resolution / viewport.Resolution),
+            resolution);
+        return true;
+    }
+
+    private bool IntersectsInterruptedBanner(IReadOnlyList<ScreenPosition> screenPoints, double viewportWidth)
+    {
+        var halfWidth = Math.Min(InterruptedBannerMaximumWidth, viewportWidth - 32) / 2;
+        var banner = new GeometryFactory().ToGeometry(new Envelope(
+            viewportWidth / 2 - halfWidth - InterruptedRouteViewportMargin,
+            viewportWidth / 2 + halfWidth + InterruptedRouteViewportMargin,
+            InterruptedBannerTop - InterruptedRouteViewportMargin,
+            InterruptedBannerTop + InterruptedBannerHeight + InterruptedRouteViewportMargin));
+        var offset = 0;
+        foreach (var (_, path) in _interruptedPaths)
+        {
+            var coordinates = screenPoints.Skip(offset).Take(path.Length)
+                .Select(point => new NtsCoordinate(point.X, point.Y)).ToArray();
+            Geometry geometry = coordinates.Length == 1
+                ? new Point(coordinates[0])
+                : new LineString(coordinates);
+            if (geometry.Intersects(banner))
+            {
+                return true;
+            }
+            offset += path.Length;
+        }
+        return false;
+    }
+
+    private IReadOnlyList<MPoint> UpdateInterruptedRouteFeatures()
+    {
+        var features = new List<IFeature>();
+        var allPoints = new List<MPoint>();
+        var referenceX = Map.Navigator.Viewport.CenterX;
+        foreach (var (model, path) in _interruptedPaths)
+        {
+            var points = MapProjection.ToContinuousMapPointsNear(path, referenceX);
+            if (allPoints.Count == 0)
+            {
+                referenceX = (points.Min(point => point.X) + points.Max(point => point.X)) / 2;
+            }
+            allPoints.AddRange(points);
+            var color = model == ForecastModel.NoaaGfs ? NoaaColor : EcmwfColor;
+            if (points.Count > 1)
+            {
+                var line = CreateRouteFeature(points, model)!;
+                line.Styles.Add(new VectorStyle
+                {
+                    Fill = null,
+                    Line = new Pen(color, 3) { PenStyle = PenStyle.Dash },
+                    Opacity = 0.85f
+                });
+                features.Add(line);
+            }
+            var endpoint = new GeometryFeature(new Point(points[^1].X, points[^1].Y))
+            {
+                Data = model
+            };
+            endpoint.Styles.Add(new LabelStyle
+            {
+                Text = model == ForecastModel.NoaaGfs ? "NOAA interrupted" : "ECMWF interrupted",
+                Font = new Font { Size = 11, Bold = true },
+                ForeColor = color,
+                BackColor = new Brush(MapsuiColor.White),
+                BorderColor = color,
+                BorderThickness = 2,
+                CornerRounding = 3
+            });
+            features.Add(endpoint);
+        }
+        _noaaInterruptedRoute.Features = features.Where(feature =>
+            Equals(feature.Data, ForecastModel.NoaaGfs) && ((GeometryFeature)feature).Geometry is LineString).ToArray();
+        _ecmwfInterruptedRoute.Features = features.Where(feature =>
+            Equals(feature.Data, ForecastModel.EcmwfIfs) && ((GeometryFeature)feature).Geometry is LineString).ToArray();
+        _interruptedEndpoints.Features = features.Where(feature =>
+            ((GeometryFeature)feature).Geometry is Point).ToArray();
+        _noaaInterruptedRoute.FeaturesWereModified();
+        _ecmwfInterruptedRoute.FeaturesWereModified();
+        _interruptedEndpoints.FeaturesWereModified();
+        return allPoints;
+    }
 
     public void SetRoutes(IEnumerable<RouteResult> routes)
     {
