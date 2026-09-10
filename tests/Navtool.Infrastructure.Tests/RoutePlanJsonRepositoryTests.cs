@@ -42,6 +42,28 @@ public sealed class RoutePlanJsonRepositoryTests
     }
 
     [Fact]
+    public async Task Depart_now_with_a_saved_schedule_is_rejected_without_rewriting_the_file()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path, CoastalAudit()).WithPlanningInputs(new RoutePlanningInputs
+        {
+            DepartureNow = false,
+            ScheduledDepartureUtc = DateTimeOffset.Parse("2026-09-09T19:00:00Z")
+        });
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        root["plan"]!["planningInputs"]!["departureNow"] = true;
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+        var original = await File.ReadAllBytesAsync(path);
+
+        await Assert.ThrowsAsync<RoutePlanRepositoryException>(async () => await repository.OpenAsync(plan.Id));
+
+        Assert.Equal(original, await File.ReadAllBytesAsync(path));
+    }
+
+    [Fact]
     public async Task V7_migration_preserves_experimental_audit_without_inventing_planning_inputs()
     {
         using var directory = new TestDirectory();

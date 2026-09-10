@@ -4,6 +4,34 @@ namespace Navtool.Core.Tests;
 
 public sealed class RoutePlanningInputsTests
 {
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void Departure_mode_accepts_only_its_matching_schedule(bool departureNow, bool hasSchedule)
+    {
+        var inputs = new RoutePlanningInputs
+        {
+            DepartureNow = departureNow,
+            ScheduledDepartureUtc = hasSchedule ? DateTimeOffset.Parse("2026-09-09T19:00:00Z") : null
+        };
+
+        inputs.Validate();
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void Departure_mode_rejects_an_inconsistent_schedule(bool departureNow, bool hasSchedule)
+    {
+        var inputs = new RoutePlanningInputs
+        {
+            DepartureNow = departureNow,
+            ScheduledDepartureUtc = hasSchedule ? DateTimeOffset.Parse("2026-09-09T19:00:00Z") : null
+        };
+
+        Assert.Throws<ArgumentException>(() => inputs.Validate());
+    }
+
     [Fact]
     public void Local_file_inputs_do_not_require_download_models()
     {

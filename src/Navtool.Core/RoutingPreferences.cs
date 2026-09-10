@@ -16,6 +16,8 @@ public sealed record RoutePlanningInputs
 
     public void Validate()
     {
+        if (DepartureNow && ScheduledDepartureUtc is not null)
+            throw new ArgumentException("Departing now cannot include a scheduled departure.");
         if (!DepartureNow && ScheduledDepartureUtc is null)
             throw new ArgumentException("Choose a valid scheduled departure.");
         if (PassageDays < 0 || PassageHours is < 0 or > 23)
