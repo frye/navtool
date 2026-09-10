@@ -1464,8 +1464,25 @@ public partial class MainViewModel : ViewModelBase
 
     public async Task SelectLocalGribAsync(string path)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        var absolutePath = Path.GetFullPath(path);
+        string absolutePath;
+        try
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
+            absolutePath = Path.GetFullPath(path);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            var superseded = Interlocked.Exchange(ref _inspectionCancellation, null);
+            superseded?.Cancel();
+            superseded?.Dispose();
+            IsInspectingLocalGrib = false;
+            LocalGribPath = null;
+            LocalForecast = null;
+            LocalGribStatus = "Selected file is not usable.";
+            ErrorMessage = $"GRIB file rejected: {exception.Message}";
+            return;
+        }
+
         LocalGribPath = absolutePath;
         ErrorMessage = null;
         if (_localGribInspector is null)
