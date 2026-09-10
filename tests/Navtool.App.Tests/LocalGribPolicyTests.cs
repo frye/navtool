@@ -7,6 +7,35 @@ namespace Navtool.App.Tests;
 
 public sealed class LocalGribPolicyTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Selection_and_inspection_use_the_same_normalized_path(bool configured, bool absolute)
+    {
+        var path = Path.Combine("charts", "..", "selected.grib2");
+        if (absolute) path = Path.Combine(Path.GetFullPath("."), path);
+        var expected = Path.GetFullPath(path);
+        string? inspectedPath = null;
+        var inspector = new Inspector((selected, _) =>
+        {
+            inspectedPath = selected;
+            return ValueTask.FromResult(Descriptor(selected));
+        });
+        ILocalGribInspector effectiveInspector = configured
+            ? new DeferredLocalGribInspector(_ => inspector)
+            : inspector;
+        var vm = CreateViewModel(effectiveInspector);
+
+        await vm.SelectLocalGribAsync(path);
+
+        Assert.Equal(expected, vm.LocalGribPath);
+        Assert.Equal(expected, inspectedPath);
+        Assert.Equal(expected, vm.LocalForecast?.Artifact.Path);
+        Assert.Null(vm.ErrorMessage);
+    }
+
     [Fact]
     public async Task Selected_gap_is_passed_to_the_deferred_native_inspector_factory()
     {

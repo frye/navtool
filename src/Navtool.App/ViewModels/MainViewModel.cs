@@ -1465,7 +1465,8 @@ public partial class MainViewModel : ViewModelBase
     public async Task SelectLocalGribAsync(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        LocalGribPath = Path.GetFullPath(path);
+        var absolutePath = Path.GetFullPath(path);
+        LocalGribPath = absolutePath;
         ErrorMessage = null;
         if (_localGribInspector is null)
         {
@@ -1485,9 +1486,9 @@ public partial class MainViewModel : ViewModelBase
         {
             var gap = TimeSpan.FromHours(gapHours);
             var inspected = _localGribInspector is IConfiguredLocalGribInspector configured
-                ? await configured.InspectAsync(path, gap, cancellation.Token)
+                ? await configured.InspectAsync(absolutePath, gap, cancellation.Token)
                 : gap == TimeSpan.FromHours(6)
-                    ? await _localGribInspector.InspectAsync(path, cancellation.Token)
+                    ? await _localGribInspector.InspectAsync(absolutePath, cancellation.Token)
                     : throw new NotSupportedException("The local inspector cannot apply the selected interpolation-gap policy.");
             if (cancellation != Volatile.Read(ref _inspectionCancellation))
             {
