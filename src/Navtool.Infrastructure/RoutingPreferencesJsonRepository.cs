@@ -7,8 +7,6 @@ namespace Navtool.Infrastructure;
 public sealed class RoutingPreferencesJsonRepository(string appDataRoot) : IRoutingPreferencesRepository
 {
     private readonly string _path = Path.Combine(appDataRoot, "preferences", "routing.json");
-    private string? _loadError;
-    private bool _loaded;
     private static readonly JsonSerializerOptions Options = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -18,30 +16,27 @@ public sealed class RoutingPreferencesJsonRepository(string appDataRoot) : IRout
 
     public RoutingUserPreferences? Load()
     {
-        _loaded = true;
         try
         {
             using var stream = File.OpenRead(_path);
             var preferences = JsonSerializer.Deserialize<RoutingUserPreferences>(stream, Options) ??
                 throw new InvalidDataException("Routing preferences are empty.");
             preferences.Validate();
-            _loadError = null;
             return preferences;
         }
-        catch (FileNotFoundException) { _loadError = null; return null; }
-        catch (DirectoryNotFoundException) { _loadError = null; return null; }
+        catch (FileNotFoundException) { return null; }
+        catch (DirectoryNotFoundException) { return null; }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
             JsonException or ArgumentException or NotSupportedException or System.Security.SecurityException)
         {
-            _loadError = $"Cannot read routing preferences at {_path}: {exception.Message}. The file is retained for recovery.";
-            throw new InvalidDataException(_loadError, exception);
+            var message = $"Cannot read routing preferences at {_path}: {exception.Message}. The file is retained for recovery.";
+            throw new InvalidDataException(message, exception);
         }
     }
 
     public void Save(RoutingUserPreferences preferences)
     {
-        if (!_loaded) Load();
-        if (_loadError is not null) throw new InvalidDataException(_loadError);
+        Load();
         preferences.Validate();
         var directory = Path.GetDirectoryName(_path)!;
         Directory.CreateDirectory(directory);

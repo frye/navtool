@@ -7,6 +7,60 @@ namespace Navtool.Infrastructure.Tests;
 public sealed class RoutingPreferencesJsonRepositoryTests
 {
     [Theory]
+    [InlineData(false, "{broken")]
+    [InlineData(true, "{broken")]
+    [InlineData(false, "{\"schemaVersion\":999,\"setup\":{},\"planning\":{},\"advanced\":{}}")]
+    [InlineData(true, "{\"schemaVersion\":999,\"setup\":{},\"planning\":{},\"advanced\":{}}")]
+    [InlineData(false, "{\"schemaVersion\":1,\"setup\":{},\"planning\":{\"passageDays\":12},\"advanced\":{}}")]
+    [InlineData(true, "{\"schemaVersion\":1,\"setup\":{},\"planning\":{\"passageDays\":12},\"advanced\":{}}")]
+    public void Save_rechecks_files_changed_after_a_successful_load(bool existed, string invalid)
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutingPreferencesJsonRepository(directory.Path);
+        if (existed)
+        {
+            repository.Save(new());
+            Assert.NotNull(repository.Load());
+        }
+        else
+        {
+            Assert.Null(repository.Load());
+        }
+        var path = Path.Combine(directory.Path, "preferences", "routing.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, invalid);
+        var original = File.ReadAllBytes(path);
+
+        var exception = Assert.Throws<InvalidDataException>(() => repository.Save(new()));
+
+        Assert.Contains("retained for recovery", exception.Message);
+        Assert.Equal(original, File.ReadAllBytes(path));
+        Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(path)!, "*.tmp"));
+    }
+
+    [Fact]
+    public void Save_can_resume_after_the_retained_file_is_repaired()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutingPreferencesJsonRepository(directory.Path);
+        repository.Save(new());
+        var path = Path.Combine(directory.Path, "preferences", "routing.json");
+        var valid = File.ReadAllText(path);
+        File.WriteAllText(path, "{broken");
+        Assert.Throws<InvalidDataException>(() => repository.Load());
+        Assert.Throws<InvalidDataException>(() => repository.Save(new()));
+        File.WriteAllText(path, valid);
+        var updated = new RoutingUserPreferences
+        {
+            Planning = new RoutePlanningInputs { PassageDays = 4 }
+        };
+
+        repository.Save(updated);
+
+        Assert.Equal(updated, new RoutingPreferencesJsonRepository(directory.Path).Load());
+    }
+
+    [Theory]
     [InlineData("planning", "forecastSource", (int)PlanningForecastSource.Download)]
     [InlineData("setup", "quality", (int)RoutingQuality.NativeBalanced)]
     [InlineData("advanced", "selectedRouteSolver", (int)RouteSolver.IsochroneBeam)]
