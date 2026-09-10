@@ -2,7 +2,6 @@ using BruTile.Cache;
 using Mapsui;
 using Mapsui.Extensions;
 using Mapsui.Layers;
-using Mapsui.Manipulations;
 using Mapsui.Nts;
 using Mapsui.Styles;
 using Navtool.App.Models;
@@ -61,10 +60,6 @@ public sealed class RouteMapLayers
     public const int MaximumDisplayFrontPoints = 2048;
     private const int IsochroneSmoothingIterations = 2;
     private const double InterruptedRouteViewportMargin = 24;
-    // Reserve the wrapped interruption banner only when geometry would be obscured or needs a fit.
-    private const double InterruptedBannerTop = 68;
-    private const double InterruptedBannerHeight = 130;
-    private const double InterruptedBannerMaximumWidth = 620;
 
     private readonly MemoryLayer _noaaRoutes = CreateRouteLayer("NOAA GFS routes");
     private readonly MemoryLayer _ecmwfRoutes = CreateRouteLayer("ECMWF IFS routes");
@@ -205,7 +200,7 @@ public sealed class RouteMapLayers
     }
 
     /// <summary>
-    /// Preserves the current viewport when retained paths fit with a screen margin and avoid the banner;
+    /// Preserves the current viewport when retained paths fit with a screen margin;
     /// otherwise fits only those paths. Returns true when a fit was requested.
     /// </summary>
     public bool KeepInterruptedRoutesVisible()
@@ -218,9 +213,8 @@ public sealed class RouteMapLayers
         var viewport = Map.Navigator.Viewport;
         var projected = UpdateInterruptedRouteFeatures();
         Map.Refresh(ChangeType.Discrete);
-        var topInset = InterruptedBannerTop + InterruptedBannerHeight + InterruptedRouteViewportMargin;
         if (viewport.Width <= InterruptedRouteViewportMargin * 2 ||
-            viewport.Height <= topInset + InterruptedRouteViewportMargin)
+            viewport.Height <= InterruptedRouteViewportMargin * 2)
         {
             return false;
         }
@@ -230,8 +224,7 @@ public sealed class RouteMapLayers
                 point.X >= InterruptedRouteViewportMargin &&
                 point.X <= viewport.Width - InterruptedRouteViewportMargin &&
                 point.Y >= InterruptedRouteViewportMargin &&
-                point.Y <= viewport.Height - InterruptedRouteViewportMargin) &&
-            !IntersectsInterruptedBanner(screenPoints, viewport.Width))
+                point.Y <= viewport.Height - InterruptedRouteViewportMargin))
         {
             return false;
         }
@@ -254,42 +247,13 @@ public sealed class RouteMapLayers
             (corners.Max(point => point.X) - corners.Min(point => point.X)) /
             (viewport.Width - InterruptedRouteViewportMargin * 2),
             (corners.Max(point => point.Y) - corners.Min(point => point.Y)) /
-            (viewport.Height - topInset - InterruptedRouteViewportMargin));
-        var safeCenter = viewport.ScreenToWorld(new ScreenPosition(
-            viewport.Width / 2, (viewport.Height + topInset - InterruptedRouteViewportMargin) / 2));
+            (viewport.Height - InterruptedRouteViewportMargin * 2));
         Map.Navigator.CenterOnAndZoomTo(
             new MPoint(
-                (extent.Left + extent.Right) / 2 -
-                (safeCenter.X - viewport.CenterX) * resolution / viewport.Resolution,
-                (extent.Bottom + extent.Top) / 2 -
-                (safeCenter.Y - viewport.CenterY) * resolution / viewport.Resolution),
+                (extent.Left + extent.Right) / 2,
+                (extent.Bottom + extent.Top) / 2),
             resolution);
         return true;
-    }
-
-    private bool IntersectsInterruptedBanner(IReadOnlyList<ScreenPosition> screenPoints, double viewportWidth)
-    {
-        var halfWidth = Math.Min(InterruptedBannerMaximumWidth, viewportWidth - 32) / 2;
-        var banner = new GeometryFactory().ToGeometry(new Envelope(
-            viewportWidth / 2 - halfWidth - InterruptedRouteViewportMargin,
-            viewportWidth / 2 + halfWidth + InterruptedRouteViewportMargin,
-            InterruptedBannerTop - InterruptedRouteViewportMargin,
-            InterruptedBannerTop + InterruptedBannerHeight + InterruptedRouteViewportMargin));
-        var offset = 0;
-        foreach (var (_, path) in _interruptedPaths)
-        {
-            var coordinates = screenPoints.Skip(offset).Take(path.Length)
-                .Select(point => new NtsCoordinate(point.X, point.Y)).ToArray();
-            Geometry geometry = coordinates.Length == 1
-                ? new Point(coordinates[0])
-                : new LineString(coordinates);
-            if (geometry.Intersects(banner))
-            {
-                return true;
-            }
-            offset += path.Length;
-        }
-        return false;
     }
 
     private IReadOnlyList<MPoint> UpdateInterruptedRouteFeatures()
@@ -323,15 +287,12 @@ public sealed class RouteMapLayers
             {
                 Data = model
             };
-            endpoint.Styles.Add(new LabelStyle
+            endpoint.Styles.Add(new SymbolStyle
             {
-                Text = model == ForecastModel.NoaaGfs ? "NOAA interrupted" : "ECMWF interrupted",
-                Font = new Font { Size = 11, Bold = true },
-                ForeColor = color,
-                BackColor = new Brush(MapsuiColor.White),
-                BorderColor = color,
-                BorderThickness = 2,
-                CornerRounding = 3
+                SymbolType = SymbolType.Ellipse,
+                SymbolScale = 0.4,
+                Fill = new Brush(color),
+                Outline = new Pen(color, 1)
             });
             features.Add(endpoint);
         }

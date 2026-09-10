@@ -1,6 +1,6 @@
-NAVTOOL MAPPING THIRD-PARTY NOTICES
+NAVTOOL THIRD-PARTY NOTICES
 
-This file covers the mapping data, services, and software distributed with or
+This file covers the data, services, and software distributed with or
 used by Navtool. Full license texts and upstream notices are in the licenses
 directory distributed beside this file.
 
@@ -31,6 +31,11 @@ Users supplying local data must retain its accompanying license and notices.
 https://www.soest.hawaii.edu/pwessel/gshhg/
 
 SOFTWARE
+
+fast_float 8.2.10
+Copyright (c) 2021 The fast_float authors.
+License: MIT. See licenses/fast_float-MIT.txt.
+https://github.com/fastfloat/fast_float
 
 Mapsui 5.1.0
 Includes Mapsui, Mapsui.Avalonia, Mapsui.Nts, Mapsui.Rendering.Skia, and

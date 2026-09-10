@@ -8,7 +8,9 @@ internal sealed class CoalescingProgress<T, TKey>(
 {
     private readonly SynchronizationContext? _context = SynchronizationContext.Current;
     private readonly object _gate = new();
-    private readonly Dictionary<TKey, T> _pending = [];
+    private readonly object _deliveryGate = new();
+    private readonly Dictionary<TKey, (long Sequence, T Value)> _pending = [];
+    private long _sequence;
     private bool _scheduled;
 
     public void Report(T value)
@@ -16,7 +18,7 @@ internal sealed class CoalescingProgress<T, TKey>(
         onReport?.Invoke(value);
         lock (_gate)
         {
-            _pending[keySelector(value)] = value;
+            _pending[keySelector(value)] = (++_sequence, value);
             if (_scheduled)
             {
                 return;
@@ -38,28 +40,45 @@ internal sealed class CoalescingProgress<T, TKey>(
         }
     }
 
-    private void Drain()
+    // Call on the display thread before closing the calculation's progress acceptance window.
+    public void Flush()
+    {
+        lock (_deliveryGate)
+        {
+            DeliverPending();
+        }
+    }
+
+    private void DeliverPending()
     {
         T[] values;
         lock (_gate)
         {
-            values = _pending.Values.ToArray();
+            values = _pending.Values.OrderBy(value => value.Sequence).Select(value => value.Value).ToArray();
             _pending.Clear();
         }
-        try
+        foreach (var value in values)
+            handler(value);
+    }
+
+    private void Drain()
+    {
+        lock (_deliveryGate)
         {
-            foreach (var value in values)
-                handler(value);
-        }
-        finally
-        {
-            bool queued;
-            lock (_gate)
+            try
             {
-                queued = _pending.Count > 0;
-                _scheduled = queued;
+                DeliverPending();
             }
-            if (queued) QueueDrain();
+            finally
+            {
+                bool queued;
+                lock (_gate)
+                {
+                    queued = _pending.Count > 0;
+                    _scheduled = queued;
+                }
+                if (queued) QueueDrain();
+            }
         }
     }
 }

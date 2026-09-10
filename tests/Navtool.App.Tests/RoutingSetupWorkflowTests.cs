@@ -14,6 +14,385 @@ public sealed class RoutingSetupWorkflowTests
     private static readonly DateTimeOffset Now = new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public void Calculation_commands_require_a_local_file_and_notify_on_source_changes()
+    {
+        var provider = new CountingProvider();
+        var vm = Create(provider, new TestRoutingSetupService());
+        var calculateChanges = 0;
+        var forceChanges = 0;
+        vm.CalculateCommand.CanExecuteChanged += (_, _) => calculateChanges++;
+        vm.ForceRecalculateCommand.CanExecuteChanged += (_, _) => forceChanges++;
+        void Change(Action edit, bool canCalculate)
+        {
+            calculateChanges = forceChanges = 0;
+            edit();
+            Assert.True(calculateChanges > 0);
+            Assert.True(forceChanges > 0);
+            Assert.Equal(canCalculate, vm.CalculateCommand.CanExecute(null));
+            Assert.Equal(canCalculate, vm.ForceRecalculateCommand.CanExecute(null));
+            if (vm.IsLocalForecast && !vm.IsCalculating && !vm.IsInspectingLocalGrib)
+            {
+                if (canCalculate)
+                    Assert.StartsWith("Ready to calculate.", vm.CalculationReadiness);
+                else
+                    Assert.Equal("Choose a local GRIB file.", vm.CalculationReadiness);
+            }
+        }
+
+        Assert.True(vm.CalculateCommand.CanExecute(null));
+        Change(() => vm.ForecastInputMode = ForecastInputMode.LocalFile, false);
+        Change(() => vm.LocalGribPath = "", false);
+        Change(() => vm.LocalGribPath = " ", false);
+        Change(() => vm.LocalGribPath = "relative.grib", false);
+        Change(() => vm.LocalGribPath = Path.GetFullPath("selected.grib"), true);
+        Change(() => vm.IsInspectingLocalGrib = true, false);
+        Change(() => vm.IsInspectingLocalGrib = false, true);
+        Change(() => vm.IsCalculating = true, false);
+        Change(() => vm.IsCalculating = false, true);
+        Change(() => vm.LocalGribPath = null, false);
+        Change(() => vm.LocalForecast = new LocalForecastDescriptor(ForecastModel.NoaaGfs,
+            new LocalGribArtifact(Path.GetFullPath("inspected.grib")), Now.AddHours(-6), Now,
+            Now.AddDays(3), new GeographicBounds(-89, 89, -179, 179)), true);
+        Change(() => vm.LocalGribPath = "replacement.grib", false);
+        Change(() => vm.LocalGribPath = null, true);
+        Change(() => vm.LocalForecast = null, false);
+        Change(() => vm.ForecastInputMode = ForecastInputMode.Download, true);
+        Assert.Equal(0, provider.Calls);
+    }
+
+    [Fact]
+    public void Repeated_invalid_setup_edits_still_advance_revisions_once()
+    {
+        var vm = Create(new CountingProvider(), new TestRoutingSetupService());
+        foreach (var performance in new[] { -1, -2 })
+        {
+            var revision = vm.Itinerary.CalculationRevision;
+            var editRevision = vm.Itinerary.EditRevision;
+            vm.RoutingSetup.PerformancePercentage = performance;
+            Assert.Equal(revision + 1, vm.Itinerary.CalculationRevision);
+            Assert.Equal(editRevision + 1, vm.Itinerary.EditRevision);
+            Assert.False(vm.RoutingSetup.TryBuild(out _, out _));
+        }
+    }
+
+    [Fact]
+    public void Readiness_ignores_progress_and_status_but_updates_for_planning_dependencies()
+    {
+        var vm = Create(new CountingProvider(), new TestRoutingSetupService());
+        var notifications = new List<string>();
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.CalculationReadiness))
+                notifications.Add(vm.CalculationReadiness);
+        };
+        for (var index = 1; index <= 10; index++)
+        {
+            vm.ProgressFraction = index / 10.0;
+            vm.StatusMessage = $"Progress {index}";
+            vm.LiveSearchStatus = $"Frontier {index}";
+            vm.NoaaStatus = $"Routing {index}";
+            vm.TimelinePosition = index / 10.0;
+        }
+        vm.ErrorMessage = "A display-only diagnostic.";
+        vm.WarningMessage = "A display-only warning.";
+        Assert.Empty(notifications);
+
+        ExpectUpdate(() => vm.IsCalculating = true, "Calculation in progress.");
+        ExpectUpdate(() => vm.IsCalculating = false, "Ready to calculate.");
+        ExpectUpdate(() => vm.IsInspectingLocalGrib = true, "Inspecting the selected forecast file.");
+        ExpectUpdate(() => vm.IsInspectingLocalGrib = false, "Ready to calculate.");
+        ExpectUpdate(() => vm.RoutingSetup.Boat = null, "Select a boat:");
+        ExpectUpdate(() => vm.RoutingSetup.Boat = TestRoutingSetupService.Demo, "Ready to calculate.");
+        ExpectUpdate(() => vm.PassageDays = 11, "Passage duration cannot exceed 10 days.");
+        ExpectUpdate(() => vm.PassageDays = 3, "Ready to calculate.");
+        ExpectUpdate(() => vm.UseNoaa = false, "Select at least one forecast model.");
+        ExpectUpdate(() => vm.ForecastInputMode = ForecastInputMode.LocalFile, "Choose a local GRIB file.");
+        ExpectUpdate(() => vm.LocalGribPath = Path.GetFullPath("forecast.grib"), "Ready to calculate.");
+        ExpectUpdate(() => vm.Itinerary.AddWaypointCommand.Execute(null), "Set every waypoint");
+
+        void ExpectUpdate(Action edit, string expected)
+        {
+            notifications.Clear();
+            edit();
+            Assert.Contains(notifications, value => value.StartsWith(expected, StringComparison.Ordinal));
+            Assert.StartsWith(expected, vm.CalculationReadiness);
+        }
+    }
+
+    [Theory]
+    [InlineData(nameof(MainViewModel.PassageDays))]
+    [InlineData(nameof(MainViewModel.PassageHours))]
+    [InlineData(nameof(MainViewModel.UseNoaa))]
+    [InlineData(nameof(MainViewModel.UseEcmwf))]
+    [InlineData(nameof(MainViewModel.ForecastInputMode))]
+    [InlineData(nameof(MainViewModel.LocalGribPath))]
+    public void Valid_planning_edits_increment_revisions_once(string property)
+    {
+        var provider = new CountingProvider();
+        var vm = Create(provider, new TestRoutingSetupService());
+        if (property == nameof(MainViewModel.UseNoaa)) vm.UseEcmwf = true;
+        if (property == nameof(MainViewModel.ForecastInputMode))
+            vm.LocalGribPath = Path.GetFullPath("selected-local-forecast.grib");
+        var calculationRevision = vm.Itinerary.CalculationRevision;
+        var editRevision = vm.Itinerary.EditRevision;
+
+        switch (property)
+        {
+            case nameof(MainViewModel.PassageDays): vm.PassageDays = 4; break;
+            case nameof(MainViewModel.PassageHours): vm.PassageHours = 6; break;
+            case nameof(MainViewModel.UseNoaa): vm.UseNoaa = false; break;
+            case nameof(MainViewModel.UseEcmwf): vm.UseEcmwf = true; break;
+            case nameof(MainViewModel.ForecastInputMode): vm.ForecastInputMode = ForecastInputMode.LocalFile; break;
+            case nameof(MainViewModel.LocalGribPath): vm.LocalGribPath = Path.GetFullPath("selected-local-forecast.grib"); break;
+            default: throw new ArgumentOutOfRangeException(nameof(property));
+        }
+
+        Assert.Null(vm.Itinerary.PlanningInputError);
+        Assert.Equal(calculationRevision + 1, vm.Itinerary.CalculationRevision);
+        Assert.Equal(editRevision + 1, vm.Itinerary.EditRevision);
+        Assert.Equal(0, provider.Calls);
+    }
+
+    [Theory]
+    [InlineData(4)]
+    [InlineData(-1)]
+    public async Task Planning_edits_invalidate_results_once_even_when_input_is_invalid(int days)
+    {
+        var provider = new CountingProvider();
+        var preferences = new CountingPreferences();
+        var vm = Create(provider, new TestRoutingSetupService(), preferences: preferences);
+        await vm.CalculateRoutesAsync();
+        Assert.Null(vm.ErrorMessage);
+        var previousDefaults = preferences.Value;
+        var revision = vm.Itinerary.CalculationRevision;
+        var calls = provider.Calls;
+
+        vm.PassageDays = days;
+
+        Assert.Equal(revision + 1, vm.Itinerary.CalculationRevision);
+        Assert.True(vm.Itinerary.ResultsInvalidated);
+        Assert.All(vm.Itinerary.CurrentPlan!.Results[0].Legs, leg =>
+        {
+            Assert.Equal(RouteLegOutcomeState.Invalidated, leg.State);
+            Assert.Equal(RouteLegOutcomeReason.PlanningInputsChanged, leg.Reason);
+        });
+        Assert.Equal(calls, provider.Calls);
+        if (days < 0)
+        {
+            Assert.NotNull(vm.Itinerary.PlanningInputError);
+            Assert.Equal(previousDefaults, preferences.Value);
+        }
+        else
+        {
+            Assert.Null(vm.Itinerary.PlanningInputError);
+            Assert.Equal(days, preferences.Value!.Planning.PassageDays);
+        }
+    }
+
+    [Fact]
+    public void Local_file_mode_recovers_from_deselected_download_models()
+    {
+        var provider = new CountingProvider();
+        var preferences = new CountingPreferences();
+        var vm = Create(provider, new TestRoutingSetupService(), preferences: preferences);
+        vm.UseNoaa = false;
+        vm.UseEcmwf = false;
+        Assert.NotNull(vm.Itinerary.PlanningInputError);
+        Assert.Equal("Select at least one forecast model.", vm.CalculationReadiness);
+
+        vm.ForecastInputMode = ForecastInputMode.LocalFile;
+        Assert.Equal("Choose a local GRIB file.", vm.CalculationReadiness);
+        vm.LocalGribPath = Path.GetFullPath("selected-local-forecast.grib");
+
+        Assert.Null(vm.Itinerary.PlanningInputError);
+        Assert.StartsWith("Ready to calculate.", vm.CalculationReadiness);
+        Assert.True(vm.Itinerary.TryBuildPlan(out var plan, out var error), error);
+        Assert.Equal(vm.LocalGribPath, plan!.PlanningInputs!.LocalGribPath);
+        Assert.Equal(PlanningForecastSource.LocalFile, preferences.Value!.Planning.ForecastSource);
+        Assert.False(preferences.Value.Planning.UseNoaa);
+        Assert.False(preferences.Value.Planning.UseEcmwf);
+        Assert.Equal(0, provider.Calls);
+        Assert.Null(vm.LocalForecast);
+
+        vm.ForecastInputMode = ForecastInputMode.Download;
+        Assert.NotNull(vm.Itinerary.PlanningInputError);
+        Assert.Equal("Select at least one forecast model.", vm.CalculationReadiness);
+        vm.UseEcmwf = true;
+        Assert.Null(vm.Itinerary.PlanningInputError);
+    }
+
+    [Fact]
+    public async Task Valid_preferences_survive_restart_and_new_draft_without_silent_boat_or_advanced_activation()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"navtool-user-preferences-{Guid.NewGuid():N}");
+        try
+        {
+            var repository = new RoutingPreferencesJsonRepository(root);
+            var vm = Create(new CountingProvider(), new TestRoutingSetupService(), chooseBoat: false,
+                preferences: repository);
+            Assert.Null(vm.RoutingSetup.Boat);
+            Assert.Contains("No saved", vm.PreferenceStatus);
+            await vm.RoutingSetup.SelectDemoCommand.ExecuteAsync(null);
+            vm.RoutingSetup.Quality = RoutingQuality.NativeAccurate;
+            vm.RoutingSetup.PerformancePercentage = 87;
+            vm.RoutingSetup.ArrivalRadiusNauticalMiles = 0.5;
+            vm.RoutingSetup.ForecastPolicy = ForecastRefreshPolicy.LatestAvailable;
+            vm.RoutingSetup.LandSource = RoutingLandSource.OpenStreetMap;
+            vm.PassageDays = 4;
+            vm.PassageHours = 6;
+            vm.UseEcmwf = true;
+            vm.EnableProfessionalRouting = true;
+            vm.TackPenaltySeconds = 95;
+            vm.CurrentEastKnots = 1.5;
+            vm.EnableCurrentField = true;
+            vm.RoutingSetup.HardDurationHours = 192;
+            vm.RoutingSetup.UseHardDuration = true;
+            vm.RoutingSetup.EnableCoastalPruning = true;
+            vm.DepartureNow = false;
+            vm.DepartureDate = Now.AddDays(1);
+            vm.DepartureTime = TimeSpan.FromHours(18);
+            Assert.Null(vm.PreferenceError);
+            Assert.Equal("Routing preferences saved.", vm.PreferenceStatus);
+
+            var restarted = Create(new CountingProvider(), new TestRoutingSetupService(), chooseBoat: false,
+                preferences: new RoutingPreferencesJsonRepository(root));
+            foreach (var restored in new[] { restarted, vm })
+            {
+                restored.Itinerary.NewCommand.Execute(null);
+                Assert.Equal(TestRoutingSetupService.Demo, restored.RoutingSetup.Boat);
+                Assert.Equal(87, restored.RoutingSetup.PerformancePercentage);
+                Assert.Equal(RoutingQuality.NativeAccurate, restored.RoutingSetup.Quality);
+                Assert.Equal(0.5, restored.RoutingSetup.ArrivalRadiusNauticalMiles);
+                Assert.Equal(ForecastRefreshPolicy.LatestAvailable, restored.RoutingSetup.ForecastPolicy);
+                Assert.Equal(RoutingLandSource.OpenStreetMap, restored.RoutingSetup.LandSource);
+                Assert.Equal(4, restored.PassageDays);
+                Assert.Equal(6, restored.PassageHours);
+                Assert.True(restored.UseEcmwf);
+                Assert.True(restored.DepartureNow);
+                Assert.False(restored.EnableProfessionalRouting);
+                Assert.False(restored.EnableCurrentField);
+                Assert.False(restored.RoutingSetup.UseHardDuration);
+                Assert.False(restored.RoutingSetup.EnableCoastalPruning);
+                Assert.Equal(192, restored.RoutingSetup.HardDurationHours);
+                Assert.Equal(95, restored.TackPenaltySeconds);
+                Assert.Equal(1.5, restored.CurrentEastKnots);
+                Assert.False(restored.Itinerary.IsDirty);
+            }
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task Opening_route_restores_its_inputs_without_writing_preferences_or_reactivating_experiments()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"navtool-route-inputs-{Guid.NewGuid():N}");
+        try
+        {
+            var preferences = new CountingPreferences();
+            var plans = new RoutePlanJsonRepository(root);
+            var provider = new CountingProvider();
+            var vm = Create(provider, new TestRoutingSetupService(), repository: plans, preferences: preferences);
+            vm.PassageDays = 6;
+            vm.UseEcmwf = true;
+            vm.UseNoaa = false;
+            vm.DepartureNow = false;
+            vm.DepartureDate = Now.AddDays(1);
+            vm.DepartureTime = TimeSpan.FromHours(15);
+            vm.RoutingSetup.PerformancePercentage = 81;
+            vm.RoutingSetup.EnableCoastalPruning = true;
+            await vm.Itinerary.SaveCommand.ExecuteAsync(null);
+            Assert.Null(vm.Itinerary.StorageError);
+            vm.RoutingSetup.PerformancePercentage = 98;
+            vm.PassageDays = 2;
+            vm.UseNoaa = true;
+            vm.UseEcmwf = false;
+            var defaults = preferences.Value;
+            var writes = preferences.Writes;
+            await vm.Itinerary.OpenCommand.ExecuteAsync(null);
+            Assert.Null(vm.Itinerary.StorageError);
+            Assert.Equal(writes, preferences.Writes);
+            Assert.Equal(defaults, preferences.Value);
+            Assert.Equal(81, vm.RoutingSetup.PerformancePercentage);
+            Assert.Equal(6, vm.PassageDays);
+            Assert.False(vm.UseNoaa);
+            Assert.True(vm.UseEcmwf);
+            Assert.False(vm.DepartureNow);
+            Assert.Equal(TimeSpan.FromHours(15), vm.DepartureTime);
+            Assert.False(vm.RoutingSetup.EnableCoastalPruning);
+            Assert.False(vm.Itinerary.IsDirty);
+            Assert.Equal(0, provider.Calls);
+            vm.Itinerary.NewCommand.Execute(null);
+            Assert.Equal(98, vm.RoutingSetup.PerformancePercentage);
+            Assert.Equal(2, vm.PassageDays);
+            Assert.True(vm.DepartureNow);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task Now_ignores_picker_values_and_resolves_clock_only_for_explicit_calculation()
+    {
+        var clock = new MutableClock { Now = Now };
+        var provider = new CountingProvider();
+        var vm = Create(provider, new TestRoutingSetupService(), clock: clock);
+        Assert.True(vm.DepartureNow);
+        vm.DepartureDate = null;
+        vm.DepartureTime = null;
+        clock.Now = Now.AddHours(2);
+        vm.SetDestinationAt(new Coordinate(0, 2));
+        await Task.Yield();
+        Assert.Equal(0, provider.Calls);
+        await vm.CalculateRoutesAsync();
+        Assert.Null(vm.ErrorMessage);
+        Assert.Equal(clock.Now, provider.LastRequest!.From);
+        clock.Now = clock.Now.AddHours(1);
+        await vm.CalculateRoutesAsync();
+        Assert.Equal(clock.Now, provider.LastRequest.From);
+    }
+
+    [Fact]
+    public void Invalid_edits_and_failed_writes_keep_last_valid_defaults_and_report_status()
+    {
+        var preferences = new CountingPreferences();
+        var vm = Create(new CountingProvider(), new TestRoutingSetupService(), preferences: preferences);
+        vm.RoutingSetup.PerformancePercentage = 85;
+        var valid = preferences.Value;
+        vm.RoutingSetup.PerformancePercentage = -1;
+        Assert.Equal(valid, preferences.Value);
+        Assert.Contains("previous valid preferences retained", vm.PreferenceStatus);
+        vm.Itinerary.NewCommand.Execute(null);
+        Assert.Equal(85, vm.RoutingSetup.PerformancePercentage);
+        preferences.FailWrites = true;
+        vm.RoutingSetup.PerformancePercentage = 90;
+        Assert.Contains("disk full", vm.PreferenceError);
+        Assert.Equal("Routing preferences could not be saved.", vm.PreferenceStatus);
+        vm.Itinerary.NewCommand.Execute(null);
+        Assert.Equal(85, vm.RoutingSetup.PerformancePercentage);
+    }
+
+    [Fact]
+    public void Saved_local_source_remains_local_and_retains_missing_path_without_inspection()
+    {
+        var path = Path.GetFullPath("missing-forecast.grib");
+        var preferences = new CountingPreferences
+        {
+            Value = new RoutingUserPreferences
+            {
+                Planning = new RoutePlanningInputs
+                {
+                    ForecastSource = PlanningForecastSource.LocalFile, LocalGribPath = path
+                }
+            }
+        };
+        var vm = Create(new CountingProvider(), new TestRoutingSetupService(), chooseBoat: false, preferences: preferences);
+        Assert.Equal(ForecastInputMode.LocalFile, vm.ForecastInputMode);
+        Assert.Equal(path, vm.LocalGribPath);
+        Assert.Null(vm.LocalForecast);
+        Assert.Equal(0, preferences.Writes);
+        Assert.True(vm.CalculateCommand.CanExecute(null));
+    }
+
+    [Fact]
     public void Coastal_toggle_defaults_off_restores_without_events_and_invalidates_setup_on_edit()
     {
         var vm = new RoutingSetupViewModel();
@@ -22,16 +401,16 @@ public sealed class RoutingSetupWorkflowTests
         vm.SetupChanged += (_, _) => changes++;
         vm.Restore(new RoutingSetup(TestRoutingSetupService.Demo,
             coastalPruning: RouteCoastalPruningMode.ConservativeLandAware));
-        Assert.True(vm.EnableCoastalPruning);
+        Assert.False(vm.EnableCoastalPruning);
         Assert.Equal(0, changes);
         Assert.True(vm.TryBuild(out var restored, out var error), error);
-        Assert.Equal(RouteCoastalPruningMode.ConservativeLandAware, restored!.CoastalPruning);
+        Assert.Equal(RouteCoastalPruningMode.Off, restored!.CoastalPruning);
         vm.ResolvedStatus = "Previous run";
-        vm.EnableCoastalPruning = false;
+        vm.EnableCoastalPruning = true;
         Assert.Equal(1, changes);
         Assert.Null(vm.ResolvedStatus);
         Assert.True(vm.TryBuild(out var changed, out error), error);
-        Assert.Equal(RouteCoastalPruningMode.Off, changed!.CoastalPruning);
+        Assert.Equal(RouteCoastalPruningMode.ConservativeLandAware, changed!.CoastalPruning);
         vm.Restore(null);
         Assert.False(vm.EnableCoastalPruning);
         Assert.Equal(1, changes);
@@ -291,12 +670,12 @@ public sealed class RoutingSetupWorkflowTests
             Assert.Null(vm.Itinerary.StorageError);
             Assert.Equal(92, vm.RoutingSetup.PerformancePercentage);
             vm.Itinerary.NewCommand.Execute(null);
-            Assert.Null(vm.RoutingSetup.Boat);
+            Assert.Equal(TestRoutingSetupService.Demo, vm.RoutingSetup.Boat);
             await vm.Itinerary.RefreshSavedPlansCommand.ExecuteAsync(null);
             await vm.Itinerary.OpenCommand.ExecuteAsync(null);
             Assert.Null(vm.Itinerary.StorageError);
             Assert.False(vm.EnableProfessionalRouting);
-            Assert.True(vm.RoutingSetup.EnableCoastalPruning);
+            Assert.False(vm.RoutingSetup.EnableCoastalPruning);
             Assert.Equal(TestRoutingSetupService.Demo, vm.RoutingSetup.Boat);
             Assert.Equal(RoutingQuality.NativeAccurate, vm.RoutingSetup.Quality);
             Assert.Equal(92, vm.RoutingSetup.PerformancePercentage);
@@ -323,7 +702,9 @@ public sealed class RoutingSetupWorkflowTests
         Assert.Equal(1500, route.Points.Length);
         Assert.True(route.Points[750].Location.Latitude < -0.24);
         var original = route.Points.ToArray();
+        var revision = vm.Itinerary.CalculationRevision;
         vm.RoutingSetup.PerformancePercentage = 80;
+        Assert.Equal(revision + 1, vm.Itinerary.CalculationRevision);
         Assert.True(vm.Itinerary.ResultsInvalidated);
         Assert.Empty(vm.SuccessfulRoutes);
         Assert.Equal(original, route.Points);
@@ -368,12 +749,23 @@ public sealed class RoutingSetupWorkflowTests
         try
         {
             window.Show();
+            window.SelectPanel(MainWindow.WorkingPanel.Settings);
             var panel = Assert.IsType<RoutingSetupView>(window.FindControl<RoutingSetupView>("CruisingSetupPanel"));
-            Assert.True(panel.IsVisible);
-            Assert.NotNull(panel.FindControl<Button>("ImportBoatButton"));
-            Assert.NotNull(panel.FindControl<Button>("DemoBoatButton"));
+            panel.FindControl<Expander>("BoatSettingsExpander")!.IsExpanded = true;
+            panel.FindControl<Expander>("CoastSettingsExpander")!.IsExpanded = true;
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.True(panel.IsEffectivelyVisible);
+            Assert.True(panel.FindControl<Button>("ImportBoatButton")!.IsEffectivelyVisible);
+            Assert.True(panel.FindControl<Button>("DemoBoatButton")!.IsEffectivelyVisible);
             Assert.NotNull(panel.FindControl<ComboBox>("RoutingQualitySelector"));
-            Assert.NotNull(panel.FindControl<CheckBox>("CoastalPruningToggle"));
+            var pruning = window.FindControl<CheckBox>("CoastalPruningToggle")!;
+            var advanced = window.FindControl<Expander>("AdvancedSettingsExpander")!;
+            Assert.False(advanced.IsExpanded);
+            advanced.IsExpanded = true;
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.True(advanced.IsExpanded);
+            Assert.True(pruning.IsEffectivelyVisible);
+            Assert.Equal(vm.RoutingSetup.EnableCoastalPruning, pruning.IsChecked);
             Assert.NotNull(panel.FindControl<NumericUpDown>("BoatPerformanceInput"));
             Assert.NotNull(panel.FindControl<NumericUpDown>("ArrivalRadiusInput"));
             Assert.NotNull(panel.FindControl<Button>("PreviewGshhgButton"));
@@ -428,11 +820,13 @@ public sealed class RoutingSetupWorkflowTests
     }
 
     private static MainViewModel Create(CountingProvider provider, IRoutingSetupService? service,
-        bool chooseBoat = true, IRoutePlanRepository? repository = null, IRouteEngine? engine = null)
+        bool chooseBoat = true, IRoutePlanRepository? repository = null, IRouteEngine? engine = null,
+        IRoutingPreferencesRepository? preferences = null, TimeProvider? clock = null)
     {
         var vm = new MainViewModel(new RoutingWorkflow([provider], engine ?? new DenseEngine()), null,
-            new FixedClock(), TimeZoneInfo.Utc, new OsmTileOptions(Enabled: false),
-            routePlanRepository: repository, boatAssetService: new TestRoutingSetupService(), routingSetupService: service);
+            clock ?? new FixedClock(), TimeZoneInfo.Utc, new OsmTileOptions(Enabled: false),
+            routePlanRepository: repository, boatAssetService: new TestRoutingSetupService(), routingSetupService: service,
+            preferencesRepository: preferences);
         vm.SetEndpoints(new Coordinate(0, 0), new Coordinate(0, 2));
         vm.DepartureDate = Now;
         vm.DepartureTime = Now.TimeOfDay;
@@ -443,6 +837,27 @@ public sealed class RoutingSetupWorkflowTests
     private sealed class FixedClock : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    private sealed class MutableClock : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; }
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    private sealed class CountingPreferences : IRoutingPreferencesRepository
+    {
+        public RoutingUserPreferences? Value { get; set; }
+        public int Writes { get; private set; }
+        public bool FailWrites { get; set; }
+        public RoutingUserPreferences? Load() => Value;
+        public void Save(RoutingUserPreferences preferences)
+        {
+            if (FailWrites) throw new IOException("disk full");
+            preferences.Validate();
+            Writes++;
+            Value = preferences;
+        }
     }
 
     private sealed class CountingProvider : IForecastProvider

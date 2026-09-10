@@ -12,7 +12,8 @@ public partial class RoutingSetupView : UserControl
 
     private async void OnChooseRegionalSourceClicked(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not RoutingSetupViewModel viewModel) return;
+        if (DataContext is not MainViewModel mainViewModel) return;
+        var viewModel = mainViewModel.RoutingSetup;
         try
         {
             var storage = TopLevel.GetTopLevel(this)?.StorageProvider;
@@ -42,7 +43,8 @@ public partial class RoutingSetupView : UserControl
 
     private async void OnImportBoatClicked(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not RoutingSetupViewModel viewModel) return;
+        if (DataContext is not MainViewModel mainViewModel) return;
+        var viewModel = mainViewModel.RoutingSetup;
         try
         {
             var storage = TopLevel.GetTopLevel(this)?.StorageProvider;

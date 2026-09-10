@@ -6,8 +6,9 @@ reference; supported behavior and conservative limitations are described below.
 
 ## Using the feature
 
-Select **Experimental conservative coastal pruning** in **CRUISING SETUP**.
-It defaults to Off, including migrated plans. It requires the isochrone beam
+Select **Experimental conservative coastal pruning** in advanced settings.
+It defaults to Off and requires explicit re-enabling after restarting or opening
+a passage; saved run audit does not activate it. It requires the isochrone beam
 solver, an explicit land source and bridge ABI 9 with coastal-pruning support.
 Unsupported configurations fail before routing; they never silently switch
 solver or turn the feature off.

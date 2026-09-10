@@ -9,7 +9,7 @@ It targets macOS, Windows, and Linux.
 - Build and save named, ordered itineraries with fixed start/finish waypoints,
   reorderable intermediate waypoints, optional stopovers, and numbered map
   markers connected by an antimeridian-safe planning guide.
-- Open on a Salish Sea chart view and use resizable edge drawers plus
+- Open on a Salish Sea chart view and use a single passage-planning panel plus
   right-click, long-press, or keyboard radial map actions to place endpoints,
   inspect routes, and start calculation without obscuring the chart.
 - Choose a local departure date/time, converted to UTC with DST validation; when calculation
@@ -29,7 +29,7 @@ It targets macOS, Windows, and Linux.
 - Watch historical destination-facing isochrone fronts, the emphasized latest
   front, and the closest provisional route stream onto the map while each model
   calculates.
-- Temporarily enable professional routing controls to select the deterministic
+- Explicitly enable remembered professional routing controls to select the deterministic
   time-dependent lattice solver and tune maneuver, wind, polar, pruning, front,
   and lattice-search behavior.
 - Compare NOAA GFS and ECMWF IFS routes with distinct map colors.
@@ -47,6 +47,46 @@ It targets macOS, Windows, and Linux.
   **Kind of Blue** theme. Navtool remembers the selected theme across launches.
 - Persist route plans and their latest per-model leg outcomes as
   schema-versioned JSON beneath the application data root.
+
+## Plan a passage
+
+Select a boat once by importing a polar or explicitly choosing the labeled demo
+boat. Navtool remembers your everyday setup for subsequent launches and new
+passages; it never silently substitutes demo performance for your vessel.
+
+In **Plan**, set the start and finish, review departure, forecast models and
+boat, then press **Calculate**. Departure defaults to **Now**, NOAA GFS is
+selected, the forecast horizon is three days, and native Balanced routing with
+land avoidance is used. Endpoint and settings edits mark results out of date;
+they do not start downloads or routing automatically.
+
+**Plan**, **Results** and **Settings** share one working panel, leaving the chart
+visible. The calculation action and its status stay outside the scrolling form.
+Optional waypoints and stopovers expand when needed. Results groups route
+inspection with current position and sailed-leg progress; the chart timeline
+and weather follow the selected route model.
+
+Routing outcomes open one non-blocking **Messages** popup, with each failure
+and distinct warning shown once. Use **Close** or **Escape** to dismiss it;
+the Messages button reopens the current notices with the panel open or collapsed.
+If routing stops with a retained provisional path, click its **NOAA interrupted**
+or **ECMWF interrupted** endpoint label to reopen that model's explanation.
+The dashed paths remain incomplete after dismissal, never completed or saved
+as successful routes. Supporting forecast-coverage diagnostics expand under
+**Technical details**. Route-point telemetry is separate and unchanged.
+
+Settings are grouped by frequency: departure, forecasts and data, boat and
+polar, routing and coastlines, advanced controls, and appearance. Forecast
+freshness has one persistent policy rather than competing checkboxes. Local
+GRIB options and regional coastline fields appear in their relevant sections.
+
+Valid everyday settings become defaults for new passages. Opening a saved
+passage respects that passage's own inputs without replacing your defaults.
+Scheduled departure belongs to the passage, not to all future routes.
+Advanced values are remembered, but expert and experimental overrides require
+explicit re-enabling after restarting or opening a different passage.
+Missing assets and persistence failures are reported rather than silently
+substituting a boat, data source or solver.
 
 ## Prerequisites
 
@@ -112,6 +152,10 @@ development snapshot**, not a published v0.6 release. Set
 revisions. The default build applies the documented UTF-8 compatibility and
 conservative coastal-pruning patches. Local source overrides must contain
 equivalent changes; see [the patch manifest](native/Navtool.RouterBridge/patches/README.md).
+The default build also patches polar number parsing to use the pinned,
+header-only fast_float 8.2.10 library. This keeps locale-independent parsing
+available on older Apple toolchains without requiring the macOS 26 runtime
+needed by Apple's floating-point `std::from_chars`.
 
 To build against a different immutable `router-lib` revision or release,
 configure CMake with an override before building:
@@ -138,12 +182,13 @@ Above-range polar wind now uses the conservative `NoSpeed` policy rather than
 clamping. Boat performance defaults to 100% and scales the polar once, not the
 forecast wind. Arrival radius is distinct from land clearance.
 
-Enable **Professional routing features** in the planning drawer to reveal the
-temporary numerical controls. Professional mode can select either the
+Enable **Professional routing features** in advanced settings to activate the
+remembered numerical controls. Professional mode can select either the
 isochrone beam or deterministic time-dependent lattice solver and configure
 maneuver penalties, heading augmentation, wind sampling, polar interpolation,
-wind limits, pruning, and solver-specific settings. The toggle and edited values
-reset when Navtool exits and are never restored as active professional inputs.
+wind limits, pruning, and solver-specific settings. Edited values are
+remembered; activation resets when Navtool exits or opens a different passage.
+Remembering an override never activates it automatically.
 Completed results retain their effective settings, solver attribution, warnings,
 and available diagnostics as historical run audit.
 
@@ -157,9 +202,9 @@ Fallback attribution is retained rather than silently relabeling the solver.
 See [the 0.6 migration guide](docs/router-lib-0.6-migration.md) for compatibility,
 native units and API limits, saved-plan recovery, and optional GSHHG constraints.
 
-**Experimental conservative coastal pruning** is a separate, saved opt-in in
-CRUISING SETUP. It requires the beam solver and bridge ABI 9; migrated plans
-remain Off. The [coastal pruning guide](docs/coastal-route-pruning.md) explains
+**Experimental conservative coastal pruning** remains an explicit opt-in.
+It requires the beam solver and bridge ABI 9; opening a passage does not
+automatically reactivate it. The [coastal pruning guide](docs/coastal-route-pruning.md) explains
 its diagnostics, selected-land-source handling and conservative limitations.
 
 ## Multi-point routes and visualization
@@ -268,11 +313,18 @@ also be installed or packaged according to the target platform.
 
 The selected display theme is stored in `preferences/theme.txt` beneath
 `NAVTOOL_APP_DATA_ROOT` (or Navtool's default local application-data directory).
+Everyday routing defaults and inactive advanced values are stored atomically in
+`preferences/routing.json` (preference schema 1). Invalid edits retain the last
+valid defaults; corrupt or unsupported preference files are preserved and
+reported rather than automatically overwritten.
 Route plans are stored atomically as JSON beneath `routes/` in the same root.
-Schema-6 plan files retain normal cruising setup, boat references, causal
+Schema-8 plan files retain normal cruising setup, boat references, causal
 handoffs and per-result audit alongside waypoints, stopovers, sailed state and
-full route geometry. Professional settings are historical run audit, not
-restored active inputs. Forecast binaries are not embedded. Schema 1-5 documents
+full route geometry. Their planning-input snapshot includes departure intent,
+scheduled UTC departure, forecast horizon, models, source and local GRIB path.
+Legacy plans without this snapshot use remembered defaults, not historical
+results, for these inputs. Professional settings in results are historical run audit, not
+restored active inputs. Forecast binaries are not embedded. Older supported documents
 migrate forward; missing historical context remains legacy/unknown. The first
 migrated overwrite preserves the original bytes in `routes/backups/`.
 Unknown future schemas or inconsistent IDs/references are rejected visibly.
@@ -296,7 +348,7 @@ completed tiles available for the next attempt.
 
 By default, route calculation uses the newest cached GFS run that fully covers
 the requested area and time window. If NOAA has published a newer covering run,
-Navtool displays a warning. Enable **Use newest weather data** before calculating
+Navtool displays a warning. Select the newest-run policy in forecast settings
 to select that newest run; tiles already cached for it are still reused rather
 than downloaded again. NOMADS is not a bulk-download service and may be
 unavailable or throttle excessive usage.
@@ -322,8 +374,9 @@ file dialog (Finder on macOS). The picker lists `.grib`, `.grb`, `.grib2`,
 `.grb2`, and `.gri`, with an all-files fallback. Navtool inspects file content
 through ecCodes; the filename does not determine compatibility.
 
-Local files are referenced in place and are not copied into Navtool's cache or
-remembered after restart. A usable file must identify NOAA GFS or ECMWF IFS,
+Local files are referenced in place and are not copied into Navtool's cache.
+Remembered references must still be available and valid when used after a
+restart. A usable file must identify NOAA GFS or ECMWF IFS,
 contain compatible paired 10 m U/V fields, include the requested departure, and
 cover the declared buffered route or explicitly selected regional study domain.
 Native loading also applies the configured interpolation-gap policy. Coverage

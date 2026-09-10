@@ -190,6 +190,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     private readonly TimeZoneInfo _localTimeZone;
     private RoutePlan? _plan;
     private RoutingSetup? _routingSetup;
+    private RoutePlanningInputs? _planningInputs;
     private bool _suppressChanges;
     private bool _suppressEndpointChanged;
     private bool _suppressCurrentPositionDepartureSync;
@@ -213,6 +214,23 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     public TimeZoneInfo LocalTimeZone => _localTimeZone;
 
     public RoutingSetup? RoutingSetup => _routingSetup;
+    public RoutePlanningInputs? PlanningInputs => _planningInputs;
+    public bool IsNewDraft => _plan is null;
+    public string? PlanningInputError { get; set; }
+
+    public void SetPlanningInputs(RoutePlanningInputs inputs, bool restoring = false)
+    {
+        inputs.Validate();
+        if (_planningInputs == inputs) return;
+        _planningInputs = inputs;
+        if (_plan is not null) _plan = _plan.WithPlanningInputs(inputs);
+        if (restoring) return;
+        ResultsInvalidated = _plan?.HasInvalidatedResults is true;
+        CalculationRevision++;
+        MarkChanged();
+    }
+
+    public void SetDraftSetup(RoutingSetup? setup) => _routingSetup = setup;
 
     public event EventHandler? RoutingSetupRestored;
 
@@ -226,10 +244,10 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         MarkChanged();
     }
 
-    public void InvalidateRoutingInputs()
+    public void InvalidateRoutingInputs(RouteLegOutcomeReason reason = RouteLegOutcomeReason.RoutingSetupChanged)
     {
-        if (_plan is not null && _routingSetup is not null)
-            _plan = _plan.WithRoutingSetup(null).WithRoutingSetup(_routingSetup);
+        if (_plan is not null)
+            _plan = _plan.InvalidateFromActiveLeg(reason);
         ResultsInvalidated = _plan?.HasInvalidatedResults is true;
         CalculationRevision++;
         MarkChanged();
@@ -745,6 +763,11 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     {
         plan = null;
         error = null;
+        if (PlanningInputError is not null)
+        {
+            error = PlanningInputError;
+            return false;
+        }
         if (Waypoints.Count < 2 || Waypoints.Any(waypoint => waypoint.Coordinate is null))
         {
             error = "Set every waypoint on the map before saving.";
@@ -767,7 +790,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             else
             {
                 plan = _plan is null
-                    ? new RoutePlan(PlanId, RouteName, waypoints, routingSetup: _routingSetup)
+                    ? new RoutePlan(PlanId, RouteName, waypoints, routingSetup: _routingSetup, planningInputs: _planningInputs)
                     : new RoutePlan(
                         PlanId,
                         RouteName,
@@ -776,7 +799,8 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
                         _plan.SailedLegIds,
                         _plan.CurrentPosition,
                         _plan.ActiveLegId,
-                        _routingSetup);
+                        _routingSetup,
+                        _planningInputs);
             }
 
             ValidationMessage = null;
@@ -986,6 +1010,8 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             EditRevision++;
             _plan = null;
             _routingSetup = null;
+            _planningInputs = null;
+            PlanningInputError = null;
             RouteName = "Untitled route";
             SaveAsName = "Untitled route copy";
             Waypoints.Clear();
@@ -1026,6 +1052,8 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         {
             _plan = plan;
             _routingSetup = plan.RoutingSetup;
+            _planningInputs = plan.PlanningInputs;
+            PlanningInputError = null;
             PlanId = plan.Id;
             CalculationRevision++;
             EditRevision++;

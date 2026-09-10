@@ -742,7 +742,7 @@ public sealed class RoutingWorkflowTests
             request.Model,
             request.From.AddHours(-6));
         var artifact = new LocalGribArtifact(
-            $"/var/lib/navtool/{request.Model.ToString().ToLowerInvariant()}.grib2",
+            Path.GetFullPath($"{request.Model.ToString().ToLowerInvariant()}.grib2"),
             1_024);
         return new ForecastAcquisition(
             request,

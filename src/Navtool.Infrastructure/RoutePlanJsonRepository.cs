@@ -22,7 +22,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
                 $"Route plan schema version {currentVersion} is not supported by this application version.");
         }
 
-        if (fromVersion is < 1 or > 6)
+        if (fromVersion is < 1 or > 7)
             throw new InvalidDataException(
                 $"Route plan schema version {fromVersion} is not supported by this application version.");
         var current = JsonDocument.Parse(document.RootElement.GetRawText());
@@ -38,6 +38,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
                     4 => MigrateV4ToV5(current),
                     5 => MigrateV5ToV6(current),
                     6 => MigrateV6ToV7(current),
+                    7 => MigrateV7ToV8(current),
                     _ => throw new InvalidDataException("Unsupported migration step.")
                 };
                 current.Dispose();
@@ -219,6 +220,16 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
         return JsonDocument.Parse(root.ToJsonString());
     }
 
+    private static JsonDocument MigrateV7ToV8(JsonDocument document)
+    {
+        var root = JsonNode.Parse(document.RootElement.GetRawText()) as JsonObject ??
+                   throw new InvalidDataException("A route plan document must be a JSON object.");
+        root["schemaVersion"] = 8;
+        // Legacy plans have no planning intent. Never infer mutable inputs from run audit.
+        if (root["plan"] is JsonObject plan) plan["planningInputs"] = null;
+        return JsonDocument.Parse(root.ToJsonString());
+    }
+
     private static IEnumerable<JsonObject> EnumerateRoutes(JsonObject root)
     {
         if (root["plan"]?["results"] is not JsonArray results)
@@ -289,7 +300,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
 
 public sealed class RoutePlanJsonRepository : IRoutePlanRepository
 {
-    public const int CurrentSchemaVersion = 7;
+    public const int CurrentSchemaVersion = 8;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -679,7 +690,8 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
                     plan.CurrentPosition.Coordinate.Longitude,
                     plan.CurrentPosition.DepartureTime),
             plan.ActiveLegId?.Value,
-            plan.RoutingSetup is null ? null : ToDto(plan.RoutingSetup));
+            plan.RoutingSetup is null ? null : ToDto(plan.RoutingSetup),
+            plan.PlanningInputs);
 
     private static RoutePlanResultDto ToDto(RoutePlanResult result) =>
         new(
@@ -884,7 +896,8 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
             sailedIds,
             currentPosition,
             activeLegId,
-            dto.Setup is null ? null : FromDto(dto.Setup));
+            dto.Setup is null ? null : FromDto(dto.Setup),
+            dto.PlanningInputs);
     }
 
     private static RoutePlanResult FromDto(
@@ -1573,7 +1586,8 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
         Guid[] SailedLegIds,
         RouteCurrentPositionDto? CurrentPosition = null,
         Guid? ActiveLegId = null,
-        RoutingSetupDto? Setup = null);
+        RoutingSetupDto? Setup = null,
+        RoutePlanningInputs? PlanningInputs = null);
 
     private sealed record RouteCurrentPositionDto(
         double Latitude,

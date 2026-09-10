@@ -8,6 +8,81 @@ namespace Navtool.Infrastructure.Tests;
 
 public sealed class RoutePlanJsonRepositoryTests
 {
+    [Fact]
+    public async Task Planning_inputs_round_trip_copy_and_edit_independently_of_audit()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var inputs = new RoutePlanningInputs
+        {
+            DepartureNow = false, ScheduledDepartureUtc = DateTimeOffset.Parse("2026-09-09T19:00:00Z"),
+            PassageDays = 5, PassageHours = 3, UseNoaa = false, UseEcmwf = true,
+            ForecastSource = PlanningForecastSource.LocalFile,
+            LocalGribPath = Path.Combine(directory.Path, "missing.grib")
+        };
+        var plan = CreateAuditedPlan(directory.Path, CoastalAudit());
+        // Seed inputs before attaching history to avoid intentionally invalidating it.
+        plan = new RoutePlan(plan.Id, plan.Name, plan.Waypoints, plan.Results, plan.SailedLegIds,
+            plan.CurrentPosition, plan.ActiveLegId, plan.RoutingSetup, inputs);
+        await repository.SaveAsync(plan);
+        var loaded = await repository.OpenAsync(plan.Id);
+        Assert.Equal(inputs, loaded.PlanningInputs);
+        var copy = await repository.SaveAsAsync(loaded, "Copy with inputs");
+        Assert.Equal(inputs, copy.PlanningInputs);
+        Assert.Equal(inputs, loaded.Rename("Renamed").PlanningInputs);
+        Assert.Equal(plan.Results[0].Legs[0].Route!.RunAudit!.CalculationId, loaded.Results[0].Legs[0].Route!.RunAudit!.CalculationId);
+        Assert.Equal(CoastalAudit(), loaded.Results[0].Legs[0].Route!.RunAudit!.Native!.CoastalPruning);
+        var changed = loaded.WithPlanningInputs(inputs with { DepartureNow = true, ScheduledDepartureUtc = null });
+        Assert.True(changed.HasInvalidatedResults);
+        Assert.Equal(inputs, loaded.PlanningInputs);
+        Assert.Equal(RouteLegOutcomeReason.PlanningInputsChanged, changed.Results[0].Legs[changed.ActiveLegIndex].Reason);
+        await repository.SaveAsync(changed);
+        var reloaded = await repository.OpenAsync(changed.Id);
+        Assert.Equal(RouteLegOutcomeReason.PlanningInputsChanged, reloaded.Results[0].Legs[reloaded.ActiveLegIndex].Reason);
+    }
+
+    [Fact]
+    public async Task Depart_now_with_a_saved_schedule_is_rejected_without_rewriting_the_file()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path, CoastalAudit()).WithPlanningInputs(new RoutePlanningInputs
+        {
+            DepartureNow = false,
+            ScheduledDepartureUtc = DateTimeOffset.Parse("2026-09-09T19:00:00Z")
+        });
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        root["plan"]!["planningInputs"]!["departureNow"] = true;
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+        var original = await File.ReadAllBytesAsync(path);
+
+        await Assert.ThrowsAsync<RoutePlanRepositoryException>(async () => await repository.OpenAsync(plan.Id));
+
+        Assert.Equal(original, await File.ReadAllBytesAsync(path));
+    }
+
+    [Fact]
+    public async Task V7_migration_preserves_experimental_audit_without_inventing_planning_inputs()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path, CoastalAudit());
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        root["schemaVersion"] = 7;
+        root["plan"]!.AsObject().Remove("planningInputs");
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+        var original = await File.ReadAllBytesAsync(path);
+        var loaded = await repository.OpenAsync(plan.Id);
+        Assert.Null(loaded.PlanningInputs);
+        Assert.Equal(RouteCoastalPruningMode.ConservativeLandAware, loaded.RoutingSetup!.CoastalPruning);
+        Assert.Equal(CoastalAudit(), loaded.Results[0].Legs[0].Route!.RunAudit!.Native!.CoastalPruning);
+        Assert.Equal(original, await File.ReadAllBytesAsync(path));
+    }
+
     private static RouteCoastalPruningDiagnostics CoastalAudit() =>
         new(RouteCoastalPruningMode.ConservativeLandAware, "ready", "Some coverage remains uncertain",
             long.MaxValue, 2, 3, 4, 5, 6, 7, DateTimeOffset.Parse("2026-08-01T19:00:00Z"),
@@ -99,7 +174,7 @@ public sealed class RoutePlanJsonRepositoryTests
         var backup = Assert.Single(Directory.EnumerateFiles(Path.Combine(repository.RootDirectory, "backups"), "*.json"));
         Assert.Equal(original, await File.ReadAllBytesAsync(backup));
         var saved = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
-        Assert.Equal(7, saved["schemaVersion"]!.GetValue<int>());
+        Assert.Equal(RoutePlanJsonRepository.CurrentSchemaVersion, saved["schemaVersion"]!.GetValue<int>());
         Assert.Null((await repository.OpenAsync(plan.Id)).Results[0].Legs[0].Route!.Diagnostics.CoastalPruning);
     }
 

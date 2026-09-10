@@ -12,8 +12,9 @@ public sealed class NativeBridgeContractTests
             from,
             from.AddDays(2));
         var run = new ForecastRun(ForecastProvider.Noaa, ForecastModel.NoaaGfs, from.AddHours(-6));
+        var artifactPath = Path.GetFullPath("gfs-20260715-00.grib2");
         var artifact = new LocalGribArtifact(
-            "/var/lib/navtool/gfs-20260715-00.grib2",
+            artifactPath,
             4_096,
             from.AddMinutes(-5));
         var cache = new CacheMetadata("gfs/run-00", from.AddMinutes(-10), from.AddHours(1));
@@ -27,7 +28,7 @@ public sealed class NativeBridgeContractTests
 
         Assert.Equal(ForecastProvider.Noaa, acquisition.Provider);
         Assert.Equal(run, acquisition.Run);
-        Assert.Equal("/var/lib/navtool/gfs-20260715-00.grib2", acquisition.Artifact.Path);
+        Assert.Equal(artifactPath, acquisition.Artifact.Path);
         Assert.Equal(4_096, acquisition.Artifact.LengthBytes);
         Assert.Equal(cache, acquisition.Cache);
         Assert.Equal(ForecastAcquisitionSource.Cache, acquisition.Source);
@@ -38,7 +39,7 @@ public sealed class NativeBridgeContractTests
     {
         Assert.Throws<ArgumentException>(() => new LocalGribArtifact("relative/file.grib2"));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            new LocalGribArtifact("/var/lib/navtool/file.grib2", -1));
+            new LocalGribArtifact(Path.GetFullPath("file.grib2"), -1));
     }
 
     [Fact]

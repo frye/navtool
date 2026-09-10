@@ -42,6 +42,8 @@ public sealed partial class RoutingSetupViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(BoatStatus))]
+    [NotifyPropertyChangedFor(nameof(BoatSummary))]
+    [NotifyPropertyChangedFor(nameof(IsDemoBoat))]
     private BoatAsset? _boat;
     [ObservableProperty]
     private BoatPolarFormat _polarFormat = BoatPolarFormat.Automatic;
@@ -96,6 +98,8 @@ public sealed partial class RoutingSetupViewModel : ViewModelBase
     private string? _regionalPreviewStatus;
 
     public bool IsRegionalGshhg => LandSource == RoutingLandSource.RegionalGshhg;
+    public string BoatSummary => Boat?.SourceDisplayName ?? "Choose your boat: import a polar or select the demo.";
+    public bool IsDemoBoat => Boat?.Kind == BoatAssetKind.Demo;
     public string BoatStatus => Boat is null
         ? "No boat selected. Import a polar or explicitly choose the demonstration boat."
         : $"{(Boat.Kind == BoatAssetKind.Demo ? "DEMO · " : string.Empty)}{Boat.SourceDisplayName}\n" +
@@ -150,13 +154,13 @@ public sealed partial class RoutingSetupViewModel : ViewModelBase
         {
             Boat = setup?.Boat;
             Quality = setup?.Quality ?? RoutingQuality.NativeBalanced;
-            EnableCoastalPruning = setup?.CoastalPruning == RouteCoastalPruningMode.ConservativeLandAware;
+            EnableCoastalPruning = false;
             PerformancePercentage = (setup?.PerformanceFactor ?? 1) * 100;
             ArrivalRadiusNauticalMiles = setup?.ArrivalRadiusNauticalMiles ?? 1;
             LandSource = setup?.LandSource ?? _defaultLandSource;
             ForecastPolicy = setup?.ForecastPolicy ?? ForecastRefreshPolicy.PreferCache;
             LocalForecastMaximumGapHours = setup?.LocalForecastMaximumGap.TotalHours ?? 6;
-            UseHardDuration = setup?.HardDuration is not null;
+            UseHardDuration = false;
             HardDurationHours = setup?.HardDuration?.TotalHours ?? 240;
             RegionalSourcePath = setup?.RegionalLand?.SourcePath;
             RegionalSourceIdentity = setup?.RegionalLand?.SourceIdentity;
@@ -182,6 +186,59 @@ public sealed partial class RoutingSetupViewModel : ViewModelBase
 
     public Task ImportBoatAsync(string path) => SelectBoatAsync(
         service => service.ImportAsync(path, PolarFormat));
+
+    public RoutingSetupPreferences CapturePreferences()
+    {
+        var preferences = new RoutingSetupPreferences
+        {
+            Boat = Boat, Quality = Quality, PerformanceFactor = PerformancePercentage / 100,
+            ArrivalRadiusNauticalMiles = ArrivalRadiusNauticalMiles, LandSource = LandSource,
+            ForecastPolicy = ForecastPolicy, LocalForecastMaximumGapHours = LocalForecastMaximumGapHours,
+            RegionalLand = BuildRegionalPolicy(), HardDurationHours = HardDurationHours
+        };
+        preferences.Validate();
+        return preferences;
+    }
+
+    public void RestorePreferences(RoutingSetupPreferences preferences)
+    {
+        preferences.Validate();
+        Restore(preferences.Boat is null ? null : new RoutingSetup(preferences.Boat,
+            preferences.Quality, preferences.PerformanceFactor, preferences.ArrivalRadiusNauticalMiles,
+            preferences.LandSource, preferences.ForecastPolicy,
+            localForecastMaximumGap: TimeSpan.FromHours(preferences.LocalForecastMaximumGapHours),
+            regionalLand: preferences.RegionalLand));
+        _restoring = true;
+        try
+        {
+            Quality = preferences.Quality;
+            PerformancePercentage = preferences.PerformanceFactor * 100;
+            ArrivalRadiusNauticalMiles = preferences.ArrivalRadiusNauticalMiles;
+            LandSource = preferences.LandSource;
+            ForecastPolicy = preferences.ForecastPolicy;
+            LocalForecastMaximumGapHours = preferences.LocalForecastMaximumGapHours;
+            HardDurationHours = preferences.HardDurationHours;
+            if (preferences.RegionalLand is { } regional)
+            {
+                RegionalSourcePath = regional.SourcePath;
+                RegionalSourceIdentity = regional.SourceIdentity;
+                RegionalSouth = regional.StudyBounds.South;
+                RegionalNorth = regional.StudyBounds.North;
+                RegionalWest = regional.StudyBounds.West;
+                RegionalEast = regional.StudyBounds.East;
+                RegionalSpacingNauticalMiles = regional.ResolutionNauticalMiles;
+                RegionalClearanceNauticalMiles = regional.ClearanceNauticalMiles;
+                RegionalDistanceCapNauticalMiles = regional.DistanceCapNauticalMiles;
+                _regionalMaximumGridNodes = regional.MaximumGridNodes;
+                _regionalMaximumSourcePoints = regional.MaximumSourcePoints;
+                _regionalMaximumGeometryTests = regional.MaximumGeometryTests;
+                _regionalMaximumSubdivisionDepth = regional.MaximumSubdivisionDepth;
+                _regionalAttribution = regional.Attribution;
+                _regionalMissingDataPolicy = regional.MissingDataPolicy;
+            }
+        }
+        finally { _restoring = false; }
+    }
 
     private RouteRegionalLandPolicy? BuildRegionalPolicy() =>
         string.IsNullOrWhiteSpace(RegionalSourcePath) || string.IsNullOrWhiteSpace(RegionalSourceIdentity)

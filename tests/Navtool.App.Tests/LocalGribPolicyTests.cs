@@ -7,6 +7,95 @@ namespace Navtool.App.Tests;
 
 public sealed class LocalGribPolicyTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Selection_and_inspection_use_the_same_normalized_path(bool configured, bool absolute)
+    {
+        var path = Path.Combine("charts", "..", "selected.grib2");
+        if (absolute) path = Path.Combine(Path.GetFullPath("."), path);
+        var expected = Path.GetFullPath(path);
+        string? inspectedPath = null;
+        var inspector = new Inspector((selected, _) =>
+        {
+            inspectedPath = selected;
+            return ValueTask.FromResult(Descriptor(selected));
+        });
+        ILocalGribInspector effectiveInspector = configured
+            ? new DeferredLocalGribInspector(_ => inspector)
+            : inspector;
+        var vm = CreateViewModel(effectiveInspector);
+
+        await vm.SelectLocalGribAsync(path);
+
+        Assert.Equal(expected, vm.LocalGribPath);
+        Assert.Equal(expected, inspectedPath);
+        Assert.Equal(expected, vm.LocalForecast?.Artifact.Path);
+        Assert.Null(vm.ErrorMessage);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("invalid\0.grib2")]
+    public async Task Invalid_path_reports_validation_and_clears_the_previous_selection(string path)
+    {
+        var calls = 0;
+        var vm = CreateViewModel(new Inspector((selected, _) =>
+        {
+            calls++;
+            return ValueTask.FromResult(Descriptor(selected));
+        }));
+        await vm.SelectLocalGribAsync(Path.GetFullPath("previous.grib2"));
+        Assert.NotNull(vm.LocalForecast);
+
+        await vm.SelectLocalGribAsync(path);
+
+        Assert.Equal(1, calls);
+        Assert.Null(vm.LocalGribPath);
+        Assert.Null(vm.LocalForecast);
+        Assert.False(vm.IsInspectingLocalGrib);
+        Assert.Equal("Selected file is not usable.", vm.LocalGribStatus);
+        Assert.StartsWith("GRIB file rejected:", vm.ErrorMessage);
+        Assert.False(vm.CalculateCommand.CanExecute(null));
+        Assert.False(vm.ForceRecalculateCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Invalid_path_supersedes_an_in_flight_inspection()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken inspectionToken = default;
+        var vm = CreateViewModel(new Inspector(async (selected, token) =>
+        {
+            inspectionToken = token;
+            started.SetResult();
+            await release.Task;
+            return Descriptor(selected);
+        }));
+        var inspection = vm.SelectLocalGribAsync(Path.GetFullPath("previous.grib2"));
+        await started.Task;
+        try
+        {
+            await vm.SelectLocalGribAsync("invalid\0.grib2");
+            Assert.True(inspectionToken.IsCancellationRequested);
+            Assert.False(vm.IsInspectingLocalGrib);
+        }
+        finally
+        {
+            release.SetResult();
+            await inspection;
+        }
+
+        Assert.Null(vm.LocalGribPath);
+        Assert.Null(vm.LocalForecast);
+        Assert.Equal("Selected file is not usable.", vm.LocalGribStatus);
+        Assert.StartsWith("GRIB file rejected:", vm.ErrorMessage);
+    }
+
     [Fact]
     public async Task Selected_gap_is_passed_to_the_deferred_native_inspector_factory()
     {

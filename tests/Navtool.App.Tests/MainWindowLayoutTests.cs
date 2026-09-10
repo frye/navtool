@@ -25,7 +25,240 @@ namespace Navtool.App.Tests;
 public sealed class MainWindowLayoutTests
 {
     [AvaloniaFact]
-    public void Interrupted_path_reason_is_wrapped_and_visible_with_drawers_closed()
+    public void Only_selected_panel_paints_and_exposes_plan_hit_targets()
+    {
+        var window = CreateWindow();
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var planning = window.FindControl<Grid>("PlanningDrawer")!;
+            var results = window.FindControl<Grid>("RouteDrawer")!;
+            Assert.True(planning.IsEffectivelyVisible);
+            Assert.False(results.IsEffectivelyVisible);
+            var start = window.FindControl<ToggleButton>("SetStartButton")!;
+            var point = start.TranslatePoint(new Point(start.Bounds.Width / 2, start.Bounds.Height / 2), window)!.Value;
+            var hit = window.InputHitTest(point) as Visual;
+            Assert.True(hit == start || hit?.GetVisualAncestors().Contains(start) is true,
+                "The start button must be the pointer target, not a hidden panel's background.");
+            window.SelectPanel(MainWindow.WorkingPanel.Results);
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(planning.IsEffectivelyVisible);
+            Assert.True(results.IsEffectivelyVisible);
+            window.SelectPanel(MainWindow.WorkingPanel.Settings);
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(planning.IsEffectivelyVisible);
+            Assert.False(results.IsEffectivelyVisible);
+            window.SetPanelOpen(false);
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(planning.IsEffectivelyVisible);
+            Assert.False(results.IsEffectivelyVisible);
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
+    public void Weather_only_entry_is_clickable_without_a_route_or_timeline()
+    {
+        var window = CreateWindow();
+        try
+        {
+            window.Show();
+            window.SelectPanel(MainWindow.WorkingPanel.Results);
+            Dispatcher.UIThread.RunJobs();
+            var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
+            Assert.False(viewModel.HasTimeline);
+            Assert.False(viewModel.HasNoaaWeather);
+            Assert.False(viewModel.HasEcmwfWeather);
+            Assert.False(window.FindControl<Border>("ChartTimeline")!.IsEffectivelyVisible);
+            var toggle = window.FindControl<CheckBox>("WeatherOnlyToggle")!;
+            Assert.True(toggle.IsEffectivelyVisible);
+            var point = toggle.TranslatePoint(new Point(toggle.Bounds.Width / 2, toggle.Bounds.Height / 2), window)!.Value;
+            window.MouseDown(point, MouseButton.Left, RawInputModifiers.None);
+            window.MouseUp(point, MouseButton.Left, RawInputModifiers.None);
+            Assert.True(viewModel.WeatherOnlyMode);
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
+    public void Boat_summary_keeps_demo_warning_but_leaves_parser_and_hash_in_details()
+    {
+        var window = CreateWindow();
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
+            var panel = window.FindControl<Border>("BoatSummaryPanel")!;
+            viewModel.RoutingSetup.Boat = new BoatAsset(
+                new string('a', 64), "My demonstration boat", BoatAssetKind.Demo,
+                BoatPolarFormat.Automatic, new BoatValidationSummary("verbose-native-parser-report"));
+            Dispatcher.UIThread.RunJobs();
+            var visibleText = string.Join(" ", panel.GetVisualDescendants()
+                .OfType<TextBlock>().Where(text => text.IsEffectivelyVisible).Select(text => text.Text));
+            Assert.Contains("My demonstration boat", visibleText);
+            Assert.Contains("DEMO BOAT", visibleText);
+            Assert.DoesNotContain("verbose-native-parser-report", visibleText);
+            Assert.DoesNotContain(new string('a', 64), visibleText);
+            var change = panel.GetLogicalDescendants().OfType<Button>().Single();
+            change.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(MainWindow.WorkingPanel.Settings, window.SelectedPanel);
+            var setup = window.FindControl<RoutingSetupView>("CruisingSetupPanel")!;
+            Assert.True(setup.FindControl<Expander>("BoatSettingsExpander")!.IsExpanded);
+            Assert.True(setup.FindControl<Button>("ImportBoatButton")!.IsEffectivelyVisible);
+            Assert.True(setup.FindControl<Button>("DemoBoatButton")!.IsEffectivelyVisible);
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
+    public void Setup_failures_remain_visible_when_panel_is_collapsed()
+    {
+        var window = CreateWindow();
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            window.SetPanelOpen(false);
+            var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
+            viewModel.RoutingSetup.ErrorMessage = "The selected polar asset is unavailable. Import it again.";
+            Dispatcher.UIThread.RunJobs();
+            var alerts = window.FindControl<Border>("MessagePopup")!;
+            Assert.True(alerts.IsEffectivelyVisible);
+            Assert.Contains(alerts.GetVisualDescendants().OfType<TextBlock>(),
+                text => text.IsEffectivelyVisible && text.Text == viewModel.RoutingSetup.ErrorMessage);
+            viewModel.RoutingSetup.ErrorMessage = null;
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(alerts.IsVisible);
+            viewModel.PreferenceError = "Routing preferences could not be saved.";
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(alerts.IsVisible);
+            window.SetPanelOpen(true);
+            Dispatcher.UIThread.RunJobs();
+            var messages = window.FindControl<Button>("FooterMessagesButton")!;
+            Assert.True(messages.IsEffectivelyVisible);
+            Assert.DoesNotContain(
+                window.FindControl<ScrollViewer>("PlanningScrollViewer")!,
+                messages.GetLogicalAncestors());
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(1040, 680, AppTheme.Light)]
+    [InlineData(1280, 800, AppTheme.Light)]
+    [InlineData(1040, 680, AppTheme.Dark)]
+    [InlineData(1280, 800, AppTheme.Dark)]
+    [InlineData(1040, 680, AppTheme.KindOfBlue)]
+    [InlineData(1280, 800, AppTheme.KindOfBlue)]
+    public void Frequent_inputs_fit_above_fold_and_footer_does_not_scroll(double width, double height, AppTheme theme)
+    {
+        var service = AppThemeService.CreateTransient();
+        service.Initialize(Application.Current!);
+        service.SelectTheme(theme);
+        var window = new MainWindow(service) { DataContext = CreateViewModel() };
+        window.Width = width;
+        window.Height = height;
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var scroll = window.FindControl<ScrollViewer>("PlanningScrollViewer")!;
+            var footer = window.FindControl<Border>("CalculationFooter")!;
+            var calculate = window.FindControl<Button>("CalculateRoutesButton")!;
+            var map = window.FindControl<Grid>("MapShell")!;
+            Assert.True(map.Bounds.Width >= 560);
+            Assert.DoesNotContain(scroll, calculate.GetLogicalAncestors());
+            var footerTop = footer.TranslatePoint(default, window)!.Value.Y;
+            foreach (var name in new[] { "SetStartButton", "SetDestinationButton", "DepartureNowToggle", "NoaaModelToggle", "EcmwfModelToggle", "BoatSummaryPanel" })
+            {
+                var control = window.FindControl<Control>(name)!;
+                Assert.True(control.IsEffectivelyVisible, name);
+                var bottom = control.TranslatePoint(new Point(0, control.Bounds.Height), window)!.Value.Y;
+                Assert.True(bottom <= footerTop, $"{name} bottom {bottom} must be above footer {footerTop}.");
+            }
+            var calculatePosition = calculate.TranslatePoint(default, window);
+            window.SelectPanel(MainWindow.WorkingPanel.Settings);
+            window.FindControl<Expander>("AdvancedSettingsExpander")!.IsExpanded = true;
+            var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
+            viewModel.EnableProfessionalRouting = true;
+            viewModel.ErrorMessage = "The selected forecast does not cover this passage. Choose another forecast.";
+            Dispatcher.UIThread.RunJobs();
+            var messages = window.FindControl<Button>("FooterMessagesButton")!;
+            var messagePosition = messages.TranslatePoint(default, window);
+            Assert.True(messages.IsEffectivelyVisible);
+            Assert.DoesNotContain(scroll, messages.GetLogicalAncestors());
+            scroll.Offset = new Vector(0, scroll.Extent.Height);
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(scroll.Offset.Y > 0);
+            Assert.Equal(calculatePosition, calculate.TranslatePoint(default, window));
+            Assert.Equal(messagePosition, messages.TranslatePoint(default, window));
+            Assert.Contains(window.FindControl<StackPanel>("MessageItems")!.GetVisualDescendants().OfType<TextBlock>(),
+                text => text.Text == viewModel.ErrorMessage);
+            Assert.True(calculate.IsEffectivelyVisible);
+            Assert.True(window.FindControl<TextBlock>("CalculationReadinessText")!.IsEffectivelyVisible);
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
+    public void Keyboard_panel_navigation_collapse_and_reopen_restore_focus_and_edits()
+    {
+        var window = CreateWindow();
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var start = window.FindControl<ToggleButton>("SetStartButton")!;
+            start.Focus();
+            window.KeyPress(Key.OemPipe, RawInputModifiers.Control, PhysicalKey.Backslash, "\\");
+            Assert.True(window.FindControl<MapControl>("MapView")!.IsKeyboardFocusWithin);
+            window.KeyPress(Key.OemPipe, RawInputModifiers.Control, PhysicalKey.Backslash, "\\");
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(start.IsFocused);
+            window.KeyPress(Key.D2, RawInputModifiers.Control, PhysicalKey.Digit2, "2");
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(window.IsRouteDrawerOpen);
+            Assert.False(window.IsPlanningDrawerOpen);
+            window.KeyPress(Key.D3, RawInputModifiers.Control, PhysicalKey.Digit3, "3");
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(MainWindow.WorkingPanel.Settings, window.SelectedPanel);
+            window.KeyPress(Key.D1, RawInputModifiers.Control, PhysicalKey.Digit1, "1");
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(window.IsPlanningDrawerOpen);
+            Assert.True(start.IsFocused);
+            window.KeyPress(Key.Tab, RawInputModifiers.None, PhysicalKey.Tab, "\t");
+            Assert.True(window.FindControl<ToggleButton>("SetDestinationButton")!.IsFocused);
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
+    public void New_route_reopens_plan_and_settings_back_returns_to_previous_mode()
+    {
+        var window = CreateWindow();
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            window.SelectPanel(MainWindow.WorkingPanel.Results);
+            window.SelectPanel(MainWindow.WorkingPanel.Settings);
+            var back = window.GetLogicalDescendants().OfType<Button>()
+                .Single(button => Equals(button.Content, "Back to passage"));
+            back.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.True(window.IsRouteDrawerOpen);
+            window.SetPanelOpen(false);
+            Assert.IsType<MainViewModel>(window.DataContext).Itinerary.NewCommand.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(window.IsPlanningDrawerOpen);
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
+    public void Interrupted_popup_is_wrapped_dismissible_and_reopens_from_the_correct_label()
     {
         var window = CreateWindow();
         try
@@ -33,31 +266,54 @@ public sealed class MainWindowLayoutTests
             window.Width = 1040;
             window.Height = 680;
             window.Show();
+            window.SetPanelOpen(false);
             var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
-            viewModel.InterruptedRouteMessage =
-                "NOAA GFS - leg 1: routing search work limit reached.\n" +
-                "Incomplete: the last provisional path remains visible, not a completed route. Recalculate to try again.";
             Dispatcher.UIThread.RunJobs();
-            var banner = Assert.IsType<Border>(window.FindControl<Border>("InterruptedRouteBanner"));
-            var text = Assert.IsType<TextBlock>(window.FindControl<TextBlock>("InterruptedRouteText"));
+            var center = MapProjection.ToCoordinate(new Mapsui.MPoint(viewModel.Map.Navigator.Viewport.CenterX,
+                viewModel.Map.Navigator.Viewport.CenterY));
+            viewModel.SetRoutingFailure(ForecastModel.NoaaGfs, 0, "NOAA work limit reached.", center);
+            viewModel.SetRoutingFailure(ForecastModel.EcmwfIfs, 1, "ECMWF work limit reached.", center);
+            viewModel.WarningMessage = "A newer forecast is available.";
+            Dispatcher.UIThread.RunJobs();
+            var popup = window.FindControl<Border>("MessagePopup")!;
+            var text = window.FindControl<TextBlock>("MessageIncompleteText")!;
             Assert.False(window.IsPlanningDrawerOpen);
             Assert.False(window.IsRouteDrawerOpen);
-            Assert.True(banner.IsVisible);
-            Assert.True(banner.Bounds.Width > 0);
-            Assert.True(banner.Bounds.Height > 0);
+            Assert.True(popup.IsVisible);
+            Assert.True(popup.Bounds.Width > 0);
+            Assert.True(popup.Bounds.Height > 0);
             Assert.Equal(TextWrapping.Wrap, text.TextWrapping);
-            Assert.Equal(viewModel.InterruptedRouteMessage, text.Text);
-            Assert.Equal("Route calculation interrupted", AutomationProperties.GetName(text));
-            Assert.Equal(viewModel.InterruptedRouteMessage, AutomationProperties.GetHelpText(text));
-            viewModel.InterruptedRouteMessage = null;
+            Assert.Contains("not completed routes", text.Text);
+            var close = window.FindControl<Button>("CloseMessagesButton")!;
+            close.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.False(popup.IsVisible);
+            window.SetPanelOpen(true);
             Dispatcher.UIThread.RunJobs();
-            Assert.False(banner.IsVisible);
+            Assert.False(popup.IsVisible);
+            var labels = window.FindControl<Canvas>("InterruptedEndpointLayer")!.Children.OfType<Button>().ToArray();
+            Assert.Equal(2, labels.Length);
+            Assert.False(labels[0].Bounds.Intersects(labels[1].Bounds));
+            labels[1].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(popup.IsVisible);
+            var contents = string.Join(" ", window.FindControl<StackPanel>("MessageItems")!
+                .GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text));
+            Assert.Contains("ECMWF work limit", contents);
+            Assert.Contains("leg 2", contents);
+            Assert.Contains("newer forecast", contents);
+            Assert.DoesNotContain("NOAA work limit", contents);
+            window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, "\u001b");
+            Assert.False(popup.IsVisible);
+            Assert.Equal(3, viewModel.CurrentMessages.Count);
+            window.FindControl<Button>("MessagesButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(popup.IsVisible);
         }
         finally { window.Close(); }
     }
 
     [AvaloniaFact]
-    public void DrawersAreAlwaysInTheWindowNameScopeAndClosedByDefault()
+    public void New_passage_starts_in_plan_and_all_panel_controls_remain_in_scope()
     {
         var window = CreateWindow();
 
@@ -65,9 +321,9 @@ public sealed class MainWindowLayoutTests
         {
             window.Show();
 
-            Assert.False(window.IsPlanningDrawerOpen);
+            Assert.True(window.IsPlanningDrawerOpen);
             Assert.False(window.IsRouteDrawerOpen);
-            Assert.False(Assert.IsType<Border>(
+            Assert.True(Assert.IsType<Border>(
                 window.FindControl<Border>("PlanningDrawerContent")).IsVisible);
             Assert.False(Assert.IsType<Border>(
                 window.FindControl<Border>("RouteDrawerContent")).IsVisible);
@@ -99,6 +355,7 @@ public sealed class MainWindowLayoutTests
             window.Show();
             window.SetPlanningDrawerOpen(true);
             var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
+            viewModel.DepartureNow = false;
             var preview = Assert.IsType<TextBlock>(
                 window.FindControl<TextBlock>("DepartureUtcPreviewText"));
             var currentPositionDeparture = Assert.IsType<TextBlock>(
@@ -160,23 +417,15 @@ public sealed class MainWindowLayoutTests
     }
 
     [Fact]
-    public void SizingPolicyPreservesTheMapFloorAndUsesTheRequestedBreakpoint()
+    public void Panel_width_policy_preserves_map_floor_at_both_supported_sizes()
     {
-        Assert.False(MainWindow.AllowsBothDrawers(1279.99));
-        Assert.False(MainWindow.AllowsBothDrawers(1219.99));
-        Assert.True(MainWindow.AllowsBothDrawers(1280));
-        Assert.Equal(
-            560,
-            MainWindow.DrawerBreakpoint -
-            MainWindow.PlanningDrawerWidth -
-            MainWindow.RouteDrawerWidth);
-        Assert.True(
-            1040 - MainWindow.RouteDrawerWidth >= 560,
-            "The larger single drawer must leave the map at least 560px wide.");
+        Assert.Equal(474, MainWindow.MaximumPanelWidth(1040));
+        Assert.Equal(714, MainWindow.MaximumPanelWidth(1280));
+        Assert.True(MainWindow.DefaultPanelWidth >= MainWindow.MinimumPanelWidth);
     }
 
     [AvaloniaFact]
-    public void NarrowWindowsKeepOnlyTheMostRecentlyOpenedDrawer()
+    public void Narrow_window_has_one_shared_panel_column()
     {
         var window = CreateWindow();
         window.Width = 1040;
@@ -190,8 +439,8 @@ public sealed class MainWindowLayoutTests
             Assert.False(window.IsPlanningDrawerOpen);
             Assert.True(window.IsRouteDrawerOpen);
             var shell = Assert.IsType<Grid>(window.FindControl<Grid>("ShellGrid"));
-            Assert.Equal(MainWindow.ClosedDrawerWidth, shell.ColumnDefinitions[0].Width.Value);
-            Assert.Equal(MainWindow.RouteDrawerWidth, shell.ColumnDefinitions[2].Width.Value);
+            Assert.Equal(MainWindow.DefaultPanelWidth, shell.ColumnDefinitions[0].Width.Value);
+            Assert.Equal(560, shell.ColumnDefinitions[2].MinWidth);
         }
         finally
         {
@@ -200,7 +449,7 @@ public sealed class MainWindowLayoutTests
     }
 
     [AvaloniaFact]
-    public void WideWindowsCanKeepBothDrawersOpen()
+    public void Wide_window_switches_content_instead_of_opening_a_second_drawer()
     {
         var window = CreateWindow();
         window.Width = 1280;
@@ -211,11 +460,11 @@ public sealed class MainWindowLayoutTests
             window.SetPlanningDrawerOpen(true);
             window.SetRouteDrawerOpen(true);
 
-            Assert.True(window.IsPlanningDrawerOpen);
+            Assert.False(window.IsPlanningDrawerOpen);
             Assert.True(window.IsRouteDrawerOpen);
             var shell = Assert.IsType<Grid>(window.FindControl<Grid>("ShellGrid"));
-            Assert.Equal(MainWindow.PlanningDrawerWidth, shell.ColumnDefinitions[0].Width.Value);
-            Assert.Equal(MainWindow.RouteDrawerWidth, shell.ColumnDefinitions[2].Width.Value);
+            Assert.Equal(MainWindow.DefaultPanelWidth, shell.ColumnDefinitions[0].Width.Value);
+            Assert.True(shell.ColumnDefinitions[2].ActualWidth >= 560);
         }
         finally
         {
@@ -224,7 +473,7 @@ public sealed class MainWindowLayoutTests
     }
 
     [AvaloniaFact]
-    public void CrossingBelowTheBreakpointKeepsTheMostRecentlyOpenedDrawer()
+    public void Resizing_preserves_selected_panel_and_clamps_panel_width()
     {
         var window = CreateWindow();
         window.Width = 1280;
@@ -235,11 +484,15 @@ public sealed class MainWindowLayoutTests
             window.SetPlanningDrawerOpen(true);
             window.SetRouteDrawerOpen(true);
 
-            window.Width = 1279;
+            var shell = Assert.IsType<Grid>(window.FindControl<Grid>("ShellGrid"));
+            shell.ColumnDefinitions[0].Width = new GridLength(700);
+            window.Width = 1040;
             Dispatcher.UIThread.RunJobs();
 
             Assert.False(window.IsPlanningDrawerOpen);
             Assert.True(window.IsRouteDrawerOpen);
+            Assert.True(shell.ColumnDefinitions[0].ActualWidth <= 474);
+            Assert.True(shell.ColumnDefinitions[2].ActualWidth >= 560);
         }
         finally
         {
@@ -248,7 +501,7 @@ public sealed class MainWindowLayoutTests
     }
 
     [AvaloniaFact]
-    public void RouteLegendTimelineAndWeatherLiveInTheRightDrawer()
+    public void Results_own_leg_details_and_legends_while_timeline_lives_on_chart()
     {
         var window = CreateWindow();
 
@@ -267,15 +520,18 @@ public sealed class MainWindowLayoutTests
                          Assert.IsType<Border>(
                              window.FindControl<Border>("HistoricalIsochroneLegendSwatch")),
                          Assert.IsType<Border>(
-                             window.FindControl<Border>("DestinationFrontLegendSwatch")),
-                         Assert.IsType<Slider>(
-                             window.FindControl<Slider>("TimelineSlider")),
-                         Assert.IsType<Expander>(
-                             window.FindControl<Expander>("WeatherDetailsExpander"))
+                             window.FindControl<Border>("DestinationFrontLegendSwatch"))
                      })
             {
                 Assert.Contains(rightDrawer, control.GetLogicalAncestors());
             }
+            Assert.Contains(
+                Assert.IsType<Grid>(window.FindControl<Grid>("MapShell")),
+                window.FindControl<Slider>("TimelineSlider")!.GetLogicalAncestors());
+            Assert.Contains(
+                window.FindControl<Grid>("MapShell")!,
+                window.FindControl<Expander>("WeatherDetailsExpander")!.GetLogicalAncestors());
+            Assert.Contains(rightDrawer, window.FindControl<Border>("PassageProgressPanel")!.GetLogicalAncestors());
         }
         finally
         {
@@ -349,7 +605,7 @@ public sealed class MainWindowLayoutTests
                     .Count());
             viewModel.ForecastInputMode = ForecastInputMode.LocalFile;
             Dispatcher.UIThread.RunJobs();
-            Assert.False(buttons[3].IsEffectivelyEnabled);
+            Assert.Equal(viewModel.ForceRecalculateCommand.CanExecute(null), buttons[3].IsEffectivelyEnabled);
             Assert.False(refreshWeather.IsEffectivelyEnabled);
             Assert.Equal(
                 HorizontalAlignment.Center,
@@ -544,7 +800,7 @@ public sealed class MainWindowLayoutTests
     }
 
     [AvaloniaFact]
-    public void InstrumentRailShowsProgressWithoutOpeningDrawersOrCoveringMapInstructions()
+    public void Collapsed_panel_shows_only_inflight_progress_without_covering_instructions()
     {
         var window = CreateWindow();
         var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
@@ -552,13 +808,13 @@ public sealed class MainWindowLayoutTests
         try
         {
             window.Show();
+            window.SetPanelOpen(false);
             viewModel.SetStartCommand.Execute(null);
             Dispatcher.UIThread.RunJobs();
 
             var mapShell = Assert.IsType<Grid>(window.FindControl<Grid>("MapShell"));
             var rail = Assert.IsType<Border>(window.FindControl<Border>("InstrumentRail"));
-            var idleRow = Assert.IsType<StackPanel>(
-                window.FindControl<StackPanel>("InstrumentRailIdleRow"));
+            var host = Assert.IsType<Grid>(window.FindControl<Grid>("InstrumentRailHost"));
             var progressRow = Assert.IsType<StackPanel>(
                 window.FindControl<StackPanel>("InstrumentRailProgressRow"));
             var progress = Assert.IsType<ProgressBar>(
@@ -566,7 +822,7 @@ public sealed class MainWindowLayoutTests
             var cancel = Assert.IsType<Button>(
                 window.FindControl<Button>("InstrumentRailCancelButton"));
 
-            Assert.True(idleRow.IsVisible);
+            Assert.False(host.IsVisible);
             Assert.False(progressRow.IsVisible);
             Assert.False(progress.IsVisible);
             Assert.False(cancel.IsEffectivelyVisible);
@@ -579,7 +835,7 @@ public sealed class MainWindowLayoutTests
             viewModel.IsCalculating = true;
             Dispatcher.UIThread.RunJobs();
 
-            Assert.False(idleRow.IsVisible);
+            Assert.True(host.IsVisible);
             Assert.True(progressRow.IsVisible);
             Assert.True(progress.IsVisible);
             Assert.True(cancel.IsEffectivelyVisible);
@@ -607,7 +863,7 @@ public sealed class MainWindowLayoutTests
             cancel.Command!.Execute(null);
             Dispatcher.UIThread.RunJobs();
             Assert.False(viewModel.IsCalculating);
-            Assert.True(idleRow.IsVisible);
+            Assert.False(host.IsVisible);
             Assert.False(progressRow.IsVisible);
             Assert.False(progress.IsVisible);
         }
@@ -756,7 +1012,7 @@ public sealed class MainWindowLayoutTests
         try
         {
             window.Show();
-            window.SetPlanningDrawerOpen(true);
+            window.SetRouteDrawerOpen(true);
             Dispatcher.UIThread.RunJobs();
             Assert.Equal(2, viewModel.Itinerary.Legs.Count);
             var firstLegId = viewModel.Itinerary.Legs[0].Id;
@@ -818,7 +1074,7 @@ public sealed class MainWindowLayoutTests
     }
 
     [AvaloniaFact]
-    public void PlanningDrawerUsesContentAndHandleColumnsWithoutDuplicateGutter()
+    public void Waypoint_editing_is_disclosed_on_selection_without_a_second_gutter()
     {
         var window = CreateWindow();
         window.Width = 1040;
@@ -827,6 +1083,7 @@ public sealed class MainWindowLayoutTests
         try
         {
             window.Show();
+            Dispatcher.UIThread.RunJobs();
             window.SetPlanningDrawerOpen(true);
             Assert.IsType<MainViewModel>(window.DataContext)
                 .Itinerary.AddWaypointCommand.Execute(null);
@@ -841,18 +1098,16 @@ public sealed class MainWindowLayoutTests
             var endpoints = Assert.IsType<Grid>(
                 window.FindControl<Grid>("EndpointActions"));
 
-            Assert.Equal(380, shell.ColumnDefinitions[0].Width.Value);
-            Assert.Equal(2, drawer.ColumnDefinitions.Count);
-            Assert.Equal(new GridLength(1, GridUnitType.Star), drawer.ColumnDefinitions[0].Width);
-            Assert.Equal(44, drawer.ColumnDefinitions[1].Width.Value);
+            Assert.Equal(400, shell.ColumnDefinitions[0].Width.Value);
+            Assert.Empty(drawer.ColumnDefinitions);
             Assert.Equal(0, Grid.GetColumn(content));
-            Assert.Equal(1, Grid.GetColumn(handle));
+            Assert.Equal("Plan", handle.Content);
             Assert.Equal(default, content.Padding);
             Assert.Equal(2, endpoints.ColumnDefinitions.Count);
             Assert.Equal(
                 endpoints.ColumnDefinitions[0].Width,
                 endpoints.ColumnDefinitions[1].Width);
-            Assert.True(shell.ColumnDefinitions[1].ActualWidth >= 560);
+            Assert.True(shell.ColumnDefinitions[2].ActualWidth >= 560);
             var stopoverHours = content
                 .GetVisualDescendants()
                 .OfType<NumericUpDown>()
@@ -876,6 +1131,7 @@ public sealed class MainWindowLayoutTests
         {
             window.Show();
             window.SetPlanningDrawerOpen(true);
+            Assert.IsType<MainViewModel>(window.DataContext).DepartureNow = false;
             var datePicker = Assert.IsType<DatePicker>(
                 window.FindControl<DatePicker>("DepartureDatePicker"));
             var timePicker = Assert.IsType<TimePicker>(
@@ -941,11 +1197,9 @@ public sealed class MainWindowLayoutTests
                     label => label.Classes.Contains("field-label")));
             Assert.Equal(8, departure.ColumnSpacing);
             Assert.Equal(3, saved.ColumnDefinitions.Count);
-            Assert.Equal(8, saved.ColumnSpacing);
-            Assert.Contains("compact-action-row", saved.Classes);
+            Assert.Equal(6, saved.ColumnSpacing);
             Assert.Equal(3, save.ColumnDefinitions.Count);
-            Assert.Equal(8, save.ColumnSpacing);
-            Assert.Contains("compact-action-row", save.Classes);
+            Assert.Equal(6, save.ColumnSpacing);
         }
         finally
         {

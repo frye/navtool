@@ -26,7 +26,8 @@ set(NAVTOOL_ROUTER_PATCH_SCRIPT "${NAVTOOL_ROUTER_PATCH_DIR}/apply.cmake")
 # patches/README.md; drop entries once the release pin moves past them.
 set(NAVTOOL_ROUTER_LIB_PATCHES
     0001-utf8-asset-paths.patch
-    0002-conservative-coastal-pruning.patch)
+    0002-conservative-coastal-pruning.patch
+    0003-portable-number-parsing.patch)
 set(SAILROUTE_ENABLE_ENSEMBLE OFF CACHE BOOL "" FORCE)
 set(SAILROUTE_ENABLE_LAND_DATA ON CACHE BOOL "" FORCE)
 

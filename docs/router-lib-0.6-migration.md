@@ -36,8 +36,10 @@ not the previous `Clamp`; this can materially change route feasibility and ETA.
 The 100% boat performance setting scales polar performance once and does not
 scale the forecast wind.
 
-Normal cruising setup belongs to the saved plan. Professional controls remain
-optional and session-scoped. A saved result's run audit records effective
+Normal cruising setup belongs to the saved plan, while remembered everyday
+preferences provide defaults for new passages. Professional values can be
+remembered, but their activation remains optional and session-scoped.
+A saved result's run audit records effective
 professional values without re-enabling those controls when the plan is opened.
 Requested inputs, effective native settings, and observed result metadata are
 not interchangeable.
