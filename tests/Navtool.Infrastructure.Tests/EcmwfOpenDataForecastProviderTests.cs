@@ -259,6 +259,10 @@ public sealed class EcmwfOpenDataForecastProviderTests
                     CancellationToken.None));
         }
 
+        var cachedPart = Assert.Single(
+            Directory.EnumerateFiles(directory.Path, "*.grib2", SearchOption.AllDirectories));
+        Assert.Equal(UWind.Concat(VWind).ToArray(), await File.ReadAllBytesAsync(cachedPart));
+
         var resumedHandler = new EcmwfHandler();
         using var resumedClient = new HttpClient(resumedHandler);
         var resumedProvider = CreateProvider(directory.Path, resumedClient);
