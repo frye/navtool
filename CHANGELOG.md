@@ -70,6 +70,9 @@ bridge launch guidance and automated validation.
 
 ### Improved
 
+- Reduced ECMWF Open Data request volume by retrieving paired 10 m U/V fields
+  with one multipart byte-range request per forecast time, with consistent
+  request pacing and `Retry-After`-aware rate-limit handling.
 - Added ABI-v6 solver-aware progress, lattice search markers and diagnostics,
   configured beam/lattice dispatch, and schema-v3 result attribution while
   preserving legacy bridge exports and route-plan migration.

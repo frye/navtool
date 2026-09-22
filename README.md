@@ -355,10 +355,13 @@ unavailable or throttle excessive usage.
 
 ECMWF data is downloaded from the official Open Data object store. Navtool reads
 the per-step JSON-lines indexes, retrieves only the global 10 m U/V wind messages
-with strict HTTP byte-range requests, and assembles them in an immutable GRIB2
-artifact. The native loader limits in-memory decoding to the buffered passage
-area. Global field downloads can be substantially larger than NOAA's geographic
-subsets; completed ranges are cached and reused across routes and restarts.
+with one strict multipart byte-range request per forecast time, and assembles
+them in an immutable GRIB2 artifact. Index and GRIB requests are paced
+sequentially, and HTTP 429 retries honor the server's `Retry-After` guidance.
+The native loader limits in-memory decoding to the buffered passage area.
+Global field downloads can be substantially larger than NOAA's geographic
+subsets; completed forecast times are cached and reused across routes and
+restarts.
 
 Navtool considers the four deterministic IFS cycles each day. The 00/12 UTC
 cycles provide 3-hour steps through 144 hours and 6-hour steps through 240 hours;

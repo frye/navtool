@@ -458,7 +458,7 @@ public sealed class MainViewModelWorkflowTests
         viewModel.UseEcmwf = true;
 
         Assert.Contains("NOAA 4 times/8 parts", viewModel.ForecastAreaSummary);
-        Assert.Contains("ECMWF 3 times/6 global wind ranges", viewModel.ForecastAreaSummary);
+        Assert.Contains("ECMWF 3 times/6 global wind downloads", viewModel.ForecastAreaSummary);
     }
 
     [Fact]

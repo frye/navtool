@@ -3365,7 +3365,7 @@ public partial class MainViewModel : ViewModelBase
                     departure + duration));
                 estimates.Add(
                     $"ECMWF {estimate.ForecastStepCount} times/" +
-                    $"{estimate.PartCount} global wind ranges");
+                    $"{estimate.PartCount} global wind downloads");
             }
 
             ForecastAreaSummary = estimates.Count == 0
