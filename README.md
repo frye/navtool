@@ -1,5 +1,8 @@
 # Navtool
 
+> This repository is for experimenting with AI and demo purposes only. It is not
+> a navigation aid or a production-grade marine routing tool.
+
 Navtool is a cross-platform Avalonia desktop application for visualizing GRIB
 wind forecasts and routes calculated by the sibling C++ `router-lib` project.
 It targets macOS, Windows, and Linux.
