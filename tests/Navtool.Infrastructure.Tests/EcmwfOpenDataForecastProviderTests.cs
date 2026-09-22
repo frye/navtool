@@ -303,6 +303,34 @@ public sealed class EcmwfOpenDataForecastProviderTests
     }
 
     [Fact]
+    public async Task Acquire_rejects_multipart_response_with_inconsistent_object_length()
+    {
+        using var directory = new TestDirectory();
+        var handler = new EcmwfHandler(invalidMultipartObjectLength: true);
+        using var client = new HttpClient(handler);
+        var provider = CreateProvider(
+            directory.Path,
+            client,
+            new EcmwfOpenDataOptions
+            {
+                BaseUri = new Uri("https://example.test/forecasts/"),
+                MaximumDownloadAttempts = 1,
+                MinimumRequestInterval = TimeSpan.Zero
+            });
+
+        var exception = await Assert.ThrowsAsync<ForecastDownloadException>(async () =>
+            await provider.AcquireAsync(
+                CreateRequest(
+                    new DateTimeOffset(2026, 7, 14, 18, 0, 0, TimeSpan.Zero),
+                    TimeSpan.FromHours(3)),
+                null,
+                CancellationToken.None));
+
+        Assert.Contains("unexpected Content-Range", exception.Message);
+        Assert.Empty(Directory.EnumerateFiles(directory.Path, "*.partial", SearchOption.AllDirectories));
+    }
+
+    [Fact]
     public async Task Acquire_retries_rate_limited_multi_range_request()
     {
         using var directory = new TestDirectory();
@@ -485,6 +513,7 @@ public sealed class EcmwfOpenDataForecastProviderTests
         private readonly int? _rateLimitRangeRequest;
         private readonly bool _invalidGribLength;
         private readonly bool _omitSecondMultipartRange;
+        private readonly bool _invalidMultipartObjectLength;
         private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>>? _override;
         private readonly List<Uri> _requests = [];
         private readonly List<RangeHeaderValue?> _rangeHeaders = [];
@@ -498,6 +527,7 @@ public sealed class EcmwfOpenDataForecastProviderTests
             int? failRangeRequest = null,
             bool invalidGribLength = false,
             bool omitSecondMultipartRange = false,
+            bool invalidMultipartObjectLength = false,
             int? rateLimitRangeRequest = null)
         {
             _unpublishedCycleHour = unpublishedCycleHour;
@@ -505,6 +535,7 @@ public sealed class EcmwfOpenDataForecastProviderTests
             _failRangeRequest = failRangeRequest;
             _invalidGribLength = invalidGribLength;
             _omitSecondMultipartRange = omitSecondMultipartRange;
+            _invalidMultipartObjectLength = invalidMultipartObjectLength;
             _rateLimitRangeRequest = rateLimitRangeRequest;
         }
 
@@ -636,7 +667,8 @@ public sealed class EcmwfOpenDataForecastProviderTests
                 WriteAscii(output, "Content-Type: application/octet-stream\r\n");
                 WriteAscii(
                     output,
-                    $"Content-Range: bytes {from}-{from + bytes.Length - 1}/{UWind.Length + VWind.Length}\r\n\r\n");
+                    $"Content-Range: bytes {from}-{from + bytes.Length - 1}/" +
+                    $"{UWind.Length + VWind.Length + (_invalidMultipartObjectLength ? 1 : 0)}\r\n\r\n");
                 output.Write(bytes);
                 WriteAscii(output, "\r\n");
             }

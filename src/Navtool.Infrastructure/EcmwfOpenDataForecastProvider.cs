@@ -47,6 +47,7 @@ internal sealed record EcmwfIndexPart(
     string Parameter,
     long Offset,
     long Length,
+    long DataLength,
     Uri DataUri,
     string PartKey);
 
@@ -243,6 +244,7 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
         ArgumentNullException.ThrowIfNull(jsonLines);
         ArgumentNullException.ThrowIfNull(dataUri);
         var matches = new Dictionary<string, (long Offset, long Length)>(StringComparer.Ordinal);
+        long dataLength = 0;
         using var reader = new StringReader(jsonLines);
         var lineNumber = 0;
         while (reader.ReadLine() is { } line)
@@ -268,6 +270,14 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
             using (document)
             {
                 var root = document.RootElement;
+                if (TryReadInt64(root, "_offset", out var fieldOffset) &&
+                    TryReadInt64(root, "_length", out var fieldLength) &&
+                    fieldOffset >= 0 &&
+                    fieldLength > 0)
+                {
+                    dataLength = Math.Max(dataLength, checked(fieldOffset + fieldLength));
+                }
+
                 if (!root.TryGetProperty("param", out var parameterElement) ||
                     parameterElement.ValueKind != JsonValueKind.String)
                 {
@@ -321,13 +331,15 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
                         parameter,
                         range.Offset,
                         range.Length,
+                        dataLength,
                         dataUri,
                         AtomicFileCache.CreateKey(
                             "ecmwf-part",
                             dataUri.AbsoluteUri,
                             parameter,
                             range.Offset.ToString(CultureInfo.InvariantCulture),
-                            range.Length.ToString(CultureInfo.InvariantCulture))),
+                            range.Length.ToString(CultureInfo.InvariantCulture),
+                            dataLength.ToString(CultureInfo.InvariantCulture))),
                     End: end);
             })
             .OrderBy(item => item.Part.Offset)
@@ -859,8 +871,10 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
                 parsedRange.Unit != "bytes" ||
                 parsedRange.From is not { } from ||
                 parsedRange.To is not { } to ||
+                parsedRange.Length is not { } dataLength ||
                 !fieldsByOffset.TryGetValue(from, out var field) ||
-                to != checked(from + field.Length - 1))
+                to != checked(from + field.Length - 1) ||
+                dataLength != field.DataLength)
             {
                 throw new ForecastDownloadException(
                     $"ECMWF multipart response for f{step.ForecastHour:000} has an unexpected Content-Range.");
