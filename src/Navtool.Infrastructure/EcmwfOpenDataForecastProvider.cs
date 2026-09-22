@@ -276,7 +276,16 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
                     fieldOffset >= 0 &&
                     fieldLength > 0)
                 {
-                    dataLength = Math.Max(dataLength, checked(fieldOffset + fieldLength));
+                    try
+                    {
+                        dataLength = Math.Max(dataLength, checked(fieldOffset + fieldLength));
+                    }
+                    catch (OverflowException exception)
+                    {
+                        throw new InvalidDataException(
+                            $"ECMWF index line {lineNumber} has an invalid byte offset or length.",
+                            exception);
+                    }
                 }
 
                 if (!root.TryGetProperty("param", out var parameterElement) ||

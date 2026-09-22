@@ -127,6 +127,26 @@ public sealed class EcmwfOpenDataForecastProviderTests
     }
 
     [Fact]
+    public void Index_parser_reports_overflowing_unrelated_range_as_invalid_data()
+    {
+        var index =
+            $$"""
+              {"param":"2t","levtype":"sfc","_offset":{{long.MaxValue}},"_length":1}
+              {"param":"10u","levtype":"sfc","_offset":0,"_length":{{UWind.Length}}}
+              {"param":"10v","levtype":"sfc","_offset":{{UWind.Length}},"_length":{{VWind.Length}}}
+              """;
+
+        var exception = Assert.Throws<InvalidDataException>(() =>
+            EcmwfOpenDataForecastProvider.ParseIndex(
+                index,
+                3,
+                new Uri("https://example.test/data.grib2")));
+
+        Assert.IsType<OverflowException>(exception.InnerException);
+        Assert.Contains("line 1", exception.Message);
+    }
+
+    [Fact]
     public async Task Acquire_downloads_indexed_wind_parts_and_reuses_final_cache()
     {
         using var directory = new TestDirectory();
