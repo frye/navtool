@@ -83,6 +83,29 @@ public sealed class RoutePlanJsonRepositoryTests
         Assert.Equal(original, await File.ReadAllBytesAsync(path));
     }
 
+    [Fact]
+    public async Task V8_migration_defaults_ecmwf_cache_age_to_forever()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path);
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        root["schemaVersion"] = 8;
+        RemovePropertyRecursively(root, "ecmwfCacheMaximumAge");
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+
+        var loaded = await repository.OpenAsync(plan.Id);
+
+        Assert.Equal(EcmwfCacheMaximumAge.Forever, loaded.RoutingSetup!.EcmwfCacheMaximumAge);
+        Assert.All(
+            loaded.Results.SelectMany(result => result.Legs).Where(leg => leg.Route is not null),
+            leg => Assert.Equal(
+                EcmwfCacheMaximumAge.Forever,
+                leg.Route!.RunAudit!.Setup.EcmwfCacheMaximumAge));
+    }
+
     private static RouteCoastalPruningDiagnostics CoastalAudit() =>
         new(RouteCoastalPruningMode.ConservativeLandAware, "ready", "Some coverage remains uncertain",
             long.MaxValue, 2, 3, 4, 5, 6, 7, DateTimeOffset.Parse("2026-08-01T19:00:00Z"),
@@ -1422,5 +1445,20 @@ public sealed class RoutePlanJsonRepositoryTests
                 route);
         });
         return plan.WithResult(new RoutePlanResult(session, outcomes));
+    }
+
+    private static void RemovePropertyRecursively(JsonNode? node, string propertyName)
+    {
+        if (node is JsonObject value)
+        {
+            value.Remove(propertyName);
+            foreach (var child in value.Select(property => property.Value).ToArray())
+                RemovePropertyRecursively(child, propertyName);
+        }
+        else if (node is JsonArray array)
+        {
+            foreach (var child in array)
+                RemovePropertyRecursively(child, propertyName);
+        }
     }
 }

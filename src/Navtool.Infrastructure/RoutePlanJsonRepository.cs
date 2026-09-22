@@ -22,7 +22,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
                 $"Route plan schema version {currentVersion} is not supported by this application version.");
         }
 
-        if (fromVersion is < 1 or > 7)
+        if (fromVersion is < 1 or > 8)
             throw new InvalidDataException(
                 $"Route plan schema version {fromVersion} is not supported by this application version.");
         var current = JsonDocument.Parse(document.RootElement.GetRawText());
@@ -39,6 +39,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
                     5 => MigrateV5ToV6(current),
                     6 => MigrateV6ToV7(current),
                     7 => MigrateV7ToV8(current),
+                    8 => MigrateV8ToV9(current),
                     _ => throw new InvalidDataException("Unsupported migration step.")
                 };
                 current.Dispose();
@@ -230,6 +231,40 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
         return JsonDocument.Parse(root.ToJsonString());
     }
 
+    private static JsonDocument MigrateV8ToV9(JsonDocument document)
+    {
+        var root = JsonNode.Parse(document.RootElement.GetRawText()) as JsonObject ??
+                   throw new InvalidDataException("A route plan document must be a JSON object.");
+        root["schemaVersion"] = 9;
+        AddEcmwfCacheMaximumAge(root);
+        return JsonDocument.Parse(root.ToJsonString());
+    }
+
+    private static void AddEcmwfCacheMaximumAge(JsonNode? node)
+    {
+        if (node is JsonObject value)
+        {
+            if (value.ContainsKey("boat") &&
+                value.ContainsKey("forecastPolicy") &&
+                value.ContainsKey("coastalPruning"))
+            {
+                value["ecmwfCacheMaximumAge"] = nameof(EcmwfCacheMaximumAge.Forever);
+            }
+
+            foreach (var child in value.Select(property => property.Value).ToArray())
+            {
+                AddEcmwfCacheMaximumAge(child);
+            }
+        }
+        else if (node is JsonArray array)
+        {
+            foreach (var child in array)
+            {
+                AddEcmwfCacheMaximumAge(child);
+            }
+        }
+    }
+
     private static IEnumerable<JsonObject> EnumerateRoutes(JsonObject root)
     {
         if (root["plan"]?["results"] is not JsonArray results)
@@ -300,7 +335,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
 
 public sealed class RoutePlanJsonRepository : IRoutePlanRepository
 {
-    public const int CurrentSchemaVersion = 8;
+    public const int CurrentSchemaVersion = 9;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,

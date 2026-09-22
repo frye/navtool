@@ -140,8 +140,10 @@ public sealed record RoutingSetup
         ArgumentNullException.ThrowIfNull(boat);
         if (!Enum.IsDefined(quality) || !Enum.IsDefined(landSource) || !Enum.IsDefined(forecastPolicy))
             throw new ArgumentOutOfRangeException(nameof(quality));
-        if (!Enum.IsDefined(coastalPruning) || !Enum.IsDefined(ecmwfCacheMaximumAge))
+        if (!Enum.IsDefined(coastalPruning))
             throw new ArgumentOutOfRangeException(nameof(coastalPruning));
+        if (!Enum.IsDefined(ecmwfCacheMaximumAge))
+            throw new ArgumentOutOfRangeException(nameof(ecmwfCacheMaximumAge));
         if (!double.IsFinite(performanceFactor) || performanceFactor <= 0)
             throw new ArgumentOutOfRangeException(nameof(performanceFactor));
         if (!double.IsFinite(arrivalRadiusNauticalMiles) || arrivalRadiusNauticalMiles <= 0)
