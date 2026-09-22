@@ -10,14 +10,16 @@ public sealed record RoutingWorkflowRequest
         GeographicBounds? forecastBounds = null,
         ForecastRefreshPolicy refreshPolicy = ForecastRefreshPolicy.PreferCache,
         RouteOptimizationOptions? optimization = null,
-        RoutingCalculationContext? calculationContext = null)
+        RoutingCalculationContext? calculationContext = null,
+        EcmwfCacheMaximumAge ecmwfCacheMaximumAge = EcmwfCacheMaximumAge.Forever)
         : this(
             route,
             CreateDownloadSelections(models),
             forecastBounds,
             refreshPolicy,
             optimization,
-            calculationContext)
+            calculationContext,
+            ecmwfCacheMaximumAge)
     {
     }
 
@@ -27,13 +29,18 @@ public sealed record RoutingWorkflowRequest
         GeographicBounds? forecastBounds = null,
         ForecastRefreshPolicy refreshPolicy = ForecastRefreshPolicy.PreferCache,
         RouteOptimizationOptions? optimization = null,
-        RoutingCalculationContext? calculationContext = null)
+        RoutingCalculationContext? calculationContext = null,
+        EcmwfCacheMaximumAge ecmwfCacheMaximumAge = EcmwfCacheMaximumAge.Forever)
     {
         ArgumentNullException.ThrowIfNull(route);
         ArgumentNullException.ThrowIfNull(selections);
         if (!Enum.IsDefined(refreshPolicy))
         {
             throw new ArgumentOutOfRangeException(nameof(refreshPolicy));
+        }
+        if (!Enum.IsDefined(ecmwfCacheMaximumAge))
+        {
+            throw new ArgumentOutOfRangeException(nameof(ecmwfCacheMaximumAge));
         }
 
         var immutableSelections = selections.ToImmutableArray();
@@ -64,6 +71,7 @@ public sealed record RoutingWorkflowRequest
                 ? regional.StudyBounds
                 : ForecastCorridor.Create(route.Origin, route.Destination));
         RefreshPolicy = refreshPolicy;
+        EcmwfCacheMaximumAge = ecmwfCacheMaximumAge;
         Optimization = optimization ?? calculationContext?.Resolved.Optimization ?? RouteOptimizationOptions.Balanced;
         if (calculationContext is not null && Optimization != calculationContext.Resolved.Optimization)
             throw new ArgumentException("Optimization changes must be resolved and frozen before acquisition.", nameof(optimization));
@@ -79,6 +87,7 @@ public sealed record RoutingWorkflowRequest
     public GeographicBounds ForecastBounds { get; }
 
     public ForecastRefreshPolicy RefreshPolicy { get; }
+    public EcmwfCacheMaximumAge EcmwfCacheMaximumAge { get; }
 
     public RouteOptimizationOptions Optimization { get; }
 
@@ -347,7 +356,8 @@ public sealed class RoutingWorkflow
                 request.ForecastBounds,
                 request.Route.DepartureTime,
                 request.Route.LatestArrivalTime,
-                request.RefreshPolicy);
+                request.RefreshPolicy,
+                request.EcmwfCacheMaximumAge);
             var forecastProgress = new SynchronousProgress<ForecastProgress>(value =>
                 Report(
                     progress,

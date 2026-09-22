@@ -1149,7 +1149,8 @@ public partial class MainViewModel : ViewModelBase
                 context.Setup.LandSource == RoutingLandSource.RegionalGshhg
                     ? context.Setup.RegionalLand!.StudyBounds : request.ForecastBounds,
                 request.RefreshPolicy,
-                context.Resolved.Optimization, context);
+                context.Resolved.Optimization, context,
+                context.Setup.EcmwfCacheMaximumAge);
             RoutingSetup.ResolvedStatus =
                 $"{context.NativeIdentity.LibraryVersion} · bridge ABI {context.NativeIdentity.BridgeAbiVersion}\n" +
                 $"{context.Resolved.Quality} · {context.Resolved.Optimization.Solver} · " +
@@ -2138,7 +2139,8 @@ public partial class MainViewModel : ViewModelBase
             UseNewestWeatherData
                 ? ForecastRefreshPolicy.LatestAvailable
                 : RoutingSetup.ForecastPolicy,
-            optimization);
+            optimization,
+            ecmwfCacheMaximumAge: RoutingSetup.EcmwfCacheMaximumAge);
         error = null;
         return true;
     }

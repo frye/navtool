@@ -72,7 +72,9 @@ bridge launch guidance and automated validation.
 
 - Reduced ECMWF Open Data request volume by retrieving paired 10 m U/V fields
   with one multipart byte-range request per forecast time, with consistent
-  request pacing and `Retry-After`-aware rate-limit handling.
+  request pacing and `Retry-After`-aware rate-limit handling. Forecast settings
+  can now cap ECMWF cache age at 6, 12, or 24 hours, or keep the default
+  unlimited cache lifetime.
 - Added ABI-v6 solver-aware progress, lattice search markers and diagnostics,
   configured beam/lattice dispatch, and schema-v3 result attribution while
   preserving legacy bridge exports and route-plan migration.

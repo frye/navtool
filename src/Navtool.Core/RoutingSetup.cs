@@ -134,12 +134,13 @@ public sealed record RoutingSetup
         TimeSpan? hardDuration = null,
         TimeSpan? localForecastMaximumGap = null,
         RouteRegionalLandPolicy? regionalLand = null,
-        RouteCoastalPruningMode coastalPruning = RouteCoastalPruningMode.Off)
+        RouteCoastalPruningMode coastalPruning = RouteCoastalPruningMode.Off,
+        EcmwfCacheMaximumAge ecmwfCacheMaximumAge = EcmwfCacheMaximumAge.Forever)
     {
         ArgumentNullException.ThrowIfNull(boat);
         if (!Enum.IsDefined(quality) || !Enum.IsDefined(landSource) || !Enum.IsDefined(forecastPolicy))
             throw new ArgumentOutOfRangeException(nameof(quality));
-        if (!Enum.IsDefined(coastalPruning))
+        if (!Enum.IsDefined(coastalPruning) || !Enum.IsDefined(ecmwfCacheMaximumAge))
             throw new ArgumentOutOfRangeException(nameof(coastalPruning));
         if (!double.IsFinite(performanceFactor) || performanceFactor <= 0)
             throw new ArgumentOutOfRangeException(nameof(performanceFactor));
@@ -159,6 +160,7 @@ public sealed record RoutingSetup
         LocalForecastMaximumGap = localForecastMaximumGap ?? TimeSpan.FromHours(6);
         RegionalLand = regionalLand;
         CoastalPruning = coastalPruning;
+        EcmwfCacheMaximumAge = ecmwfCacheMaximumAge;
     }
 
     public BoatAsset Boat { get; }
@@ -171,6 +173,7 @@ public sealed record RoutingSetup
     public TimeSpan LocalForecastMaximumGap { get; }
     public RouteRegionalLandPolicy? RegionalLand { get; }
     public RouteCoastalPruningMode CoastalPruning { get; }
+    public EcmwfCacheMaximumAge EcmwfCacheMaximumAge { get; }
 }
 
 /// <summary>All numerical fields affected by the native quality preset; no managed preset imitation.</summary>

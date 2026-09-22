@@ -321,7 +321,8 @@ public sealed class RoutePlanRoutingWorkflow
                             : ForecastCorridor.Create(route.Origin, route.Destination),
                         request.RefreshPolicy,
                         request.Optimization,
-                        request.CalculationContext);
+                        request.CalculationContext,
+                        request.CalculationContext?.Setup.EcmwfCacheMaximumAge ?? EcmwfCacheMaximumAge.Forever);
                     var legProgress = new InlineProgress<RoutingProgress>(value =>
                         progressState.Report(
                             value.Model,

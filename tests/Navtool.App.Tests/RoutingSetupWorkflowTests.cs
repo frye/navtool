@@ -237,6 +237,7 @@ public sealed class RoutingSetupWorkflowTests
             vm.RoutingSetup.PerformancePercentage = 87;
             vm.RoutingSetup.ArrivalRadiusNauticalMiles = 0.5;
             vm.RoutingSetup.ForecastPolicy = ForecastRefreshPolicy.LatestAvailable;
+            vm.RoutingSetup.EcmwfCacheMaximumAge = EcmwfCacheMaximumAge.TwelveHours;
             vm.RoutingSetup.LandSource = RoutingLandSource.OpenStreetMap;
             vm.PassageDays = 4;
             vm.PassageHours = 6;
@@ -264,6 +265,7 @@ public sealed class RoutingSetupWorkflowTests
                 Assert.Equal(RoutingQuality.NativeAccurate, restored.RoutingSetup.Quality);
                 Assert.Equal(0.5, restored.RoutingSetup.ArrivalRadiusNauticalMiles);
                 Assert.Equal(ForecastRefreshPolicy.LatestAvailable, restored.RoutingSetup.ForecastPolicy);
+                Assert.Equal(EcmwfCacheMaximumAge.TwelveHours, restored.RoutingSetup.EcmwfCacheMaximumAge);
                 Assert.Equal(RoutingLandSource.OpenStreetMap, restored.RoutingSetup.LandSource);
                 Assert.Equal(4, restored.PassageDays);
                 Assert.Equal(6, restored.PassageHours);

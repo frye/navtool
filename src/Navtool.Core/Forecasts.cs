@@ -33,6 +33,26 @@ public enum ForecastRefreshPolicy
     LatestAvailable
 }
 
+public enum EcmwfCacheMaximumAge
+{
+    Forever,
+    SixHours,
+    TwelveHours,
+    TwentyFourHours
+}
+
+public static class EcmwfCacheMaximumAgeExtensions
+{
+    public static TimeSpan? ToTimeSpan(this EcmwfCacheMaximumAge maximumAge) => maximumAge switch
+    {
+        EcmwfCacheMaximumAge.SixHours => TimeSpan.FromHours(6),
+        EcmwfCacheMaximumAge.TwelveHours => TimeSpan.FromHours(12),
+        EcmwfCacheMaximumAge.TwentyFourHours => TimeSpan.FromHours(24),
+        EcmwfCacheMaximumAge.Forever => null,
+        _ => throw new ArgumentOutOfRangeException(nameof(maximumAge))
+    };
+}
+
 public enum ForecastProgressStage
 {
     Queued,
@@ -84,12 +104,17 @@ public sealed record ForecastRequest
         GeographicBounds bounds,
         DateTimeOffset from,
         DateTimeOffset through,
-        ForecastRefreshPolicy refreshPolicy = ForecastRefreshPolicy.PreferCache)
+        ForecastRefreshPolicy refreshPolicy = ForecastRefreshPolicy.PreferCache,
+        EcmwfCacheMaximumAge ecmwfCacheMaximumAge = EcmwfCacheMaximumAge.Forever)
     {
         _ = model.Provider();
         if (!Enum.IsDefined(refreshPolicy))
         {
             throw new ArgumentOutOfRangeException(nameof(refreshPolicy));
+        }
+        if (!Enum.IsDefined(ecmwfCacheMaximumAge))
+        {
+            throw new ArgumentOutOfRangeException(nameof(ecmwfCacheMaximumAge));
         }
 
         var utcFrom = from.ToUniversalTime();
@@ -104,6 +129,7 @@ public sealed record ForecastRequest
         From = utcFrom;
         Through = utcThrough;
         RefreshPolicy = refreshPolicy;
+        EcmwfCacheMaximumAge = ecmwfCacheMaximumAge;
     }
 
     public ForecastProvider Provider => Model.Provider();
@@ -117,6 +143,8 @@ public sealed record ForecastRequest
     public DateTimeOffset Through { get; }
 
     public ForecastRefreshPolicy RefreshPolicy { get; }
+
+    public EcmwfCacheMaximumAge EcmwfCacheMaximumAge { get; }
 }
 
 public sealed record ForecastProgress

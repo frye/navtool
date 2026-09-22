@@ -740,7 +740,8 @@ public sealed class RoutePlanJsonRepositoryTests
         var setup = new RoutingSetup(boat, RoutingQuality.NativeAccurate, .85, 1,
             RoutingLandSource.RegionalGshhg, hardDuration: TimeSpan.FromHours(240),
             localForecastMaximumGap: TimeSpan.FromHours(3), regionalLand: regional,
-            coastalPruning: coastal?.Mode ?? RouteCoastalPruningMode.Off);
+            coastalPruning: coastal?.Mode ?? RouteCoastalPruningMode.Off,
+            ecmwfCacheMaximumAge: EcmwfCacheMaximumAge.TwentyFourHours);
         var basePlan = CreatePlan();
         var plan = new RoutePlan(basePlan.Id, basePlan.Name, basePlan.Waypoints, sailedLegIds: basePlan.SailedLegIds,
             activeLegId: basePlan.Legs[1].Id, routingSetup: setup);

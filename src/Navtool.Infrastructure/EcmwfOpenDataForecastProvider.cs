@@ -62,7 +62,8 @@ internal sealed record EcmwfAcquisitionPlan(
     DateTimeOffset RunTime,
     ImmutableArray<int> ForecastHours,
     ImmutableArray<EcmwfStepPart> Parts,
-    string CacheKey);
+    string CacheKey,
+    string ContentIdentity);
 
 public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecastDownloadEstimator
 {
@@ -427,7 +428,9 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
 
         var existingAssembly = await _cache.TryGetAsync(plan.CacheKey, now, cancellationToken)
             .ConfigureAwait(false);
-        if (existingAssembly is not null)
+        if (existingAssembly is not null &&
+            IsCacheWithinMaximumAge(existingAssembly, request, now) &&
+            string.Equals(existingAssembly.ContentIdentity, plan.ContentIdentity, StringComparison.Ordinal))
         {
             Report(progress, ForecastProgressStage.Completed, 1, "Using cached ECMWF IFS forecast");
             return CreateAcquisition(
@@ -451,9 +454,9 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
             cancellationToken.ThrowIfCancellationRequested();
             var part = plan.Parts[index];
             var partPath = Path.Combine(partsDirectory, part.PartKey + ".grib2");
-            if (IsValidStepFile(partPath, part.Fields))
+            if (IsValidStepFile(partPath, part.Fields) &&
+                IsPartWithinMaximumAge(partPath, request, now))
             {
-                File.SetLastWriteTimeUtc(partPath, now.UtcDateTime);
                 Report(
                     progress,
                     ForecastProgressStage.Downloading,
@@ -497,7 +500,8 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
                         await input.CopyToAsync(output, token).ConfigureAwait(false);
                     }
                 },
-                cancellationToken)
+                cancellationToken,
+                plan.ContentIdentity)
             .ConfigureAwait(false);
         PrunePartCache(partsDirectory, plan.Parts.Select(part => part.PartKey).ToHashSet(StringComparer.Ordinal));
 
@@ -527,6 +531,10 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
             var cacheKey = CreateAssemblyCacheKey(candidate, hours);
             var cached = await _cache.TryGetAsync(cacheKey, now, cancellationToken).ConfigureAwait(false);
             if (cached is null)
+            {
+                continue;
+            }
+            if (!IsCacheWithinMaximumAge(cached, request, now))
             {
                 continue;
             }
@@ -595,11 +603,16 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
                             part.DataLength.ToString(CultureInfo.InvariantCulture))))));
         }
 
+        var stepParts = builder.MoveToImmutable();
+        var contentIdentity = AtomicFileCache.CreateKey(
+            "ecmwf-plan",
+            stepParts.Select(part => part.PartKey).ToArray());
         return new EcmwfAcquisitionPlan(
             runTime,
             hours,
-            builder.MoveToImmutable(),
-            CreateAssemblyCacheKey(runTime, hours));
+            stepParts,
+            CreateAssemblyCacheKey(runTime, hours),
+            contentIdentity);
     }
 
     private async ValueTask<string?> DownloadIndexAsync(
@@ -787,7 +800,7 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
 
         await using var input = await response.Content.ReadAsStreamAsync(cancellationToken)
             .ConfigureAwait(false);
-        var multipartPath = $"{tempPath}.multipart";
+        var multipartPath = $"{tempPath}.multipart.partial";
         try
         {
             await using (var multipart = new FileStream(
@@ -1074,6 +1087,26 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
     }
 
     private static bool IsLongCycle(DateTimeOffset run) => run.ToUniversalTime().Hour is 0 or 12;
+
+    private static bool IsCacheWithinMaximumAge(
+        AtomicCacheEntry entry,
+        ForecastRequest request,
+        DateTimeOffset now)
+    {
+        var maximumAge = request.EcmwfCacheMaximumAge.ToTimeSpan();
+        return maximumAge is null ||
+               now.ToUniversalTime() - entry.Metadata.CreatedAt <= maximumAge;
+    }
+
+    private static bool IsPartWithinMaximumAge(
+        string path,
+        ForecastRequest request,
+        DateTimeOffset now)
+    {
+        var maximumAge = request.EcmwfCacheMaximumAge.ToTimeSpan();
+        return maximumAge is null ||
+               now.ToUniversalTime() - File.GetLastWriteTimeUtc(path) <= maximumAge;
+    }
 
     private static string CreateAssemblyCacheKey(
         DateTimeOffset runTime,

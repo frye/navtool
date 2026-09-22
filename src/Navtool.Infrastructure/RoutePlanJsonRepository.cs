@@ -1142,7 +1142,8 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
                     land.ResolutionNauticalMiles, land.ClearanceNauticalMiles, land.DistanceCapNauticalMiles,
                     land.MaximumGridNodes, land.MaximumSourcePoints, land.MaximumGeometryTests,
                     land.MaximumSubdivisionDepth, land.Attribution, land.MissingDataPolicy),
-            value.CoastalPruning);
+            value.CoastalPruning,
+            value.EcmwfCacheMaximumAge);
 
     private static RoutingSetup FromDto(RoutingSetupDto dto)
     {
@@ -1169,7 +1170,8 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
                     land.ResolutionNauticalMiles, land.ClearanceNauticalMiles, land.DistanceCapNauticalMiles,
                     land.MaximumGridNodes, land.MaximumSourcePoints, land.MaximumGeometryTests,
                     land.MaximumSubdivisionDepth, land.Attribution, land.MissingDataPolicy),
-            dto.CoastalPruning);
+            dto.CoastalPruning,
+            dto.EcmwfCacheMaximumAge);
     }
 
     private static bool OptionalNonnegative(double? value) =>
@@ -1479,7 +1481,8 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
         BoatAssetDto Boat, RoutingQuality Quality, double PerformanceFactor, double ArrivalRadiusNauticalMiles,
         RoutingLandSource LandSource, ForecastRefreshPolicy ForecastPolicy, long? HardDurationTicks,
         long LocalForecastMaximumGapTicks, RouteRegionalLandPolicyDto? RegionalLand,
-        [property: JsonRequired] RouteCoastalPruningMode CoastalPruning);
+        [property: JsonRequired] RouteCoastalPruningMode CoastalPruning,
+        EcmwfCacheMaximumAge EcmwfCacheMaximumAge = EcmwfCacheMaximumAge.Forever);
     private sealed record RouteRegionalLandPolicyDto(
         string SourcePath, string SourceIdentity, BoundsDto StudyBounds,
         double ResolutionNauticalMiles, double ClearanceNauticalMiles, double DistanceCapNauticalMiles,

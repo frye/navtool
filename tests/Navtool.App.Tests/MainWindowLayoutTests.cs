@@ -337,6 +337,7 @@ public sealed class MainWindowLayoutTests
             Assert.NotNull(window.FindControl<NumericUpDown>("PassageHoursInput"));
             Assert.NotNull(window.FindControl<RadioButton>("DownloadForecastSource"));
             Assert.NotNull(window.FindControl<RadioButton>("LocalForecastSource"));
+            Assert.NotNull(window.FindControl<ComboBox>("EcmwfCacheMaximumAgeSelector"));
             Assert.NotNull(window.FindControl<Button>("ChooseGribFileButton"));
         }
         finally

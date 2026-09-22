@@ -39,6 +39,9 @@ public sealed partial class RoutingSetupViewModel : ViewModelBase
     public IReadOnlyList<RoutingLandSource> LandSourceOptions { get; } =
         [RoutingLandSource.NaturalEarth, RoutingLandSource.OpenStreetMap, RoutingLandSource.RegionalGshhg];
     public IReadOnlyList<ForecastRefreshPolicy> ForecastPolicyOptions { get; } = Enum.GetValues<ForecastRefreshPolicy>();
+    public IReadOnlyList<EcmwfCacheMaximumAge> EcmwfCacheMaximumAgeOptions { get; } =
+        [EcmwfCacheMaximumAge.SixHours, EcmwfCacheMaximumAge.TwelveHours,
+            EcmwfCacheMaximumAge.TwentyFourHours, EcmwfCacheMaximumAge.Forever];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(BoatStatus))]
@@ -60,6 +63,8 @@ public sealed partial class RoutingSetupViewModel : ViewModelBase
     private RoutingLandSource _landSource = RoutingLandSource.NaturalEarth;
     [ObservableProperty]
     private ForecastRefreshPolicy _forecastPolicy = ForecastRefreshPolicy.PreferCache;
+    [ObservableProperty]
+    private EcmwfCacheMaximumAge _ecmwfCacheMaximumAge = EcmwfCacheMaximumAge.Forever;
     [ObservableProperty]
     private double _localForecastMaximumGapHours = 6;
     [ObservableProperty]
@@ -133,7 +138,8 @@ public sealed partial class RoutingSetupViewModel : ViewModelBase
                 localForecastMaximumGap: TimeSpan.FromHours(LocalForecastMaximumGapHours),
                 regionalLand: regional,
                 coastalPruning: EnableCoastalPruning
-                    ? RouteCoastalPruningMode.ConservativeLandAware : RouteCoastalPruningMode.Off);
+                    ? RouteCoastalPruningMode.ConservativeLandAware : RouteCoastalPruningMode.Off,
+                ecmwfCacheMaximumAge: EcmwfCacheMaximumAge);
             error = null;
             return true;
         }
@@ -159,6 +165,7 @@ public sealed partial class RoutingSetupViewModel : ViewModelBase
             ArrivalRadiusNauticalMiles = setup?.ArrivalRadiusNauticalMiles ?? 1;
             LandSource = setup?.LandSource ?? _defaultLandSource;
             ForecastPolicy = setup?.ForecastPolicy ?? ForecastRefreshPolicy.PreferCache;
+            EcmwfCacheMaximumAge = setup?.EcmwfCacheMaximumAge ?? EcmwfCacheMaximumAge.Forever;
             LocalForecastMaximumGapHours = setup?.LocalForecastMaximumGap.TotalHours ?? 6;
             UseHardDuration = false;
             HardDurationHours = setup?.HardDuration?.TotalHours ?? 240;
@@ -194,6 +201,7 @@ public sealed partial class RoutingSetupViewModel : ViewModelBase
             Boat = Boat, Quality = Quality, PerformanceFactor = PerformancePercentage / 100,
             ArrivalRadiusNauticalMiles = ArrivalRadiusNauticalMiles, LandSource = LandSource,
             ForecastPolicy = ForecastPolicy, LocalForecastMaximumGapHours = LocalForecastMaximumGapHours,
+            EcmwfCacheMaximumAge = EcmwfCacheMaximumAge,
             RegionalLand = BuildRegionalPolicy(), HardDurationHours = HardDurationHours
         };
         preferences.Validate();
@@ -207,7 +215,8 @@ public sealed partial class RoutingSetupViewModel : ViewModelBase
             preferences.Quality, preferences.PerformanceFactor, preferences.ArrivalRadiusNauticalMiles,
             preferences.LandSource, preferences.ForecastPolicy,
             localForecastMaximumGap: TimeSpan.FromHours(preferences.LocalForecastMaximumGapHours),
-            regionalLand: preferences.RegionalLand));
+            regionalLand: preferences.RegionalLand,
+            ecmwfCacheMaximumAge: preferences.EcmwfCacheMaximumAge));
         _restoring = true;
         try
         {
@@ -216,6 +225,7 @@ public sealed partial class RoutingSetupViewModel : ViewModelBase
             ArrivalRadiusNauticalMiles = preferences.ArrivalRadiusNauticalMiles;
             LandSource = preferences.LandSource;
             ForecastPolicy = preferences.ForecastPolicy;
+            EcmwfCacheMaximumAge = preferences.EcmwfCacheMaximumAge;
             LocalForecastMaximumGapHours = preferences.LocalForecastMaximumGapHours;
             HardDurationHours = preferences.HardDurationHours;
             if (preferences.RegionalLand is { } regional)
@@ -373,6 +383,7 @@ public sealed partial class RoutingSetupViewModel : ViewModelBase
     partial void OnArrivalRadiusNauticalMilesChanged(double value) => Changed();
     partial void OnLandSourceChanged(RoutingLandSource value) => Changed();
     partial void OnForecastPolicyChanged(ForecastRefreshPolicy value) => Changed();
+    partial void OnEcmwfCacheMaximumAgeChanged(EcmwfCacheMaximumAge value) => Changed();
     partial void OnLocalForecastMaximumGapHoursChanged(double value) => Changed();
     partial void OnUseHardDurationChanged(bool value) => Changed();
     partial void OnHardDurationHoursChanged(double value) => Changed();

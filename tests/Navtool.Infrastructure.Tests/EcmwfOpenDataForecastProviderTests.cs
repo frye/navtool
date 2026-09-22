@@ -395,6 +395,67 @@ public sealed class EcmwfOpenDataForecastProviderTests
     }
 
     [Fact]
+    public async Task Cache_maximum_age_defaults_to_forever_and_can_force_refresh()
+    {
+        using var directory = new TestDirectory();
+        var clock = new MutableTimeProvider(Now);
+        var handler = new EcmwfHandler();
+        using var client = new HttpClient(handler);
+        var provider = CreateProvider(directory.Path, client, timeProvider: clock);
+        var from = new DateTimeOffset(2026, 7, 15, 3, 0, 0, TimeSpan.Zero);
+        var forever = CreateRequest(from, TimeSpan.FromHours(3));
+
+        var initial = await provider.AcquireAsync(forever, null, CancellationToken.None);
+        var requestsAfterInitial = handler.RequestCount;
+        clock.UtcNow = clock.UtcNow.AddHours(5);
+        var reused = await provider.AcquireAsync(forever, null, CancellationToken.None);
+        var requestsAfterReuse = handler.RequestCount;
+        clock.UtcNow = clock.UtcNow.AddHours(2);
+        var refreshed = await provider.AcquireAsync(
+            new ForecastRequest(
+                forever.Model,
+                forever.Bounds,
+                forever.From,
+                forever.Through,
+                ForecastRefreshPolicy.PreferCache,
+                EcmwfCacheMaximumAge.SixHours),
+            null,
+            CancellationToken.None);
+
+        Assert.Equal(ForecastAcquisitionSource.Remote, initial.Source);
+        Assert.Equal(ForecastAcquisitionSource.Cache, reused.Source);
+        Assert.Equal(requestsAfterInitial, requestsAfterReuse);
+        Assert.Equal(ForecastAcquisitionSource.Remote, refreshed.Source);
+        Assert.True(handler.RequestCount > requestsAfterInitial);
+    }
+
+    [Fact]
+    public async Task Latest_policy_rebuilds_assembly_when_indexed_object_identity_changes()
+    {
+        using var directory = new TestDirectory();
+        var handler = new EcmwfHandler();
+        using var client = new HttpClient(handler);
+        var provider = CreateProvider(directory.Path, client);
+        var basic = CreateRequest(
+            new DateTimeOffset(2026, 7, 14, 18, 0, 0, TimeSpan.Zero),
+            TimeSpan.Zero);
+        var latest = new ForecastRequest(
+            basic.Model,
+            basic.Bounds,
+            basic.From,
+            basic.Through,
+            ForecastRefreshPolicy.LatestAvailable);
+
+        await provider.AcquireAsync(latest, null, CancellationToken.None);
+        var rangesAfterInitial = handler.RangeRequestCount;
+        handler.ObjectLengthAdjustment = 5;
+        var refreshed = await provider.AcquireAsync(latest, null, CancellationToken.None);
+
+        Assert.Equal(ForecastAcquisitionSource.Remote, refreshed.Source);
+        Assert.True(handler.RangeRequestCount > rangesAfterInitial);
+    }
+
+    [Fact]
     public async Task Covering_cache_hit_is_not_blocked_by_remote_acquisition()
     {
         using var directory = new TestDirectory();
@@ -552,6 +613,7 @@ public sealed class EcmwfOpenDataForecastProviderTests
         public int RequestCount => Volatile.Read(ref _requestCount);
 
         public int RangeRequestCount => Volatile.Read(ref _rangeRequestCount);
+        public int ObjectLengthAdjustment { get; set; }
 
         public IReadOnlyList<Uri> Requests
         {
@@ -608,6 +670,8 @@ public sealed class EcmwfOpenDataForecastProviderTests
                     $$"""
                       {"param":"10u","levtype":"sfc","_offset":0,"_length":{{UWind.Length}}}
                       {"param":"10v","levtype":"sfc","_offset":{{UWind.Length}},"_length":{{VWind.Length}}}
+                      {{(ObjectLengthAdjustment == 0 ? string.Empty :
+                          $$"""{"param":"2t","levtype":"sfc","_offset":{{UWind.Length + VWind.Length}},"_length":{{ObjectLengthAdjustment}}}""")}}
                       """;
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
@@ -672,7 +736,7 @@ public sealed class EcmwfOpenDataForecastProviderTests
                 WriteAscii(
                     output,
                     $"Content-Range: bytes {from}-{from + bytes.Length - 1}/" +
-                    $"{UWind.Length + VWind.Length + (_invalidMultipartObjectLength ? 1 : 0)}\r\n\r\n");
+                    $"{UWind.Length + VWind.Length + ObjectLengthAdjustment + (_invalidMultipartObjectLength ? 1 : 0)}\r\n\r\n");
                 output.Write(bytes);
                 WriteAscii(output, "\r\n");
             }

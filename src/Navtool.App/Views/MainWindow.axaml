@@ -325,6 +325,17 @@
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
                                     <TextBlock Text="Reuse a covering cached run, or require the newest published run." Classes="muted" TextWrapping="Wrap" />
+                                    <TextBlock Text="ECMWF cached forecast maximum age" Classes="field-label" />
+                                    <ComboBox x:Name="EcmwfCacheMaximumAgeSelector"
+                                              ItemsSource="{Binding RoutingSetup.EcmwfCacheMaximumAgeOptions}"
+                                              SelectedItem="{Binding RoutingSetup.EcmwfCacheMaximumAge}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="core:EcmwfCacheMaximumAge">
+                                                <TextBlock Text="{Binding ., Converter={x:Static views:RoutingOptionLabelConverter.Instance}}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <TextBlock Text="Forever keeps a covering ECMWF cache until you require the newest published run." Classes="muted" TextWrapping="Wrap" />
                                     <TextBlock Text="{Binding NoaaStatus}" Classes="muted" TextWrapping="Wrap" />
                                     <TextBlock Text="{Binding EcmwfStatus}" Classes="muted" TextWrapping="Wrap" />
                                 </StackPanel>
