@@ -9,6 +9,7 @@ using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Mapsui.Extensions;
@@ -30,7 +31,15 @@ public sealed class MainWindowLayoutTests
         var window = CreateWindow();
         try
         {
+            using var expectedSource = AssetLoader.Open(
+                new Uri("avares://Navtool.App/Assets/Navtool.png"));
+            var expected = new WindowIcon(expectedSource);
+            using var expectedBytes = new MemoryStream();
+            using var actualBytes = new MemoryStream();
+            expected.Save(expectedBytes);
             Assert.NotNull(window.Icon);
+            window.Icon.Save(actualBytes);
+            Assert.Equal(expectedBytes.ToArray(), actualBytes.ToArray());
         }
         finally { window.Close(); }
     }
