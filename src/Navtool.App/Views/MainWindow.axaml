@@ -18,7 +18,7 @@
         MinWidth="1040"
         MinHeight="680"
         Background="{DynamicResource WindowBackgroundColor}"
-        Icon="/Assets/avalonia-logo.ico"
+        Icon="/Assets/Navtool.png"
         Title="Navtool · Weather Routing">
 
     <Design.DataContext>
