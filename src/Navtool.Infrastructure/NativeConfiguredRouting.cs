@@ -85,6 +85,7 @@ public sealed partial class NativeRouterBridge
         if (options.Optimization.Environment is { } configuredEnvironment &&
             DescribeMissingCapability(_capabilities, configuredEnvironment) is { } missing)
             throw new NotSupportedException($"The bridge lacks configured {missing}.");
+        var currentsUnconfigured = options.Optimization.Environment?.Currents is null;
         var nativeOptions = ToNativeOptions(options);
         using var optionScope = new NativeStructScope<NativeRoutingOptionsV8>(nativeOptions);
         using var environmentScope = options.Optimization.Environment is { } environment
@@ -122,7 +123,9 @@ public sealed partial class NativeRouterBridge
                 try
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    var snapshot = coastal ? CopyCoastalProgress(pointer, onPreparation) : CopyProgress(pointer);
+                    var snapshot = coastal
+                        ? CopyCoastalProgress(pointer, onPreparation, currentsUnconfigured)
+                        : CopyProgress(pointer, currentsUnconfigured);
                     if (snapshot is not null) onProgress?.Invoke(snapshot);
                     cancellationToken.ThrowIfCancellationRequested();
                     return 1;
@@ -192,7 +195,8 @@ public sealed partial class NativeRouterBridge
                 forecast.Metadata.ValidTimes, forecast.Metadata.MaximumInterpolationGap);
             return new RouteResult(result.Request, result.Model, result.Points, result.Diagnostics, result.Completion,
                 result.LandAvoidance, result.Solver, result.LatticeDiagnostics, result.Environment,
-                result.EnvironmentDiagnostics, result.RunAudit, result.NativeAudit! with { ForecastCoverage = coverage });
+                result.EnvironmentDiagnostics, result.RunAudit, result.NativeAudit! with { ForecastCoverage = coverage })
+                .WithVerifiedNoCurrentWind(currentsUnconfigured);
         }
         finally
         {
@@ -207,7 +211,7 @@ public sealed partial class NativeRouterBridge
         LatitudeDegrees = location.Latitude, LongitudeDegrees = location.Longitude
     };
 
-    private static RoutePoint CopyAuditedPoint(NativeRoutePointV8 value)
+    private static RoutePoint CopyAuditedPoint(NativeRoutePointV8 value, bool currentsUnconfigured)
     {
         if ((value.Flags & ~7UL) != 0 || ((value.Flags & 6) != 0 && (value.Flags & 1) == 0))
             throw new NativeRouteFormatException("Native progress point contains invalid environment flags.");
@@ -222,6 +226,7 @@ public sealed partial class NativeRouterBridge
         var point = value.Point;
         return new RoutePoint(new Coordinate(point.Position.LatitudeDegrees, point.Position.LongitudeDegrees),
             DateTimeOffset.FromUnixTimeSeconds(point.UtcEpochSeconds), point.HeadingDegrees, point.BoatSpeedKnots,
-            point.TrueWindSpeedKnots, point.TrueWindDirectionDegrees, point.CumulativeDistanceNauticalMiles, environment);
+            point.TrueWindSpeedKnots, point.TrueWindDirectionDegrees, point.CumulativeDistanceNauticalMiles, environment)
+            .WithVerifiedNoCurrentWind(currentsUnconfigured);
     }
 }

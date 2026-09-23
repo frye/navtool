@@ -39,12 +39,15 @@ public sealed class CoastalPruningIntegrationTests
         Assert.Equal(topology.DomainIdentity, audit.DomainIdentity);
         Assert.NotNull(audit.IncumbentArrival);
         Assert.True(result.ArrivalTime <= audit.IncumbentArrival);
+        Assert.Contains(result.Points, point => point.Environment is null && point.PolarWindSpeedKnots is not null);
         Assert.True(audit.SkippedParents + audit.IncumbentCandidates + audit.HorizonCandidates > 0);
         Assert.NotEmpty(snapshots);
         Assert.All(snapshots, snapshot =>
         {
             Assert.Equal(audit.Mode, snapshot.Diagnostics.CoastalPruning!.Mode);
             Assert.Equal(audit.SourceIdentity, snapshot.Diagnostics.CoastalPruning.SourceIdentity);
+            Assert.All(snapshot.ProvisionalRoute.Where(point => point.Environment is null),
+                point => Assert.NotNull(point.PolarWindSpeedKnots));
         });
         Assert.Throws<RoutingException>(() => bridge.CalculateRoute(forecast, polar, request,
             ForecastModel.NoaaGfs, options, isSegmentEligible: (_, _) => true));

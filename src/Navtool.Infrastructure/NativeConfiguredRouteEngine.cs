@@ -100,7 +100,8 @@ public sealed partial class NativeRouteEngine
                 new RouteForecastAudit(forecast.Run, forecast.Request.Bounds, loaded.Metadata.EffectiveBounds,
                     loaded.Metadata.FirstValidAt, loaded.Metadata.LastValidAt, gap,
                     loaded.Metadata.MinimumTimeSpacing, loaded.Metadata.MaximumTimeSpacing, loaded.Metadata.ValidTimes),
-                result.NativeAudit, context.ProfessionalOverrides, result.LandAvoidance);
+                result.NativeAudit, context.ProfessionalOverrides, result.LandAvoidance,
+                currentsUnconfigured: effective.Optimization.Environment?.Currents is null);
             result = result.WithRunAudit(audit);
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new RouteCalculationProgress(1, result.IsPartial ? "Partial route calculated" : "Destination arrival area reached"));

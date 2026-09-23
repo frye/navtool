@@ -953,15 +953,29 @@ public sealed class MainWindowLayoutTests
                 Assert.IsType<TextBlock>(
                     window.FindControl<TextBlock>("RouteTelemetryApparentWindAngle")).Text);
             Assert.Equal(
+                "90° S",
+                Assert.IsType<TextBlock>(
+                    window.FindControl<TextBlock>("RouteTelemetryTrueWindAngle")).Text);
+            Assert.Equal(
                 "90°",
                 Assert.IsType<TextBlock>(
                     window.FindControl<TextBlock>("RouteTelemetryHeading")).Text);
+            Assert.Equal(MainWindow.RouteTelemetryWidth, card.Width);
             Assert.True(new ScreenRect(0, 0, map.Bounds.Width, map.Bounds.Height).Contains(
                 new ScreenRect(
                     Canvas.GetLeft(card),
                     Canvas.GetTop(card),
                     card.Width,
                     card.Height)));
+
+            viewModel.SelectRoutePoint(CreateRouteSelection(coordinate, withEnvironment: true), focus: false);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("16.2 kt", Assert.IsType<TextBlock>(
+                window.FindControl<TextBlock>("RouteTelemetryEnvironmentApparentWind")).Text);
+            Assert.Equal("68° S", Assert.IsType<TextBlock>(
+                window.FindControl<TextBlock>("RouteTelemetryEnvironmentApparentWindAngle")).Text);
+            Assert.Equal("90° S", Assert.IsType<TextBlock>(
+                window.FindControl<TextBlock>("RouteTelemetryEnvironmentTrueWindAngle")).Text);
 
             card.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Dispatcher.UIThread.RunJobs();
@@ -1295,7 +1309,7 @@ public sealed class MainWindowLayoutTests
         }
     }
 
-    private static RouteMapSelection CreateRouteSelection(Coordinate coordinate)
+    private static RouteMapSelection CreateRouteSelection(Coordinate coordinate, bool withEnvironment = false)
     {
         var departure = new DateTimeOffset(2026, 7, 14, 12, 0, 0, TimeSpan.Zero);
         var destination = new Coordinate(
@@ -1310,7 +1324,8 @@ public sealed class MainWindowLayoutTests
             departure,
             departure.AddHours(6));
         var point = new RoutePoint(coordinate, departure, 90, 6, 15, 180, 0,
-            environment: null, polarWindSpeedKnots: 15, polarWindDirectionDegrees: 180);
+            environment: withEnvironment ? new RoutePointEnvironment(6, 90, 6) : null,
+            polarWindSpeedKnots: 15, polarWindDirectionDegrees: 180);
         var route = new RouteResult(
             request,
             ForecastModel.NoaaGfs,

@@ -618,7 +618,8 @@ public sealed record RouteRunAudit
         RouteForecastAudit? forecast = null,
         RouteNativeRunAudit? native = null,
         RoutingProfessionalOverrides? professionalOverrides = null,
-        RouteLandAvoidance? applicationLand = null)
+        RouteLandAvoidance? applicationLand = null,
+        bool? currentsUnconfigured = null)
     {
         if (calculationId == Guid.Empty) throw new ArgumentException("Calculation identity is required.", nameof(calculationId));
         ArgumentNullException.ThrowIfNull(setup);
@@ -626,6 +627,9 @@ public sealed record RouteRunAudit
         ArgumentNullException.ThrowIfNull(nativeIdentity);
         ArgumentNullException.ThrowIfNull(attempts);
         if (!Enum.IsDefined(requestedSolver)) throw new ArgumentOutOfRangeException(nameof(requestedSolver));
+        if (currentsUnconfigured is true &&
+            (native is null || resolved.Optimization.Environment?.Currents is not null))
+            throw new ArgumentException("A no-current claim requires native audit and no configured current.", nameof(currentsUnconfigured));
         if (setup.CoastalPruning != RouteCoastalPruningMode.Off && nativeIdentity.BridgeAbiVersion < 9)
             throw new ArgumentException("Conservative coastal pruning audit requires bridge ABI 9 or newer.", nameof(nativeIdentity));
         if (!Enum.IsDefined(resolved.CoastalPruning) || setup.CoastalPruning != resolved.CoastalPruning ||
@@ -661,6 +665,7 @@ public sealed record RouteRunAudit
         }
         Forecast = forecast;
         Native = native;
+        CurrentsUnconfigured = currentsUnconfigured;
         ProfessionalOverrides = professionalOverrides is null ? null : professionalOverrides with
         {
             Optimization = professionalOverrides.Optimization?.WithEnvironment(null)
@@ -675,12 +680,14 @@ public sealed record RouteRunAudit
     public ImmutableArray<RouteAttemptAudit> Attempts { get; }
     public RouteForecastAudit? Forecast { get; }
     public RouteNativeRunAudit? Native { get; }
+    /// <summary>Null for older routes whose current configuration was not retained.</summary>
+    public bool? CurrentsUnconfigured { get; }
     public RoutingProfessionalOverrides? ProfessionalOverrides { get; }
     public RouteLandAvoidance? ApplicationLand { get; }
 
     public RouteRunAudit WithApplicationLand(RouteLandAvoidance land) =>
         new(CalculationId, Setup, Resolved, NativeIdentity, RequestedSolver, Attempts,
-            Forecast, Native, ProfessionalOverrides, land);
+            Forecast, Native, ProfessionalOverrides, land, CurrentsUnconfigured);
 
     public RouteRunAudit WithAttempts(
         RouteSolver requestedSolver,
@@ -688,5 +695,5 @@ public sealed record RouteRunAudit
         ResolvedRoutingOptions resolved,
         RouteLandAvoidance applicationLand) =>
         new(CalculationId, Setup, resolved, NativeIdentity, requestedSolver, attempts,
-            Forecast, Native, ProfessionalOverrides, applicationLand);
+            Forecast, Native, ProfessionalOverrides, applicationLand, CurrentsUnconfigured);
 }

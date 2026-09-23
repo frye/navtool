@@ -31,6 +31,7 @@ public sealed class RouteInspectionTimelineTests
         Assert.Equal(1, selection.PointIndex);
         Assert.Equal("PROVISIONAL POINT", selection.TelemetryLabel);
         Assert.Equal("unavailable", selection.ApparentWindSpeedText);
+        Assert.Equal("unavailable", selection.TrueWindAngleText);
     }
 
     [Fact]

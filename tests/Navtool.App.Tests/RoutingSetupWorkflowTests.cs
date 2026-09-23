@@ -795,6 +795,7 @@ public sealed class RoutingSetupWorkflowTests
         Assert.False(hold.HasEnvironmentTelemetry);
         Assert.False(hold.HasBasicTelemetry);
         Assert.Equal("unavailable", hold.ApparentWindSpeedText);
+        Assert.Equal("unavailable", hold.TrueWindAngleText);
         Assert.Equal(Now.AddHours(1), hold.Point.Timestamp);
         Assert.Equal(Now.AddHours(2), hold.TimelineTimestamp);
     }

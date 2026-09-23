@@ -7,7 +7,8 @@ namespace Navtool.Infrastructure;
 
 public sealed partial class NativeRouterBridge
 {
-    private RouteCalculationSnapshot? CopyCoastalProgress(IntPtr pointer, Action<string>? onPreparation)
+    private RouteCalculationSnapshot? CopyCoastalProgress(IntPtr pointer, Action<string>? onPreparation,
+        bool currentsUnconfigured)
     {
         if (pointer == IntPtr.Zero) throw new NativeRouteFormatException("Native coastal progress is null.");
         var value = Marshal.PtrToStructure<NativeRoutingProgressV9>(pointer);
@@ -32,7 +33,7 @@ public sealed partial class NativeRouterBridge
             return null;
         }
         return CopyProgress(IntPtr.Add(pointer, Marshal.OffsetOf<NativeRoutingProgressV9>(
-            nameof(NativeRoutingProgressV9.Base)).ToInt32()), diagnostics);
+            nameof(NativeRoutingProgressV9.Base)).ToInt32()), currentsUnconfigured, diagnostics);
 
         static string Text(IntPtr text)
         {

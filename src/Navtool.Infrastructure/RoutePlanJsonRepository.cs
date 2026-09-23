@@ -22,7 +22,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
                 $"Route plan schema version {currentVersion} is not supported by this application version.");
         }
 
-        if (fromVersion is < 1 or > 8)
+        if (fromVersion is < 1 or > 9)
             throw new InvalidDataException(
                 $"Route plan schema version {fromVersion} is not supported by this application version.");
         var current = JsonDocument.Parse(document.RootElement.GetRawText());
@@ -40,6 +40,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
                     6 => MigrateV6ToV7(current),
                     7 => MigrateV7ToV8(current),
                     8 => MigrateV8ToV9(current),
+                    9 => MigrateV9ToV10(current),
                     _ => throw new InvalidDataException("Unsupported migration step.")
                 };
                 current.Dispose();
@@ -240,6 +241,19 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
         return JsonDocument.Parse(root.ToJsonString());
     }
 
+    private static JsonDocument MigrateV9ToV10(JsonDocument document)
+    {
+        var root = JsonNode.Parse(document.RootElement.GetRawText()) as JsonObject ??
+                   throw new InvalidDataException("A route plan document must be a JSON object.");
+        root["schemaVersion"] = 10;
+        foreach (var route in EnumerateRoutes(root))
+        {
+            if (route["runAudit"] is JsonObject audit && !audit.ContainsKey("currentsUnconfigured"))
+                audit["currentsUnconfigured"] = null;
+        }
+        return JsonDocument.Parse(root.ToJsonString());
+    }
+
     private static void AddEcmwfCacheMaximumAge(JsonNode? node)
     {
         if (node is JsonObject value)
@@ -335,7 +349,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
 
 public sealed class RoutePlanJsonRepository : IRoutePlanRepository
 {
-    public const int CurrentSchemaVersion = 9;
+    public const int CurrentSchemaVersion = 10;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -1119,7 +1133,7 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
             runAudit,
             nativeAudit);
         ValidateStoredAudit(result);
-        return result;
+        return result.WithVerifiedNoCurrentWind(runAudit?.CurrentsUnconfigured == true);
     }
 
     private static RouteProviderMetadata? FromDto(RouteProviderMetadataDto? dto) =>
@@ -1318,7 +1332,8 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
             value.ProfessionalOverrides is not { } professional ? null :
                 new(professional.Optimization is null ? null : ToDto(professional.Optimization),
                     professional.Search is null ? null : ToDto(professional.Search)),
-            value.ApplicationLand is not { } land ? null : new(land.Status, land.Warning, land.Attribution));
+            value.ApplicationLand is not { } land ? null : new(land.Status, land.Warning, land.Attribution),
+            value.CurrentsUnconfigured);
 
     private static RouteRunAudit FromDto(RouteRunAuditDto dto)
     {
@@ -1371,7 +1386,8 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
             forecast, dto.Native is null ? null : FromDto(dto.Native),
             dto.ProfessionalOverrides is not { } p ? null :
                 new(p.Optimization is null ? null : FromDto(p.Optimization), p.Search is null ? null : FromDto(p.Search)),
-            dto.ApplicationLand is not { } a ? null : new(a.Status, a.Warning, a.Attribution));
+            dto.ApplicationLand is not { } a ? null : new(a.Status, a.Warning, a.Attribution),
+            dto.CurrentsUnconfigured);
     }
 
     private static BoundsDto ToDto(GeographicBounds value) => new(value.South, value.North, value.West, value.East);
@@ -1483,6 +1499,10 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
         var native = route.NativeAudit;
         if (route.RunAudit is { } audit)
         {
+            if (audit.CurrentsUnconfigured is true &&
+                (route.Environment?.CurrentProvider is not null ||
+                 route.Points.Any(point => point.Environment?.CurrentApplied is true)))
+                throw new InvalidDataException("Stored no-current claim contradicts the point or provider audit.");
             if (audit.Attempts[^1].Solver != route.Solver || audit.Attempts[^1].FailureKind is not null ||
                 audit.Resolved.Optimization.Solver != route.Solver ||
                 (audit.Forecast is { } forecast && forecast.Run.Model != route.Model))
@@ -1562,7 +1582,8 @@ public sealed class RoutePlanJsonRepository : IRoutePlanRepository
         Guid CalculationId, RoutingSetupDto Setup, ResolvedRoutingOptionsDto Resolved,
         NativeRoutingIdentityDto NativeIdentity, RouteSolver RequestedSolver, RouteAttemptAuditDto[] Attempts,
         RouteForecastAuditDto? Forecast, RouteNativeRunAuditDto? Native,
-        RouteProfessionalOverridesDto? ProfessionalOverrides, RouteLandAvoidanceDto? ApplicationLand);
+        RouteProfessionalOverridesDto? ProfessionalOverrides, RouteLandAvoidanceDto? ApplicationLand,
+        bool? CurrentsUnconfigured = null);
     private sealed record RouteAttemptAuditDto(
         Guid AttemptId, RouteSolver Solver, DateTimeOffset StartedAt, DateTimeOffset CompletedAt,
         RoutingFailureKind? FailureKind, string? FailureMessage);

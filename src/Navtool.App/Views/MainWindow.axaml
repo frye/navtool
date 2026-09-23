@@ -807,7 +807,7 @@
                 <Button x:Name="RouteTelemetryCard"
                         Classes="route-telemetry"
                         Width="344"
-                        Height="132"
+                        Height="160"
                         Click="OnRouteTelemetryCardClicked"
                         AutomationProperties.Name="Route point telemetry"
                         AutomationProperties.HelpText="Shows route point telemetry. Click or tap to close.">
@@ -831,8 +831,10 @@
                         <Border Grid.Row="1"
                                 Background="{DynamicResource OverlayBorderColor}" />
                         <Grid Grid.Row="2"
-                              ColumnDefinitions="*,*,*,*,*,*"
+                              ColumnDefinitions="*,*,*,*"
+                              RowDefinitions="Auto,Auto"
                               ColumnSpacing="6"
+                              RowSpacing="4"
                               IsVisible="{Binding SelectedRoutePoint.HasBasicTelemetry}">
                             <StackPanel>
                                 <TextBlock Text="BOAT"
@@ -856,30 +858,39 @@
                                            Classes="telemetry-value" />
                             </StackPanel>
                             <StackPanel Grid.Column="3">
-                                <TextBlock Text="AWS"
-                                           Classes="telemetry-label" />
-                                <TextBlock x:Name="RouteTelemetryApparentWind"
-                                           Text="{Binding SelectedRoutePoint.ApparentWindSpeedText}"
-                                           Classes="telemetry-value" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="4">
-                                <TextBlock Text="AWA"
-                                           Classes="telemetry-label" />
-                                <TextBlock x:Name="RouteTelemetryApparentWindAngle"
-                                           Text="{Binding SelectedRoutePoint.ApparentWindAngleText}"
-                                           Classes="telemetry-value" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="5">
                                 <TextBlock Text="HDG"
                                            Classes="telemetry-label" />
                                 <TextBlock x:Name="RouteTelemetryHeading"
                                            Text="{Binding SelectedRoutePoint.Point.HeadingDegrees, StringFormat={}{0:0}°}"
                                            Classes="telemetry-value" />
                             </StackPanel>
+                            <StackPanel Grid.Row="1">
+                                <TextBlock Text="AWS"
+                                           Classes="telemetry-label" />
+                                <TextBlock x:Name="RouteTelemetryApparentWind"
+                                           Text="{Binding SelectedRoutePoint.ApparentWindSpeedText}"
+                                           Classes="telemetry-value" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="1">
+                                <TextBlock Text="AWA"
+                                           Classes="telemetry-label" />
+                                <TextBlock x:Name="RouteTelemetryApparentWindAngle"
+                                           Text="{Binding SelectedRoutePoint.ApparentWindAngleText}"
+                                           Classes="telemetry-value" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="2">
+                                <TextBlock Text="TWA"
+                                           Classes="telemetry-label" />
+                                <TextBlock x:Name="RouteTelemetryTrueWindAngle"
+                                           Text="{Binding SelectedRoutePoint.TrueWindAngleText}"
+                                           Classes="telemetry-value" />
+                            </StackPanel>
                         </Grid>
                         <Grid Grid.Row="2"
-                              ColumnDefinitions="*,*,*,*,*,*"
+                              ColumnDefinitions="*,*,*,*"
+                              RowDefinitions="Auto,Auto"
                               ColumnSpacing="6"
+                              RowSpacing="4"
                               IsVisible="{Binding SelectedRoutePoint.HasEnvironmentTelemetry}">
                             <StackPanel>
                                 <TextBlock Text="SOG"
@@ -908,13 +919,28 @@
                                            Text="{Binding SelectedRoutePoint.Point.Environment.FlatWaterSpeedKnots, StringFormat={}{0:0.0} kt}"
                                            Classes="telemetry-value" />
                             </StackPanel>
-                            <StackPanel Grid.Column="4">
-                                <TextBlock Text="AWA"
+                            <StackPanel Grid.Row="1">
+                                <TextBlock Text="AWS"
                                            Classes="telemetry-label" />
-                                <TextBlock Text="{Binding SelectedRoutePoint.ApparentWindAngleText}"
+                                <TextBlock x:Name="RouteTelemetryEnvironmentApparentWind"
+                                           Text="{Binding SelectedRoutePoint.ApparentWindSpeedText}"
                                            Classes="telemetry-value" />
                             </StackPanel>
-                            <StackPanel Grid.Column="5">
+                            <StackPanel Grid.Row="1" Grid.Column="1">
+                                <TextBlock Text="AWA"
+                                           Classes="telemetry-label" />
+                                <TextBlock x:Name="RouteTelemetryEnvironmentApparentWindAngle"
+                                           Text="{Binding SelectedRoutePoint.ApparentWindAngleText}"
+                                           Classes="telemetry-value" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="2">
+                                <TextBlock Text="TWA"
+                                           Classes="telemetry-label" />
+                                <TextBlock x:Name="RouteTelemetryEnvironmentTrueWindAngle"
+                                           Text="{Binding SelectedRoutePoint.TrueWindAngleText}"
+                                           Classes="telemetry-value" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="3">
                                 <TextBlock Text="HDG"
                                            Classes="telemetry-label" />
                                 <TextBlock Text="{Binding SelectedRoutePoint.Point.HeadingDegrees, StringFormat={}{0:0}°}"

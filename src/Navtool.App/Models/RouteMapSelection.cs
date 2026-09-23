@@ -83,6 +83,9 @@ public sealed record RouteMapSelection
     public string ApparentWindAngleText =>
         IsPlannedHold ? "unavailable" : FormatApparentWindAngle(Point.ApparentWindAngleSignedDegrees);
 
+    public string TrueWindAngleText =>
+        IsPlannedHold ? "unavailable" : FormatApparentWindAngle(Point.TrueWindAngleSignedDegrees);
+
     public string ApparentWindSpeedText => !IsPlannedHold && Point.ApparentWindSpeedKnots is { } speed
         ? $"{speed:0.0} kt" : "unavailable";
 
