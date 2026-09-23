@@ -458,6 +458,38 @@ public sealed record RoutePoint
 
     public double? PolarWindDirectionDegrees { get; }
 
+    /// <summary>
+    /// Only a verified no-current routing context makes the applied forecast
+    /// wind equivalent to the water-relative wind used by the polar.
+    /// </summary>
+    public RoutePoint WithVerifiedNoCurrentWind(bool currentsUnconfigured)
+    {
+        if (!currentsUnconfigured || Environment is not null ||
+            PolarWindSpeedKnots is not null || PolarWindDirectionDegrees is not null)
+            return this;
+
+        return new RoutePoint(Location, Timestamp, HeadingDegrees, BoatSpeedKnots,
+            TrueWindSpeedKnots, TrueWindDirectionDegrees, CumulativeDistanceNauticalMiles,
+            environment: null, TrueWindSpeedKnots, TrueWindDirectionDegrees);
+    }
+
+    public double? TrueWindAngleSignedDegrees
+    {
+        get
+        {
+            if (GetApparentWindVector() is not { } apparent) return null;
+            var boat = ToVectorToward(BoatSpeedKnots, HeadingDegrees);
+            var windEast = apparent.East + boat.East;
+            var windNorth = apparent.North + boat.North;
+            if (Math.Abs(windEast) < 1e-9 && Math.Abs(windNorth) < 1e-9)
+                return null;
+
+            var windFromDirection = NormalizeDirection(
+                Math.Atan2(-windEast, -windNorth) * (180d / Math.PI));
+            return NormalizeSignedAngle(windFromDirection - HeadingDegrees);
+        }
+    }
+
     public double? ApparentWindAngleSignedDegrees
     {
         get
@@ -1128,6 +1160,16 @@ public sealed record RouteResult
     public RouteResult WithRunAudit(RouteRunAudit audit) =>
         new(Request, Model, Points, Diagnostics, Completion, LandAvoidance, Solver,
             LatticeDiagnostics, Environment, EnvironmentDiagnostics, audit, NativeAudit);
+
+    public RouteResult WithVerifiedNoCurrentWind(bool currentsUnconfigured)
+    {
+        if (!currentsUnconfigured) return this;
+        var points = Points.Select(point => point.WithVerifiedNoCurrentWind(true)).ToImmutableArray();
+        return Points.SequenceEqual(points)
+            ? this
+            : new RouteResult(Request, Model, points, Diagnostics, Completion, LandAvoidance, Solver,
+                LatticeDiagnostics, Environment, EnvironmentDiagnostics, RunAudit, NativeAudit);
+    }
 
     public DateTimeOffset ArrivalTime => Points[^1].Timestamp;
 

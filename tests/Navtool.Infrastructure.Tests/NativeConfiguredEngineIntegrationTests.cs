@@ -24,6 +24,7 @@ public sealed class NativeConfiguredEngineIntegrationTests
             new GeographicBounds(48, 48.5, -123.75, -123.25), calculationContext: context));
         var outcome = Assert.Single(result.Outcomes);
         Assert.True(outcome.Route is not null, outcome.Failure?.Message);
+        Assert.True(outcome.Route!.RunAudit!.CurrentsUnconfigured);
         var audit = outcome.Route!.RunAudit!.Forecast!;
         Assert.Equal(loaded.Metadata.FirstValidAt, audit.ValidFrom);
         Assert.Equal(loaded.Metadata.LastValidAt, audit.ValidThrough);
@@ -112,6 +113,8 @@ public sealed class NativeConfiguredEngineIntegrationTests
         var result = await engine.CalculateConfiguredAsync(context, request, acquisition, resolved.Optimization, null, default);
         Assert.True(result.IsComplete);
         Assert.Equal(asset.ContentIdentity, result.RunAudit!.Setup.Boat.ContentIdentity);
+        Assert.True(result.RunAudit.CurrentsUnconfigured);
+        Assert.Contains(result.Points, point => point.ApparentWindSpeedKnots is > 0);
         Assert.Contains(result.Points.Skip(1), point => point.BoatSpeedKnots > 0 && point.BoatSpeedKnots <= 5);
         Assert.Empty(Directory.GetFiles(directory.Path));
     }
@@ -143,6 +146,7 @@ public sealed class NativeConfiguredEngineIntegrationTests
         Assert.Contains("Natural Earth", result.LandAvoidance.Attribution);
         Assert.False(result.NativeAudit!.NativeLandmaskApplied);
         Assert.Equal(context.CalculationId, result.RunAudit!.CalculationId);
+        Assert.True(result.RunAudit.CurrentsUnconfigured);
         Assert.Equal(loaded.Metadata.InitializedAt, result.RunAudit.Forecast!.Run.InitializedAt);
         Assert.NotNull(result.RunAudit.Forecast.EffectiveBounds);
         Assert.NotNull(result.RunAudit.Forecast.ValidThrough);

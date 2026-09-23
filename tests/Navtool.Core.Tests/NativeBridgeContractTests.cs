@@ -91,6 +91,16 @@ public sealed class NativeBridgeContractTests
         Assert.Equal(expectedSignedAngle, point.ApparentWindAngleSignedDegrees!.Value, 6);
         Assert.Equal(Math.Abs(expectedSignedAngle), point.ApparentWindAngleDegrees!.Value, 6);
         Assert.Equal(expectedSpeed, point.ApparentWindSpeedKnots!.Value, 6);
+        if (trueWindSpeedKnots == 0)
+            Assert.Null(point.TrueWindAngleSignedDegrees);
+        else
+        {
+            var expectedTrueWindAngle = (trueWindDirectionDegrees - headingDegrees + 540) % 360 - 180;
+            if (expectedTrueWindAngle == -180)
+                Assert.Equal(180, Math.Abs(point.TrueWindAngleSignedDegrees!.Value), 6);
+            else
+                Assert.Equal(expectedTrueWindAngle, point.TrueWindAngleSignedDegrees!.Value, 6);
+        }
     }
 
     [Fact]

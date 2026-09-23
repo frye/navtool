@@ -547,7 +547,8 @@ public sealed class RoutingWorkflow
                         loadedCoverage?.MaximumTimeSpacing,
                         loadedCoverage?.ValidTimes ?? []),
                     native: native, professionalOverrides: frozen.ProfessionalOverrides,
-                    applicationLand: route.LandAvoidance);
+                    applicationLand: route.LandAvoidance,
+                    currentsUnconfigured: native is null ? null : request.Optimization.Environment?.Currents is null);
                 route = route.WithRunAudit(engineAudit?.Forecast is not null
                     ? engineAudit.WithAttempts(request.Optimization.Solver, attempts, effectiveOptions, route.LandAvoidance)
                     : audit);

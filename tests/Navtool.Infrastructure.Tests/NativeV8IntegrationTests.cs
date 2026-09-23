@@ -141,10 +141,20 @@ public sealed class NativeV8IntegrationTests
         var request = new RouteRequest("v8-boat", new Coordinate(48.25, -123.65), new Coordinate(48.25, -123.35),
             forecast.Metadata.FirstValidAt, forecast.Metadata.FirstValidAt.AddHours(10));
         var options = standard with { HardDuration = TimeSpan.FromHours(12) };
-        var slowRoute = bridge.CalculateRoute(forecast, slow, request, ForecastModel.NoaaGfs, options);
+        var slowSnapshots = new List<RouteCalculationSnapshot>();
+        var slowRoute = bridge.CalculateRoute(forecast, slow, request, ForecastModel.NoaaGfs, options, slowSnapshots.Add);
         var fastRoute = bridge.CalculateRoute(forecast, slow, request, ForecastModel.NoaaGfs, options with { PerformanceFactor = 2 });
         Assert.True(slowRoute.IsComplete);
         Assert.True(fastRoute.IsComplete);
+        Assert.All(slowRoute.Points.Where(point => point.Environment is null), point =>
+        {
+            Assert.Equal(point.TrueWindSpeedKnots, point.PolarWindSpeedKnots);
+            Assert.Equal(point.TrueWindDirectionDegrees, point.PolarWindDirectionDegrees);
+            Assert.NotNull(point.ApparentWindSpeedKnots);
+        });
+        Assert.NotEmpty(slowSnapshots);
+        Assert.All(slowSnapshots.SelectMany(snapshot => snapshot.ProvisionalRoute)
+            .Where(point => point.Environment is null), point => Assert.NotNull(point.ApparentWindSpeedKnots));
         Assert.True(fastRoute.ArrivalTime < slowRoute.ArrivalTime);
         Assert.Contains(slowRoute.Points.Skip(1), point => Math.Abs(point.BoatSpeedKnots - 2) < .01);
         Assert.Contains(fastRoute.Points.Skip(1), point => Math.Abs(point.BoatSpeedKnots - 4) < .01);
@@ -158,6 +168,8 @@ public sealed class NativeV8IntegrationTests
         Assert.True(currentRoute.IsComplete);
         Assert.Contains(snapshots.SelectMany(snapshot => snapshot.ProvisionalRoute), point =>
             point.Environment?.CurrentEastKnots == 1 && point.Environment.PolarWindSpeedKnots.HasValue);
+        Assert.All(snapshots.SelectMany(snapshot => snapshot.ProvisionalRoute)
+            .Where(point => point.Environment is null), point => Assert.Null(point.PolarWindSpeedKnots));
         Assert.All(snapshots, snapshot => Assert.NotNull(snapshot.Diagnostics.FutureProbeMisses));
         Assert.NotNull(currentRoute.NativeAudit);
         var alreadyThere = new RouteRequest("arrival-area", request.Origin, new Coordinate(48.25, -123.649),

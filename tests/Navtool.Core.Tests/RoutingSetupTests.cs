@@ -363,6 +363,13 @@ public sealed class RoutingSetupTests
         var legacy = new RoutePoint(new(0, 0), time, 90, 6, 15, 270, 0);
         Assert.Null(legacy.ApparentWindSpeedKnots);
         Assert.Null(legacy.ApparentWindAngleDegrees);
+        Assert.Null(legacy.TrueWindAngleSignedDegrees);
+        Assert.Same(legacy, legacy.WithVerifiedNoCurrentWind(false));
+        var verified = legacy.WithVerifiedNoCurrentWind(true);
+        Assert.Equal(15, verified.PolarWindSpeedKnots);
+        Assert.Equal(270, verified.PolarWindDirectionDegrees);
+        Assert.Equal(9, verified.ApparentWindSpeedKnots!.Value, 9);
+        Assert.Equal(180, verified.TrueWindAngleSignedDegrees);
         // Wind flows east at 15, current east at 4, through-water speed east at 6:
         // water wind 11 - boat 6 == ground wind 15 - SOG 10 == apparent 5.
         var environment = new RoutePointEnvironment(10, 90, 6, 4, 0);
@@ -370,7 +377,28 @@ public sealed class RoutingSetupTests
         var polar = new RoutePoint(new(0, 0), time, 90, 6, 15, 270, 0, environment, 11, 270);
         Assert.Equal(5, ground.ApparentWindSpeedKnots!.Value, 9);
         Assert.Equal(ground.ApparentWindSpeedKnots, polar.ApparentWindSpeedKnots);
+        Assert.Equal(ground.TrueWindAngleSignedDegrees, polar.TrueWindAngleSignedDegrees);
+        Assert.Same(ground, ground.WithVerifiedNoCurrentWind(true));
         Assert.Null(legacy.PolarWindSpeedKnots);
+    }
+
+    [Fact]
+    public void True_wind_angle_uses_water_relative_wind_even_when_only_ground_motion_is_audited()
+    {
+        var time = DateTimeOffset.UtcNow;
+        // Wind flows north at 15 kt; the boat makes 6 kt east through water
+        // and 9 kt east over ground after an eastward 3 kt current.
+        var environment = new RoutePointEnvironment(9, 90, 6, 3, 0);
+        var ground = new RoutePoint(new(0, 0), time, 90, 6, 15, 180, 0, environment);
+        var polarWind = Math.Sqrt(15 * 15 + 3 * 3);
+        var polarDirection = Math.Atan2(3, -15) * (180 / Math.PI);
+        var polar = new RoutePoint(new(0, 0), time, 90, 6, 15, 180, 0,
+            environment, polarWind, (polarDirection + 360) % 360);
+
+        Assert.Equal(polar.TrueWindAngleSignedDegrees!.Value, ground.TrueWindAngleSignedDegrees!.Value, 6);
+        Assert.InRange(ground.TrueWindAngleSignedDegrees.Value, 78, 79);
+        Assert.NotEqual(90, ground.TrueWindAngleSignedDegrees.Value);
+        Assert.Equal(polar.ApparentWindSpeedKnots!.Value, ground.ApparentWindSpeedKnots!.Value, 9);
     }
 
     [Theory]

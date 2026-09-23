@@ -593,10 +593,102 @@ public sealed class RoutePlanJsonRepositoryTests
             Path.Combine(repository.RootDirectory, "backups"), "*.json"))));
     }
 
+    [Fact]
+    public async Task Saved_no_current_native_audit_restores_apparent_and_true_angles_without_rewriting_on_open()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path, currentsUnconfigured: true);
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        RemovePointWindAudit(root);
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+        var saved = await File.ReadAllBytesAsync(path);
+
+        var loaded = await repository.OpenAsync(plan.Id);
+        Assert.Equal(saved, await File.ReadAllBytesAsync(path));
+        Assert.True(loaded.Results[0].Legs[0].Route!.RunAudit!.CurrentsUnconfigured);
+        Assert.All(loaded.Results[0].Legs.SelectMany(leg => leg.Route!.Points), point =>
+        {
+            Assert.Null(point.Environment);
+            Assert.Equal(point.TrueWindSpeedKnots, point.PolarWindSpeedKnots);
+            Assert.NotNull(point.ApparentWindSpeedKnots);
+            Assert.Equal(90, point.TrueWindAngleSignedDegrees);
+        });
+
+        await repository.SaveAsync(loaded);
+        var reopened = await repository.OpenAsync(plan.Id);
+        Assert.All(reopened.Results[0].Legs.SelectMany(leg => leg.Route!.Points),
+            point => Assert.NotNull(point.ApparentWindSpeedKnots));
+    }
+
+    [Fact]
+    public async Task Saved_points_without_native_run_provenance_remain_unavailable()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = WithResult(CreatePlan());
+        await repository.SaveAsync(plan);
+
+        var loaded = await repository.OpenAsync(plan.Id);
+
+        Assert.Null(loaded.Results[0].Legs[0].Route!.RunAudit);
+        Assert.All(loaded.Results[0].Legs.SelectMany(leg => leg.Route!.Points), point =>
+        {
+            Assert.Null(point.PolarWindSpeedKnots);
+            Assert.Null(point.ApparentWindSpeedKnots);
+            Assert.Null(point.TrueWindAngleSignedDegrees);
+        });
+    }
+
+    [Fact]
+    public async Task Older_native_run_audit_without_no_current_proof_does_not_backfill_missing_wind()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path);
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        RemovePointWindAudit(root);
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+
+        var loaded = await repository.OpenAsync(plan.Id);
+
+        Assert.NotNull(loaded.Results[0].Legs[0].Route!.RunAudit!.Native);
+        Assert.Null(loaded.Results[0].Legs[0].Route!.RunAudit!.CurrentsUnconfigured);
+        Assert.All(loaded.Results[0].Legs.SelectMany(leg => leg.Route!.Points),
+            point => Assert.Null(point.ApparentWindSpeedKnots));
+    }
+
+    [Fact]
+    public async Task Saved_route_with_configured_current_does_not_assume_zero_for_missing_point_audit()
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path, withCurrent: true);
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        RemovePointWindAudit(root);
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+
+        var loaded = await repository.OpenAsync(plan.Id);
+
+        Assert.False(loaded.Results[0].Legs[0].Route!.RunAudit!.CurrentsUnconfigured);
+        Assert.All(loaded.Results[0].Legs.SelectMany(leg => leg.Route!.Points), point =>
+        {
+            Assert.Null(point.ApparentWindSpeedKnots);
+            Assert.Null(point.TrueWindAngleSignedDegrees);
+        });
+    }
+
     [Theory]
     [InlineData("unknown-native-schema")]
     [InlineData("missing-native-field")]
     [InlineData("unknown-audit-field")]
+    [InlineData("contradictory-no-current-proof")]
     [InlineData("negative-counter")]
     [InlineData("contradictory-native-counter")]
     [InlineData("wrong-native-destination")]
@@ -642,6 +734,7 @@ public sealed class RoutePlanJsonRepositoryTests
             case "unknown-native-schema": route["nativeAudit"]!["schema"] = "route_result_v999"; break;
             case "missing-native-field": route["nativeAudit"]!["routing"]!.AsObject().Remove("boatSpeedFactor"); break;
             case "unknown-audit-field": route["runAudit"]!["unknownFuturePolicy"] = true; break;
+            case "contradictory-no-current-proof": route["runAudit"]!["currentsUnconfigured"] = true; break;
             case "negative-counter": route["diagnostics"]!["eligibilityEvaluations"] = -1; break;
             case "contradictory-native-counter": route["nativeAudit"]!["eligibilityEvaluations"] = 999; break;
             case "wrong-native-destination": route["nativeAudit"]!["routing"]!["destinationLatitude"] = 0; break;
@@ -752,7 +845,21 @@ public sealed class RoutePlanJsonRepositoryTests
         Assert.Null(loaded.Results[0].Legs[1].Route);
     }
 
-    private static RoutePlan CreateAuditedPlan(string root, RouteCoastalPruningDiagnostics? coastal = null)
+    private static void RemovePointWindAudit(JsonNode root)
+    {
+        foreach (var leg in root["plan"]!["results"]![0]!["legs"]!.AsArray())
+        {
+            foreach (var point in leg!["route"]!["points"]!.AsArray())
+            {
+                point!.AsObject().Remove("environment");
+                point.AsObject().Remove("polarWindSpeedKnots");
+                point.AsObject().Remove("polarWindDirectionDegrees");
+            }
+        }
+    }
+
+    private static RoutePlan CreateAuditedPlan(string root, RouteCoastalPruningDiagnostics? coastal = null,
+        bool withCurrent = false, bool? currentsUnconfigured = null)
     {
         var boat = new BoatAsset(new string('a', 64), "Imported cruising polar.csv", BoatAssetKind.Imported,
             BoatPolarFormat.NativeMatrix, new("Native validation accepted", MaximumWindSpeedKnots: 50), 35);
@@ -776,7 +883,9 @@ public sealed class RoutePlanJsonRepositoryTests
             [new(TimeSpan.FromMinutes(15), TimeSpan.FromHours(4)),
              new(TimeSpan.FromMinutes(30), TimeSpan.FromHours(24)), new(TimeSpan.FromHours(1))]);
         var optimization = new RouteOptimizationOptions(maneuver: new(TimeSpan.FromSeconds(40), TimeSpan.FromSeconds(30)),
-            maximumTrueWindSpeedKnots: 40, destinationFront: new(90, RouteDestinationFrontSegmentPolicy.AllMeaningfulComponents, 4));
+            maximumTrueWindSpeedKnots: 40, destinationFront: new(90, RouteDestinationFrontSegmentPolicy.AllMeaningfulComponents, 4),
+            environment: withCurrent ? new RouteEnvironmentOptions(
+                currents: RouteCurrentOptions.Uniform(1, -.4, new RouteProviderMetadata("uniform", "test", "1"))) : null);
         var resolved = new ResolvedRoutingOptions(setup.Quality, optimization, search, .85, 1, TimeSpan.FromHours(240), setup.CoastalPruning);
         var build = new NativeRoutingIdentity(coastal is null ? 8 : 9, "0.6.0",
             "cd476a84ef3edea9582d77f21588a23af727e083", "fetched-clean", 8191);
@@ -811,11 +920,16 @@ public sealed class RoutePlanJsonRepositoryTests
                     new GeographicBounds(34, 41, -66, -51), new GeographicBounds(34, 41, -66, -51),
                     date.AddHours(-6), date.AddDays(2), TimeSpan.FromHours(3),
                     TimeSpan.FromHours(1), TimeSpan.FromHours(3), validTimes),
-                native, new(optimization, search), new(LandAvoidanceStatus.Applied, Attribution: "GSHHG"));
-            var environment = new RoutePointEnvironment(7, 95, 6, 1, -.4, 1.5, 8, 180, 13, 170);
+                native, new(optimization, search), new(LandAvoidanceStatus.Applied, Attribution: "GSHHG"),
+                currentsUnconfigured: currentsUnconfigured ?? (withCurrent ? false : null));
+            var environment = currentsUnconfigured is true
+                ? null
+                : new RoutePointEnvironment(7, 95, 6, 1, -.4, 1.5, 8, 180, 13, 170);
             var route = new RouteResult(request, ForecastModel.NoaaGfs,
-                [new(origin, departure, 90, 6, 15, 180, 0, environment, 13, 170),
-                 new(endpoint, departure.AddHours(1), 90, 6, 15, 180, 50, environment, 13, 170)],
+                [new(origin, departure, 90, 6, 15, 180, 0, environment,
+                    environment?.PolarWindSpeedKnots, environment?.PolarWindDirectionDegrees),
+                 new(endpoint, departure.AddHours(1), 90, 6, 15, 180, 50, environment,
+                     environment?.PolarWindSpeedKnots, environment?.PolarWindDirectionDegrees)],
                 new RouteDiagnostics(1, 2, 1, 1, TimeSpan.FromSeconds(2), 3, 1, 0, coastal),
                 RouteCompletion.DestinationReached, new(LandAvoidanceStatus.Applied, Attribution: "GSHHG"),
                 RouteSolver.IsochroneBeam, null, null, null, audit, native);

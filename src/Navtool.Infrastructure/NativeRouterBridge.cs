@@ -619,7 +619,8 @@ public sealed partial class NativeRouterBridge : INativeRoutingPreflight
         return minutes > 0 ? $"{minutes}m" : $"{duration.Seconds}s";
     }
 
-    private RouteCalculationSnapshot CopyProgress(IntPtr progressPointer, RouteCoastalPruningDiagnostics? coastalPruning = null)
+    private RouteCalculationSnapshot CopyProgress(IntPtr progressPointer, bool currentsUnconfigured,
+        RouteCoastalPruningDiagnostics? coastalPruning = null)
     {
         if (progressPointer == IntPtr.Zero)
         {
@@ -730,7 +731,7 @@ public sealed partial class NativeRouterBridge : INativeRoutingPreflight
                 auditedProgress.AuditedRoutePoints,
                 auditedProgress.AuditedRoutePointCount,
                 "provisional route points")
-            .Select(CopyAuditedPoint);
+            .Select(point => CopyAuditedPoint(point, currentsUnconfigured));
         var diagnostics = new RouteDiagnostics(
             checked((long)progress.Diagnostics.ExpandedNodes),
             checked((long)progress.Diagnostics.GeneratedCandidates),

@@ -237,6 +237,14 @@ a weather overlay. Stopover gaps are stationary holds at the waypoint; the
 timeline does not compare unrelated nearest NOAA and ECMWF points as though they
 represented the same forecast instant.
 
+The route-point popup shows AWS, AWA, and water-relative TWA using the
+route-applied sailing sample. Without a configured current, that sample supplies
+the water-relative wind; with currents, the calculation uses the native polar-wind
+or ground-motion audit. Saved points without existing wind/motion audit need an
+explicitly recorded no-current provenance marker; older routes without one
+remain unavailable until recalculated rather than assuming zero current. The
+sample may have been taken mid-segment, not anew at the displayed endpoint.
+
 Marking a leg sailed preserves its latest model geometry as historical context.
 An explicit active leg and optional current-position marker can resume a rolling
 route without changing stable itinerary leg IDs. Recalculation publishes each
