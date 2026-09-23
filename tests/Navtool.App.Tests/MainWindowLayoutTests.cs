@@ -25,6 +25,17 @@ namespace Navtool.App.Tests;
 public sealed class MainWindowLayoutTests
 {
     [AvaloniaFact]
+    public void Window_uses_the_branded_application_icon()
+    {
+        var window = CreateWindow();
+        try
+        {
+            Assert.NotNull(window.Icon);
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
     public void Only_selected_panel_paints_and_exposes_plan_hit_targets()
     {
         var window = CreateWindow();
