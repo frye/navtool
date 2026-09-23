@@ -121,7 +121,9 @@ public sealed class RouteAuditWorkflowTests
         Assert.Null(outcome.Route.NativeAudit!.FutureProbeMisses);
         Assert.Equal(9, outcome.Route.Points[1].PolarWindSpeedKnots);
         Assert.Equal(15, outcome.Route.Points[1].TrueWindSpeedKnots);
-        Assert.Null(outcome.Route.Points[0].PolarWindSpeedKnots);
+        Assert.True(outcome.Route.RunAudit!.CurrentsUnconfigured);
+        Assert.Equal(15, outcome.Route.Points[0].PolarWindSpeedKnots);
+        Assert.Equal(15, outcome.Route.Points[2].PolarWindSpeedKnots);
     }
 
     [Theory]

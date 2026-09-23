@@ -22,7 +22,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
                 $"Route plan schema version {currentVersion} is not supported by this application version.");
         }
 
-        if (fromVersion is < 1 or > 8)
+        if (fromVersion is < 1 or > 9)
             throw new InvalidDataException(
                 $"Route plan schema version {fromVersion} is not supported by this application version.");
         var current = JsonDocument.Parse(document.RootElement.GetRawText());
@@ -40,6 +40,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
                     6 => MigrateV6ToV7(current),
                     7 => MigrateV7ToV8(current),
                     8 => MigrateV8ToV9(current),
+                    9 => MigrateV9ToV10(current),
                     _ => throw new InvalidDataException("Unsupported migration step.")
                 };
                 current.Dispose();
@@ -240,6 +241,19 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
         return JsonDocument.Parse(root.ToJsonString());
     }
 
+    private static JsonDocument MigrateV9ToV10(JsonDocument document)
+    {
+        var root = JsonNode.Parse(document.RootElement.GetRawText()) as JsonObject ??
+                   throw new InvalidDataException("A route plan document must be a JSON object.");
+        root["schemaVersion"] = 10;
+        foreach (var route in EnumerateRoutes(root))
+        {
+            if (route["runAudit"] is JsonObject audit && !audit.ContainsKey("currentsUnconfigured"))
+                audit["currentsUnconfigured"] = null;
+        }
+        return JsonDocument.Parse(root.ToJsonString());
+    }
+
     private static void AddEcmwfCacheMaximumAge(JsonNode? node)
     {
         if (node is JsonObject value)
@@ -335,7 +349,7 @@ public sealed class RoutePlanSchemaMigrator : IRoutePlanSchemaMigrator
 
 public sealed class RoutePlanJsonRepository : IRoutePlanRepository
 {
-    public const int CurrentSchemaVersion = 9;
+    public const int CurrentSchemaVersion = 10;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,

@@ -106,6 +106,35 @@ public sealed class RoutePlanJsonRepositoryTests
                 leg.Route!.RunAudit!.Setup.EcmwfCacheMaximumAge));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task V9_migration_preserves_only_explicit_no_current_provenance(bool hasMarker)
+    {
+        using var directory = new TestDirectory();
+        var repository = new RoutePlanJsonRepository(directory.Path);
+        var plan = CreateAuditedPlan(directory.Path, currentsUnconfigured: true);
+        await repository.SaveAsync(plan);
+        var path = Path.Combine(repository.RootDirectory, $"{plan.Id}.route.json");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        Assert.Equal(10, root["schemaVersion"]!.GetValue<int>());
+        root["schemaVersion"] = 9;
+        foreach (var leg in root["plan"]!["results"]![0]!["legs"]!.AsArray())
+        {
+            var audit = leg!["route"]!["runAudit"]!.AsObject();
+            if (!hasMarker) audit.Remove("currentsUnconfigured");
+        }
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+        var original = await File.ReadAllBytesAsync(path);
+
+        var loaded = await repository.OpenAsync(plan.Id);
+
+        Assert.Equal(original, await File.ReadAllBytesAsync(path));
+        Assert.Equal(hasMarker ? true : null, loaded.Results[0].Legs[0].Route!.RunAudit!.CurrentsUnconfigured);
+        Assert.All(loaded.Results[0].Legs.SelectMany(leg => leg.Route!.Points),
+            point => Assert.Equal(hasMarker, point.ApparentWindSpeedKnots is not null));
+    }
+
     private static RouteCoastalPruningDiagnostics CoastalAudit() =>
         new(RouteCoastalPruningMode.ConservativeLandAware, "ready", "Some coverage remains uncertain",
             long.MaxValue, 2, 3, 4, 5, 6, 7, DateTimeOffset.Parse("2026-08-01T19:00:00Z"),

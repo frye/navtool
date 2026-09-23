@@ -549,9 +549,11 @@ public sealed class RoutingWorkflow
                     native: native, professionalOverrides: frozen.ProfessionalOverrides,
                     applicationLand: route.LandAvoidance,
                     currentsUnconfigured: native is null ? null : request.Optimization.Environment?.Currents is null);
-                route = route.WithRunAudit(engineAudit?.Forecast is not null
+                var publishedAudit = engineAudit?.Forecast is not null
                     ? engineAudit.WithAttempts(request.Optimization.Solver, attempts, effectiveOptions, route.LandAvoidance)
-                    : audit);
+                    : audit;
+                route = route.WithRunAudit(publishedAudit)
+                    .WithVerifiedNoCurrentWind(publishedAudit.CurrentsUnconfigured == true);
             }
 
             Report(progress, providerId, model, RoutingProgressStage.Completed, 1);
