@@ -41,7 +41,8 @@ public sealed record AtomicCacheEntry(
     string Key,
     string Path,
     long LengthBytes,
-    CacheMetadata Metadata);
+    CacheMetadata Metadata,
+    string? ContentIdentity = null);
 
 public sealed class AtomicFileCache
 {
@@ -147,7 +148,7 @@ public sealed class AtomicFileCache
                 _logger.LogWarning(exception, "Could not update cache access time for {CacheKey}", key);
             }
 
-            return new AtomicCacheEntry(key, artifactPath, file.Length, metadata);
+            return new AtomicCacheEntry(key, artifactPath, file.Length, metadata, stored.ContentIdentity);
         }
         finally
         {
@@ -160,7 +161,8 @@ public sealed class AtomicFileCache
         DateTimeOffset createdAt,
         DateTimeOffset expiresAt,
         Func<Stream, CancellationToken, ValueTask> writeArtifact,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? contentIdentity = null)
     {
         ValidateKey(key);
         ArgumentNullException.ThrowIfNull(writeArtifact);
@@ -198,7 +200,8 @@ public sealed class AtomicFileCache
                 metadata.CreatedAt,
                 metadata.ExpiresAt,
                 length,
-                metadata.CreatedAt);
+                metadata.CreatedAt,
+                contentIdentity);
             await WriteMetadataFileAsync(metadataTemp, stored, cancellationToken).ConfigureAwait(false);
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -208,7 +211,7 @@ public sealed class AtomicFileCache
             File.Move(metadataTemp, metadataPath, true);
 
             await EvictIfNeededAsync(key, createdAt, CancellationToken.None).ConfigureAwait(false);
-            return new AtomicCacheEntry(key, artifactPath, length, metadata);
+            return new AtomicCacheEntry(key, artifactPath, length, metadata, contentIdentity);
         }
         finally
         {
@@ -223,13 +226,15 @@ public sealed class AtomicFileCache
         DateTimeOffset createdAt,
         DateTimeOffset expiresAt,
         ReadOnlyMemory<byte> artifact,
-        CancellationToken cancellationToken = default) =>
+        CancellationToken cancellationToken = default,
+        string? contentIdentity = null) =>
         StoreAsync(
             key,
             createdAt,
             expiresAt,
             (stream, token) => stream.WriteAsync(artifact, token),
-            cancellationToken);
+            cancellationToken,
+            contentIdentity);
 
     private async ValueTask EvictIfNeededAsync(
         string protectedKey,
@@ -466,7 +471,8 @@ public sealed class AtomicFileCache
         DateTimeOffset CreatedAt,
         DateTimeOffset ExpiresAt,
         long LengthBytes,
-        DateTimeOffset? LastAccessedAt = null);
+        DateTimeOffset? LastAccessedAt = null,
+        string? ContentIdentity = null);
 
     private sealed record StoredEntry(
         StoredCacheMetadata Metadata,

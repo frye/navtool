@@ -21,6 +21,8 @@ public sealed record EcmwfOpenDataOptions
 
     public long MaximumRangeBytes { get; init; } = 64L * 1024 * 1024;
 
+    public long MaximumMultipartBytes { get; init; } = 128L * 1024 * 1024;
+
     public long MaximumPartCacheBytes { get; init; } = 2L * 1024 * 1024 * 1024;
 
     public int MaximumDownloadAttempts { get; init; } = 3;
@@ -28,6 +30,8 @@ public sealed record EcmwfOpenDataOptions
     public TimeSpan BaseRetryDelay { get; init; } = TimeSpan.FromSeconds(1);
 
     public TimeSpan MaximumRetryDelay { get; init; } = TimeSpan.FromSeconds(30);
+
+    public TimeSpan RateLimitRetryDelay { get; init; } = TimeSpan.FromSeconds(30);
 
     public TimeSpan MinimumRequestInterval { get; init; } = TimeSpan.FromMilliseconds(250);
 }
@@ -43,14 +47,23 @@ internal sealed record EcmwfIndexPart(
     string Parameter,
     long Offset,
     long Length,
+    long DataLength,
     Uri DataUri,
+    string PartKey);
+
+internal sealed record EcmwfStepPart(
+    int ForecastHour,
+    Uri DataUri,
+    ImmutableArray<EcmwfIndexPart> Fields,
+    long Length,
     string PartKey);
 
 internal sealed record EcmwfAcquisitionPlan(
     DateTimeOffset RunTime,
     ImmutableArray<int> ForecastHours,
-    ImmutableArray<EcmwfIndexPart> Parts,
-    string CacheKey);
+    ImmutableArray<EcmwfStepPart> Parts,
+    string CacheKey,
+    string ContentIdentity);
 
 public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecastDownloadEstimator
 {
@@ -67,6 +80,8 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
     private readonly EcmwfOpenDataOptions _options;
     private readonly ILogger<EcmwfOpenDataForecastProvider> _logger;
     private readonly KeyedAsyncGate _acquisitionGate = new();
+    private readonly SemaphoreSlim _requestPacingGate = new(1, 1);
+    private DateTimeOffset _nextRequestAt = DateTimeOffset.MinValue;
 
     public EcmwfOpenDataForecastProvider(
         HttpClient httpClient,
@@ -95,10 +110,11 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
         var run = SelectNewestCoveringRun(request, _timeProvider.GetUtcNow());
         var hours = GetRequiredForecastHours(run, request.From, request.Through);
         return new ForecastProviderEstimate(
-            checked(hours.Length * 2),
+            hours.Length,
             null,
             true,
-            "ECMWF downloads global indexed 10 m wind fields; route bounds are applied while loading the forecast.");
+            "ECMWF downloads paired global 10 m wind fields with one multi-range request per forecast time; " +
+            "route bounds are applied while loading the forecast.");
     }
 
     public ForecastDownloadEstimate EstimateDownload(ForecastRequest request)
@@ -106,7 +122,7 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
         var estimate = Estimate(request);
         return new ForecastDownloadEstimate(
             Model,
-            estimate.EstimatedRangeRequests / 2,
+            estimate.EstimatedRangeRequests,
             estimate.EstimatedRangeRequests,
             estimate.EstimatedBytes,
             estimate.Warning);
@@ -229,6 +245,7 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
         ArgumentNullException.ThrowIfNull(jsonLines);
         ArgumentNullException.ThrowIfNull(dataUri);
         var matches = new Dictionary<string, (long Offset, long Length)>(StringComparer.Ordinal);
+        long dataLength = 0;
         using var reader = new StringReader(jsonLines);
         var lineNumber = 0;
         while (reader.ReadLine() is { } line)
@@ -254,6 +271,23 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
             using (document)
             {
                 var root = document.RootElement;
+                if (TryReadInt64(root, "_offset", out var fieldOffset) &&
+                    TryReadInt64(root, "_length", out var fieldLength) &&
+                    fieldOffset >= 0 &&
+                    fieldLength > 0)
+                {
+                    try
+                    {
+                        dataLength = Math.Max(dataLength, checked(fieldOffset + fieldLength));
+                    }
+                    catch (OverflowException exception)
+                    {
+                        throw new InvalidDataException(
+                            $"ECMWF index line {lineNumber} has an invalid byte offset or length.",
+                            exception);
+                    }
+                }
+
                 if (!root.TryGetProperty("param", out var parameterElement) ||
                     parameterElement.ValueKind != JsonValueKind.String)
                 {
@@ -307,13 +341,15 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
                         parameter,
                         range.Offset,
                         range.Length,
+                        dataLength,
                         dataUri,
                         AtomicFileCache.CreateKey(
                             "ecmwf-part",
                             dataUri.AbsoluteUri,
                             parameter,
                             range.Offset.ToString(CultureInfo.InvariantCulture),
-                            range.Length.ToString(CultureInfo.InvariantCulture))),
+                            range.Length.ToString(CultureInfo.InvariantCulture),
+                            dataLength.ToString(CultureInfo.InvariantCulture))),
                     End: end);
             })
             .OrderBy(item => item.Part.Offset)
@@ -401,7 +437,9 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
 
         var existingAssembly = await _cache.TryGetAsync(plan.CacheKey, now, cancellationToken)
             .ConfigureAwait(false);
-        if (existingAssembly is not null)
+        if (existingAssembly is not null &&
+            IsCacheWithinMaximumAge(existingAssembly, request, now) &&
+            string.Equals(existingAssembly.ContentIdentity, plan.ContentIdentity, StringComparison.Ordinal))
         {
             Report(progress, ForecastProgressStage.Completed, 1, "Using cached ECMWF IFS forecast");
             return CreateAcquisition(
@@ -425,14 +463,14 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
             cancellationToken.ThrowIfCancellationRequested();
             var part = plan.Parts[index];
             var partPath = Path.Combine(partsDirectory, part.PartKey + ".grib2");
-            if (IsValidPartFile(partPath, part.Length))
+            if (IsValidStepFile(partPath, part.Fields) &&
+                IsPartWithinMaximumAge(partPath, request, now))
             {
-                File.SetLastWriteTimeUtc(partPath, now.UtcDateTime);
                 Report(
                     progress,
                     ForecastProgressStage.Downloading,
                     (index + 1) / (double)plan.Parts.Length,
-                    $"Resumed cached ECMWF f{part.ForecastHour:000} {part.Parameter}");
+                    $"Resumed cached ECMWF f{part.ForecastHour:000} wind fields");
                 continue;
             }
 
@@ -441,16 +479,11 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
                 File.Delete(partPath);
             }
 
-            if (downloadedParts > 0 && _options.MinimumRequestInterval > TimeSpan.Zero)
-            {
-                await Task.Delay(_options.MinimumRequestInterval, cancellationToken).ConfigureAwait(false);
-            }
-
             Report(
                 progress,
                 ForecastProgressStage.Downloading,
                 index / (double)plan.Parts.Length,
-                $"Downloading ECMWF f{part.ForecastHour:000} {part.Parameter} ({index + 1}/{plan.Parts.Length})");
+                $"Downloading ECMWF f{part.ForecastHour:000} wind fields ({index + 1}/{plan.Parts.Length})");
             await DownloadPartAsync(part, partPath, cancellationToken).ConfigureAwait(false);
             downloadedParts++;
         }
@@ -476,7 +509,8 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
                         await input.CopyToAsync(output, token).ConfigureAwait(false);
                     }
                 },
-                cancellationToken)
+                cancellationToken,
+                plan.ContentIdentity)
             .ConfigureAwait(false);
         PrunePartCache(partsDirectory, plan.Parts.Select(part => part.PartKey).ToHashSet(StringComparer.Ordinal));
 
@@ -509,6 +543,10 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
             {
                 continue;
             }
+            if (!IsCacheWithinMaximumAge(cached, request, now))
+            {
+                continue;
+            }
 
             Report(progress, ForecastProgressStage.Completed, 1, "Using cached ECMWF IFS forecast");
             return CreateAcquisition(
@@ -517,7 +555,7 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
                 cached,
                 ForecastAcquisitionSource.Cache,
                 new ForecastCacheUsage(
-                    hours.Length * 2,
+                    hours.Length,
                     0,
                     candidate,
                     candidate));
@@ -532,7 +570,7 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
         CancellationToken cancellationToken)
     {
         var hours = GetRequiredForecastHours(runTime, request.From, request.Through);
-        var builder = ImmutableArray.CreateBuilder<EcmwfIndexPart>(hours.Length * 2);
+        var builder = ImmutableArray.CreateBuilder<EcmwfStepPart>(hours.Length);
         foreach (var hour in hours)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -551,14 +589,39 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
                     $"ECMWF index contains a wind range larger than the configured limit for forecast hour {hour}.");
             }
 
-            builder.AddRange(parts);
+            var totalLength = parts.Sum(part => part.Length);
+            if (totalLength > _options.MaximumMultipartBytes)
+            {
+                throw new InvalidDataException(
+                    $"ECMWF paired wind ranges exceed the configured multipart limit for forecast hour {hour}.");
+            }
+
+            builder.Add(new EcmwfStepPart(
+                hour,
+                dataUri,
+                parts,
+                totalLength,
+                AtomicFileCache.CreateKey(
+                    "ecmwf-step",
+                    dataUri.AbsoluteUri,
+                    string.Join(
+                        ",",
+                        parts.Select(part =>
+                            $"{part.Parameter}:{part.Offset.ToString(CultureInfo.InvariantCulture)}:" +
+                            $"{part.Length.ToString(CultureInfo.InvariantCulture)}:" +
+                            part.DataLength.ToString(CultureInfo.InvariantCulture))))));
         }
 
+        var stepParts = builder.MoveToImmutable();
+        var contentIdentity = AtomicFileCache.CreateKey(
+            "ecmwf-plan",
+            stepParts.Select(part => part.PartKey).ToArray());
         return new EcmwfAcquisitionPlan(
             runTime,
             hours,
-            builder.MoveToImmutable(),
-            CreateAssemblyCacheKey(runTime, hours));
+            stepParts,
+            CreateAssemblyCacheKey(runTime, hours),
+            contentIdentity);
     }
 
     private async ValueTask<string?> DownloadIndexAsync(
@@ -571,6 +634,7 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
+                await WaitForRequestSlotAsync(cancellationToken).ConfigureAwait(false);
                 using var request = new HttpRequestMessage(HttpMethod.Get, uri);
                 using var response = await _httpClient.SendAsync(
                         request,
@@ -638,7 +702,7 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
     }
 
     private async ValueTask DownloadPartAsync(
-        EcmwfIndexPart part,
+        EcmwfStepPart part,
         string partPath,
         CancellationToken cancellationToken)
     {
@@ -675,7 +739,7 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
 
             throw new ForecastDownloadException(
                 $"ECMWF range request failed after {_options.MaximumDownloadAttempts} attempts for " +
-                $"f{part.ForecastHour:000} {part.Parameter}: {lastFailure!.Message}",
+                $"f{part.ForecastHour:000} wind fields: {lastFailure!.Message}",
                 lastFailure);
         }
         finally
@@ -685,13 +749,20 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
     }
 
     private async ValueTask DownloadRangeAttemptAsync(
-        EcmwfIndexPart part,
+        EcmwfStepPart part,
         string tempPath,
         CancellationToken cancellationToken)
     {
-        var end = checked(part.Offset + part.Length - 1);
+        await WaitForRequestSlotAsync(cancellationToken).ConfigureAwait(false);
         using var request = new HttpRequestMessage(HttpMethod.Get, part.DataUri);
-        request.Headers.Range = new RangeHeaderValue(part.Offset, end);
+        request.Headers.Range = new RangeHeaderValue();
+        foreach (var field in part.Fields)
+        {
+            request.Headers.Range.Ranges.Add(new RangeItemHeaderValue(
+                field.Offset,
+                checked(field.Offset + field.Length - 1)));
+        }
+
         using var response = await _httpClient.SendAsync(
                 request,
                 HttpCompletionOption.ResponseHeadersRead,
@@ -710,47 +781,291 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
                 "HTTP 206 Partial Content is required.");
         }
 
-        var range = response.Content.Headers.ContentRange;
-        if (range?.From != part.Offset || range.To != end ||
-            response.Content.Headers.ContentLength != part.Length)
-        {
-            throw new ForecastDownloadException(
-                $"ECMWF returned an inconsistent Content-Range for f{part.ForecastHour:000} {part.Parameter}.");
-        }
-
-        if (part.Length > _options.MaximumRangeBytes)
-        {
-            throw new ForecastDownloadException(
-                $"ECMWF range for f{part.ForecastHour:000} {part.Parameter} exceeds the configured size limit.");
-        }
-
         var mediaType = response.Content.Headers.ContentType?.MediaType;
-        if (mediaType is not null && ForecastHttpSupport.IsTextMediaType(mediaType))
+        if (!string.Equals(mediaType, "multipart/byteranges", StringComparison.OrdinalIgnoreCase))
         {
             throw new ForecastDownloadException(
-                $"ECMWF returned unexpected content type '{mediaType}' for a GRIB byte range.");
+                $"ECMWF returned unexpected content type '{mediaType ?? "(missing)"}' for " +
+                $"the f{part.ForecastHour:000} multi-range response.");
+        }
+
+        var boundary = response.Content.Headers.ContentType?.Parameters
+            .FirstOrDefault(parameter =>
+                string.Equals(parameter.Name, "boundary", StringComparison.OrdinalIgnoreCase))
+            ?.Value?.Trim('"');
+        if (string.IsNullOrWhiteSpace(boundary))
+        {
+            throw new ForecastDownloadException(
+                $"ECMWF multipart response for f{part.ForecastHour:000} has no boundary.");
+        }
+
+        var maximumResponseBytes = checked(part.Length + 64L * 1024);
+        if (response.Content.Headers.ContentLength is { } contentLength &&
+            contentLength > maximumResponseBytes)
+        {
+            throw new ForecastDownloadException(
+                $"ECMWF multipart response for f{part.ForecastHour:000} exceeds the configured size limit.");
         }
 
         await using var input = await response.Content.ReadAsStreamAsync(cancellationToken)
             .ConfigureAwait(false);
-        await using (var output = new FileStream(
-                         tempPath,
-                         FileMode.CreateNew,
-                         FileAccess.Write,
-                         FileShare.None,
-                         128 * 1024,
-                         FileOptions.Asynchronous | FileOptions.WriteThrough))
+        var multipartPath = $"{tempPath}.multipart.partial";
+        try
         {
-            await CopyExactAsync(input, output, part.Length, cancellationToken).ConfigureAwait(false);
-            await output.FlushAsync(cancellationToken).ConfigureAwait(false);
-            output.Flush(true);
+            await using (var multipart = new FileStream(
+                             multipartPath,
+                             FileMode.CreateNew,
+                             FileAccess.Write,
+                             FileShare.None,
+                             128 * 1024,
+                             FileOptions.Asynchronous | FileOptions.SequentialScan))
+            {
+                await CopyBoundedAsync(input, multipart, maximumResponseBytes, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            await ExtractMultipartRangesAsync(
+                    multipartPath,
+                    tempPath,
+                    boundary,
+                    part,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            TryDelete(multipartPath);
         }
 
-        if (!IsValidPartFile(tempPath, part.Length))
+    }
+
+    private static async ValueTask ExtractMultipartRangesAsync(
+        string multipartPath,
+        string outputPath,
+        string boundary,
+        EcmwfStepPart step,
+        CancellationToken cancellationToken)
+    {
+        var fieldsByOffset = step.Fields.ToDictionary(field => field.Offset);
+        var outputOffsets = new Dictionary<long, long>();
+        long outputOffset = 0;
+        foreach (var field in step.Fields)
+        {
+            outputOffsets.Add(field.Offset, outputOffset);
+            outputOffset = checked(outputOffset + field.Length);
+        }
+
+        var seenOffsets = new HashSet<long>();
+        await using var input = new FileStream(
+            multipartPath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            128 * 1024,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        await using var output = new FileStream(
+            outputPath,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            128 * 1024,
+            FileOptions.Asynchronous | FileOptions.RandomAccess | FileOptions.WriteThrough);
+        output.SetLength(step.Length);
+        var delimiter = $"--{boundary}";
+        var line = await ReadAsciiLineAsync(input, step.ForecastHour, cancellationToken)
+            .ConfigureAwait(false);
+
+        while (true)
+        {
+            if (line == delimiter + "--")
+            {
+                if (input.Position != input.Length)
+                {
+                    throw new ForecastDownloadException(
+                        $"ECMWF multipart response for f{step.ForecastHour:000} has trailing data.");
+                }
+
+                break;
+            }
+
+            if (line != delimiter)
+            {
+                throw new ForecastDownloadException(
+                    $"ECMWF multipart response for f{step.ForecastHour:000} is malformed.");
+            }
+
+            ContentRangeHeaderValue? parsedRange = null;
+            while (!string.IsNullOrEmpty(
+                       line = await ReadAsciiLineAsync(input, step.ForecastHour, cancellationToken)
+                           .ConfigureAwait(false)))
+            {
+                var separator = line.IndexOf(':');
+                if (separator > 0 &&
+                    string.Equals(
+                        line[..separator].Trim(),
+                        "Content-Range",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    ContentRangeHeaderValue.TryParse(line[(separator + 1)..].Trim(), out parsedRange);
+                }
+            }
+
+            if (parsedRange is null ||
+                parsedRange.Unit != "bytes" ||
+                parsedRange.From is not { } from ||
+                parsedRange.To is not { } to ||
+                parsedRange.Length is not { } dataLength ||
+                !fieldsByOffset.TryGetValue(from, out var field) ||
+                to != checked(from + field.Length - 1) ||
+                dataLength != field.DataLength)
+            {
+                throw new ForecastDownloadException(
+                    $"ECMWF multipart response for f{step.ForecastHour:000} has an unexpected Content-Range.");
+            }
+
+            if (!seenOffsets.Add(from))
+            {
+                throw new ForecastDownloadException(
+                    $"ECMWF multipart response for f{step.ForecastHour:000} contains a duplicate range.");
+            }
+
+            output.Position = outputOffsets[from];
+            if (!await CopyAndValidateGribMessageAsync(
+                    input,
+                    output,
+                    field.Length,
+                    cancellationToken).ConfigureAwait(false))
+            {
+                throw new ForecastDownloadException(
+                    $"ECMWF range for f{step.ForecastHour:000} {field.Parameter} is not one complete GRIB message.");
+            }
+
+            await ExpectBytesAsync(input, "\r\n"u8.ToArray(), step.ForecastHour, cancellationToken)
+                .ConfigureAwait(false);
+            line = await ReadAsciiLineAsync(input, step.ForecastHour, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        if (seenOffsets.Count != step.Fields.Length)
         {
             throw new ForecastDownloadException(
-                $"ECMWF range for f{part.ForecastHour:000} {part.Parameter} is not one complete GRIB message.");
+                $"ECMWF multipart response for f{step.ForecastHour:000} did not contain both wind fields.");
         }
+
+        await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+        output.Flush(true);
+    }
+
+    private static async ValueTask<string> ReadAsciiLineAsync(
+        Stream input,
+        int forecastHour,
+        CancellationToken cancellationToken)
+    {
+        const int maximumLineBytes = 16 * 1024;
+        using var line = new MemoryStream();
+        var singleByte = new byte[1];
+        while (line.Length <= maximumLineBytes)
+        {
+            var read = await input.ReadAsync(singleByte, cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+            {
+                throw new ForecastDownloadException(
+                    $"ECMWF multipart response for f{forecastHour:000} ended unexpectedly.");
+            }
+
+            if (singleByte[0] == (byte)'\n')
+            {
+                var bytes = line.ToArray();
+                if (bytes.Length == 0 || bytes[^1] != (byte)'\r')
+                {
+                    throw new ForecastDownloadException(
+                        $"ECMWF multipart response for f{forecastHour:000} has malformed line endings.");
+                }
+
+                return Encoding.ASCII.GetString(bytes, 0, bytes.Length - 1);
+            }
+
+            line.WriteByte(singleByte[0]);
+        }
+
+        throw new ForecastDownloadException(
+            $"ECMWF multipart response for f{forecastHour:000} contains an oversized header line.");
+    }
+
+    private static async ValueTask ExpectBytesAsync(
+        Stream input,
+        byte[] expected,
+        int forecastHour,
+        CancellationToken cancellationToken)
+    {
+        var actual = new byte[expected.Length];
+        try
+        {
+            await input.ReadExactlyAsync(actual, cancellationToken).ConfigureAwait(false);
+        }
+        catch (EndOfStreamException exception)
+        {
+            throw new ForecastDownloadException(
+                $"ECMWF multipart response for f{forecastHour:000} ended unexpectedly.",
+                exception);
+        }
+
+        if (!actual.AsSpan().SequenceEqual(expected))
+        {
+            throw new ForecastDownloadException(
+                $"ECMWF multipart response for f{forecastHour:000} is malformed.");
+        }
+    }
+
+    private static async ValueTask<bool> CopyAndValidateGribMessageAsync(
+        Stream input,
+        Stream output,
+        long expectedLength,
+        CancellationToken cancellationToken)
+    {
+        if (expectedLength < 20)
+        {
+            return false;
+        }
+
+        var buffer = new byte[128 * 1024];
+        var header = new byte[16];
+        var trailer = new byte[4];
+        long copied = 0;
+        while (copied < expectedLength)
+        {
+            var requested = (int)Math.Min(buffer.Length, expectedLength - copied);
+            var read = await input.ReadAsync(buffer.AsMemory(0, requested), cancellationToken)
+                .ConfigureAwait(false);
+            if (read == 0)
+            {
+                return false;
+            }
+
+            if (copied < header.Length)
+            {
+                var headerBytes = Math.Min(read, header.Length - (int)copied);
+                buffer.AsSpan(0, headerBytes).CopyTo(header.AsSpan((int)copied));
+            }
+
+            if (read >= trailer.Length)
+            {
+                buffer.AsSpan(read - trailer.Length, trailer.Length).CopyTo(trailer);
+            }
+            else
+            {
+                trailer.AsSpan(read).CopyTo(trailer);
+                buffer.AsSpan(0, read).CopyTo(trailer.AsSpan(trailer.Length - read));
+            }
+
+            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+            copied += read;
+        }
+
+        return header.AsSpan(0, 4).SequenceEqual("GRIB"u8) &&
+               header[7] == 2 &&
+               BinaryPrimitives.ReadUInt64BigEndian(header.AsSpan(8, 8)) == (ulong)expectedLength &&
+               trailer.AsSpan().SequenceEqual("7777"u8);
     }
 
     private ImmutableArray<DateTimeOffset> GetCandidateRuns(DateTimeOffset now)
@@ -781,6 +1096,26 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
     }
 
     private static bool IsLongCycle(DateTimeOffset run) => run.ToUniversalTime().Hour is 0 or 12;
+
+    private static bool IsCacheWithinMaximumAge(
+        AtomicCacheEntry entry,
+        ForecastRequest request,
+        DateTimeOffset now)
+    {
+        var maximumAge = request.EcmwfCacheMaximumAge.ToTimeSpan();
+        return maximumAge is null ||
+               now.ToUniversalTime() - entry.Metadata.CreatedAt <= maximumAge;
+    }
+
+    private static bool IsPartWithinMaximumAge(
+        string path,
+        ForecastRequest request,
+        DateTimeOffset now)
+    {
+        var maximumAge = request.EcmwfCacheMaximumAge.ToTimeSpan();
+        return maximumAge is null ||
+               now.ToUniversalTime() - File.GetLastWriteTimeUtc(path) <= maximumAge;
+    }
 
     private static string CreateAssemblyCacheKey(
         DateTimeOffset runTime,
@@ -850,15 +1185,41 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
         }
     }
 
-    private static Exception CreateHttpFailure(
+    private async ValueTask WaitForRequestSlotAsync(CancellationToken cancellationToken)
+    {
+        await _requestPacingGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var now = _timeProvider.GetUtcNow();
+            var delay = _nextRequestAt - now;
+            if (delay > TimeSpan.Zero)
+            {
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            }
+
+            _nextRequestAt = _timeProvider.GetUtcNow() + _options.MinimumRequestInterval;
+        }
+        finally
+        {
+            _requestPacingGate.Release();
+        }
+    }
+
+    private Exception CreateHttpFailure(
         string operation,
         Uri uri,
         HttpResponseMessage response)
     {
         var message =
             $"{operation} returned {(int)response.StatusCode} ({response.ReasonPhrase}) for '{uri}'.";
+        var retryAfter = ForecastHttpSupport.GetRetryAfter(response);
+        if (response.StatusCode == HttpStatusCode.TooManyRequests && retryAfter is null)
+        {
+            retryAfter = _options.RateLimitRetryDelay;
+        }
+
         return ForecastHttpSupport.IsTransientStatus(response.StatusCode)
-            ? new TransientEcmwfException(message, ForecastHttpSupport.GetRetryAfter(response))
+            ? new TransientEcmwfException(message, retryAfter)
             : new ForecastDownloadException(message);
     }
 
@@ -893,37 +1254,9 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
         }
     }
 
-    private static async ValueTask CopyExactAsync(
-        Stream input,
-        Stream output,
-        long expectedBytes,
-        CancellationToken cancellationToken)
-    {
-        var buffer = new byte[128 * 1024];
-        long total = 0;
-        while (total < expectedBytes)
-        {
-            var requested = (int)Math.Min(buffer.Length, expectedBytes - total);
-            var read = await input.ReadAsync(buffer.AsMemory(0, requested), cancellationToken)
-                .ConfigureAwait(false);
-            if (read == 0)
-            {
-                throw new ForecastDownloadException(
-                    $"ECMWF range ended after {total} bytes; {expectedBytes} bytes were expected.");
-            }
-
-            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
-            total += read;
-        }
-
-        var extra = await input.ReadAsync(buffer.AsMemory(0, 1), cancellationToken).ConfigureAwait(false);
-        if (extra != 0)
-        {
-            throw new ForecastDownloadException("ECMWF range returned more bytes than its index length.");
-        }
-    }
-
-    private static bool IsValidPartFile(string path, long expectedLength)
+    private static bool IsValidStepFile(
+        string path,
+        ImmutableArray<EcmwfIndexPart> fields)
     {
         if (!File.Exists(path))
         {
@@ -931,27 +1264,39 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
         }
 
         var file = new FileInfo(path);
-        if (file.Length != expectedLength || file.Length < 20)
+        if (file.Length != fields.Sum(field => field.Length))
         {
             return false;
         }
 
-        Span<byte> header = stackalloc byte[16];
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        Span<byte> header = stackalloc byte[16];
+        Span<byte> trailer = stackalloc byte[4];
         try
         {
-            stream.ReadExactly(header);
-            if (!header[..4].SequenceEqual("GRIB"u8) ||
-                header[7] != 2 ||
-                BinaryPrimitives.ReadUInt64BigEndian(header[8..]) != (ulong)expectedLength)
+            long offset = 0;
+            foreach (var field in fields)
             {
-                return false;
+                stream.Position = offset;
+                stream.ReadExactly(header);
+                if (!header[..4].SequenceEqual("GRIB"u8) ||
+                    header[7] != 2 ||
+                    BinaryPrimitives.ReadUInt64BigEndian(header[8..]) != (ulong)field.Length)
+                {
+                    return false;
+                }
+
+                stream.Position = checked(offset + field.Length - trailer.Length);
+                stream.ReadExactly(trailer);
+                if (!trailer.SequenceEqual("7777"u8))
+                {
+                    return false;
+                }
+
+                offset = checked(offset + field.Length);
             }
 
-            Span<byte> marker = stackalloc byte[4];
-            stream.Seek(-4, SeekOrigin.End);
-            stream.ReadExactly(marker);
-            return marker.SequenceEqual("7777"u8);
+            return offset == stream.Length;
         }
         catch (EndOfStreamException)
         {
@@ -1017,10 +1362,12 @@ public sealed class EcmwfOpenDataForecastProvider : IForecastProvider, IForecast
         if (options.MaximumRunLookbackCycles <= 0 ||
             options.MaximumIndexBytes <= 0 ||
             options.MaximumRangeBytes <= 0 ||
+            options.MaximumMultipartBytes <= 0 ||
             options.MaximumPartCacheBytes <= 0 ||
             options.MaximumDownloadAttempts <= 0 ||
             options.BaseRetryDelay < TimeSpan.Zero ||
             options.MaximumRetryDelay < options.BaseRetryDelay ||
+            options.RateLimitRetryDelay < TimeSpan.Zero ||
             options.MinimumRequestInterval < TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(options), "ECMWF acquisition limits are invalid.");

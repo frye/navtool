@@ -458,7 +458,7 @@ public sealed class MainViewModelWorkflowTests
         viewModel.UseEcmwf = true;
 
         Assert.Contains("NOAA 4 times/8 parts", viewModel.ForecastAreaSummary);
-        Assert.Contains("ECMWF 3 times/6 global wind ranges", viewModel.ForecastAreaSummary);
+        Assert.Contains("ECMWF 3 times/6 global wind downloads", viewModel.ForecastAreaSummary);
     }
 
     [Fact]
@@ -544,6 +544,32 @@ public sealed class MainViewModelWorkflowTests
 
         Assert.Equal(ForecastRefreshPolicy.LatestAvailable, observedPolicy);
         Assert.False(viewModel.UseNewestWeatherData);
+    }
+
+    [Fact]
+    public async Task Ecmwf_cache_maximum_age_is_consumed_by_the_next_calculation()
+    {
+        EcmwfCacheMaximumAge? observedMaximumAge = null;
+        var ecmwf = new DelegateForecastProvider(
+            ForecastModel.EcmwfIfs,
+            (request, _) =>
+            {
+                observedMaximumAge = request.EcmwfCacheMaximumAge;
+                return ValueTask.FromResult(CreateAcquisition(request));
+            });
+        var engine = new DelegateRouteEngine((request, forecast, _) =>
+            ValueTask.FromResult(CreateRoute(request, forecast.Request.Model)));
+        var viewModel = CreateViewModel(
+            new RoutingWorkflow(new[] { ecmwf }, engine),
+            new DelegateWeatherSampler((_, _, _, _, _, _) =>
+                ValueTask.FromResult(ImmutableArray<ViewportWindSample>.Empty)));
+        viewModel.UseNoaa = false;
+        viewModel.UseEcmwf = true;
+        viewModel.RoutingSetup.EcmwfCacheMaximumAge = EcmwfCacheMaximumAge.TwelveHours;
+
+        await viewModel.CalculateRoutesAsync();
+
+        Assert.Equal(EcmwfCacheMaximumAge.TwelveHours, observedMaximumAge);
     }
 
     [Fact]

@@ -80,6 +80,16 @@ public sealed class RoutingSetupTests
     }
 
     [Fact]
+    public void Unknown_ecmwf_cache_age_reports_the_correct_parameter()
+    {
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => new RoutingSetup(
+            Demo(),
+            ecmwfCacheMaximumAge: (EcmwfCacheMaximumAge)99));
+
+        Assert.Equal("ecmwfCacheMaximumAge", exception.ParamName);
+    }
+
+    [Fact]
     public void Coastal_context_rejects_silent_downgrade_and_lattice()
     {
         var baseline = Context();

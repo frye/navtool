@@ -44,6 +44,7 @@ public sealed record RoutingSetupPreferences
     public double ArrivalRadiusNauticalMiles { get; init; } = 1;
     public RoutingLandSource LandSource { get; init; } = RoutingLandSource.NaturalEarth;
     public ForecastRefreshPolicy ForecastPolicy { get; init; } = ForecastRefreshPolicy.PreferCache;
+    public EcmwfCacheMaximumAge EcmwfCacheMaximumAge { get; init; } = EcmwfCacheMaximumAge.Forever;
     public double LocalForecastMaximumGapHours { get; init; } = 6;
     public RouteRegionalLandPolicy? RegionalLand { get; init; }
     public double HardDurationHours { get; init; } = 240;
@@ -51,6 +52,7 @@ public sealed record RoutingSetupPreferences
     public void Validate()
     {
         if (!Enum.IsDefined(Quality) || !Enum.IsDefined(LandSource) || !Enum.IsDefined(ForecastPolicy) ||
+            !Enum.IsDefined(EcmwfCacheMaximumAge) ||
             !double.IsFinite(PerformanceFactor) || PerformanceFactor <= 0 ||
             !double.IsFinite(ArrivalRadiusNauticalMiles) || ArrivalRadiusNauticalMiles <= 0 ||
             !double.IsFinite(LocalForecastMaximumGapHours) || LocalForecastMaximumGapHours <= 0 ||

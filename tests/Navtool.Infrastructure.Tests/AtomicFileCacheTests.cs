@@ -30,7 +30,8 @@ public sealed class AtomicFileCacheTests
             key,
             now,
             now.AddHours(1),
-            Encoding.ASCII.GetBytes("GRIBcomplete7777"));
+            Encoding.ASCII.GetBytes("GRIBcomplete7777"),
+            contentIdentity: "source-v2");
 
         Assert.True(File.Exists(stored.Path));
         Assert.Equal("GRIBcomplete7777", await File.ReadAllTextAsync(stored.Path));
@@ -41,6 +42,8 @@ public sealed class AtomicFileCacheTests
         Assert.NotNull(fresh);
         Assert.Null(stale);
         Assert.Equal(stored.LengthBytes, fresh!.LengthBytes);
+        Assert.Equal("source-v2", stored.ContentIdentity);
+        Assert.Equal(stored.ContentIdentity, fresh.ContentIdentity);
     }
 
     [Fact]
