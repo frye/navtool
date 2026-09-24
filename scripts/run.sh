@@ -24,7 +24,15 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   done
 
   dotnet build "$project"
-  target_path="$(dotnet msbuild "$project" -getProperty:TargetPath -nologo)"
+  target_path="$(
+    dotnet msbuild "$project" -getProperty:TargetPath -nologo |
+      sed -E -n \
+        -e 's/^[[:space:]]*Property:[[:space:]]*TargetPath=[[:space:]]*//' \
+        -e 's/^[[:space:]]*TargetPath=[[:space:]]*//' \
+        -e '/^[[:space:]]*$/d' \
+        -e 'p' |
+      tail -n 1
+  )"
   apphost="${target_path%.dll}"
   if [[ ! -x "$apphost" ]]; then
     echo "Navtool apphost was not produced at $apphost" >&2
