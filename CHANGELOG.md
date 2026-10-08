@@ -21,8 +21,9 @@ bridge launch guidance and automated validation.
   Applied models, sources, revisions, missing-data policies, and diagnostics
   counters are shown in the route detail view and persisted with the plan.
   Speed and course over ground are reported alongside the water-relative values
-  rather than replacing them. Navtool consumes environmental data you supply; it
-  does not acquire currents or wave forecasts.
+  rather than replacing them. Navtool does not acquire current or wave
+  forecasts; exclusion zones may use supplied data or the bundled illustrative
+  Antarctic example.
 
 - **Land-aware routing by default:** Candidate route segments are checked
   against bundled Natural Earth coastline data before retention. An optional
@@ -51,6 +52,14 @@ bridge launch guidance and automated validation.
 
 ### Added
 
+- Added an always-visible calculation rail with aggregate weather/routing
+  progress and cancellation.
+  ([#47](https://github.com/frye/navtool/pull/47),
+  [#54](https://github.com/frye/navtool/pull/54))
+- Added an anchored route-point telemetry card with UTC arrival, boat speed,
+  true and apparent wind values, and compact port/starboard apparent wind angle.
+  ([#55](https://github.com/frye/navtool/pull/55),
+  [#68](https://github.com/frye/navtool/pull/68))
 - Added production ECMWF IFS 0.25-degree wind acquisition from ECMWF Open Data,
   including rolling-cycle discovery, indexed 10u/10v byte-range downloads,
   resumable persistent caching, native route-corridor loading, and normal
@@ -75,9 +84,17 @@ bridge launch guidance and automated validation.
   request pacing and `Retry-After`-aware rate-limit handling. Forecast settings
   can now cap ECMWF cache age at 6, 12, or 24 hours, or keep the default
   unlimited cache lifetime.
+- Synchronized route inspection, timeline selection, popup telemetry, active
+  weather model, and map wind overlays, and added a one-shot radial toggle to
+  refresh from the newest available forecast run.
+  ([#60](https://github.com/frye/navtool/pull/60),
+  [#61](https://github.com/frye/navtool/pull/61))
 - Added ABI-v6 solver-aware progress, lattice search markers and diagnostics,
   configured beam/lattice dispatch, and schema-v3 result attribution while
   preserving legacy bridge exports and route-plan migration.
+- Added the ABI-v7 optional Stage 3 environment payload to
+  `navtool_router_calculate_route_streaming_v7` for configured current,
+  sea-state, signed-distance landmask, and exclusion-zone providers.
 - Restored one open, destination-facing isochrone front per routing step,
   retained forecast-limited estimates, softened display-only corners, widened
   the useful destination aperture, and suppressed misleading singleton marks.
@@ -116,11 +133,12 @@ bridge launch guidance and automated validation.
 ### Known limitations
 
 - Navtool is planning software, not navigation-certified guidance. Bundled
-  coastline data is generalized and can omit small or recent hazards; routing
-  still does not model currents, waves, traffic, restricted areas, depths, or
-  safety limits.
-- Online ECMWF support is wind-only. Routing still does not model waves or
-  currents, and ECMWF global field downloads can be larger than NOAA subsets.
+  coastline data is generalized and can omit small or recent hazards. Currents
+  and waves require explicit user-configured inputs. Exclusion zones are opt-in
+  and can use supplied data or the bundled illustrative Antarctic example;
+  traffic, depths, and safety limits are not modeled.
+- Online ECMWF support is wind-only. Navtool does not acquire wave or current
+  forecasts, and ECMWF global field downloads can be larger than NOAA subsets.
 - Professional lattice routing is serial and does not produce beam-style
   isochrones or destination fronts; Navtool displays its search point and
   provisional route instead.
