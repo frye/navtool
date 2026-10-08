@@ -288,12 +288,16 @@ the final provisional route to a selectable forecast-limited estimate, retains
 the solver-appropriate search overlay, and displays an amber warning. Complete
 final routes remain authoritative and may differ from the last provisional route.
 
-The ABI-v8 bridge retains older exported layouts and adds explicit boat handles,
-native presets, forecast validity metadata, audited progress and configured
-calculation capabilities. Retained layouts do not promise old numerical output.
-Callback arrays and pointers are valid only during the synchronous callback and
-must be copied by consumers. Navtool rejects stale bridges before route forecast
-acquisition, rather than silently dropping configuration or land constraints.
+The bridge reports ABI 9, and Navtool accepts ABI 8 or 9. ABI v7 added the
+optional Stage 3 environment payload to
+`navtool_router_calculate_route_streaming_v7` for current, sea-state,
+signed-distance landmask, and exclusion-zone providers. ABI v8 adds explicit
+boat handles, native presets, forecast validity metadata, audited progress, and
+configured calculation capabilities; ABI v9 adds optional coastal pruning.
+Earlier exported layouts are retained but do not promise their former numerical
+behavior. Callback arrays and pointers are valid only during the synchronous
+callback and must be copied by consumers. Navtool rejects stale bridges before
+route forecast acquisition, rather than silently dropping configured features.
 
 ## Publish
 
@@ -518,8 +522,10 @@ which data actually shaped it.
 
 ### Not included
 
-Stage 3 in Navtool consumes data you supply; it does not acquire any. The
-following are deliberately out of scope for this work and tracked separately:
+Stage 3 does not acquire current or wave forecasts. Current and wave inputs are
+user-configured; exclusion zones can use supplied data or the bundled
+illustrative Antarctic example. The following are deliberately out of scope for
+this work and tracked separately:
 
 - NOAA WaveWatch III wave forecast download
 - RTOFS and OSCAR ocean current acquisition
@@ -537,10 +543,12 @@ service or explicitly selected local GSHHG, cached data freshness, and router-li
 capability. Unavailable required sources block new calculations; old results
 retain their historical warning state. Even a land-aware route can omit
 recent, small, generalized, or inaccurately mapped hazards and must be verified
-independently. The routing engine models currents, waves, and exclusion zones only when
-you explicitly enable and supply them (see "Environmental physics"); it never
-models traffic, depths, or safety limits. The built-in vessel polar is an
-approximate demonstration model.
+independently. The routing engine models currents, waves, and exclusion zones
+only when you explicitly enable them (see "Environmental physics"). Currents
+and waves require user-configured inputs; exclusion zones can use supplied data
+or the bundled illustrative Antarctic example. The engine never models traffic,
+depths, or safety limits. The built-in vessel polar is an approximate
+demonstration model.
 
 The professional lattice solver reports search points and counters, not
 isochrones or destination-front geometry. It is currently serial and intended
