@@ -16,7 +16,7 @@ public interface IWeatherSampler
         CancellationToken cancellationToken = default);
 }
 
-public sealed class DeferredNativeRouteEngine : IRouteEngine, IWeatherSampler, INativeRoutingPreflight
+public sealed class DeferredNativeRouteEngine : IConfiguredRouteEngine, IWeatherSampler, INativeRoutingPreflight
 {
     private readonly Lazy<NativeRouteEngine> _engine;
 
@@ -71,6 +71,16 @@ public sealed class DeferredNativeRouteEngine : IRouteEngine, IWeatherSampler, I
     }
 
     public bool LandAvoidanceAvailable => _engine.Value.LandAvoidanceAvailable;
+
+    public ValueTask<RouteResult> CalculateConfiguredAsync(
+        RoutingCalculationContext context,
+        RouteRequest request,
+        ForecastAcquisition forecast,
+        RouteOptimizationOptions optimization,
+        IProgress<RouteCalculationProgress>? progress,
+        CancellationToken cancellationToken) =>
+        _engine.Value.CalculateConfiguredAsync(
+            context, request, forecast, optimization, progress, cancellationToken);
 
     public ValueTask<RouteResult> CalculateAsync(
         RouteRequest request,

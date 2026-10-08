@@ -38,6 +38,8 @@ public sealed class NaturalEarthLandDataProvider : ILandDataProvider
             CompressionMode.Decompress);
         using var reader = new StreamReader(compressed);
         var payload = GeoJsonLandParser.Parse(reader.ReadToEnd());
+        if (payload.Geometries.Count == 0)
+            throw new InvalidDataException("Bundled Natural Earth global land geometry is empty; routing cannot proceed without its selected source.");
         return new LandDataAcquisition(
             LandDataStatus.Available,
             new LandGeometryIndex(payload.Geometries),

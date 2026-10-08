@@ -1,0 +1,74 @@
+diff --git a/src/path_text.hpp b/src/path_text.hpp
+new file mode 100644
+--- /dev/null
++++ b/src/path_text.hpp
+@@ -0,0 +1,13 @@
++#pragma once
++
++#include <filesystem>
++#include <string>
++
++namespace sailroute::detail {
++
++inline std::string utf8_path(const std::filesystem::path& path) {
++    const auto bytes = path.u8string();
++    return {reinterpret_cast<const char*>(bytes.data()), bytes.size()};
++}
++
++}  // namespace sailroute::detail
+diff --git a/src/polar/vessel_polar.cpp b/src/polar/vessel_polar.cpp
+--- a/src/polar/vessel_polar.cpp
++++ b/src/polar/vessel_polar.cpp
+@@ -1,3 +1,4 @@
+ #include "sailroute/polar.hpp"
++#include "path_text.hpp"
+
+ #include <algorithm>
+@@ -1013,4 +1014,4 @@
+     if (!input.is_open()) {
+         return Error{
+-            ErrorCode::file_io, "unable to open polar file '" + path.string() + "'"};
++            ErrorCode::file_io, "unable to open polar file '" + detail::utf8_path(path) + "'"};
+     }
+@@ -1028,4 +1029,4 @@
+     if (input.bad()) {
+         return Error{
+-            ErrorCode::file_io, "error while reading polar file '" + path.string() + "'"};
++            ErrorCode::file_io, "error while reading polar file '" + detail::utf8_path(path) + "'"};
+     }
+@@ -1044,5 +1045,5 @@
+         std::move(data.wind_angles),
+         std::move(data.boat_speeds),
+-        "Loaded vessel polar from '" + path.string() + "'",
++        "Loaded vessel polar from '" + detail::utf8_path(path) + "'",
+         {},
+         {},
+diff --git a/src/adapters/land_data.cpp b/src/adapters/land_data.cpp
+--- a/src/adapters/land_data.cpp
++++ b/src/adapters/land_data.cpp
+@@ -1,3 +1,4 @@
+ #include "sailroute/land_data.hpp"
++#include "path_text.hpp"
+
+ #include "environment/spherical.hpp"
+@@ -212,3 +213,3 @@
+     if (!std::filesystem::is_regular_file(path, file_error)) {
+-        return Error{ErrorCode::file_io, "GSHHG: cannot open regular shoreline file: " + path.string()};
++        return Error{ErrorCode::file_io, "GSHHG: cannot open regular shoreline file: " + detail::utf8_path(path)};
+     }
+@@ -216,3 +217,3 @@
+     if (file_error) {
+-        return Error{ErrorCode::file_io, "GSHHG: cannot determine shoreline file size: " + path.string()};
++        return Error{ErrorCode::file_io, "GSHHG: cannot determine shoreline file size: " + detail::utf8_path(path)};
+     }
+@@ -220,3 +221,3 @@
+     if (!input) {
+-        return Error{ErrorCode::file_io, "GSHHG: cannot open shoreline file: " + path.string()};
++        return Error{ErrorCode::file_io, "GSHHG: cannot open shoreline file: " + detail::utf8_path(path)};
+     }
+@@ -564,4 +565,4 @@
+     metadata.provider.source =
+-        path.string() +
++        detail::utf8_path(path) +
+         "; GSHHG, Wessel and Smith (https://www.soest.hawaii.edu/pwessel/gshhg/)"
+         "; minor great-circle shoreline geometry; distance cap " +

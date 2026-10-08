@@ -19,9 +19,9 @@ public static class AppComposition
         services.AddLogging(builder =>
         {
             builder.SetMinimumLevel(LogLevel.Information);
-            builder.AddProvider(new RollingFileLoggerProvider(
-                new RollingFileLoggerOptions(Path.Combine(ResolveAppDataRoot(), "logs"))));
         });
+        services.AddSingleton<ILoggerProvider>(_ => new RollingFileLoggerProvider(
+            new RollingFileLoggerOptions(Path.Combine(ResolveAppDataRoot(), "logs"))));
         services.AddSingleton(provider => new AppThemeService(
             ResolveAppDataRoot(),
             provider.GetRequiredService<ILogger<AppThemeService>>()));
@@ -37,6 +37,8 @@ public static class AppComposition
             new AtomicFileCacheOptions(ResolveCacheRoot()),
             provider.GetRequiredService<ILogger<AtomicFileCache>>()));
         services.AddSingleton<IRoutePlanSchemaMigrator, RoutePlanSchemaMigrator>();
+        services.AddSingleton<IRoutingPreferencesRepository>(_ =>
+            new RoutingPreferencesJsonRepository(ResolveAppDataRoot()));
         services.AddSingleton<IRoutePlanRepository>(provider => new RoutePlanJsonRepository(
             ResolveAppDataRoot(),
             provider.GetRequiredService<IRoutePlanSchemaMigrator>()));
@@ -70,13 +72,28 @@ public static class AppComposition
             provider.GetRequiredService<NoaaGfsForecastProvider>());
         services.AddSingleton<IForecastDownloadEstimator>(provider =>
             provider.GetRequiredService<EcmwfOpenDataForecastProvider>());
-        services.AddSingleton<DeferredNativeRouteEngine>();
+        services.AddSingleton(provider => new DeferredNativeRouteEngine(
+            () => new NativeRouteEngine(
+                new NativeRouterBridge(),
+                provider.GetRequiredService<ILogger<NativeRouteEngine>>(),
+                provider.GetRequiredService<ILandDataProvider>(),
+                Path.Combine(ResolveAppDataRoot(), "native-executions"))));
         services.AddSingleton<IRouteEngine>(provider =>
             provider.GetRequiredService<DeferredNativeRouteEngine>());
         services.AddSingleton<IWeatherSampler>(provider =>
             provider.GetRequiredService<DeferredNativeRouteEngine>());
         services.AddSingleton<INativeRoutingPreflight>(provider =>
             provider.GetRequiredService<DeferredNativeRouteEngine>());
+        services.AddSingleton<IBoatAssetService>(_ => new DeferredBoatAssetService(
+            () => new BoatAssetRepository(ResolveAppDataRoot(), new NativeRouterBridge())));
+        services.AddSingleton<IRoutingSetupService>(provider => new DeferredRoutingSetupService(
+            () => new NativeRoutingSetupService(
+                new NativeRouterBridge(),
+                provider.GetRequiredService<IBoatAssetService>(),
+                provider.GetRequiredService<ILandDataProvider>(),
+                Path.Combine(ResolveAppDataRoot(), "native-executions"))));
+        services.AddSingleton<IRouteStopoverValidator, DeferredStopoverValidator>();
+        services.AddSingleton<IRegionalLandPreviewService, DeferredRegionalLandPreviewService>();
         services.AddSingleton<ILocalGribInspector, DeferredLocalGribInspector>();
         services.AddSingleton(provider => new RoutingWorkflow(
             new IForecastProvider[]
@@ -87,8 +104,26 @@ public static class AppComposition
             provider.GetRequiredService<IRouteEngine>()));
         services.AddSingleton(provider => new RoutePlanRoutingWorkflow(
             provider.GetRequiredService<RoutingWorkflow>(),
-            provider.GetRequiredService<IRoutePlanRepository>()));
-        services.AddSingleton<MainViewModel>();
+            provider.GetRequiredService<IRoutePlanRepository>(),
+            stopoverValidator: provider.GetRequiredService<IRouteStopoverValidator>(),
+            setupService: provider.GetRequiredService<IRoutingSetupService>()));
+        services.AddSingleton(provider => new MainViewModel(
+            provider.GetRequiredService<RoutingWorkflow>(),
+            provider.GetRequiredService<IWeatherSampler>(),
+            TimeProvider.System,
+            TimeZoneInfo.Local,
+            provider.GetRequiredService<OsmTileOptions>(),
+            provider.GetRequiredService<ILogger<MainViewModel>>(),
+            provider.GetRequiredService<ILocalGribInspector>(),
+            provider.GetRequiredService<INativeRoutingPreflight>(),
+            provider.GetRequiredService<IRoutePlanRepository>(),
+            provider.GetRequiredService<RoutePlanRoutingWorkflow>(),
+            provider.GetServices<IForecastDownloadEstimator>(),
+            provider.GetRequiredService<IBoatAssetService>(),
+            provider.GetRequiredService<IRoutingSetupService>(),
+            ResolveLandDataEndpoint() is null ? RoutingLandSource.NaturalEarth : RoutingLandSource.OpenStreetMap,
+            provider.GetRequiredService<IRegionalLandPreviewService>(),
+            provider.GetRequiredService<IRoutingPreferencesRepository>()));
         return services.BuildServiceProvider();
     }
 

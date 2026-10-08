@@ -18,7 +18,7 @@ public sealed class RouteOptimizationOptionsTests
         Assert.Equal(TimeSpan.Zero, options.Maneuver.TackPenalty);
         Assert.Equal(TimeSpan.Zero, options.Maneuver.GybePenalty);
         Assert.Null(options.MaximumTrueWindSpeedKnots);
-        Assert.Equal(RouteAbovePolarRangePolicy.Clamp, options.AbovePolarRange);
+        Assert.Equal(RouteAbovePolarRangePolicy.NoSpeed, options.AbovePolarRange);
         Assert.Equal(RoutePruningStrategy.DestinationDistanceGrid, options.PruningStrategy);
         Assert.Equal(
             RouteDestinationFrontSegmentPolicy.ProvisionalComponent,

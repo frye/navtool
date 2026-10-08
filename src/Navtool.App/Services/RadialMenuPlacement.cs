@@ -8,7 +8,8 @@ public enum RadialMenuAction
     SetStart,
     SetDestination,
     CalculateRoute,
-    RefreshWeather
+    RefreshWeather,
+    AddWaypoint
 }
 
 public enum RadialMenuLayout
@@ -62,7 +63,8 @@ public static class RadialMenuPlacement
         RadialMenuAction.SetStart,
         RadialMenuAction.CalculateRoute,
         RadialMenuAction.SetDestination,
-        RadialMenuAction.RefreshWeather
+        RadialMenuAction.RefreshWeather,
+        RadialMenuAction.AddWaypoint
     ];
 
     public static RadialMenuPlacementResult Calculate(
@@ -138,33 +140,23 @@ public static class RadialMenuPlacement
         if (useHorizontal && horizontalGap is { } horizontalSpacing)
         {
             var step = actionSize.Width + horizontalSpacing;
-            offsets =
-            [
-                new ScreenPoint(-1.5 * step, 0),
-                new ScreenPoint(-0.5 * step, 0),
-                new ScreenPoint(0.5 * step, 0),
-                new ScreenPoint(1.5 * step, 0)
-            ];
-            halfWidth = (1.5 * step) + (actionSize.Width / 2);
+            offsets = CreateLinearOffsets(step, horizontal: true);
+            halfWidth = (((ActionOrder.Length - 1) / 2d) * step) +
+                        (actionSize.Width / 2);
             halfHeight = actionSize.Height / 2;
         }
         else if (canUseVertical && verticalGap is { } verticalSpacing)
         {
             var step = actionSize.Height + verticalSpacing;
-            offsets =
-            [
-                new ScreenPoint(0, -1.5 * step),
-                new ScreenPoint(0, -0.5 * step),
-                new ScreenPoint(0, 0.5 * step),
-                new ScreenPoint(0, 1.5 * step)
-            ];
+            offsets = CreateLinearOffsets(step, horizontal: false);
             halfWidth = actionSize.Width / 2;
-            halfHeight = (1.5 * step) + (actionSize.Height / 2);
+            halfHeight = (((ActionOrder.Length - 1) / 2d) * step) +
+                         (actionSize.Height / 2);
         }
         else
         {
             throw new ArgumentException(
-                "Visible bounds cannot contain a non-overlapping four-action menu.",
+                "Visible bounds cannot contain a non-overlapping radial action menu.",
                 nameof(safeBounds));
         }
 
@@ -182,13 +174,34 @@ public static class RadialMenuPlacement
 
     private static ImmutableArray<ScreenPoint> CreateRadialOffsets(double radius)
     {
-        return
-        [
-            new ScreenPoint(0, -radius),
-            new ScreenPoint(radius, 0),
-            new ScreenPoint(0, radius),
-            new ScreenPoint(-radius, 0)
-        ];
+        var offsets = ImmutableArray.CreateBuilder<ScreenPoint>(ActionOrder.Length);
+        var angleStep = (Math.PI * 2) / ActionOrder.Length;
+        for (var index = 0; index < ActionOrder.Length; index++)
+        {
+            var angle = (-Math.PI / 2) + (index * angleStep);
+            offsets.Add(new ScreenPoint(
+                Math.Cos(angle) * radius,
+                Math.Sin(angle) * radius));
+        }
+
+        return offsets.MoveToImmutable();
+    }
+
+    private static ImmutableArray<ScreenPoint> CreateLinearOffsets(
+        double step,
+        bool horizontal)
+    {
+        var offsets = ImmutableArray.CreateBuilder<ScreenPoint>(ActionOrder.Length);
+        var midpoint = (ActionOrder.Length - 1) / 2d;
+        for (var index = 0; index < ActionOrder.Length; index++)
+        {
+            var offset = (index - midpoint) * step;
+            offsets.Add(horizontal
+                ? new ScreenPoint(offset, 0)
+                : new ScreenPoint(0, offset));
+        }
+
+        return offsets.MoveToImmutable();
     }
 
     private static ImmutableArray<RadialMenuActionPlacement> CreatePlacements(

@@ -58,6 +58,8 @@ public sealed partial class WaypointEditorItemViewModel : ViewModelBase
           $"{Math.Abs(Coordinate.Value.Longitude):0.000}° " +
           $"{(Coordinate.Value.Longitude >= 0 ? "E" : "W")}";
 
+    public string AccessibleName => $"{Role} {Position}: {Name}, {CoordinateDisplay}";
+
     [RelayCommand]
     private void SetOnMap() => _owner.BeginMapPlacement(this);
 
@@ -74,11 +76,16 @@ public sealed partial class WaypointEditorItemViewModel : ViewModelBase
 
     private bool CanMoveDown() => IsIntermediate && Position < _owner.Waypoints.Count - 1;
 
-    partial void OnNameChanged(string value) => _owner.RenameWaypoint(this, value);
+    partial void OnNameChanged(string value)
+    {
+        OnPropertyChanged(nameof(AccessibleName));
+        _owner.RenameWaypoint(this, value);
+    }
 
     partial void OnCoordinateChanged(Coordinate? value)
     {
         OnPropertyChanged(nameof(CoordinateDisplay));
+        OnPropertyChanged(nameof(AccessibleName));
         _owner.ChangeCoordinate(this, value);
     }
 
@@ -99,6 +106,7 @@ public sealed partial class WaypointEditorItemViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsFinish));
         OnPropertyChanged(nameof(IsIntermediate));
         OnPropertyChanged(nameof(Role));
+        OnPropertyChanged(nameof(AccessibleName));
         RemoveCommand.NotifyCanExecuteChanged();
         MoveUpCommand.NotifyCanExecuteChanged();
         MoveDownCommand.NotifyCanExecuteChanged();
@@ -179,14 +187,79 @@ public sealed partial class RouteLegEditorItemViewModel : ViewModelBase
 public sealed partial class ItineraryEditorViewModel : ViewModelBase
 {
     private readonly IRoutePlanRepository? _repository;
+    private readonly TimeZoneInfo _localTimeZone;
     private RoutePlan? _plan;
+    private RoutingSetup? _routingSetup;
+    private RoutePlanningInputs? _planningInputs;
     private bool _suppressChanges;
     private bool _suppressEndpointChanged;
+    private bool _suppressCurrentPositionDepartureSync;
 
-    public ItineraryEditorViewModel(IRoutePlanRepository? repository = null)
+    public ItineraryEditorViewModel(
+        IRoutePlanRepository? repository = null,
+        TimeZoneInfo? localTimeZone = null)
     {
         _repository = repository;
+        _localTimeZone = localTimeZone ?? TimeZoneInfo.Local;
+        var localNow = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _localTimeZone);
+        _currentPositionDepartureDate = new DateTimeOffset(localNow.Date, localNow.Offset);
+        _currentPositionDepartureTimeOfDay = localNow.TimeOfDay;
         NewDraft();
+    }
+
+    /// <summary>
+    /// The zone the current-position departure pickers are expressed in. Stored plan values are
+    /// always UTC; the pickers are only ever a local-time projection of them.
+    /// </summary>
+    public TimeZoneInfo LocalTimeZone => _localTimeZone;
+
+    public RoutingSetup? RoutingSetup => _routingSetup;
+    public RoutePlanningInputs? PlanningInputs => _planningInputs;
+    public bool IsNewDraft => _plan is null;
+    public string? PlanningInputError { get; set; }
+
+    public void SetPlanningInputs(RoutePlanningInputs inputs, bool restoring = false)
+    {
+        inputs.Validate();
+        if (_planningInputs == inputs) return;
+        _planningInputs = inputs;
+        if (_plan is not null) _plan = _plan.WithPlanningInputs(inputs);
+        if (restoring) return;
+        ResultsInvalidated = _plan?.HasInvalidatedResults is true;
+        CalculationRevision++;
+        MarkChanged();
+    }
+
+    public void SetDraftSetup(RoutingSetup? setup) => _routingSetup = setup;
+
+    public event EventHandler? RoutingSetupRestored;
+
+    public void SetRoutingSetup(RoutingSetup? setup)
+    {
+        if (_routingSetup == setup) return;
+        _routingSetup = setup;
+        if (_plan is not null) _plan = _plan.WithRoutingSetup(setup);
+        ResultsInvalidated = _plan?.HasInvalidatedResults is true;
+        CalculationRevision++;
+        MarkChanged();
+    }
+
+    public void InvalidateRoutingInputs(RouteLegOutcomeReason reason = RouteLegOutcomeReason.RoutingSetupChanged)
+    {
+        if (_plan is not null)
+            _plan = _plan.InvalidateFromActiveLeg(reason);
+        ResultsInvalidated = _plan?.HasInvalidatedResults is true;
+        CalculationRevision++;
+        MarkChanged();
+    }
+
+    public void InvalidateDeparture()
+    {
+        if (_plan is not null)
+            _plan = _plan.InvalidateFromActiveLeg(RouteLegOutcomeReason.DepartureChanged);
+        ResultsInvalidated = _plan?.HasInvalidatedResults is true;
+        CalculationRevision++;
+        MarkChanged();
     }
 
     public ObservableCollection<WaypointEditorItemViewModel> Waypoints { get; } = [];
@@ -218,6 +291,9 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     private WaypointEditorItemViewModel? _activeWaypoint;
 
     [ObservableProperty]
+    private WaypointEditorItemViewModel? _selectedWaypoint;
+
+    [ObservableProperty]
     private bool _isAwaitingCurrentPositionPlacement;
 
     [ObservableProperty]
@@ -237,6 +313,8 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     public event EventHandler? EndpointChanged;
 
     public event EventHandler<WaypointEditorItemViewModel>? MapPlacementStarted;
+
+    public event EventHandler<WaypointEditorItemViewModel?>? WaypointSelectionChanged;
 
     public event EventHandler? CurrentPositionPlacementStarted;
 
@@ -269,6 +347,25 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
           $"{Math.Abs(coordinate.Longitude):0.000}\u00b0 " +
           $"{(coordinate.Longitude >= 0 ? "E" : "W")}";
 
+    /// <summary>
+    /// Shows the departure the plan actually stores, in both the picker's local zone and the UTC
+    /// instant the router receives, so the two representations can never silently disagree.
+    /// </summary>
+    public string CurrentPositionDepartureDisplay
+    {
+        get
+        {
+            if (CurrentPositionDepartureTimeUtc is not { } departureUtc)
+            {
+                return "Departs: not set";
+            }
+
+            var local = TimeZoneInfo.ConvertTime(departureUtc, _localTimeZone);
+            return $"Departs {local:yyyy-MM-dd HH:mm} local \u00b7 " +
+                   $"{departureUtc:yyyy-MM-dd HH:mm} UTC";
+        }
+    }
+
     public void SetEndpoints(Coordinate start, Coordinate finish)
     {
         _suppressEndpointChanged = true;
@@ -292,6 +389,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         }
 
         IsAwaitingCurrentPositionPlacement = false;
+        SelectedWaypoint = waypoint;
         ActiveWaypoint = waypoint;
         MapPlacementStarted?.Invoke(this, waypoint);
     }
@@ -309,6 +407,45 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     }
 
     public void CancelMapPlacement() => ActiveWaypoint = null;
+
+    public WaypointEditorItemViewModel AddWaypointAt(Coordinate coordinate)
+    {
+        if (!CanAddWaypoint())
+        {
+            throw new InvalidOperationException(
+                "Place or remove the pending waypoint before adding another.");
+        }
+
+        var item = CreateWaypoint(coordinate);
+        var index = Waypoints.Count - 1;
+        if (!TryUpdatePlan(plan => plan.AddWaypoint(
+                new RouteWaypoint(item.Id, item.Name, coordinate),
+                index)))
+        {
+            throw new InvalidOperationException(
+                ValidationMessage ?? "The waypoint could not be added.");
+        }
+
+        Waypoints.Insert(index, item);
+        SelectedWaypoint = item;
+        CalculationRevision++;
+        MarkChanged();
+        RefreshPositions();
+        AddWaypointCommand.NotifyCanExecuteChanged();
+        return item;
+    }
+
+    public bool SelectWaypoint(RouteWaypointId id)
+    {
+        var waypoint = Waypoints.FirstOrDefault(candidate => candidate.Id == id);
+        if (waypoint is null)
+        {
+            return false;
+        }
+
+        SelectedWaypoint = waypoint;
+        return true;
+    }
 
     /// <summary>
     /// Arms the distinct current-position map placement mode. This is never confused with
@@ -346,6 +483,11 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
 
     internal bool UpdateCurrentPositionDeparture(
         DateTimeOffset departureTimeUtc,
+        out string? error) =>
+        UpdateCurrentPositionDeparture(departureTimeUtc, _localTimeZone, out error);
+
+    internal bool UpdateCurrentPositionDeparture(
+        DateTimeOffset departureTimeUtc,
         TimeZoneInfo localTimeZone,
         out string? error)
     {
@@ -361,11 +503,19 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             return false;
         }
 
-        var localDeparture = TimeZoneInfo.ConvertTime(departureTimeUtc, localTimeZone);
-        CurrentPositionDepartureDate = localDeparture;
-        CurrentPositionDepartureTimeOfDay = localDeparture.TimeOfDay;
+        SetCurrentPositionPickers(
+            TimeZoneInfo.ConvertTime(departureTimeUtc, localTimeZone));
         return true;
     }
+
+    /// <summary>
+    /// Places the current position using the local <see cref="CurrentPositionDepartureDate"/>/
+    /// <see cref="CurrentPositionDepartureTimeOfDay"/> fields, converted to UTC via the editor's
+    /// local zone. This is the explicit, user-supplied departure time for the current position;
+    /// it is never derived from wall clock or GPS.
+    /// </summary>
+    public bool TryPlaceCurrentPosition(Coordinate coordinate, out string? error) =>
+        TryPlaceCurrentPosition(coordinate, _localTimeZone, out error);
 
     /// <summary>
     /// Places the current position using the local <see cref="CurrentPositionDepartureDate"/>/
@@ -465,13 +615,9 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanAddWaypoint))]
     private void AddWaypoint()
     {
-        var item = new WaypointEditorItemViewModel(
-            this,
-            new RouteWaypointId(),
-            $"Waypoint {Waypoints.Count}",
-            null,
-            null);
+        var item = CreateWaypoint(null);
         Waypoints.Insert(Waypoints.Count - 1, item);
+        SelectedWaypoint = item;
         CalculationRevision++;
         MarkChanged();
         RefreshPositions();
@@ -479,6 +625,14 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     }
 
     private bool CanAddWaypoint() => !HasPendingWaypoint;
+
+    private WaypointEditorItemViewModel CreateWaypoint(Coordinate? coordinate) =>
+        new(
+            this,
+            new RouteWaypointId(),
+            $"Waypoint {Waypoints.Count}",
+            coordinate,
+            null);
 
     [RelayCommand]
     private async Task RefreshSavedPlans()
@@ -609,6 +763,11 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     {
         plan = null;
         error = null;
+        if (PlanningInputError is not null)
+        {
+            error = PlanningInputError;
+            return false;
+        }
         if (Waypoints.Count < 2 || Waypoints.Any(waypoint => waypoint.Coordinate is null))
         {
             error = "Set every waypoint on the map before saving.";
@@ -631,7 +790,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             else
             {
                 plan = _plan is null
-                    ? new RoutePlan(PlanId, RouteName, waypoints)
+                    ? new RoutePlan(PlanId, RouteName, waypoints, routingSetup: _routingSetup, planningInputs: _planningInputs)
                     : new RoutePlan(
                         PlanId,
                         RouteName,
@@ -639,7 +798,9 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
                         _plan.Results,
                         _plan.SailedLegIds,
                         _plan.CurrentPosition,
-                        _plan.ActiveLegId);
+                        _plan.ActiveLegId,
+                        _routingSetup,
+                        _planningInputs);
             }
 
             ValidationMessage = null;
@@ -687,7 +848,9 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
                     state,
                     reason,
                     route,
-                    detail)
+                    detail,
+                    executionSession: session,
+                    origin: new RouteLegOrigin(RouteLegOriginSource.DeclaredWaypoint))
             ]));
         ResultsInvalidated = _plan.HasInvalidatedResults;
         IsDirty = true;
@@ -704,7 +867,8 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             throw new InvalidOperationException(error);
         }
 
-        if (plan.Id != PlanId || !plan.Waypoints.SequenceEqual(current!.Waypoints))
+        if (plan.Id != PlanId || !plan.Waypoints.SequenceEqual(current!.Waypoints) ||
+            plan.RoutingSetup != _routingSetup)
         {
             throw new InvalidOperationException(
                 "The calculation result does not match the current itinerary.");
@@ -735,6 +899,11 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         if (ReferenceEquals(ActiveWaypoint, waypoint))
         {
             ActiveWaypoint = null;
+        }
+
+        if (ReferenceEquals(SelectedWaypoint, waypoint))
+        {
+            SelectedWaypoint = null;
         }
 
         Waypoints.RemoveAt(index);
@@ -840,6 +1009,9 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             CalculationRevision++;
             EditRevision++;
             _plan = null;
+            _routingSetup = null;
+            _planningInputs = null;
+            PlanningInputError = null;
             RouteName = "Untitled route";
             SaveAsName = "Untitled route copy";
             Waypoints.Clear();
@@ -860,6 +1032,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             StorageError = null;
             ValidationMessage = null;
             ActiveWaypoint = null;
+            SelectedWaypoint = null;
             IsAwaitingCurrentPositionPlacement = false;
         }
         finally
@@ -868,6 +1041,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         }
 
         RefreshPositions();
+        RoutingSetupRestored?.Invoke(this, EventArgs.Empty);
         NotifyItineraryChanged();
     }
 
@@ -877,6 +1051,9 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         try
         {
             _plan = plan;
+            _routingSetup = plan.RoutingSetup;
+            _planningInputs = plan.PlanningInputs;
+            PlanningInputError = null;
             PlanId = plan.Id;
             CalculationRevision++;
             EditRevision++;
@@ -898,6 +1075,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
             StorageError = null;
             ValidationMessage = null;
             ActiveWaypoint = null;
+            SelectedWaypoint = null;
             IsAwaitingCurrentPositionPlacement = false;
         }
         finally
@@ -906,6 +1084,7 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         }
 
         RefreshPositions();
+        RoutingSetupRestored?.Invoke(this, EventArgs.Empty);
         NotifyItineraryChanged();
     }
 
@@ -978,6 +1157,9 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
         }
     }
 
+    partial void OnSelectedWaypointChanged(WaypointEditorItemViewModel? value) =>
+        WaypointSelectionChanged?.Invoke(this, value);
+
     /// <summary>
     /// Rebuilds the <see cref="Legs"/> collection from the current plan, reflecting each leg's
     /// sailed/active state. Called whenever the plan's legs, sailed set, or active leg changes.
@@ -1041,6 +1223,8 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
     {
         RouteLegOutcomeState.Succeeded
             when outcome.Reason == RouteLegOutcomeReason.ForecastExhausted => "forecast-limited",
+        RouteLegOutcomeState.Succeeded
+            when outcome.Reason == RouteLegOutcomeReason.DurationExhausted => "duration-limited",
         RouteLegOutcomeState.Succeeded => "complete",
         RouteLegOutcomeState.Failed => "failed",
         RouteLegOutcomeState.Cancelled => "cancelled",
@@ -1053,10 +1237,95 @@ public sealed partial class ItineraryEditorViewModel : ViewModelBase
 
     private void NotifyCurrentPositionChanged()
     {
+        SyncCurrentPositionPickers();
         OnPropertyChanged(nameof(CurrentPositionCoordinate));
         OnPropertyChanged(nameof(CurrentPositionDepartureTimeUtc));
         OnPropertyChanged(nameof(HasCurrentPosition));
         OnPropertyChanged(nameof(CurrentPositionDisplay));
+        OnPropertyChanged(nameof(CurrentPositionDepartureDisplay));
+    }
+
+    /// <summary>
+    /// Projects the plan's stored UTC current-position departure back onto the local-time pickers.
+    /// Without this a reopened plan leaves the pickers showing "today" while the plan still holds
+    /// an older departure, which then silently rolls forward during calculation.
+    /// </summary>
+    private void SyncCurrentPositionPickers()
+    {
+        if (_plan?.CurrentPosition is not { } currentPosition)
+        {
+            return;
+        }
+
+        SetCurrentPositionPickers(
+            TimeZoneInfo.ConvertTime(currentPosition.DepartureTime, _localTimeZone));
+    }
+
+    private void SetCurrentPositionPickers(DateTimeOffset local)
+    {
+        var wasSuppressed = _suppressCurrentPositionDepartureSync;
+        _suppressCurrentPositionDepartureSync = true;
+        try
+        {
+            CurrentPositionDepartureDate = new DateTimeOffset(local.Date, local.Offset);
+            CurrentPositionDepartureTimeOfDay = local.TimeOfDay;
+        }
+        finally
+        {
+            _suppressCurrentPositionDepartureSync = wasSuppressed;
+        }
+    }
+
+    partial void OnCurrentPositionDepartureDateChanged(DateTimeOffset? value) =>
+        ApplyCurrentPositionDepartureEdit();
+
+    partial void OnCurrentPositionDepartureTimeOfDayChanged(TimeSpan? value) =>
+        ApplyCurrentPositionDepartureEdit();
+
+    /// <summary>
+    /// Applies a user edit of the local departure pickers to the plan. The plan always stores UTC,
+    /// so the local selection is converted at this boundary.
+    /// </summary>
+    private void ApplyCurrentPositionDepartureEdit()
+    {
+        if (_suppressCurrentPositionDepartureSync ||
+            _suppressChanges ||
+            CurrentPositionCoordinate is not { } coordinate)
+        {
+            return;
+        }
+
+        if (!LocalDepartureConverter.TryConvertToUtc(
+                CurrentPositionDepartureDate,
+                CurrentPositionDepartureTimeOfDay,
+                _localTimeZone,
+                out var departureUtc,
+                out var conversionError))
+        {
+            ValidationMessage = conversionError;
+            return;
+        }
+
+        if (departureUtc == _plan?.CurrentPosition?.DepartureTime)
+        {
+            return;
+        }
+
+        _suppressCurrentPositionDepartureSync = true;
+        try
+        {
+            if (!PlaceCurrentPosition(coordinate, departureUtc, out var error))
+            {
+                ValidationMessage = error;
+                return;
+            }
+        }
+        finally
+        {
+            _suppressCurrentPositionDepartureSync = false;
+        }
+
+        ValidationMessage = null;
     }
 
     private void NotifyItineraryChanged()

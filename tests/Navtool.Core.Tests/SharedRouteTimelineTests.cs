@@ -70,8 +70,10 @@ public sealed class SharedRouteTimelineTests
         Assert.True(hold.IsStopover);
         Assert.Equal("Stopover at Waypoint 1", hold.StopoverLabel);
         Assert.Equal(first.Route!.Points[^1].Location, hold.Point.Location);
-        Assert.Equal(0, hold.Point.BoatSpeedKnots);
-        Assert.Equal(start.AddHours(3), hold.Point.Timestamp);
+        Assert.Same(first.Route.Points[^1], hold.Point);
+        Assert.Equal(start.AddHours(2), hold.Point.Timestamp);
+        Assert.Equal(TimeSpan.FromHours(-1), hold.OffsetFromRequestedTime);
+        Assert.False(hold.HasNativeSampleAtSelection);
         Assert.Contains(start.AddHours(4), timeline.Timestamps);
         Assert.True(timeline.TryGetPreviousTimestamp(start.AddHours(4), out var previous));
         Assert.Equal(start.AddHours(2), previous);
@@ -112,6 +114,25 @@ public sealed class SharedRouteTimelineTests
             start.AddHours(2),
             TimeSpan.FromHours(4),
             reason: RouteLegOutcomeReason.ForecastExhausted);
+        var timeline = SharedRouteTimeline.Create(ForecastModel.NoaaGfs, [leg]);
+
+        Assert.Equal(start.AddHours(2), timeline.End);
+        Assert.False(timeline.Select(timeline.End).IsStopover);
+    }
+
+    [Fact]
+    public void Duration_limited_leg_does_not_hold_at_unreached_stopover()
+    {
+        var start = new DateTimeOffset(2026, 7, 15, 0, 0, 0, TimeSpan.Zero);
+        var leg = CreateLeg(
+            new RoutePlanId(),
+            new RouteLegId(Guid.NewGuid()),
+            ForecastModel.NoaaGfs,
+            new RouteCalculationSessionId(),
+            start,
+            start.AddHours(2),
+            TimeSpan.FromHours(4),
+            reason: RouteLegOutcomeReason.DurationExhausted);
         var timeline = SharedRouteTimeline.Create(ForecastModel.NoaaGfs, [leg]);
 
         Assert.Equal(start.AddHours(2), timeline.End);

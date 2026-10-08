@@ -7,6 +7,64 @@ public sealed class RoutePlanTests
     private static readonly DateTimeOffset Now =
         new(2026, 8, 1, 18, 0, 0, TimeSpan.Zero);
 
+    [Theory]
+    [InlineData("departure")]
+    [InlineData("horizon")]
+    [InlineData("models")]
+    [InlineData("source")]
+    public void Planning_input_edits_have_a_distinct_invalidation_reason(string field)
+    {
+        var inputs = new RoutePlanningInputs();
+        var plan = WithSuccessfulResult(CreatePlan().WithPlanningInputs(inputs));
+        var edited = field switch
+        {
+            "departure" => inputs with { DepartureNow = false, ScheduledDepartureUtc = Now },
+            "horizon" => inputs with { PassageDays = 5 },
+            "models" => inputs with { UseEcmwf = true },
+            "source" => inputs with { ForecastSource = PlanningForecastSource.LocalFile, LocalGribPath = Path.GetFullPath("forecast.grib") },
+            _ => throw new ArgumentOutOfRangeException(nameof(field))
+        };
+
+        Assert.Same(plan, plan.WithPlanningInputs(inputs));
+        var changed = plan.WithPlanningInputs(edited);
+
+        Assert.All(changed.Results[0].Legs, leg =>
+        {
+            Assert.Equal(RouteLegOutcomeState.Invalidated, leg.State);
+            Assert.Equal(RouteLegOutcomeReason.PlanningInputsChanged, leg.Reason);
+        });
+        Assert.All(plan.Results[0].Legs, leg => Assert.Equal(RouteLegOutcomeState.Succeeded, leg.State));
+    }
+
+    [Fact]
+    public void Planning_inputs_preserve_legs_before_the_active_leg()
+    {
+        var plan = WithSuccessfulResult(CreatePlan());
+        plan = plan.SetActiveLeg(plan.Legs[1].Id);
+
+        var changed = plan.WithPlanningInputs(new RoutePlanningInputs());
+
+        Assert.Same(plan.Results[0].Legs[0], changed.Results[0].Legs[0]);
+        Assert.Equal(RouteLegOutcomeReason.PlanningInputsChanged, changed.Results[0].Legs[1].Reason);
+    }
+
+    [Fact]
+    public void Planning_inputs_defer_invalidation_of_sailed_legs_until_unmarked()
+    {
+        var plan = WithSuccessfulResult(CreatePlan());
+        var sailedLeg = plan.Legs[1].Id;
+        plan = plan.MarkSailed(sailedLeg);
+
+        var changed = plan.WithPlanningInputs(new RoutePlanningInputs());
+
+        Assert.Equal(RouteLegOutcomeState.Succeeded, changed.Results[0].Legs[1].State);
+        Assert.Same(plan.Results[0].Legs[1].Route, changed.Results[0].Legs[1].Route);
+        Assert.Equal(RouteLegOutcomeReason.PlanningInputsChanged, changed.Results[0].Legs[1].DeferredInvalidationReason);
+        var unmarked = changed.UnmarkSailed(sailedLeg);
+        Assert.Equal(RouteLegOutcomeState.Invalidated, unmarked.Results[0].Legs[1].State);
+        Assert.Equal(RouteLegOutcomeReason.PlanningInputsChanged, unmarked.Results[0].Legs[1].Reason);
+    }
+
     [Fact]
     public void Validates_fixed_boundaries_minimum_and_adjacent_coordinates()
     {

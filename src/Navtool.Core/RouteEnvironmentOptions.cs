@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace Navtool.Core;
 
 /// <summary>
@@ -189,8 +191,8 @@ public sealed record RouteCurrentOptions
         UniformEastKnots = uniformEastKnots;
         UniformNorthKnots = uniformNorthKnots;
         Grid = grid;
-        EastKnots = eastKnots;
-        NorthKnots = northKnots;
+        EastKnots = eastKnots?.ToImmutableArray();
+        NorthKnots = northKnots?.ToImmutableArray();
         MissingDataPolicy = missingDataPolicy;
         Metadata = metadata;
     }
@@ -380,9 +382,9 @@ public sealed record RouteWaveOptions
         UniformPeakPeriodSeconds = uniformPeakPeriodSeconds;
         UniformDirectionFromDegrees = uniformDirectionFromDegrees;
         Grid = grid;
-        SignificantHeightMetres = significantHeightMetres;
-        PeakPeriodSeconds = peakPeriodSeconds;
-        DirectionFromDegrees = directionFromDegrees;
+        SignificantHeightMetres = significantHeightMetres?.ToImmutableArray();
+        PeakPeriodSeconds = peakPeriodSeconds?.ToImmutableArray();
+        DirectionFromDegrees = directionFromDegrees?.ToImmutableArray();
         Derating = derating;
         MissingDataPolicy = missingDataPolicy;
         Metadata = metadata;
@@ -604,7 +606,7 @@ public sealed record RouteLandmaskOptions
         }
 
         Grid = grid;
-        SignedDistanceNauticalMiles = signedDistanceNauticalMiles;
+        SignedDistanceNauticalMiles = signedDistanceNauticalMiles.ToImmutableArray();
         ResolutionNauticalMiles = resolutionNauticalMiles;
         InterpolationErrorNauticalMiles = interpolationErrorNauticalMiles;
         ClearanceNauticalMiles = clearanceNauticalMiles;
@@ -652,7 +654,7 @@ public sealed record RouteExclusionRing
                 nameof(vertices));
         }
 
-        Vertices = vertices;
+        Vertices = vertices.ToImmutableArray();
     }
 
     public IReadOnlyList<Coordinate> Vertices { get; }
@@ -667,7 +669,7 @@ public sealed record RouteExclusionPolygon
     {
         ArgumentNullException.ThrowIfNull(outer);
         Outer = outer;
-        Holes = holes ?? Array.Empty<RouteExclusionRing>();
+        Holes = (holes ?? []).ToImmutableArray();
     }
 
     public RouteExclusionRing Outer { get; }
@@ -717,7 +719,7 @@ public sealed record RouteExclusionZone
 
         Identifier = identifier;
         Source = source;
-        Polygons = polygons;
+        Polygons = polygons.ToImmutableArray();
         Revision = revision;
         ActiveFrom = activeFrom;
         ActiveUntil = activeUntil;
@@ -773,7 +775,7 @@ public sealed record RouteExclusionOptions
             }
         }
 
-        Zones = zones;
+        Zones = zones.ToImmutableArray();
         Metadata = metadata;
         BoundaryPolicy = boundaryPolicy;
     }

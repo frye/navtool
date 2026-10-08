@@ -4,6 +4,10 @@ namespace Navtool.App.Tests;
 
 public sealed class RouteMapSelectionTests
 {
+    [Fact]
+    public void Missing_audit_is_explicitly_unavailable() =>
+        Assert.Equal("unavailable", RouteMapSelection.FormatApparentWindAngle(null));
+
     [Theory]
     [InlineData(68.198, "68° S")]
     [InlineData(-68.198, "68° P")]

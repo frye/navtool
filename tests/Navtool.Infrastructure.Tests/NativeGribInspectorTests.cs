@@ -1,4 +1,3 @@
-using System.Reflection;
 using Navtool.Core;
 using Navtool.Infrastructure;
 
@@ -7,58 +6,20 @@ namespace Navtool.Infrastructure.Tests;
 /// <summary>
 /// Tests for the native bridge preflight check (NativeRouterBridge construction as preflight)
 /// and the GRIB inspection service (NativeGribInspector / NativeRouterBridge.InspectGrib).
-/// Tests skip gracefully when the native library or the sample GRIB is unavailable,
-/// following the same pattern as NativeRouterBridgeIntegrationTests.
+/// Optional developer runs can omit native artifacts. Required CI mode fails on
+/// missing bridge or fixture paths instead of silently passing without coverage.
 /// </summary>
 public sealed class NativeGribInspectorTests
 {
     // The same sample search logic used by NativeRouterBridgeIntegrationTests.
     private static string? FindSampleGrib()
     {
-        var configured = Environment.GetEnvironmentVariable("NAVTOOL_ROUTER_SAMPLE_GRIB");
-        if (!string.IsNullOrWhiteSpace(configured))
-        {
-            var full = Path.GetFullPath(configured);
-            return File.Exists(full) ? full : null;
-        }
-
-        var repository = FindAncestor(AppContext.BaseDirectory, "Navtool.sln");
-        if (repository is null)
-        {
-            return null;
-        }
-
-        var candidate = Path.GetFullPath(
-            Path.Combine(repository, "..", "router-lib", "samples", "sample.grib"));
-        return File.Exists(candidate) ? candidate : null;
+        return NativeIntegration.Sample();
     }
 
     private static NativeRouterBridge? TryCreateBridge()
     {
-        try
-        {
-            return new NativeRouterBridge();
-        }
-        catch (NativeBridgeUnavailableException)
-        {
-            return null;
-        }
-    }
-
-    private static string? FindAncestor(string start, string marker)
-    {
-        var directory = new DirectoryInfo(start);
-        while (directory is not null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, marker)))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        return null;
+        return NativeIntegration.Bridge();
     }
 
     // ---- INativeRoutingPreflight contract (NativeRouterBridge construction performs preflight) ----

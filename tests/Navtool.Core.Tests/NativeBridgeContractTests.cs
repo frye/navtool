@@ -12,8 +12,9 @@ public sealed class NativeBridgeContractTests
             from,
             from.AddDays(2));
         var run = new ForecastRun(ForecastProvider.Noaa, ForecastModel.NoaaGfs, from.AddHours(-6));
+        var artifactPath = Path.GetFullPath("gfs-20260715-00.grib2");
         var artifact = new LocalGribArtifact(
-            "/var/lib/navtool/gfs-20260715-00.grib2",
+            artifactPath,
             4_096,
             from.AddMinutes(-5));
         var cache = new CacheMetadata("gfs/run-00", from.AddMinutes(-10), from.AddHours(1));
@@ -27,7 +28,7 @@ public sealed class NativeBridgeContractTests
 
         Assert.Equal(ForecastProvider.Noaa, acquisition.Provider);
         Assert.Equal(run, acquisition.Run);
-        Assert.Equal("/var/lib/navtool/gfs-20260715-00.grib2", acquisition.Artifact.Path);
+        Assert.Equal(artifactPath, acquisition.Artifact.Path);
         Assert.Equal(4_096, acquisition.Artifact.LengthBytes);
         Assert.Equal(cache, acquisition.Cache);
         Assert.Equal(ForecastAcquisitionSource.Cache, acquisition.Source);
@@ -38,7 +39,7 @@ public sealed class NativeBridgeContractTests
     {
         Assert.Throws<ArgumentException>(() => new LocalGribArtifact("relative/file.grib2"));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            new LocalGribArtifact("/var/lib/navtool/file.grib2", -1));
+            new LocalGribArtifact(Path.GetFullPath("file.grib2"), -1));
     }
 
     [Fact]
@@ -82,11 +83,24 @@ public sealed class NativeBridgeContractTests
             boatSpeedKnots,
             trueWindSpeedKnots,
             trueWindDirectionDegrees,
-            81.2);
+            81.2,
+            environment: null,
+            polarWindSpeedKnots: trueWindSpeedKnots,
+            polarWindDirectionDegrees: trueWindDirectionDegrees);
 
-        Assert.Equal(expectedSignedAngle, point.ApparentWindAngleSignedDegrees, 6);
-        Assert.Equal(Math.Abs(expectedSignedAngle), point.ApparentWindAngleDegrees, 6);
-        Assert.Equal(expectedSpeed, point.ApparentWindSpeedKnots, 6);
+        Assert.Equal(expectedSignedAngle, point.ApparentWindAngleSignedDegrees!.Value, 6);
+        Assert.Equal(Math.Abs(expectedSignedAngle), point.ApparentWindAngleDegrees!.Value, 6);
+        Assert.Equal(expectedSpeed, point.ApparentWindSpeedKnots!.Value, 6);
+        if (trueWindSpeedKnots == 0)
+            Assert.Null(point.TrueWindAngleSignedDegrees);
+        else
+        {
+            var expectedTrueWindAngle = (trueWindDirectionDegrees - headingDegrees + 540) % 360 - 180;
+            if (expectedTrueWindAngle == -180)
+                Assert.Equal(180, Math.Abs(point.TrueWindAngleSignedDegrees!.Value), 6);
+            else
+                Assert.Equal(expectedTrueWindAngle, point.TrueWindAngleSignedDegrees!.Value, 6);
+        }
     }
 
     [Fact]
@@ -363,6 +377,33 @@ public sealed class NativeBridgeContractTests
 
         Assert.True(updated.IsForecastLimited);
         Assert.Equal(LandAvoidanceStatus.RouterUnsupported, updated.LandAvoidance.Status);
+    }
+
+    [Fact]
+    public void Duration_limited_route_is_partial_but_not_forecast_limited()
+    {
+        var departure = new DateTimeOffset(2026, 7, 15, 0, 0, 0, TimeSpan.Zero);
+        var request = new RouteRequest(
+            "route-duration-limited",
+            new Coordinate(40, -60),
+            new Coordinate(45, -55),
+            departure,
+            departure.AddHours(10));
+        var result = new RouteResult(
+            request,
+            ForecastModel.NoaaGfs,
+            new[]
+            {
+                new RoutePoint(request.Origin, departure, 45, 6, 15, 200, 0),
+                new RoutePoint(new Coordinate(42, -58), departure.AddHours(8), 45, 6, 15, 200, 20)
+            },
+            new RouteDiagnostics(1, 2, 1, 2),
+            RouteCompletion.DurationExhausted);
+
+        Assert.True(result.IsPartial);
+        Assert.True(result.IsDurationLimited);
+        Assert.False(result.IsForecastLimited);
+        Assert.False(result.IsComplete);
     }
 
     [Fact]

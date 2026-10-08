@@ -17,6 +17,11 @@ jobs:
   test:
     name: Run all unit tests
     runs-on: ubuntu-latest
+    env:
+      NAVTOOL_REQUIRE_NATIVE_TESTS: "1"
+      NAVTOOL_ROUTER_BRIDGE_PATH: ${{ github.workspace }}/native/Navtool.RouterBridge/build/libnavtool_router_bridge.so
+      NAVTOOL_ROUTER_SAMPLE_GRIB: ${{ github.workspace }}/native/Navtool.RouterBridge/build/_deps/sailroute-src/samples/sample.grib
+      NAVTOOL_ROUTER_V8_FIXTURE_DIR: ${{ github.workspace }}/native/Navtool.RouterBridge/build/fixtures-v8
 
     steps:
       - name: Check out repository
@@ -44,3 +49,61 @@ jobs:
 
       - name: Run managed unit tests
         run: dotnet test Navtool.sln --configuration Release --no-restore
+
+      - name: Preserve real native v2 diagnostic fixtures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-v8-fixtures-linux-x64
+          path: native/Navtool.RouterBridge/build/fixtures-v8
+          if-no-files-found: error
+
+  native-platform:
+    name: Native and managed ABI8 (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      NAVTOOL_REQUIRE_NATIVE_TESTS: "1"
+      NAVTOOL_ROUTER_SAMPLE_GRIB: ${{ github.workspace }}/native/Navtool.RouterBridge/build/_deps/sailroute-src/samples/sample.grib
+      NAVTOOL_ROUTER_V8_FIXTURE_DIR: ${{ github.workspace }}/native/Navtool.RouterBridge/build/fixtures-v8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - name: Install ecCodes on macOS
+        if: runner.os == 'macOS'
+        run: brew install eccodes
+      - name: Install ecCodes on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install eccodes:x64-windows
+          if ($LASTEXITCODE -ne 0) { throw "ecCodes install failed" }
+          "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin" >> $env:GITHUB_PATH
+          "CMAKE_PREFIX_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
+      - name: Native build and tests on macOS
+        if: runner.os == 'macOS'
+        run: ./scripts/build-native.sh
+      - name: Native build and tests on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build-native.ps1
+      - name: Select current-worktree bridge on macOS
+        if: runner.os == 'macOS'
+        run: echo "NAVTOOL_ROUTER_BRIDGE_PATH=$GITHUB_WORKSPACE/native/Navtool.RouterBridge/build/libnavtool_router_bridge.dylib" >> "$GITHUB_ENV"
+      - name: Select current-worktree bridge on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bridge = Join-Path $env:GITHUB_WORKSPACE "native/Navtool.RouterBridge/build/Release/navtool_router_bridge.dll"
+          if (-not (Test-Path $bridge)) {
+            $bridge = Join-Path $env:GITHUB_WORKSPACE "native/Navtool.RouterBridge/build/navtool_router_bridge.dll"
+          }
+          if (-not (Test-Path $bridge)) { throw "Current-worktree bridge is missing" }
+          "NAVTOOL_ROUTER_BRIDGE_PATH=$bridge" >> $env:GITHUB_ENV
+      - name: Run managed tests with mandatory native boundary
+        run: dotnet test Navtool.sln --configuration Release

@@ -43,10 +43,14 @@ public interface ILocalGribInspector
 public sealed class NativeLocalGribInspector : ILocalGribInspector
 {
     private readonly NativeRouterBridge _bridge;
+    private readonly TimeSpan _maximumInterpolationGap;
 
-    public NativeLocalGribInspector(NativeRouterBridge? bridge = null)
+    public NativeLocalGribInspector(NativeRouterBridge? bridge = null, TimeSpan? maximumInterpolationGap = null)
     {
         _bridge = bridge ?? new NativeRouterBridge();
+        _maximumInterpolationGap = maximumInterpolationGap ?? TimeSpan.FromHours(6);
+        if (_maximumInterpolationGap <= TimeSpan.Zero || _maximumInterpolationGap.Ticks % TimeSpan.TicksPerSecond != 0)
+            throw new ArgumentOutOfRangeException(nameof(maximumInterpolationGap));
     }
 
     public ValueTask<LocalForecastDescriptor> InspectAsync(
@@ -64,8 +68,17 @@ public sealed class NativeLocalGribInspector : ILocalGribInspector
         // Normalize once so the value handed to the native bridge (which normalizes
         // internally) matches the path recorded on the returned artifact.
         var normalizedPath = Path.GetFullPath(absolutePath);
+        if (!File.Exists(normalizedPath))
+            throw new FileNotFoundException("The GRIB file does not exist.", normalizedPath);
+        return new ValueTask<LocalForecastDescriptor>(Task.Run(
+            () => InspectCore(normalizedPath, cancellationToken), cancellationToken));
+    }
 
+    private LocalForecastDescriptor InspectCore(string normalizedPath, CancellationToken cancellationToken)
+    {
         var descriptor = _bridge.InspectGrib(normalizedPath, cancellationToken);
+        using var validatedForecast = _bridge.LoadForecast(normalizedPath, cancellationToken: cancellationToken,
+            maximumInterpolationGap: _maximumInterpolationGap);
 
         var model = descriptor.ModelId switch
         {
@@ -84,7 +97,7 @@ public sealed class NativeLocalGribInspector : ILocalGribInspector
 
         try
         {
-            return ValueTask.FromResult(new LocalForecastDescriptor(
+            return new LocalForecastDescriptor(
                 model,
                 artifact,
                 descriptor.InitializedAt,
@@ -94,7 +107,7 @@ public sealed class NativeLocalGribInspector : ILocalGribInspector
                     descriptor.SouthLatitudeDegrees,
                     descriptor.NorthLatitudeDegrees,
                     descriptor.WestLongitudeDegrees,
-                    descriptor.EastLongitudeDegrees)));
+                    descriptor.EastLongitudeDegrees));
         }
         catch (ArgumentException exception) when (exception is not ArgumentNullException)
         {

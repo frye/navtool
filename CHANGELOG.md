@@ -79,6 +79,11 @@ bridge launch guidance and automated validation.
 
 ### Improved
 
+- Reduced ECMWF Open Data request volume by retrieving paired 10 m U/V fields
+  with one multipart byte-range request per forecast time, with consistent
+  request pacing and `Retry-After`-aware rate-limit handling. Forecast settings
+  can now cap ECMWF cache age at 6, 12, or 24 hours, or keep the default
+  unlimited cache lifetime.
 - Synchronized route inspection, timeline selection, popup telemetry, active
   weather model, and map wind overlays, and added a one-shot radial toggle to
   refresh from the newest available forecast run.

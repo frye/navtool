@@ -1,5 +1,6 @@
 using BruTile.Cache;
 using Mapsui;
+using Mapsui.Extensions;
 using Mapsui.Layers;
 using Mapsui.Nts;
 using Mapsui.Styles;
@@ -29,7 +30,21 @@ public sealed record OsmTileOptions(
             : new FileCache(CacheDirectory, "png", CacheRetention);
 }
 
-public sealed record WaypointMapMarker(int Number, string Name, CoreCoordinate? Coordinate);
+public sealed record WaypointMapMarker(
+    int Number,
+    string Name,
+    CoreCoordinate? Coordinate,
+    RouteWaypointId Id = default,
+    bool IsSelected = false)
+{
+    public string AccessibleName => Coordinate is not { } coordinate
+        ? $"Waypoint {Number}: {Name}, coordinate not set"
+        : $"Waypoint {Number}: {Name}, " +
+          $"{Math.Abs(coordinate.Latitude):0.000} degrees " +
+          $"{(coordinate.Latitude >= 0 ? "north" : "south")}, " +
+          $"{Math.Abs(coordinate.Longitude):0.000} degrees " +
+          $"{(coordinate.Longitude >= 0 ? "east" : "west")}";
+}
 
 public sealed class RouteMapLayers
 {
@@ -40,7 +55,11 @@ public sealed class RouteMapLayers
     public const float HistoricalFrontOpacity = 0.18f;
     public const double DestinationFrontLineWidth = 2.0;
     public const float DestinationFrontOpacity = 0.92f;
+    public const int MaximumHistoricalFrontFeatures = 128;
+    public const int MaximumLiveSearchPoints = 2048;
+    public const int MaximumDisplayFrontPoints = 2048;
     private const int IsochroneSmoothingIterations = 2;
+    private const double InterruptedRouteViewportMargin = 24;
 
     private readonly MemoryLayer _noaaRoutes = CreateRouteLayer("NOAA GFS routes");
     private readonly MemoryLayer _ecmwfRoutes = CreateRouteLayer("ECMWF IFS routes");
@@ -56,6 +75,11 @@ public sealed class RouteMapLayers
     private readonly MemoryLayer _ecmwfProvisionalRoute = CreateProvisionalRouteLayer(
         "ECMWF IFS provisional route",
         EcmwfColor);
+    private readonly MemoryLayer _noaaInterruptedRoute = CreateRouteLayer("NOAA GFS interrupted route");
+    private readonly MemoryLayer _ecmwfInterruptedRoute = CreateRouteLayer("ECMWF IFS interrupted route");
+    private readonly MemoryLayer _interruptedEndpoints = CreateRouteLayer("Interrupted route endpoints");
+    private IReadOnlyList<(ForecastModel Model, CoreCoordinate[] Path)> _interruptedPaths =
+        Array.Empty<(ForecastModel, CoreCoordinate[])>();
     private readonly Dictionary<ForecastModel, List<IFeature>> _historicalFrontFeatures = new()
     {
         [ForecastModel.NoaaGfs] = new List<IFeature>(),
@@ -73,6 +97,8 @@ public sealed class RouteMapLayers
     };
     private readonly MemoryLayer _waypointMarkers = new("Waypoint markers") { Style = null };
     private readonly MemoryLayer _currentPositionMarkers = new("Current position") { Style = null };
+    private readonly MemoryLayer _arrivalAreas = new("Nominal arrival areas") { Style = null };
+    private readonly MemoryLayer _actualEndpoints = new("Actual model endpoints") { Style = null };
 
     public RouteMapLayers(Map map)
     {
@@ -89,8 +115,13 @@ public sealed class RouteMapLayers
         map.Layers.Add(_ecmwfSearchPoints);
         map.Layers.Add(_noaaProvisionalRoute);
         map.Layers.Add(_ecmwfProvisionalRoute);
+        map.Layers.Add(_noaaInterruptedRoute);
+        map.Layers.Add(_ecmwfInterruptedRoute);
+        map.Layers.Add(_interruptedEndpoints);
         map.Layers.Add(_noaaRoutes);
         map.Layers.Add(_ecmwfRoutes);
+        map.Layers.Add(_arrivalAreas);
+        map.Layers.Add(_actualEndpoints);
         map.Layers.Add(_waypointMarkers);
         map.Layers.Add(_currentPositionMarkers);
     }
@@ -101,6 +132,9 @@ public sealed class RouteMapLayers
 
     public IReadOnlyList<RouteLegVisualization> RouteLegs { get; private set; } =
         Array.Empty<RouteLegVisualization>();
+
+    public IReadOnlyList<WaypointMapMarker> Waypoints { get; private set; } =
+        Array.Empty<WaypointMapMarker>();
 
     public RouteVisualizationKey? SelectedRouteKey { get; private set; }
 
@@ -129,6 +163,151 @@ public sealed class RouteMapLayers
     public bool HasSearchPoint(ForecastModel model) =>
         GetSearchPointLayer(model).Features.Any();
 
+    public bool HasInterruptedRoutes => _interruptedPaths.Count > 0;
+
+    private readonly Dictionary<ForecastModel, IReadOnlyList<MPoint>> _interruptedProjections = [];
+
+    public IReadOnlyList<MPoint> GetInterruptedRoutePoints(ForecastModel model) =>
+        _interruptedProjections.TryGetValue(model, out var points) ? points : Array.Empty<MPoint>();
+
+    public void SetInterruptedRoutes(
+        IEnumerable<(ForecastModel Model, RouteCalculationSnapshot Snapshot)> previews)
+    {
+        ArgumentNullException.ThrowIfNull(previews);
+        var paths = previews.Select(preview =>
+        {
+            ArgumentNullException.ThrowIfNull(preview.Snapshot);
+            _ = GetProvisionalRouteLayer(preview.Model);
+            return (preview.Model, Path: preview.Snapshot.ProvisionalRoute
+                .Select(point => point.Location).ToArray());
+        }).ToArray();
+
+        // Retain only screen geometry, not snapshots, search history, or accepted RouteResults.
+        _interruptedPaths = paths;
+        foreach (var model in paths.Select(path => path.Model).Distinct())
+        {
+            ClearCalculationOverlay(model, refresh: false);
+        }
+        UpdateInterruptedRouteFeatures();
+        Map.Refresh(ChangeType.Discrete);
+    }
+
+    public void ClearInterruptedRoutes()
+    {
+        _interruptedPaths = Array.Empty<(ForecastModel, CoreCoordinate[])>();
+        UpdateInterruptedRouteFeatures();
+        Map.Refresh(ChangeType.Discrete);
+    }
+
+    /// <summary>
+    /// Preserves the current viewport when retained paths fit with a screen margin;
+    /// otherwise fits only those paths. Returns true when a fit was requested.
+    /// </summary>
+    public bool KeepInterruptedRoutesVisible()
+    {
+        if (!HasInterruptedRoutes)
+        {
+            return false;
+        }
+
+        var viewport = Map.Navigator.Viewport;
+        var projected = UpdateInterruptedRouteFeatures();
+        Map.Refresh(ChangeType.Discrete);
+        if (viewport.Width <= InterruptedRouteViewportMargin * 2 ||
+            viewport.Height <= InterruptedRouteViewportMargin * 2)
+        {
+            return false;
+        }
+
+        var screenPoints = projected.Select(point => viewport.WorldToScreen(point)).ToArray();
+        if (screenPoints.All(point =>
+                point.X >= InterruptedRouteViewportMargin &&
+                point.X <= viewport.Width - InterruptedRouteViewportMargin &&
+                point.Y >= InterruptedRouteViewportMargin &&
+                point.Y <= viewport.Height - InterruptedRouteViewportMargin))
+        {
+            return false;
+        }
+
+        var extent = new MRect(
+            projected.Min(point => point.X),
+            projected.Min(point => point.Y),
+            projected.Max(point => point.X),
+            projected.Max(point => point.Y));
+        var padded = extent.Grow(Math.Max(extent.Width, extent.Height) * 0.12 + 1_000);
+        // Measure the padded box in screen space so a rotated viewport also fits the path.
+        var corners = new[]
+        {
+            new MPoint(padded.Left, padded.Bottom),
+            new MPoint(padded.Left, padded.Top),
+            new MPoint(padded.Right, padded.Bottom),
+            new MPoint(padded.Right, padded.Top)
+        }.Select(point => viewport.WorldToScreen(point)).ToArray();
+        var resolution = viewport.Resolution * Math.Max(
+            (corners.Max(point => point.X) - corners.Min(point => point.X)) /
+            (viewport.Width - InterruptedRouteViewportMargin * 2),
+            (corners.Max(point => point.Y) - corners.Min(point => point.Y)) /
+            (viewport.Height - InterruptedRouteViewportMargin * 2));
+        Map.Navigator.CenterOnAndZoomTo(
+            new MPoint(
+                (extent.Left + extent.Right) / 2,
+                (extent.Bottom + extent.Top) / 2),
+            resolution);
+        return true;
+    }
+
+    private IReadOnlyList<MPoint> UpdateInterruptedRouteFeatures()
+    {
+        _interruptedProjections.Clear();
+        var features = new List<IFeature>();
+        var allPoints = new List<MPoint>();
+        var referenceX = Map.Navigator.Viewport.CenterX;
+        foreach (var (model, path) in _interruptedPaths)
+        {
+            var points = MapProjection.ToContinuousMapPointsNear(path, referenceX);
+            _interruptedProjections[model] = points;
+            if (allPoints.Count == 0)
+            {
+                referenceX = (points.Min(point => point.X) + points.Max(point => point.X)) / 2;
+            }
+            allPoints.AddRange(points);
+            var color = model == ForecastModel.NoaaGfs ? NoaaColor : EcmwfColor;
+            if (points.Count > 1)
+            {
+                var line = CreateRouteFeature(points, model)!;
+                line.Styles.Add(new VectorStyle
+                {
+                    Fill = null,
+                    Line = new Pen(color, 3) { PenStyle = PenStyle.Dash },
+                    Opacity = 0.85f
+                });
+                features.Add(line);
+            }
+            var endpoint = new GeometryFeature(new Point(points[^1].X, points[^1].Y))
+            {
+                Data = model
+            };
+            endpoint.Styles.Add(new SymbolStyle
+            {
+                SymbolType = SymbolType.Ellipse,
+                SymbolScale = 0.4,
+                Fill = new Brush(color),
+                Outline = new Pen(color, 1)
+            });
+            features.Add(endpoint);
+        }
+        _noaaInterruptedRoute.Features = features.Where(feature =>
+            Equals(feature.Data, ForecastModel.NoaaGfs) && ((GeometryFeature)feature).Geometry is LineString).ToArray();
+        _ecmwfInterruptedRoute.Features = features.Where(feature =>
+            Equals(feature.Data, ForecastModel.EcmwfIfs) && ((GeometryFeature)feature).Geometry is LineString).ToArray();
+        _interruptedEndpoints.Features = features.Where(feature =>
+            ((GeometryFeature)feature).Geometry is Point).ToArray();
+        _noaaInterruptedRoute.FeaturesWereModified();
+        _ecmwfInterruptedRoute.FeaturesWereModified();
+        _interruptedEndpoints.FeaturesWereModified();
+        return allPoints;
+    }
+
     public void SetRoutes(IEnumerable<RouteResult> routes)
     {
         ArgumentNullException.ThrowIfNull(routes);
@@ -144,6 +323,7 @@ public sealed class RouteMapLayers
             EcmwfColor);
         _noaaRoutes.FeaturesWereModified();
         _ecmwfRoutes.FeaturesWereModified();
+        UpdateEndpointMarkers();
         Map.Refresh(ChangeType.Discrete);
     }
 
@@ -165,7 +345,78 @@ public sealed class RouteMapLayers
             selectedKey);
         _noaaRoutes.FeaturesWereModified();
         _ecmwfRoutes.FeaturesWereModified();
+        UpdateEndpointMarkers();
         Map.Refresh(ChangeType.Discrete);
+    }
+
+    public void SetArrivalAreas(IEnumerable<(CoreCoordinate Center, double RadiusNauticalMiles)> areas)
+    {
+        _arrivalAreas.Features = areas
+            .Where(area => double.IsFinite(area.RadiusNauticalMiles) && area.RadiusNauticalMiles > 0)
+            .Distinct()
+            .Select(area =>
+            {
+                var matchingRoute = Routes.FirstOrDefault(route => route.Request.Destination.IsSameLocation(area.Center));
+                var referenceX = matchingRoute is null ? MapProjection.ToMapPoint(area.Center).X :
+                    ProjectEndpoint(matchingRoute).X;
+                var latitude = area.Center.Latitude * Math.PI / 180;
+                var longitude = area.Center.Longitude * Math.PI / 180;
+                var distance = area.RadiusNauticalMiles / 3440.065;
+                var ring = Enumerable.Range(0, 73).Select(index =>
+                {
+                    var bearing = index * 5 * Math.PI / 180;
+                    var lat = Math.Asin(Math.Sin(latitude) * Math.Cos(distance) +
+                                       Math.Cos(latitude) * Math.Sin(distance) * Math.Cos(bearing));
+                    var lon = longitude + Math.Atan2(
+                        Math.Sin(bearing) * Math.Sin(distance) * Math.Cos(latitude),
+                        Math.Cos(distance) - Math.Sin(latitude) * Math.Sin(lat));
+                    return new CoreCoordinate(lat * 180 / Math.PI,
+                        ((lon * 180 / Math.PI + 540) % 360) - 180);
+                });
+                var feature = new GeometryFeature(new LineString(
+                    MapProjection.ToContinuousMapPointsNear(ring, referenceX)
+                        .Select(point => new NtsCoordinate(point.X, point.Y)).ToArray()))
+                {
+                    Data = area
+                };
+                feature.Styles.Add(new VectorStyle
+                {
+                    Fill = null,
+                    Line = new Pen(MapsuiColor.FromString("#607D8B"), 1),
+                    Opacity = 0.6f
+                });
+                return feature;
+            }).ToArray();
+        _arrivalAreas.FeaturesWereModified();
+        Map.Refresh(ChangeType.Discrete);
+    }
+
+    private void UpdateEndpointMarkers()
+    {
+        _actualEndpoints.Features = Routes.Select(route =>
+        {
+            var point = ProjectEndpoint(route);
+            var feature = new GeometryFeature(new Point(point.X, point.Y)) { Data = route };
+            feature.Styles.Add(new LabelStyle
+            {
+                Text = $"{(route.Model == ForecastModel.NoaaGfs ? "NOAA" : "ECMWF")} " +
+                       (route.Completion == RouteCompletion.DestinationReached ? "arrival" : "partial"),
+                ForeColor = MapsuiColor.White,
+                BackColor = new Brush(route.Model == ForecastModel.NoaaGfs ? NoaaColor : EcmwfColor),
+                Font = new Font { Size = 10 },
+                CornerRounding = 3
+            });
+            return feature;
+        }).ToArray();
+        _actualEndpoints.FeaturesWereModified();
+    }
+
+    private MPoint ProjectEndpoint(RouteResult route)
+    {
+        var leg = RouteLegs.FirstOrDefault(item => ReferenceEquals(item.Route, route));
+        return leg is null
+            ? MapProjection.ToContinuousMapPoints(route.Points.Select(point => point.Location))[^1]
+            : GetProjectedRoutePoint(leg.Key, route.Points.Length - 1)!;
     }
 
     public void SelectRouteLeg(RouteVisualizationKey? key) =>
@@ -175,6 +426,7 @@ public sealed class RouteMapLayers
     {
         ArgumentNullException.ThrowIfNull(waypoints);
         var ordered = waypoints.OrderBy(waypoint => waypoint.Number).ToArray();
+        Waypoints = ordered;
         _waypointMarkers.Features = ordered
             .Where(waypoint => waypoint.Coordinate is not null)
             .Select(CreateWaypointMarker)
@@ -234,6 +486,14 @@ public sealed class RouteMapLayers
                 RouteLegs.Where(leg => leg.Key.Model == key.Model))
             .SingleOrDefault(item => item.Leg.Key == key)
             ?.Points;
+        FitRoutePoints(projected);
+    }
+
+    public void FitInterruptedRoute(ForecastModel model) =>
+        FitRoutePoints(GetInterruptedRoutePoints(model));
+
+    private void FitRoutePoints(IReadOnlyList<MPoint>? projected)
+    {
         if (projected is null || projected.Count == 0)
         {
             return;
@@ -266,7 +526,12 @@ public sealed class RouteMapLayers
         ArgumentNullException.ThrowIfNull(snapshot);
         var frontFeatures = CreateIsochroneFrontFeatures(snapshot).ToArray();
         var historicalFronts = GetHistoricalFrontFeatures(model);
-        historicalFronts.AddRange(frontFeatures);
+        historicalFronts.AddRange(frontFeatures.Select(front => new GeometryFeature(
+            ((GeometryFeature)front).Geometry) { Data = snapshot.FrontierTime }));
+        if (historicalFronts.Count > MaximumHistoricalFrontFeatures)
+        {
+            historicalFronts.RemoveRange(0, historicalFronts.Count - MaximumHistoricalFrontFeatures);
+        }
         var historicalFrontLayer = GetHistoricalFrontLayer(model);
         historicalFrontLayer.Features = historicalFronts.ToArray();
         historicalFrontLayer.FeaturesWereModified();
@@ -277,12 +542,15 @@ public sealed class RouteMapLayers
 
         var searchPointLayer = GetSearchPointLayer(model);
         searchPointLayer.Features = snapshot.SearchPoints
+            .TakeLast(MaximumLiveSearchPoints)
             .Select(point => CreateSearchPoint(point, model, snapshot))
             .ToArray();
         searchPointLayer.FeaturesWereModified();
 
         var provisionalLayer = GetProvisionalRouteLayer(model);
-        var provisionalRoute = CreateRouteFeature(snapshot.ProvisionalRoute, snapshot);
+        var provisionalRoute = snapshot.ProvisionalRoute.Length < 2
+            ? null
+            : CreateRouteFeature(snapshot.ProvisionalRoute, snapshot);
         provisionalLayer.Features = provisionalRoute is null
             ? Array.Empty<IFeature>()
             : new[] { provisionalRoute };
@@ -356,9 +624,11 @@ public sealed class RouteMapLayers
             Text = marker.Number.ToString(),
             Font = new Font { Size = 12, Bold = true },
             ForeColor = MapsuiColor.White,
-            BackColor = new Brush(MapsuiColor.FromString("#263238")),
-            BorderColor = MapsuiColor.White,
-            BorderThickness = 2,
+            BackColor = new Brush(MapsuiColor.FromString(
+                marker.IsSelected ? "#005A71" : "#263238")),
+            BorderColor = MapsuiColor.FromString(
+                marker.IsSelected ? "#FFB000" : "#FFFFFF"),
+            BorderThickness = marker.IsSelected ? 4 : 2,
             CornerRounding = 14
         });
         return feature;
@@ -548,7 +818,7 @@ public sealed class RouteMapLayers
         object data)
     {
         var routePoints = points.ToArray();
-        if (routePoints.Length < 2)
+        if (routePoints.Length == 0)
         {
             return null;
         }
@@ -557,7 +827,9 @@ public sealed class RouteMapLayers
                 routePoints.Select(point => point.Location))
             .Select(point => new NtsCoordinate(point.X, point.Y))
             .ToArray();
-        var feature = new GeometryFeature(new LineString(coordinates));
+        var feature = new GeometryFeature(coordinates.Length == 1
+            ? new Point(coordinates[0])
+            : new LineString(coordinates));
         feature.Data = data;
         return feature;
     }
@@ -566,14 +838,16 @@ public sealed class RouteMapLayers
         IReadOnlyList<MPoint> points,
         object data)
     {
-        if (points.Count < 2)
+        if (points.Count == 0)
         {
             return null;
         }
 
-        return new GeometryFeature(new LineString(points
-            .Select(point => new NtsCoordinate(point.X, point.Y))
-            .ToArray()))
+        return new GeometryFeature(points.Count == 1
+            ? new Point(points[0].X, points[0].Y)
+            : new LineString(points
+                .Select(point => new NtsCoordinate(point.X, point.Y))
+                .ToArray()))
         {
             Data = data
         };
@@ -595,8 +869,11 @@ public sealed class RouteMapLayers
                 continue;
             }
 
+            var stride = Math.Max(1, (int)Math.Ceiling(segment.Points.Length / (double)MaximumDisplayFrontPoints));
+            var displayPoints = segment.Points.Where((_, index) => index % stride == 0)
+                .Append(segment.Points[^1]).Distinct();
             var coordinates = MapProjection.ToContinuousMapPointsNear(
-                    segment.Points,
+                    displayPoints,
                     referenceX)
                 .Select(point => new NtsCoordinate(point.X, point.Y))
                 .ToArray();

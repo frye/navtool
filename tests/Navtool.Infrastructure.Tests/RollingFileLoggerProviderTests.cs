@@ -16,7 +16,7 @@ public sealed class RollingFileLoggerProviderTests
 
         logger.LogInformation(new EventId(42, "forecast-ready"), "Stored {Count} steps", 12);
 
-        var line = Assert.Single(File.ReadAllLines(provider.CurrentPath));
+        var line = Assert.Single(ReadLogLines(provider.CurrentPath));
         using var document = JsonDocument.Parse(line);
         Assert.Equal("Information", document.RootElement.GetProperty("Level").GetString());
         Assert.Equal("Navtool.Tests", document.RootElement.GetProperty("Category").GetString());
@@ -44,7 +44,7 @@ public sealed class RollingFileLoggerProviderTests
         Assert.Equal(3, files.Length);
         Assert.Contains(provider.CurrentPath, files);
         Assert.All(
-            files.SelectMany(File.ReadAllLines),
+            files.SelectMany(ReadLogLines),
             line => Assert.Equal(JsonValueKind.Object, JsonDocument.Parse(line).RootElement.ValueKind));
     }
 
@@ -75,6 +75,19 @@ public sealed class RollingFileLoggerProviderTests
 
         Parallel.For(0, 100, index => logger.LogInformation("Record {Index}", index));
 
-        Assert.Equal(100, File.ReadAllLines(provider.CurrentPath).Length);
+        Assert.Equal(100, ReadLogLines(provider.CurrentPath).Length);
+    }
+
+    private static string[] ReadLogLines(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream);
+        var lines = new List<string>();
+        while (reader.ReadLine() is { } line)
+        {
+            lines.Add(line);
+        }
+
+        return lines.ToArray();
     }
 }

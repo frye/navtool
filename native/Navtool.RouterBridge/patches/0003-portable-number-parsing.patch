@@ -1,0 +1,65 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -15,2 +15,10 @@
+ find_package(Threads REQUIRED)
++include(FetchContent)
++FetchContent_Declare(navtool_fast_float
++    GIT_REPOSITORY https://github.com/fastfloat/fast_float.git
++    GIT_TAG 34164f547b7df3f5d794ff67e9f885c36819ebfc
++    GIT_SHALLOW OFF)
++FetchContent_MakeAvailable(navtool_fast_float)
++
++# fast_float v8.2.10 keeps decimal parsing independent of the system libc++.
+ find_package(eccodes CONFIG QUIET)
+@@ -78,5 +86,6 @@
+         ${CMAKE_CURRENT_SOURCE_DIR}/src
+ )
+ target_link_libraries(sailroute PRIVATE ECCODES::eccodes Threads::Threads)
++target_link_libraries(sailroute PRIVATE $<BUILD_INTERFACE:FastFloat::fast_float>)
+
+ if(MSVC)
+@@ -99,5 +108,6 @@
+ add_executable(sailroute_cli apps/sailroute.cpp)
+ set_target_properties(sailroute_cli PROPERTIES OUTPUT_NAME sailroute)
+ target_link_libraries(sailroute_cli PRIVATE sailroute::sailroute)
++target_link_libraries(sailroute_cli PRIVATE FastFloat::fast_float)
+
+ if(SAILROUTE_BUILD_TESTS)
+diff --git a/apps/sailroute.cpp b/apps/sailroute.cpp
+--- a/apps/sailroute.cpp
++++ b/apps/sailroute.cpp
+@@ -10,5 +10,6 @@
+
+ #include <array>
+ #include <charconv>
++#include <fast_float/fast_float.h>
+ #include <chrono>
+ #include <cmath>
+@@ -182,6 +183,6 @@
+     }
+     const char* const begin = text.data();
+     const char* const end = begin + text.size();
+-    const auto parsed = std::from_chars(begin, end, value, std::chars_format::general);
++    const auto parsed = fast_float::from_chars(begin, end, value, fast_float::chars_format::general);
+     return parsed.ec == std::errc{} && parsed.ptr == end && std::isfinite(value);
+ }
+diff --git a/src/polar/vessel_polar.cpp b/src/polar/vessel_polar.cpp
+--- a/src/polar/vessel_polar.cpp
++++ b/src/polar/vessel_polar.cpp
+@@ -4,5 +4,5 @@
+ #include <algorithm>
+ #include <array>
+-#include <charconv>
++#include <fast_float/fast_float.h>
+ #include <cmath>
+ #include <cstddef>
+@@ -107,7 +107,7 @@
+     double value = 0.0;
+     const char* const begin = token.data();
+     const char* const end = begin + token.size();
+-    const auto parsed = std::from_chars(begin, end, value, std::chars_format::general);
++    const auto parsed = fast_float::from_chars(begin, end, value, fast_float::chars_format::general);
+     if (parsed.ec != std::errc{} || parsed.ptr != end) {
+         return {false, false, 0.0};
+     }

@@ -139,6 +139,7 @@ public sealed class AppThemeTests
         {
             window.Show();
             window.SetPlanningDrawerOpen(true);
+            window.FindControl<Expander>("WaypointEditorExpander")!.IsExpanded = true;
             Dispatcher.UIThread.RunJobs();
 
             foreach (var option in AppThemeService.AvailableThemes)
@@ -263,6 +264,7 @@ public sealed class AppThemeTests
         {
             window.Show();
             window.SetPlanningDrawerOpen(true);
+            Assert.IsType<MainViewModel>(window.DataContext).DepartureNow = false;
             var datePicker = Assert.IsType<DatePicker>(
                 window.FindControl<DatePicker>("DepartureDatePicker"));
             var timePicker = Assert.IsType<TimePicker>(
