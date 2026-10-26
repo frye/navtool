@@ -14,7 +14,9 @@ It targets macOS, Windows, and Linux.
   markers connected by an antimeridian-safe planning guide.
 - Open on a Salish Sea chart view and use a single passage-planning panel plus
   right-click, long-press, or keyboard radial map actions to place endpoints,
-  inspect routes, and start calculation without obscuring the chart.
+  add intermediate waypoints, inspect routes, and start calculation without
+  obscuring the chart. Selecting a waypoint marker opens it in the itinerary
+  editor for moving, reordering, or removal.
 - Choose a local departure date/time, converted to UTC with DST validation; when
   calculation starts with a past active-leg departure, Navtool rolls it forward
   to the current time and warns without changing sailed-leg history.
