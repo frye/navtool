@@ -1,6 +1,6 @@
 # Navtool release notes
 
-## Week of July 27-August 1, 2026 (Draft)
+## Weeks of July 27-August 7, 2026 (Draft)
 
 This week adds land-aware routing, persistent multi-point voyage plans,
 sequential per-model calculation, rolling route resume, full-route
@@ -73,6 +73,9 @@ bridge launch guidance and automated validation.
   ([#34](https://github.com/frye/navtool/pull/34),
   [#36](https://github.com/frye/navtool/pull/36),
   [#40](https://github.com/frye/navtool/pull/40))
+- Added contextual chart waypoint editing with radial-menu insertion of a
+  positioned intermediate waypoint and waypoint-marker selection that opens the
+  itinerary editor for moving, reordering, or removal.
 - Added editor play-button and task-based launch configurations that build the
   worktree-local native bridge before starting the managed application.
   ([#25](https://github.com/frye/navtool/pull/25))
