@@ -47,11 +47,14 @@ work. The live front is post-proof/post-beam retained search. Seed progress has
 no route geometry; historical fronts may remain visible north of the live
 front. This is not evidence of continued expansion.
 
-Saved-plan schema 7 persists the opt-in, observed diagnostics and final seed
-controls. Schema 1-6 migration leaves pruning Off and historical telemetry
-unknown; opening does not rewrite the file, and the existing first-overwrite
-backup remains in force. ABI 8 is readable with pruning Off; ABI 8 C layouts
-are unchanged.
+Saved-plan schema 7 introduced persistence for the opt-in, observed diagnostics
+and final seed controls, and the current schema 10 retains it. Schema 1-6
+migration leaves pruning Off and historical telemetry unknown. Schema 8 adds
+planning-input snapshots, schema 9 adds the ECMWF cache-age policy, and schema
+10 adds nullable no-current provenance; none changes the saved pruning meaning.
+Opening does not rewrite the file, and the existing first-overwrite backup
+remains in force. ABI 8 is readable with pruning Off; ABI 8 C layouts are
+unchanged.
 
 ## Original design and rollout plan
 

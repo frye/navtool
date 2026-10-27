@@ -1,5 +1,36 @@
 # Navtool release notes
 
+## August 25-October 8, 2026 (Draft)
+
+- Adopted the router-lib 0.6 development snapshot through bridge ABI 8, then
+  added ABI 9 for opt-in conservative coastal pruning, with explicit cruising
+  presets, boat selection and saved audit.
+  ([#79](https://github.com/frye/navtool/pull/79),
+  [#81](https://github.com/frye/navtool/pull/81))
+- Retained interrupted route previews with explicit stop reasons, then made
+  incomplete routes selectable for telemetry, weather and timeline inspection
+  while strengthening planning-input, preference and local-GRIB validation.
+  ([#80](https://github.com/frye/navtool/pull/80),
+  [#82](https://github.com/frye/navtool/pull/82),
+  [#83](https://github.com/frye/navtool/pull/83))
+- Validated streamed ECMWF multipart extraction and overflow-safe byte ranges,
+  and added configurable cache reuse with **Forever** as the default.
+  ([#84](https://github.com/frye/navtool/pull/84))
+- Added frame-safe apparent-wind telemetry and explicit provenance for routes
+  calculated without configured currents.
+  ([#87](https://github.com/frye/navtool/pull/87))
+- Added contextual chart actions for inserting and editing itinerary waypoints.
+  ([#77](https://github.com/frye/navtool/pull/77))
+- Added cross-platform application icons.
+  ([#86](https://github.com/frye/navtool/pull/86))
+- Fixed macOS development-launch and packaged icon presentation.
+  ([#88](https://github.com/frye/navtool/pull/88),
+  [#89](https://github.com/frye/navtool/pull/89))
+- Clarified recent behavior in the documentation and emphasized that Navtool is
+  an experimentation/demo project, not a production navigation aid.
+  ([#70](https://github.com/frye/navtool/pull/70),
+  [#85](https://github.com/frye/navtool/pull/85))
+
 ## Week of July 27-August 1, 2026 (Draft)
 
 This week adds land-aware routing, persistent multi-point voyage plans,

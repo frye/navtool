@@ -339,15 +339,19 @@ Everyday routing defaults and inactive advanced values are stored atomically in
 valid defaults; corrupt or unsupported preference files are preserved and
 reported rather than automatically overwritten.
 Route plans are stored atomically as JSON beneath `routes/` in the same root.
-Schema-8 plan files retain normal cruising setup, boat references, causal
+Schema-10 plan files retain normal cruising setup, boat references, causal
 handoffs and per-result audit alongside waypoints, stopovers, sailed state and
-full route geometry. Their planning-input snapshot includes departure intent,
-scheduled UTC departure, forecast horizon, models, source and local GRIB path.
-Legacy plans without this snapshot use remembered defaults, not historical
-results, for these inputs. Professional settings in results are historical run audit, not
-restored active inputs. Forecast binaries are not embedded. Older supported documents
-migrate forward; missing historical context remains legacy/unknown. The first
-migrated overwrite preserves the original bytes in `routes/backups/`.
+full route geometry. Schema 8 added a planning-input snapshot containing
+departure intent, scheduled UTC departure, forecast horizon, models, source and
+local GRIB path. Legacy plans without that snapshot keep those inputs unknown
+and use remembered defaults; Navtool never infers mutable planning intent from
+historical run audit. Schema 9 records the ECMWF cache-age policy, defaulting
+legacy plans to **Forever**. Schema 10 adds nullable `currentsUnconfigured`
+provenance to native run audit; an unknown value is not evidence of zero
+current. Professional settings in results remain historical run audit, not
+restored active inputs. Forecast binaries are not embedded. Older supported
+documents migrate forward; missing historical context remains legacy/unknown.
+The first migrated overwrite preserves the original bytes in `routes/backups/`.
 Unknown future schemas or inconsistent IDs/references are rejected visibly.
 Opening a saved plan restores full-route geometry, sailed history, per-model leg
 status, and the model-specific timeline. Weather overlays are not restored from
