@@ -47,11 +47,14 @@ work. The live front is post-proof/post-beam retained search. Seed progress has
 no route geometry; historical fronts may remain visible north of the live
 front. This is not evidence of continued expansion.
 
-Saved-plan schema 7 persists the opt-in, observed diagnostics and final seed
-controls. Schema 1-6 migration leaves pruning Off and historical telemetry
-unknown; opening does not rewrite the file, and the existing first-overwrite
-backup remains in force. ABI 8 is readable with pruning Off; ABI 8 C layouts
-are unchanged.
+Saved-plan schema 7 introduced persistence for the opt-in, observed diagnostics
+and final seed controls, and the current schema 10 retains it. Schema 1-6
+migration leaves pruning Off and historical telemetry unknown. Schema 8 adds
+planning-input snapshots, schema 9 adds the ECMWF cache-age policy, and schema
+10 adds nullable no-current provenance; none changes the saved pruning meaning.
+Opening does not rewrite the file, and the existing first-overwrite backup
+remains in force. ABI 8 is readable with pruning Off; ABI 8 C layouts are
+unchanged.
 
 ## Original design and rollout plan
 
@@ -72,11 +75,11 @@ Historical fronts persist, native progress can include pre-prune candidates,
 and the map smooths front geometry. A displayed line over land does not establish
 that an accepted route crosses land or that the branch is still expanding.
 
-## Current boundary
+## Pre-implementation boundary
 
-Navtool pins router-lib development revision
-`cd476a84ef3edea9582d77f21588a23af727e083`; the bridge is ABI 8, final native JSON
-is `route_result_v2`, and saved plans use schema 6.
+At the start of this design, Navtool pinned router-lib development revision
+`cd476a84ef3edea9582d77f21588a23af727e083`; the bridge was ABI 8, final native
+JSON was `route_result_v2`, and saved plans used schema 6.
 
 `NativeConfiguredRouteEngine` passes frozen options, boat, forecast and selected
 land source into the bridge. Default Natural Earth polygons enforce individual

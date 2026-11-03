@@ -15,7 +15,7 @@ Three versions describe different boundaries:
 | --- | --- |
 | Native Navtool bridge | ABI 9 (frozen ABI 8 exports retained) |
 | Native final route JSON | `route_result_v2` |
-| Saved Navtool route plans | Schema 7 |
+| Saved Navtool route plans | Schema 10 |
 
 Retained older bridge exports preserve their binary layouts, not the numerical
 behavior, defaults, departure fallback, or serialized bytes of router-lib
@@ -146,10 +146,20 @@ upstream capability.
 
 ## Saved plans and recovery
 
-Schema 1-6 plans migrate forward while keeping their geometry, stable IDs,
-completion state and sailed history. Missing old boat, settings and run audit
-remain legacy/unknown. They do not become verified 0.6 defaults. A legacy plan
-requires an explicit boat before recalculation.
+Schema 1-9 plans migrate in memory to schema 10 while keeping their geometry,
+stable IDs, completion state and sailed history. Missing old boat, settings and
+run audit remain legacy/unknown. They do not become verified 0.6 defaults. A
+legacy plan requires an explicit boat before recalculation.
+
+Schema 7 adds coastal-pruning settings and audit; schemas 1-6 migrate with
+pruning Off and unknown historical telemetry. Schema 8 adds the saved
+`planningInputs` snapshot. Earlier plans retain unknown planning intent and use
+remembered defaults when inputs are needed; mutable planning inputs are never
+inferred from historical run audit. Schema 9 adds the ECMWF cache-age policy to
+saved setup and migrates existing setup to the **Forever** default. Schema 10
+adds nullable `currentsUnconfigured` provenance to native run audit. A null
+legacy value remains unknown and must not be treated as proof that zero current
+applied.
 
 Opening an old plan does not rewrite its file. Before its first migrated
 overwrite, Navtool retains the original bytes beneath `routes/backups/` in the
@@ -160,9 +170,9 @@ additional plans.
 To use an older Navtool version again, first preserve the new file elsewhere,
 then restore an appropriate original backup to its original
 `routes/<plan-id>.route.json` name. Older application versions cannot be assumed
-to read schema 6. Never edit the schema number alone to make an incompatible
-document appear readable. Schema 7 additionally records coastal pruning;
-schema 6 readers cannot read schema 7 plans.
+to read schema 10. Never edit the schema number alone to make an incompatible
+document appear readable. Schema 7 introduced coastal-pruning persistence;
+schemas 8-10 retain it while adding the fields described above.
 
 Run snapshots contain compact asset references and audit, not embedded forecast
 binaries or repeated complete environment grids. Missing external assets do not
@@ -200,4 +210,5 @@ General, opt-in land-aware pruning is described in
 It is carried as a patch over the pinned snapshot, not claimed as an upstream
 published release. It preserves potentially competitive detours using
 conservative native bounds, not map clipping or a narrower destination-front
-display. Schema 6 plans migrate to Off with unknown historical coastal audit.
+display. Schema 6 plans migrate through schema 10 with pruning Off and unknown
+historical coastal audit.
